@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}Calendar Pontaj - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('pontaje.lista') }}">Pontaje</a>
+<span>/</span>
+<span class="active">Calendar{{ ' - ' + angajat.nume_complet if angajat else '' }}</span>
+{% endblock %}
+
+{% block content %}
+<h2 style="margin-bottom: 20px;">
+    <i class="fa-solid fa-calendar-days" style="color: var(--primary);"></i>
+    Calendar Pontaj{% if angajat %} - {{ angajat.nume_complet }}{% endif %}
+</h2>
+
+<!-- Selectie angajat -->
+<div class="card-panel" style="margin-bottom: 20px;">
+    <div class="card-panel-body">
+        <form method="GET" action="{{ url_for('pontaje.calendar_view') }}" style="display: flex; gap: 16px; align-items: end; flex-wrap: wrap;">
+            <div class="form-group" style="flex: 1; min-width: 250px;">
+                <label class="form-label">Selecteaza Angajat</label>
+                <select name="angajat_id" class="form-select" onchange="this.form.submit()">
+                    <option value="">-- Selecteaza angajat --</option>
+                    {% for a in angajati %}
+                    <option value="{{ a.id }}" {{ 'selected' if angajat_id == a.id }}>{{ a.nume_complet }} ({{ a.functie }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <input type="hidden" name="luna" value="{{ luna }}">
+            <input type="hidden" name="anul" value="{{ anul }}">
+        </form>
+    </div>
+</div>
+
+{% if angajat %}
+<!-- Navigare luna -->
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-calendar"></i> Calendar</h3>
+        <div class="cal-month-nav">
+            {% set prev_month = luna - 1 if luna > 1 else 12 %}
+            {% set prev_year = anul if luna > 1 else anul - 1 %}
+            {% set next_month = luna + 1 if luna < 12 else 1 %}
+            {% set next_year = anul if luna < 12 else anul + 1 %}
+            <a href="{{ url_for('pontaje.calendar_view', angajat_id=angajat_id, luna=prev_month, anul=prev_year) }}" class="btn btn-sm btn-outline">
+                <i class="fa-solid fa-chevron-left"></i>
+            </a>
+            <span style="font-weight: 600; min-width: 140px; text-align: center;">
+                {% set month_names = ['', 'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie', 'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie'] %}
+                {{ month_names[luna] }} {{ anul }}
+            </span>
+            <a href="{{ url_for('pontaje.calendar_view', angajat_id=angajat_id, luna=next_month, anul=next_year) }}" class="btn btn-sm btn-outline">
+                <i class="fa-solid fa-chevron-right"></i>
+            </a>
+        </div>
+    </div>
+    <div class="card-panel-body">
+        <div style="display: flex; gap: 24px;">
+            <!-- Calendar grid -->
+            <div style="flex: 1;">
+                <div class="pontaj-calendar" style="grid-template-columns: repeat(7, 1fr);">
+                    {% for zi in ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du'] %}
+                    <div class="cal-header" style="{{ 'color: var(--danger);' if loop.index > 5 }}">{{ zi }}</div>
+                    {% endfor %}
+
+                    {% for _ in range(first_dow) %}
+                    <div class="cal-day empty"></div>
+                    {% endfor %}
+
+                    {% for cd in calendar_data %}
+                    <div class="cal-day cal-day-ang {{ cd.tip }} {{ 'today' if cd.is_today }}"
+                         {% if cd.pontaj %}onclick="showPontajDetail({{ cd.zi }})"{% endif %}
+                         style="{{ 'cursor:pointer;' if cd.pontaj }}"
+                         data-day="{{ cd.zi }}"
+                         {% if cd.pontaj %}
+                         data-proiect="{{ cd.pontaj.proiect.cod_proiect if cd.pontaj.proiect else '-' }}"
+                         data-ore="{{ cd.pontaj.ore_lucrate or 0 }}"
+                         data-start="{{ cd.pontaj.ora_start or '-' }}"
+                         data-sfarsit="{{ cd.pontaj.ora_sfarsit or '-' }}"
+                         data-status="{{ cd.pontaj.status or '-' }}"
+                         data-tipzi="{{ cd.pontaj.tip_zi or '-' }}"
+                         data-aprobator="{{ cd.pontaj.aprobator.get_full_name() if cd.pontaj.aprobator else '-' }}"
+                         data-obs="{{ cd.pontaj.observatii or '' }}"
+                         {% endif %}>
+                        <span class="cal-day-num">{{ cd.zi }}</span>
+                        {% if cd.pontaj and cd.tip not in ('co', 'cm', 'invoiere') %}
+                        <span style="font-size: 0.7rem; font-weight: 700;">{{ cd.pontaj.ore_lucrate or 0 }}h</span>
+                        {% elif cd.tip == 'co' %}
+                        <span style="font-size: 0.65rem; font-weight: 600;">CO</span>
+                        {% elif cd.tip == 'cm' %}
+                        <span style="font-size: 0.65rem; font-weight: 600;">CM</span>
+                        {% elif cd.tip == 'invoiere' %}
+                        <span style="font-size: 0.65rem; font-weight: 600;">INV</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Legend -->
+                <div class="cal-legend" style="margin-top: 12px;">
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #2e7d32;"></span> Prezent</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #1565C0;"></span> CO</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #00838F;"></span> CM</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #6A1B9A;"></span> Invoiere</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #FFCDD2;"></span> Sarbatoare</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: var(--gray-200);"></span> Weekend</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #FFEBEE;"></span> Absent</div>
+                </div>
+            </div>
+
+            <!-- Statistici + Detail -->
+            <div style="width: 300px;">
+                <!-- Statistici luna -->
+                <div class="card-panel" style="margin: 0 0 16px;">
+                    <div class="card-panel-header">
+                        <h3 style="font-size: 0.9rem;"><i class="fa-solid fa-chart-bar"></i> Statistici Luna</h3>
+                    </div>
+                    <div class="card-panel-body">
+                        <div class="cal-stats">
+                            <div class="cal-stat-item">
+                                <span class="cal-stat-label">Zile lucrate</span>
+                                <span class="cal-stat-value">{{ stats.zile_lucrate }}</span>
+                            </div>
+                            <div class="cal-stat-item">
+                                <span class="cal-stat-label">Total ore</span>
+                                <span class="cal-stat-value" style="color: var(--primary);">{{ stats.total_ore }}h</span>
+                            </div>
+                            <div class="cal-stat-item">
+                                <span class="cal-stat-label">Ore normale</span>
+                                <span class="cal-stat-value">{{ stats.ore_normale }}h</span>
+                            </div>
+                            <div class="cal-stat-item">
+                                <span class="cal-stat-label">Ore supl. 50%</span>
+                                <span class="cal-stat-value" style="color: var(--warning);">{{ stats.ore_supl_50 }}h</span>
+                            </div>
+                            <div class="cal-stat-item">
+                                <span class="cal-stat-label">Ore supl. 100%</span>
+                                <span class="cal-stat-value" style="color: var(--danger);">{{ stats.ore_supl_100 }}h</span>
+                            </div>
+                            <div class="cal-stat-item">
+                                <span class="cal-stat-label">Zile CO</span>
+                                <span class="cal-stat-value" style="color: #1565C0;">{{ stats.zile_co }}</span>
+                            </div>
+                            <div class="cal-stat-item">
+                                <span class="cal-stat-label">Zile CM</span>
+                                <span class="cal-stat-value" style="color: #00838F;">{{ stats.zile_cm }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detalii zi (popup) -->
+                <div class="card-panel" id="dayPopup" style="margin: 0; display: none;">
+                    <div class="card-panel-header">
+                        <h3 style="font-size: 0.9rem;" id="popupTitle"><i class="fa-solid fa-calendar-day"></i> Detalii Zi</h3>
+                    </div>
+                    <div class="card-panel-body" id="popupContent" style="font-size: 0.85rem;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card-panel">
+    <div class="card-panel-body">
+        <div class="empty-state" style="padding: 40px;">
+            <i class="fa-solid fa-calendar-days" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
+            <h3>Selectati un angajat</h3>
+            <p>Alegeti un angajat din lista de mai sus pentru a vedea calendarul pontajelor.</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.cal-day-ang.prezent { background: #2e7d32; color: white; }
+.cal-day-ang.co { background: #1565C0; color: white; }
+.cal-day-ang.cm { background: #00838F; color: white; }
+.cal-day-ang.invoiere { background: #6A1B9A; color: white; }
+.cal-day-ang.sarbatoare { background: #FFCDD2; color: var(--danger); }
+.cal-day-ang.weekend { background: var(--gray-100); color: var(--gray-400); }
+.cal-day-ang.absent { background: #FFEBEE; color: var(--danger); }
+.cal-day-ang.viitor { background: white; color: var(--gray-300); }
+
+.cal-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.8rem; color: var(--gray-600); }
+.cal-legend-item { display: flex; align-items: center; gap: 4px; }
+.cal-legend-dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function showPontajDetail(day) {
+    const el = document.querySelector(`.cal-day-ang[data-day="${day}"]`);
+    if (!el) return;
+
+    const popup = document.getElementById('dayPopup');
+    const title = document.getElementById('popupTitle');
+    const content = document.getElementById('popupContent');
+
+    title.innerHTML = '<i class="fa-solid fa-calendar-day"></i> ' + day + '.{{ "%02d"|format(luna) }}.{{ anul }}';
+
+    let html = '<div class="info-grid" style="grid-template-columns: 1fr; gap: 8px;">';
+    html += `<div class="info-item"><div class="info-label">Proiect</div><div class="info-value"><span class="badge-project">${el.dataset.proiect}</span></div></div>`;
+    html += `<div class="info-item"><div class="info-label">Program</div><div class="info-value">${el.dataset.start} - ${el.dataset.sfarsit}</div></div>`;
+    html += `<div class="info-item"><div class="info-label">Ore lucrate</div><div class="info-value" style="font-weight:700;">${el.dataset.ore}h</div></div>`;
+    html += `<div class="info-item"><div class="info-label">Tip zi</div><div class="info-value">${el.dataset.tipzi}</div></div>`;
+    html += `<div class="info-item"><div class="info-label">Status</div><div class="info-value"><span class="badge-status badge-${el.dataset.status}">${el.dataset.status}</span></div></div>`;
+    if (el.dataset.aprobator && el.dataset.aprobator !== '-') {
+        html += `<div class="info-item"><div class="info-label">Aprobat de</div><div class="info-value">${el.dataset.aprobator}</div></div>`;
+    }
+    if (el.dataset.obs) {
+        html += `<div class="info-item"><div class="info-label">Observatii</div><div class="info-value">${el.dataset.obs}</div></div>`;
+    }
+    html += '</div>';
+
+    content.innerHTML = html;
+    popup.style.display = 'block';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Activitati {{ proiect.cod_proiect }} - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('activitati.panou') }}">Activitati</a></li>
+<li class="breadcrumb-item active">{{ proiect.cod_proiect }}</li>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-building" style="color: var(--primary);"></i>
+            Activitati — {{ proiect.cod_proiect }}
+        </h2>
+        <div style="font-size: 0.85rem; color: var(--gray-500);">{{ proiect.nume }} &middot; {{ activitati|length }} activitati raportate</div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('proiecte.detalii', id=proiect.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-building"></i> Detalii Proiect
+        </a>
+        <a href="{{ url_for('activitati.panou') }}" class="btn btn-outline">
+            <i class="fa-solid fa-arrow-left"></i> Inapoi
+        </a>
+    </div>
+</div>
+
+<div class="card-panel">
+    <div class="card-panel-body" style="padding: 0;">
+        {% if activitati %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Angajat</th>
+                        <th>Instalatie</th>
+                        <th>Zona</th>
+                        <th>Activitate</th>
+                        <th>Cantitate</th>
+                        <th>Status</th>
+                        <th>Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in activitati %}
+                    <tr>
+                        <td style="white-space: nowrap;">{{ a.data.strftime('%d.%m.%Y') }}</td>
+                        <td><strong>{{ a.angajat.nume_complet if a.angajat else '-' }}</strong></td>
+                        <td>
+                            {% if a.tip_instalatie %}
+                            <span style="font-size: 0.78rem; padding: 2px 8px; border-radius: 10px; background: {{ a.tip_instalatie.culoare_hex }}15; color: {{ a.tip_instalatie.culoare_hex }}; font-weight: 600;">{{ a.tip_instalatie.cod }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ a.zona_lucru or '-' }}</td>
+                        <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ a.activitate_scurta }}</td>
+                        <td>{{ a.cantitate_executata or '' }} {{ a.unitate_masura or '' }}</td>
+                        <td><span class="badge-status {{ a.status_badge_class }}">{{ a.status|title }}</span></td>
+                        <td class="actions-cell">
+                            <a href="{{ url_for('activitati.detaliu', id=a.id) }}" class="btn-action btn-view" title="Detalii"><i class="fa-solid fa-eye"></i></a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding: 40px;">
+            <i class="fa-solid fa-clipboard-list" style="font-size: 2rem; color: var(--gray-300);"></i>
+            <p style="color: var(--gray-500);">Nicio activitate raportata pentru acest proiect.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

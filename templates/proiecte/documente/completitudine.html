@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Verificare Completitudine - {{ proiect.cod_proiect }} - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.lista') }}">Proiecte</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.detalii', id=proiect.id) }}">{{ proiect.cod_proiect }}</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('doc_proiecte.index', proiect_id=proiect.id) }}">Documente</a></li>
+<li class="breadcrumb-item active">Verificare Completitudine</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.comp-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.comp-stat { background: white; border-radius: 10px; padding: 18px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+.comp-stat .val { font-size: 2rem; font-weight: 800; }
+.comp-stat .lbl { font-size: 0.78rem; color: var(--gray-500); margin-top: 2px; }
+
+.comp-gauge { position: relative; width: 120px; height: 120px; margin: 0 auto 8px; }
+.comp-gauge svg { transform: rotate(-90deg); }
+.comp-gauge .gauge-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 800; }
+
+.comp-section { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.07); margin-bottom: 16px; overflow: hidden; }
+.comp-section-header { padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--gray-100); }
+.comp-section-header h3 { margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+.comp-progress { display: flex; align-items: center; gap: 10px; font-size: 0.88rem; font-weight: 600; }
+.comp-progress-bar { width: 120px; height: 8px; background: var(--gray-100); border-radius: 4px; overflow: hidden; }
+.comp-progress-fill { height: 100%; border-radius: 4px; }
+
+.comp-table td, .comp-table th { padding: 8px 16px; font-size: 0.85rem; }
+.comp-icon-ok { color: #2e7d32; }
+.comp-icon-miss { color: #c62828; }
+.comp-icon-exp { color: #e65100; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-clipboard-check" style="color: var(--primary);"></i>
+            Verificare Completitudine Documente
+        </h2>
+        <div style="font-size: 0.9rem; color: var(--gray-500); margin-top: 4px;">
+            {{ proiect.cod_proiect }} &mdash; {{ proiect.nume }}
+        </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('doc_proiecte.export_index', proiect_id=proiect.id) }}" class="btn btn-success">
+            <i class="fa-solid fa-file-excel"></i> Export Index
+        </a>
+        <a href="{{ url_for('doc_proiecte.index', proiect_id=proiect.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-arrow-left"></i> Inapoi la Documente
+        </a>
+    </div>
+</div>
+
+<!-- Sumar general -->
+<div class="comp-summary">
+    <div class="comp-stat">
+        <div class="comp-gauge">
+            <svg viewBox="0 0 120 120" width="120" height="120">
+                <circle cx="60" cy="60" r="52" fill="none" stroke="#e0e0e0" stroke-width="10"/>
+                <circle cx="60" cy="60" r="52" fill="none"
+                        stroke="{% if procent_general >= 80 %}#2e7d32{% elif procent_general >= 50 %}#f57c00{% else %}#c62828{% endif %}"
+                        stroke-width="10" stroke-linecap="round"
+                        stroke-dasharray="{{ (procent_general / 100) * 327 }} 327"/>
+            </svg>
+            <div class="gauge-text" style="color: {% if procent_general >= 80 %}#2e7d32{% elif procent_general >= 50 %}#f57c00{% else %}#c62828{% endif %};">
+                {{ procent_general }}%
+            </div>
+        </div>
+        <div class="lbl">COMPLETITUDINE GENERALA</div>
+    </div>
+    <div class="comp-stat">
+        <div class="val" style="color: var(--primary);">{{ total_obligatorii }}</div>
+        <div class="lbl">Obligatorii total</div>
+    </div>
+    <div class="comp-stat">
+        <div class="val" style="color: #2e7d32;">{{ total_prezente }}</div>
+        <div class="lbl">Prezente</div>
+    </div>
+    <div class="comp-stat">
+        <div class="val" style="color: #c62828;">{{ total_lipsa }}</div>
+        <div class="lbl">Lipsa</div>
+    </div>
+    <div class="comp-stat">
+        <div class="val" style="color: #e65100;">{{ total_expirate }}</div>
+        <div class="lbl">Expirate</div>
+    </div>
+</div>
+
+<!-- Per instalatie -->
+{% for comp in completitudine %}
+<div class="comp-section">
+    <div class="comp-section-header" style="border-left: 5px solid {{ comp.instalatie.culoare_hex }};">
+        <h3>
+            <i class="fa-solid {{ comp.instalatie.icon_css }}" style="color: {{ comp.instalatie.culoare_hex }};"></i>
+            {{ comp.instalatie.denumire }}
+        </h3>
+        <div class="comp-progress">
+            <div class="comp-progress-bar">
+                <div class="comp-progress-fill" style="width: {{ comp.procent }}%; background: {{ comp.instalatie.culoare_hex }};"></div>
+            </div>
+            <span>{{ comp.prezente }}/{{ comp.total_obligatorii }}</span>
+            <span style="font-size: 0.8rem; color: {% if comp.procent == 100 %}#2e7d32{% elif comp.procent >= 50 %}#f57c00{% else %}#c62828{% endif %};">
+                {{ comp.procent }}%
+            </span>
+        </div>
+    </div>
+    <table class="comp-table" style="width: 100%;">
+        <thead>
+            <tr style="background: var(--gray-50);">
+                <th>Status</th>
+                <th>Document Obligatoriu</th>
+                <th>Actiuni</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% set tip_ids_prezente = [] %}
+            {# Documents present - get unique tip_document_ids that are fulfilled #}
+            {% for tip_doc_ob in comp.instalatie.tipuri_documente.filter_by(obligatoriu=True).all() %}
+                {% if tip_doc_ob not in comp.lipsa %}
+                <tr>
+                    <td style="width: 60px; text-align: center;">
+                        <i class="fa-solid fa-circle-check comp-icon-ok" style="font-size: 1.1rem;"></i>
+                    </td>
+                    <td>{{ tip_doc_ob.denumire }}</td>
+                    <td style="font-size: 0.82rem; color: #2e7d32; font-weight: 600;">Prezent</td>
+                </tr>
+                {% else %}
+                <tr style="background: #ffebee;">
+                    <td style="width: 60px; text-align: center;">
+                        <i class="fa-solid fa-circle-xmark comp-icon-miss" style="font-size: 1.1rem;"></i>
+                    </td>
+                    <td><strong>{{ tip_doc_ob.denumire }}</strong></td>
+                    <td>
+                        <a href="{{ url_for('doc_proiecte.adauga', proiect_id=proiect.id, instalatie=comp.instalatie.id, tip_doc=tip_doc_ob.id) }}"
+                           class="btn" style="padding: 2px 10px; font-size: 0.75rem; background: #c62828; color: white; border-radius: 4px; text-decoration: none;">
+                            <i class="fa-solid fa-plus"></i> Adauga
+                        </a>
+                    </td>
+                </tr>
+                {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endfor %}
+
+{% if not completitudine %}
+<div class="card-panel">
+    <div class="card-panel-body" style="padding: 40px; text-align: center; color: var(--gray-400);">
+        <i class="fa-solid fa-clipboard-check" style="font-size: 3rem; margin-bottom: 12px;"></i>
+        <h3>Nicio instalatie cu documente obligatorii</h3>
+        <p>Nu sunt definite documente obligatorii pentru tipurile de instalatii active.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

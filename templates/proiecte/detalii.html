@@ -1,0 +1,740 @@
+{% extends "base.html" %}
+{% block title %}{{ proiect.cod_proiect }} - {{ proiect.nume }} - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.lista') }}">Proiecte</a>
+<span>/</span>
+<span class="active">{{ proiect.cod_proiect }}</span>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <div>
+        <h2 style="margin: 0 0 8px 0;">
+            <i class="fa-solid fa-building" style="color: var(--primary);"></i> {{ proiect.nume }}
+        </h2>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span class="badge-project">{{ proiect.cod_proiect }}</span>
+            <span class="badge-status badge-{{ proiect.status }}" id="statusBadge">{{ proiect.status|capitalize }}</span>
+            {% if proiect.manager %}
+            <span style="font-size: 0.85rem; color: var(--gray-600);">
+                <i class="fa-solid fa-user-tie"></i> {{ proiect.manager.get_full_name() }}
+            </span>
+            {% endif %}
+        </div>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <!-- Status Quick Change -->
+        <select id="statusSelect" class="form-select" style="width: auto; font-size: 0.85rem;"
+                onchange="changeStatus(this.value)">
+            {% for val, label in [('planificat','Planificat'),('activ','Activ'),('suspendat','Suspendat'),('finalizat','Finalizat'),('anulat','Anulat')] %}
+            <option value="{{ val }}" {{ 'selected' if proiect.status == val }}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <a href="{{ url_for('doc_proiecte.index', proiect_id=proiect.id) }}" class="btn btn-primary">
+            <i class="fa-solid fa-folder-open"></i> Documente Proiect
+        </a>
+        <a href="{{ url_for('proiecte.raport', id=proiect.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-file-lines"></i> Raport
+        </a>
+        <a href="{{ url_for('proiecte.export_excel', id=proiect.id) }}" class="btn btn-success">
+            <i class="fa-solid fa-file-excel"></i> Export
+        </a>
+        <a href="{{ url_for('proiecte.editeaza', id=proiect.id) }}" class="btn btn-secondary">
+            <i class="fa-solid fa-pen"></i> Editeaza
+        </a>
+    </div>
+</div>
+
+<!-- Stats Summary -->
+<div class="stats-bar">
+    <div class="stat-mini">
+        <div class="stat-icon bg-primary"><i class="fa-solid fa-chart-line"></i></div>
+        <div>
+            <div class="stat-number">{{ proiect.progres or 0 }}%</div>
+            <div class="stat-label">Progres</div>
+        </div>
+    </div>
+    <div class="stat-mini">
+        <div class="stat-icon bg-success"><i class="fa-solid fa-users"></i></div>
+        <div>
+            <div class="stat-number">{{ angajati_activi|length }}</div>
+            <div class="stat-label">Angajati Activi</div>
+        </div>
+    </div>
+    <div class="stat-mini">
+        <div class="stat-icon" style="background: var(--info);"><i class="fa-solid fa-clock"></i></div>
+        <div>
+            <div class="stat-number">{{ '{:,.0f}'.format(total_ore) }}</div>
+            <div class="stat-label">Total Ore</div>
+        </div>
+    </div>
+    <div class="stat-mini">
+        <div class="stat-icon bg-warning"><i class="fa-solid fa-hourglass-half"></i></div>
+        <div>
+            <div class="stat-number">{{ proiect.zile_ramase if proiect.zile_ramase is not none else '-' }}</div>
+            <div class="stat-label">Zile Ramase</div>
+        </div>
+    </div>
+    <div class="stat-mini">
+        <div class="stat-icon" style="background: var(--danger);"><i class="fa-solid fa-coins"></i></div>
+        <div>
+            <div class="stat-number">{{ '{:,.0f}'.format(cost_manopera) }}</div>
+            <div class="stat-label">Cost Manopera (RON)</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab Navigation -->
+<div class="tab-nav">
+    <button class="tab-btn active" data-tab="info" onclick="switchTab('info', this)">
+        <i class="fa-solid fa-circle-info"></i> Informatii
+    </button>
+    <button class="tab-btn" data-tab="echipa" onclick="switchTab('echipa', this)">
+        <i class="fa-solid fa-users"></i> Echipa
+        <span class="badge-tab">{{ angajati_activi|length }}</span>
+    </button>
+    <button class="tab-btn" data-tab="pontaje" onclick="switchTab('pontaje', this)">
+        <i class="fa-solid fa-clock"></i> Pontaje
+    </button>
+    <button class="tab-btn" data-tab="financiar" onclick="switchTab('financiar', this)">
+        <i class="fa-solid fa-coins"></i> Financiar
+    </button>
+    <button class="tab-btn" data-tab="documente" onclick="switchTab('documente', this)">
+        <i class="fa-solid fa-folder-open"></i> Documente
+        <span class="badge-tab">{{ documente|length }}</span>
+    </button>
+</div>
+
+<div class="tab-content">
+
+    <!-- ===== TAB 1: INFORMATII ===== -->
+    <div class="tab-pane active" id="tab-info">
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-circle-info"></i> Detalii Proiect</h3>
+            </div>
+            <div class="card-panel-body">
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-label">Cod Proiect</div>
+                        <div class="info-value">{{ proiect.cod_proiect }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Status</div>
+                        <div class="info-value"><span class="badge-status badge-{{ proiect.status }}">{{ proiect.status|capitalize }}</span></div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Beneficiar</div>
+                        <div class="info-value">{{ proiect.beneficiar or '-' }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Nr. Contract</div>
+                        <div class="info-value">{{ proiect.nr_contract_beneficiar or '-' }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Locatie</div>
+                        <div class="info-value">{{ proiect.locatie or '-' }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Adresa Santier</div>
+                        <div class="info-value">{{ proiect.adresa_santier or '-' }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Manager</div>
+                        <div class="info-value">{{ proiect.manager.get_full_name() if proiect.manager else '-' }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Data Start</div>
+                        <div class="info-value">{{ proiect.data_start.strftime('%d.%m.%Y') if proiect.data_start else '-' }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Data Sfarsit Planificat</div>
+                        <div class="info-value">{{ proiect.data_sfarsit_planificat.strftime('%d.%m.%Y') if proiect.data_sfarsit_planificat else '-' }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Data Sfarsit Real</div>
+                        <div class="info-value">{{ proiect.data_sfarsit_real.strftime('%d.%m.%Y') if proiect.data_sfarsit_real else '-' }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Buget Total</div>
+                        <div class="info-value">{{ '{:,.2f}'.format(proiect.buget_total) if proiect.buget_total else '-' }} RON</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Buget Manopera</div>
+                        <div class="info-value">{{ '{:,.2f}'.format(proiect.buget_manopera) if proiect.buget_manopera else '-' }} RON</div>
+                    </div>
+                    {% if proiect.descriere %}
+                    <div class="info-item full-width">
+                        <div class="info-label">Descriere</div>
+                        <div class="info-value">{{ proiect.descriere }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Progres Bar -->
+                <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--gray-200);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <strong style="font-size: 0.9rem;">Progres General</strong>
+                        <strong>{{ proiect.progres or 0 }}%</strong>
+                    </div>
+                    <div class="progress-bar-wrapper" style="height: 12px;">
+                        <div class="progress-bar-fill" style="width: {{ proiect.progres or 0 }}%;">
+                            {{ proiect.progres or 0 }}%
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== TAB 2: ECHIPA ===== -->
+    <div class="tab-pane" id="tab-echipa">
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+            <!-- Lista echipa -->
+            <div class="card-panel">
+                <div class="card-panel-header">
+                    <h3><i class="fa-solid fa-users"></i> Membrii Echipei</h3>
+                </div>
+                <div class="card-panel-body" style="padding: 0;">
+                    {% if angajati_asoc %}
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Angajat</th>
+                                    <th>Functie</th>
+                                    <th>Tarif (RON/h)</th>
+                                    <th>Data Start</th>
+                                    <th>Status</th>
+                                    <th>Actiuni</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ap in angajati_asoc %}
+                                {% set activ = not ap.data_sfarsit or ap.data_sfarsit >= today %}
+                                <tr style="{{ 'opacity: 0.5;' if not activ }}">
+                                    <td>
+                                        <a href="{{ url_for('angajati.detalii', id=ap.angajat.id) }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
+                                            {{ ap.angajat.nume_complet }}
+                                        </a>
+                                    </td>
+                                    <td>{{ ap.functie_pe_proiect or ap.angajat.functie or '-' }}</td>
+                                    <td>{{ '{:,.2f}'.format(ap.tarif_negociat) if ap.tarif_negociat else '-' }}</td>
+                                    <td>{{ ap.data_start.strftime('%d.%m.%Y') if ap.data_start else '-' }}</td>
+                                    <td>
+                                        {% if activ %}
+                                        <span class="badge-status badge-activ">Activ</span>
+                                        {% else %}
+                                        <span class="badge-status badge-inactiv">Dezalocat</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if activ %}
+                                        <form method="POST" action="{{ url_for('proiecte.elimina_angajat', id=proiect.id, ap_id=ap.id) }}" style="display:inline;">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn-action btn-delete" title="Dezaloaca"
+                                                    onclick="return confirm('Doriti sa dezalocati angajatul {{ ap.angajat.nume_complet }} de pe proiect?')">
+                                                <i class="fa-solid fa-user-minus"></i>
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="empty-state" style="padding: 24px;">
+                        <p>Niciun angajat asignat pe acest proiect.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Chart distributie functii -->
+            <div>
+                {% if dist_functii %}
+                <div class="card-panel">
+                    <div class="card-panel-header">
+                        <h3><i class="fa-solid fa-chart-pie"></i> Distributie Functii</h3>
+                    </div>
+                    <div class="card-panel-body" style="display: flex; justify-content: center;">
+                        <canvas id="chartFunctii" style="max-width: 250px; max-height: 250px;"></canvas>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Adauga angajat -->
+                <div class="card-panel" style="margin-top: 20px;">
+                    <div class="card-panel-header">
+                        <h3><i class="fa-solid fa-user-plus"></i> Adauga Angajat</h3>
+                    </div>
+                    <div class="card-panel-body">
+                        <form method="POST" action="{{ url_for('proiecte.adauga_angajat', id=proiect.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <div class="form-group">
+                                <label class="form-label">Angajat</label>
+                                <select name="angajat_id" class="form-select" required>
+                                    <option value="">-- Selecteaza --</option>
+                                    {% for a in angajati_disponibili %}
+                                    <option value="{{ a.id }}">{{ a.nume_complet }} ({{ a.functie }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Functie pe proiect</label>
+                                <input type="text" name="functie_pe_proiect" class="form-control" placeholder="Functia pe proiect">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Tarif negociat (RON/h)</label>
+                                <input type="number" name="tarif_negociat" class="form-control" step="0.01" min="0" placeholder="0.00">
+                            </div>
+                            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
+                                <i class="fa-solid fa-plus"></i> Adauga
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== TAB 3: PONTAJE ===== -->
+    <div class="tab-pane" id="tab-pontaje">
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+            <!-- Ore saptamanale chart -->
+            <div class="card-panel">
+                <div class="card-panel-header">
+                    <h3><i class="fa-solid fa-chart-bar"></i> Ore Saptamanale (ultimele 12 sapt.)</h3>
+                </div>
+                <div class="card-panel-body">
+                    <canvas id="chartOreSapt" style="width: 100%; height: 250px;"></canvas>
+                </div>
+            </div>
+
+            <!-- Ore per angajat luna curenta -->
+            <div class="card-panel">
+                <div class="card-panel-header">
+                    <h3><i class="fa-solid fa-user-clock"></i> Ore/Angajat (luna curenta)</h3>
+                </div>
+                <div class="card-panel-body" style="padding: 0;">
+                    {% if ore_per_angajat %}
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Angajat</th>
+                                <th style="text-align: right;">Ore</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for opa in ore_per_angajat %}
+                            <tr>
+                                <td>{{ opa.nume }} {{ opa.prenume }}</td>
+                                <td style="text-align: right; font-weight: 600;">{{ '{:,.1f}'.format(opa.total_ore) if opa.total_ore else '0' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="empty-state" style="padding: 20px;">
+                        <p>Nu exista pontaje luna aceasta.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabel pontaje -->
+        <div class="card-panel" style="margin-top: 20px;">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-list"></i> Pontaje Detaliate</h3>
+            </div>
+            <div class="card-panel-body" style="padding: 0;">
+                {% if pontaje %}
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Angajat</th>
+                                <th>Ora Start</th>
+                                <th>Ora Sfarsit</th>
+                                <th>Ore Lucrate</th>
+                                <th>Tip Zi</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in pontaje %}
+                            <tr>
+                                <td>{{ p.data.strftime('%d.%m.%Y') if p.data else '-' }}</td>
+                                <td><strong>{{ p.angajat.nume_complet if p.angajat else '-' }}</strong></td>
+                                <td>{{ p.ora_start or '-' }}</td>
+                                <td>{{ p.ora_sfarsit or '-' }}</td>
+                                <td><strong>{{ p.ore_lucrate or 0 }}h</strong></td>
+                                <td>{{ p.tip_zi|capitalize if p.tip_zi else '-' }}</td>
+                                <td><span class="badge-status badge-{{ p.status }}">{{ p.status|capitalize }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state" style="padding: 24px;">
+                    <i class="fa-solid fa-clock" style="font-size: 2rem; color: var(--gray-300);"></i>
+                    <p>Nu exista pontaje inregistrate luna aceasta.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== TAB 4: FINANCIAR ===== -->
+    <div class="tab-pane" id="tab-financiar">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <!-- Sumar financiar -->
+            <div class="card-panel">
+                <div class="card-panel-header">
+                    <h3><i class="fa-solid fa-calculator"></i> Sumar Financiar</h3>
+                </div>
+                <div class="card-panel-body">
+                    <div class="info-grid" style="grid-template-columns: 1fr;">
+                        <div class="info-item">
+                            <div class="info-label">Buget Total</div>
+                            <div class="info-value" style="font-size: 1.1rem; font-weight: 700; color: var(--primary);">
+                                {{ '{:,.2f}'.format(proiect.buget_total) if proiect.buget_total else '0.00' }} RON
+                            </div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Buget Manopera</div>
+                            <div class="info-value" style="font-size: 1.1rem; font-weight: 700;">
+                                {{ '{:,.2f}'.format(proiect.buget_manopera) if proiect.buget_manopera else '0.00' }} RON
+                            </div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Cost Manopera Realizat</div>
+                            <div class="info-value" style="font-size: 1.1rem; font-weight: 700; color: var(--danger);">
+                                {{ '{:,.2f}'.format(cost_manopera) }} RON
+                            </div>
+                        </div>
+                        {% if proiect.buget_manopera and proiect.buget_manopera > 0 %}
+                        <div class="info-item">
+                            <div class="info-label">Consum Buget Manopera</div>
+                            <div class="info-value">
+                                {% set pct_consum = (cost_manopera / (proiect.buget_manopera|float) * 100) %}
+                                <div class="progress-bar-wrapper" style="height: 10px; margin-top: 4px;">
+                                    <div class="progress-bar-fill" style="width: {{ pct_consum|int if pct_consum < 100 else 100 }}%;
+                                        background: {{ 'var(--danger)' if pct_consum > 90 else ('var(--warning)' if pct_consum > 70 else 'var(--success)') }};">
+                                    </div>
+                                </div>
+                                <span style="font-size: 0.85rem; font-weight: 600;">{{ '{:.1f}'.format(pct_consum) }}%</span>
+                            </div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Buget Manopera Ramas</div>
+                            {% set ramas = (proiect.buget_manopera|float) - cost_manopera %}
+                            <div class="info-value" style="font-size: 1.1rem; font-weight: 700; color: {{ 'var(--danger)' if ramas < 0 else 'var(--success)' }};">
+                                {{ '{:,.2f}'.format(ramas) }} RON
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart cost lunar -->
+            <div class="card-panel">
+                <div class="card-panel-header">
+                    <h3><i class="fa-solid fa-chart-line"></i> Cost Manopera Lunar</h3>
+                </div>
+                <div class="card-panel-body">
+                    <canvas id="chartCostLunar" style="width: 100%; height: 250px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== TAB 5: DOCUMENTE ===== -->
+    <div class="tab-pane" id="tab-documente">
+        <!-- Link catre modulul complet de documente per instalatie -->
+        <div style="display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;">
+            <a href="{{ url_for('doc_proiecte.index', proiect_id=proiect.id) }}" class="btn btn-primary">
+                <i class="fa-solid fa-folder-tree"></i> Documente per Instalatie
+            </a>
+            <a href="{{ url_for('doc_proiecte.verificare_completitudine', proiect_id=proiect.id) }}" class="btn btn-outline">
+                <i class="fa-solid fa-clipboard-check"></i> Verificare Completitudine
+            </a>
+            <a href="{{ url_for('doc_proiecte.export_index', proiect_id=proiect.id) }}" class="btn btn-success">
+                <i class="fa-solid fa-file-excel"></i> Export Index Documente
+            </a>
+            <button class="btn btn-secondary" onclick="document.getElementById('uploadDocForm').style.display=document.getElementById('uploadDocForm').style.display==='none'?'block':'none'">
+                <i class="fa-solid fa-upload"></i> Incarca Document
+            </button>
+        </div>
+
+        <!-- Formular upload document -->
+        <div id="uploadDocForm" style="display:none; margin-bottom: 20px;">
+            <div class="card-panel">
+                <div class="card-panel-header">
+                    <h3><i class="fa-solid fa-upload"></i> Incarca Document Nou</h3>
+                </div>
+                <div class="card-panel-body">
+                    <form method="POST" action="{{ url_for('proiecte.upload_document', id=proiect.id) }}" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                            <div class="form-group">
+                                <label class="form-label">Fisier *</label>
+                                <input type="file" name="fisier" class="form-control" required
+                                       accept=".pdf,.dwg,.dxf,.docx,.xlsx,.jpg,.jpeg,.png,.zip">
+                                <small style="color: var(--gray-500);">Formate: PDF, DWG, DXF, DOCX, XLSX, JPG, PNG, ZIP</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Denumire document *</label>
+                                <input type="text" name="nume_document" class="form-control" required
+                                       placeholder="ex: Autorizatie de construire">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Tip document</label>
+                                <select name="tip" class="form-select">
+                                    <option value="autorizatie_construire">Autorizatie de construire</option>
+                                    <option value="proiect_tehnic">Proiect tehnic</option>
+                                    <option value="contract">Contract / Act aditional</option>
+                                    <option value="proces_verbal">Proces verbal</option>
+                                    <option value="certificat">Certificat / Aviz</option>
+                                    <option value="plan_situatie">Plan situatie / Schita</option>
+                                    <option value="raport">Raport / Dare de seama</option>
+                                    <option value="corespondenta">Corespondenta</option>
+                                    <option value="alte" selected>Alte documente</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Data emitere</label>
+                                <input type="date" name="data_emitere" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Data expirare</label>
+                                <input type="date" name="data_expirare" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Observatii</label>
+                                <input type="text" name="observatii" class="form-control"
+                                       placeholder="Observatii optionale">
+                            </div>
+                        </div>
+                        <div style="margin-top: 12px; display: flex; gap: 8px;">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fa-solid fa-cloud-upload-alt"></i> Salveaza Document
+                            </button>
+                            <button type="button" class="btn btn-outline"
+                                    onclick="document.getElementById('uploadDocForm').style.display='none'">
+                                Anuleaza
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista documente -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-folder-open"></i> Documente Proiect
+                    <span class="badge-tab" style="margin-left: 8px;">{{ documente|length }}</span>
+                </h3>
+            </div>
+            <div class="card-panel-body" style="padding: 0;">
+                {% if documente %}
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Tip</th>
+                                <th>Nume Document</th>
+                                <th>Data Emitere</th>
+                                <th>Data Expirare</th>
+                                <th>Marime</th>
+                                <th>Incarcat de</th>
+                                <th>Status</th>
+                                <th>Actiuni</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for doc in documente %}
+                            <tr>
+                                <td>
+                                    <span style="font-size: 0.8rem; background: var(--gray-100); padding: 2px 8px; border-radius: 4px;">
+                                        {{ doc.tip | replace('_', ' ') | title }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <strong>{{ doc.nume_document }}</strong>
+                                    {% if doc.observatii %}
+                                    <div style="font-size: 0.8rem; color: var(--gray-500);">{{ doc.observatii }}</div>
+                                    {% endif %}
+                                </td>
+                                <td>{{ doc.data_emitere.strftime('%d.%m.%Y') if doc.data_emitere else '-' }}</td>
+                                <td>{{ doc.data_expirare.strftime('%d.%m.%Y') if doc.data_expirare else '-' }}</td>
+                                <td>{{ doc.marime_formatata }}</td>
+                                <td style="font-size: 0.85rem;">
+                                    {{ doc.uploader.get_full_name() if doc.uploader else '-' }}<br>
+                                    <span style="color: var(--gray-500);">{{ doc.data_upload.strftime('%d.%m.%Y') if doc.data_upload else '' }}</span>
+                                </td>
+                                <td>
+                                    {% set sc = doc.status_calculat %}
+                                    <span class="badge-status badge-{{ 'activ' if sc == 'valabil' else ('warning' if sc == 'in_curand' else 'inactiv') }}">
+                                        {{ 'Valabil' if sc == 'valabil' else ('Expira curand' if sc == 'in_curand' else 'Expirat') }}
+                                    </span>
+                                </td>
+                                <td style="white-space: nowrap;">
+                                    {% if doc.fisier_path %}
+                                    <a href="{{ url_for('proiecte.download_document', id=proiect.id, doc_id=doc.id) }}"
+                                       class="btn-action" title="Descarca" style="color: var(--primary);">
+                                        <i class="fa-solid fa-download"></i>
+                                    </a>
+                                    {% endif %}
+                                    {% if current_user.is_manager %}
+                                    <form method="POST"
+                                          action="{{ url_for('proiecte.sterge_document', id=proiect.id, doc_id=doc.id) }}"
+                                          style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn-action btn-delete" title="Sterge"
+                                                onclick="return confirm('Stergeti documentul {{ doc.nume_document }}?')">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state" style="padding: 24px;">
+                    <i class="fa-solid fa-folder-open" style="font-size: 2rem; color: var(--gray-300);"></i>
+                    <p>Nu exista documente asociate acestui proiect.</p>
+                    <button class="btn btn-primary" style="margin-top: 8px;"
+                            onclick="document.getElementById('uploadDocForm').style.display='block'; window.scrollTo(0, document.getElementById('uploadDocForm').offsetTop - 80);">
+                        <i class="fa-solid fa-upload"></i> Incarca primul document
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+</div><!-- /.tab-content -->
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+// Tab switching
+function switchTab(tabId, btn) {
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tabId).classList.add('active');
+    btn.classList.add('active');
+}
+
+// Status AJAX change
+function changeStatus(newStatus) {
+    fetch('{{ url_for("proiecte.schimba_status", id=proiect.id) }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({status: newStatus})
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            const badge = document.getElementById('statusBadge');
+            badge.className = 'badge-status badge-' + data.status;
+            badge.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+        }
+    });
+}
+
+// Chart: Distributie functii (donut)
+{% if dist_functii %}
+const ctxFunctii = document.getElementById('chartFunctii');
+if (ctxFunctii) {
+    new Chart(ctxFunctii, {
+        type: 'doughnut',
+        data: {
+            labels: {{ dist_functii.keys()|list|tojson }},
+            datasets: [{
+                data: {{ dist_functii.values()|list|tojson }},
+                backgroundColor: ['#1a237e', '#f57c00', '#2e7d32', '#c62828', '#0277bd', '#6a1b9a', '#00695c', '#ef6c00', '#283593', '#4e342e']
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom', labels: { font: { size: 11 } } }
+            }
+        }
+    });
+}
+{% endif %}
+
+// Chart: Ore saptamanale (bar)
+{% if ore_saptamanale %}
+const ctxOre = document.getElementById('chartOreSapt');
+if (ctxOre) {
+    new Chart(ctxOre, {
+        type: 'bar',
+        data: {
+            labels: [{% for s in ore_saptamanale %}'{{ s.label }} ({{ s.start }})'{{ ', ' if not loop.last }}{% endfor %}],
+            datasets: [{
+                label: 'Ore lucrate',
+                data: [{% for s in ore_saptamanale %}{{ s.ore }}{{ ', ' if not loop.last }}{% endfor %}],
+                backgroundColor: '#1a237e',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: 'Ore' } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+{% endif %}
+
+// Chart: Cost lunar (line)
+{% if cost_lunar %}
+const ctxCost = document.getElementById('chartCostLunar');
+if (ctxCost) {
+    new Chart(ctxCost, {
+        type: 'line',
+        data: {
+            labels: [{% for c in cost_lunar %}'{{ c.label }}'{{ ', ' if not loop.last }}{% endfor %}],
+            datasets: [{
+                label: 'Cost manopera (RON)',
+                data: [{% for c in cost_lunar %}{{ c.cost }}{{ ', ' if not loop.last }}{% endfor %}],
+                borderColor: '#c62828',
+                backgroundColor: 'rgba(198, 40, 40, 0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: 'RON' } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+{% endif %}
+</script>
+{% endblock %}

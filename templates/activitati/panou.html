@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% block title %}Rapoarte de Activitate - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+<li class="breadcrumb-item active">Activitati</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.act-card-azi { border-left: 4px solid var(--success); }
+.act-card-azi.lipsa { border-left-color: var(--danger); }
+.act-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 20px; }
+.act-stat-card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.act-stat-card h4 { font-size: 0.82rem; color: var(--gray-500); margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+.act-stat-value { font-size: 1.6rem; font-weight: 800; color: var(--gray-800); }
+.act-stat-sub { font-size: 0.8rem; color: var(--gray-500); margin-top: 4px; }
+.act-progress { height: 8px; background: var(--gray-100); border-radius: 4px; margin-top: 8px; overflow: hidden; }
+.act-progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+.act-filter-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; align-items: flex-end; }
+.act-filter-bar .form-group { margin: 0; min-width: 150px; }
+.act-filter-bar .form-group label { font-size: 0.75rem; margin-bottom: 2px; }
+.badge-aprobare { background: var(--danger); color: white; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; margin-left: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <div>
+        <h2 style="margin: 0;"><i class="fa-solid fa-clipboard-list" style="color: var(--primary);"></i> Rapoarte de Activitate Zilnica</h2>
+        <div style="font-size: 0.85rem; color: var(--gray-500); margin-top: 4px;">
+            Gestionare activitati zilnice per angajat si proiect
+        </div>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <a href="{{ url_for('activitati.adauga') }}" class="btn btn-primary">
+            <i class="fa-solid fa-plus"></i> Adauga Activitate
+        </a>
+        <a href="{{ url_for('activitati.calendar_view') }}" class="btn btn-outline">
+            <i class="fa-solid fa-calendar-days"></i> Calendar
+        </a>
+        <div class="dropdown" style="position: relative; display: inline-block;">
+            <button class="btn btn-success" onclick="document.getElementById('exportMenu').classList.toggle('show')" type="button">
+                <i class="fa-solid fa-chart-bar"></i> Exporturi <i class="fa-solid fa-caret-down"></i>
+            </button>
+            <div id="exportMenu" class="dropdown-content" style="display:none; position:absolute; right:0; top:100%; background:white; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.15); z-index:100; min-width:200px; padding:6px 0;">
+                <a href="{{ url_for('activitati.raport_saptamanal') }}" style="display:block; padding:8px 16px; color:var(--gray-700); text-decoration:none; font-size:0.85rem;">
+                    <i class="fa-solid fa-file-excel" style="color: var(--success);"></i> Export Saptamanal
+                </a>
+                <a href="{{ url_for('activitati.raport_lunar') }}" style="display:block; padding:8px 16px; color:var(--gray-700); text-decoration:none; font-size:0.85rem;">
+                    <i class="fa-solid fa-file-excel" style="color: var(--success);"></i> Export Lunar
+                </a>
+                <a href="{{ url_for('activitati.raport_anual') }}" style="display:block; padding:8px 16px; color:var(--gray-700); text-decoration:none; font-size:0.85rem;">
+                    <i class="fa-solid fa-file-excel" style="color: var(--success);"></i> Export Anual
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if angajat_curent %}
+<!-- SECTIUNEA MEA -->
+<div class="act-stat-grid">
+    <!-- Card Activitate Azi -->
+    <div class="act-stat-card act-card-azi {{ 'lipsa' if not activitate_azi }}">
+        <h4><i class="fa-solid fa-calendar-day"></i> Activitate Astazi</h4>
+        {% if activitate_azi %}
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-circle-check" style="font-size: 1.4rem; color: var(--success);"></i>
+            <div>
+                <div style="font-weight: 700; color: var(--success);">Introdus</div>
+                <div class="act-stat-sub">{{ activitate_azi.activitate_scurta }}</div>
+            </div>
+        </div>
+        <a href="{{ url_for('activitati.detaliu', id=activitate_azi.id) }}" class="btn btn-outline" style="margin-top: 10px; font-size: 0.8rem; padding: 4px 12px;">
+            <i class="fa-solid fa-eye"></i> Vezi Detalii
+        </a>
+        {% else %}
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-triangle-exclamation" style="font-size: 1.4rem; color: var(--danger);"></i>
+            <div>
+                <div style="font-weight: 700; color: var(--danger);">Nu ai introdus activitatea de azi!</div>
+            </div>
+        </div>
+        <a href="{{ url_for('activitati.adauga') }}" class="btn btn-primary" style="margin-top: 10px; font-size: 0.85rem;">
+            <i class="fa-solid fa-plus"></i> Completeaza Activitatea de Azi
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Card Saptamana -->
+    <div class="act-stat-card">
+        <h4><i class="fa-solid fa-calendar-week"></i> Saptamana Aceasta</h4>
+        <div class="act-stat-value">{{ zile_cu_activitate_sapt }}/5</div>
+        <div class="act-stat-sub">Zile cu activitate introdusa</div>
+        <div class="act-progress">
+            {% set pct_sapt = (zile_cu_activitate_sapt / 5 * 100)|int %}
+            <div class="act-progress-fill" style="width: {{ pct_sapt }}%; background: {{ 'var(--success)' if pct_sapt >= 80 else ('var(--warning)' if pct_sapt >= 40 else 'var(--danger)') }};"></div>
+        </div>
+        <div class="act-stat-sub" style="margin-top: 6px;">
+            {{ proiecte_saptamana|length }} proiecte lucrate
+        </div>
+    </div>
+
+    <!-- Card Luna -->
+    <div class="act-stat-card">
+        <h4><i class="fa-solid fa-calendar"></i> Luna Aceasta</h4>
+        <div class="act-stat-value">{{ zile_cu_activitate_luna }}/{{ zile_lucratoare_luna }}</div>
+        <div class="act-stat-sub">Zile cu activitate</div>
+        <div class="act-progress">
+            {% set pct_luna = (zile_cu_activitate_luna / zile_lucratoare_luna * 100)|int if zile_lucratoare_luna > 0 else 0 %}
+            <div class="act-progress-fill" style="width: {{ pct_luna }}%; background: {{ 'var(--success)' if pct_luna >= 80 else ('var(--warning)' if pct_luna >= 40 else 'var(--danger)') }};"></div>
+        </div>
+        <div class="act-stat-sub" style="margin-top: 6px;">
+            <span style="color: var(--success);">{{ activitati_aprobate_luna }} aprobate</span> &middot;
+            <span style="color: var(--warning);">{{ activitati_pending_luna }} pending</span>
+        </div>
+    </div>
+
+    {% if current_user.rol in ['admin', 'manager'] and pending_aprobare > 0 %}
+    <!-- Card Aprobare (manageri) -->
+    <div class="act-stat-card" style="border-left: 4px solid var(--warning);">
+        <h4><i class="fa-solid fa-clock"></i> De Aprobat</h4>
+        <div class="act-stat-value" style="color: var(--warning);">{{ pending_aprobare }}</div>
+        <div class="act-stat-sub">Activitati in asteptare</div>
+        <a href="{{ url_for('activitati.aprobare') }}" class="btn btn-secondary" style="margin-top: 10px; font-size: 0.85rem;">
+            <i class="fa-solid fa-check-double"></i> Mergi la Aprobare
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% elif current_user.rol in ['admin', 'manager'] and pending_aprobare > 0 %}
+<div class="act-stat-grid">
+    <div class="act-stat-card" style="border-left: 4px solid var(--warning);">
+        <h4><i class="fa-solid fa-clock"></i> Activitati de Aprobat</h4>
+        <div class="act-stat-value" style="color: var(--warning);">{{ pending_aprobare }}</div>
+        <div class="act-stat-sub">Activitati trimise spre aprobare</div>
+        <a href="{{ url_for('activitati.aprobare') }}" class="btn btn-secondary" style="margin-top: 10px; font-size: 0.85rem;">
+            <i class="fa-solid fa-check-double"></i> Mergi la Aprobare
+        </a>
+    </div>
+</div>
+{% endif %}
+
+<!-- FILTRE -->
+<div class="card-panel" style="margin-bottom: 16px;">
+    <div class="card-panel-body" style="padding: 12px 16px;">
+        <form method="GET" action="{{ url_for('activitati.panou') }}">
+            <div class="act-filter-bar">
+                {% if current_user.rol in ['admin', 'manager'] %}
+                <div class="form-group">
+                    <label class="form-label">Angajat</label>
+                    <select name="angajat_id" class="form-select" style="font-size: 0.85rem;">
+                        <option value="">Toti</option>
+                        {% for a in angajati %}
+                        <option value="{{ a.id }}" {{ 'selected' if f_angajat == a.id }}>{{ a.nume_complet }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="form-group">
+                    <label class="form-label">Proiect</label>
+                    <select name="proiect_id" class="form-select" style="font-size: 0.85rem;">
+                        <option value="">Toate</option>
+                        {% for p in proiecte %}
+                        <option value="{{ p.id }}" {{ 'selected' if f_proiect == p.id }}>{{ p.cod_proiect }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Instalatie</label>
+                    <select name="tip_instalatie_id" class="form-select" style="font-size: 0.85rem;">
+                        <option value="">Toate</option>
+                        {% for i in instalatii %}
+                        <option value="{{ i.id }}" {{ 'selected' if f_instalatie == i.id }}>{{ i.cod }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select" style="font-size: 0.85rem;">
+                        <option value="">Toate</option>
+                        <option value="draft" {{ 'selected' if f_status == 'draft' }}>Draft</option>
+                        <option value="trimis" {{ 'selected' if f_status == 'trimis' }}>Trimis</option>
+                        <option value="aprobat" {{ 'selected' if f_status == 'aprobat' }}>Aprobat</option>
+                        <option value="respins" {{ 'selected' if f_status == 'respins' }}>Respins</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">De la</label>
+                    <input type="date" name="data_start" class="form-control" value="{{ f_data_start }}" style="font-size: 0.85rem;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Pana la</label>
+                    <input type="date" name="data_end" class="form-control" value="{{ f_data_end }}" style="font-size: 0.85rem;">
+                </div>
+                <div class="form-group" style="display: flex; gap: 6px; align-items: flex-end;">
+                    <button type="submit" class="btn btn-primary" style="font-size: 0.85rem; padding: 6px 14px;">
+                        <i class="fa-solid fa-filter"></i> Filtreaza
+                    </button>
+                    <a href="{{ url_for('activitati.panou') }}" class="btn btn-outline" style="font-size: 0.85rem; padding: 6px 14px;">
+                        <i class="fa-solid fa-xmark"></i>
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- TABEL ACTIVITATI RECENTE -->
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-list"></i> Activitati Recente</h3>
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        {% if activitati_recente %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Angajat</th>
+                        <th>Proiect</th>
+                        <th>Instalatie</th>
+                        <th>Activitate</th>
+                        <th>Status</th>
+                        <th>Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in activitati_recente %}
+                    <tr>
+                        <td style="white-space: nowrap;">{{ a.data.strftime('%d.%m.%Y') }}</td>
+                        <td><strong>{{ a.angajat.nume_complet if a.angajat else '-' }}</strong></td>
+                        <td>
+                            <span style="font-size: 0.82rem; font-weight: 600; color: var(--primary);">
+                                {{ a.proiect.cod_proiect if a.proiect else '-' }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if a.tip_instalatie %}
+                            <span style="font-size: 0.78rem; padding: 2px 8px; border-radius: 10px; background: {{ a.tip_instalatie.culoare_hex }}15; color: {{ a.tip_instalatie.culoare_hex }}; font-weight: 600;">
+                                {{ a.tip_instalatie.cod }}
+                            </span>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            {{ a.activitate_scurta }}
+                        </td>
+                        <td>
+                            <span class="badge-status {{ a.status_badge_class }}">{{ a.status|title }}</span>
+                        </td>
+                        <td class="actions-cell" style="white-space: nowrap;">
+                            <a href="{{ url_for('activitati.detaliu', id=a.id) }}" class="btn-action btn-view" title="Detalii">
+                                <i class="fa-solid fa-eye"></i>
+                            </a>
+                            {% if a.status in ['draft', 'respins'] %}
+                            <a href="{{ url_for('activitati.editeaza', id=a.id) }}" class="btn-action btn-edit" title="Editeaza">
+                                <i class="fa-solid fa-pen"></i>
+                            </a>
+                            {% endif %}
+                            {% if current_user.rol in ['admin', 'manager'] and a.status == 'trimis' %}
+                            <form method="POST" action="{{ url_for('activitati.aproba', id=a.id) }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action btn-approve" title="Aproba"><i class="fa-solid fa-check"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding: 40px;">
+            <i class="fa-solid fa-clipboard-list" style="font-size: 2.5rem; color: var(--gray-300);"></i>
+            <p style="margin-top: 12px; color: var(--gray-500);">Nicio activitate inregistrata.</p>
+            <a href="{{ url_for('activitati.adauga') }}" class="btn btn-primary" style="margin-top: 8px;">
+                <i class="fa-solid fa-plus"></i> Adauga Prima Activitate
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Toggle export dropdown
+document.addEventListener('click', function(e) {
+    var menu = document.getElementById('exportMenu');
+    if (!e.target.closest('.dropdown')) {
+        menu.style.display = 'none';
+    } else {
+        menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    }
+});
+</script>
+{% endblock %}

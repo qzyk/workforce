@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Gestionare Utilizatori - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('setari.index') }}">Setari</a></li>
+<li class="breadcrumb-item active">Utilizatori</li>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-users-gear" style="color: var(--primary);"></i> Gestionare Utilizatori
+    </h2>
+    <a href="{{ url_for('setari.adauga_utilizator') }}" class="btn btn-secondary">
+        <i class="fa-solid fa-user-plus"></i> Adauga Utilizator
+    </a>
+</div>
+
+<!-- Nav tabs setari -->
+<div class="setari-tabs" style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+    <a href="{{ url_for('setari.firma') }}" class="btn btn-outline"><i class="fa-solid fa-building"></i> Firma</a>
+    <a href="{{ url_for('setari.utilizatori') }}" class="btn btn-secondary"><i class="fa-solid fa-users-gear"></i> Utilizatori</a>
+    <a href="{{ url_for('setari.sarbatori') }}" class="btn btn-outline"><i class="fa-solid fa-calendar-star"></i> Sarbatori</a>
+    <a href="{{ url_for('setari.backup') }}" class="btn btn-outline"><i class="fa-solid fa-database"></i> Backup</a>
+    <a href="{{ url_for('setari.jurnal') }}" class="btn btn-outline"><i class="fa-solid fa-clipboard-list"></i> Jurnal</a>
+    <a href="{{ url_for('setari.generale') }}" class="btn btn-outline"><i class="fa-solid fa-sliders"></i> Generale</a>
+</div>
+
+<!-- Stats -->
+<div class="stats-bar" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px;">
+    <div class="stat-card" style="background: white; border-radius: 8px; padding: 16px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="font-size: 1.8rem; font-weight: 700; color: var(--primary);">{{ stats.total }}</div>
+        <div style="font-size: 0.8rem; color: var(--gray-500);">Total</div>
+    </div>
+    <div class="stat-card" style="background: white; border-radius: 8px; padding: 16px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="font-size: 1.8rem; font-weight: 700; color: #2e7d32;">{{ stats.activi }}</div>
+        <div style="font-size: 0.8rem; color: var(--gray-500);">Activi</div>
+    </div>
+    <div class="stat-card" style="background: white; border-radius: 8px; padding: 16px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="font-size: 1.8rem; font-weight: 700; color: #c62828;">{{ stats.admini }}</div>
+        <div style="font-size: 0.8rem; color: var(--gray-500);">Admini</div>
+    </div>
+    <div class="stat-card" style="background: white; border-radius: 8px; padding: 16px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="font-size: 1.8rem; font-weight: 700; color: var(--secondary);">{{ stats.manageri }}</div>
+        <div style="font-size: 0.8rem; color: var(--gray-500);">Manageri</div>
+    </div>
+    <div class="stat-card" style="background: white; border-radius: 8px; padding: 16px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="font-size: 1.8rem; font-weight: 700; color: #546e7a;">{{ stats.operatori }}</div>
+        <div style="font-size: 0.8rem; color: var(--gray-500);">Operatori</div>
+    </div>
+</div>
+
+<!-- Filtre -->
+<div class="filter-section" style="margin-bottom: 16px;">
+    <form method="GET" style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+        <div class="form-group" style="min-width: 200px; margin-bottom: 0;">
+            <label class="form-label">Cautare</label>
+            <input type="text" name="q" class="form-control" value="{{ cautare }}" placeholder="Nume, email...">
+        </div>
+        <div class="form-group" style="min-width: 150px; margin-bottom: 0;">
+            <label class="form-label">Rol</label>
+            <select name="rol" class="form-select">
+                <option value="">Toate</option>
+                <option value="admin" {{ 'selected' if rol_filtru == 'admin' }}>Admin</option>
+                <option value="manager" {{ 'selected' if rol_filtru == 'manager' }}>Manager</option>
+                <option value="operator" {{ 'selected' if rol_filtru == 'operator' }}>Operator</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 0; display: flex; gap: 8px;">
+            <button type="submit" class="btn btn-outline"><i class="fa-solid fa-filter"></i> Filtreaza</button>
+            <a href="{{ url_for('setari.utilizatori') }}" class="btn btn-outline"><i class="fa-solid fa-rotate-left"></i></a>
+        </div>
+    </form>
+</div>
+
+<!-- Tabel -->
+<div class="card-panel">
+    <div class="card-panel-body" style="padding: 0;">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Nume</th>
+                        <th>Email</th>
+                        <th>Rol</th>
+                        <th>Status</th>
+                        <th>Ultima conectare</th>
+                        <th>Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in utilizatori %}
+                    <tr>
+                        <td>{{ (pagination.page - 1) * 20 + loop.index }}</td>
+                        <td><strong>{{ u.get_full_name() }}</strong></td>
+                        <td>{{ u.email }}</td>
+                        <td>
+                            {% if u.rol == 'admin' %}
+                            <span class="badge-status badge-respins">Admin</span>
+                            {% elif u.rol == 'manager' %}
+                            <span class="badge-status badge-aprobat">Manager</span>
+                            {% else %}
+                            <span class="badge-status badge-draft">Operator</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if u.activ %}
+                            <span class="badge-status badge-aprobat">Activ</span>
+                            {% else %}
+                            <span class="badge-status badge-draft">Inactiv</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ u.ultima_conectare.strftime('%d.%m.%Y %H:%M') if u.ultima_conectare else 'Niciodata' }}</td>
+                        <td class="actions-cell">
+                            <a href="{{ url_for('setari.editeaza_utilizator', id=u.id) }}" class="btn-action btn-edit" title="Editeaza">
+                                <i class="fa-solid fa-pen"></i>
+                            </a>
+
+                            <!-- Reset parola modal trigger -->
+                            <button type="button" class="btn-action btn-view" title="Reset parola"
+                                    onclick="showResetModal({{ u.id }}, '{{ u.get_full_name() }}')">
+                                <i class="fa-solid fa-key"></i>
+                            </button>
+
+                            {% if u.id != current_user.id %}
+                            <form method="POST" action="{{ url_for('setari.toggle_utilizator', id=u.id) }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action {{ 'btn-delete' if u.activ else 'btn-approve' }}"
+                                        title="{{ 'Dezactiveaza' if u.activ else 'Activeaza' }}"
+                                        onclick="return confirm('{{ 'Dezactivati' if u.activ else 'Activati' }} contul {{ u.get_full_name() }}?')">
+                                    <i class="fa-solid {{ 'fa-user-slash' if u.activ else 'fa-user-check' }}"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Paginare -->
+{% if pagination.pages > 1 %}
+<div class="pagination" style="padding: 12px 0;">
+    {% if pagination.has_prev %}
+    <a href="{{ url_for('setari.utilizatori', page=pagination.prev_num, rol=rol_filtru, q=cautare) }}" class="pagination-btn">
+        <i class="fa-solid fa-chevron-left"></i>
+    </a>
+    {% endif %}
+    {% for p in range(1, pagination.pages + 1) %}
+    <a href="{{ url_for('setari.utilizatori', page=p, rol=rol_filtru, q=cautare) }}"
+       class="pagination-btn {{ 'active' if p == pagination.page }}">{{ p }}</a>
+    {% endfor %}
+    {% if pagination.has_next %}
+    <a href="{{ url_for('setari.utilizatori', page=pagination.next_num, rol=rol_filtru, q=cautare) }}" class="pagination-btn">
+        <i class="fa-solid fa-chevron-right"></i>
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Modal Reset Parola -->
+<div class="modal-overlay" id="resetModal" style="display: none;">
+    <div class="modal-box">
+        <div class="modal-header-custom">
+            <i class="fa-solid fa-key" style="color: var(--secondary);"></i>
+            <h3>Reset Parola</h3>
+        </div>
+        <p id="resetModalUser" style="margin-bottom: 16px;"></p>
+        <form id="resetForm" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label class="form-label">Parola noua (minim 6 caractere)</label>
+                <input type="password" name="parola_noua" class="form-control" minlength="6" required>
+            </div>
+            <div class="modal-actions" style="margin-top: 16px;">
+                <button type="button" class="btn-cancel" onclick="document.getElementById('resetModal').style.display='none'">Anuleaza</button>
+                <button type="submit" class="btn btn-secondary"><i class="fa-solid fa-key"></i> Reseteaza</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function showResetModal(userId, userName) {
+    document.getElementById('resetModalUser').textContent = 'Resetare parola pentru: ' + userName;
+    document.getElementById('resetForm').action = '/setari/utilizatori/' + userId + '/reset-parola';
+    document.getElementById('resetModal').style.display = 'flex';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Profil - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Profil</li>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 700px; margin: 0 auto;">
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-user-pen"></i> Profilul Meu</h3>
+        </div>
+        <div class="card-panel-body">
+            <form method="POST" action="{{ url_for('auth.profil') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--gray-200);">
+                    <div style="width: 64px; height: 64px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 24px;">
+                        <i class="fa-solid fa-user"></i>
+                    </div>
+                    <div>
+                        <h4 style="margin: 0; font-size: 18px;">{{ current_user.get_full_name() }}</h4>
+                        <span class="badge-status badge-{{ current_user.rol }}" style="background: var({% if current_user.rol == 'admin' %}--danger{% elif current_user.rol == 'manager' %}--secondary{% else %}--info{% endif %}); color: #fff; margin-top: 4px;">
+                            {{ current_user.rol|capitalize }}
+                        </span>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">Nume</label>
+                        <input type="text" name="nume" class="form-control" value="{{ current_user.nume }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Prenume</label>
+                        <input type="text" name="prenume" class="form-control" value="{{ current_user.prenume }}" required>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="email" class="form-control" value="{{ current_user.email }}" required>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; padding: 16px; background: var(--gray-50); border-radius: var(--radius-sm);">
+                    <div>
+                        <span class="form-label">Cont creat</span>
+                        <p style="margin: 4px 0 0; font-size: 14px; font-weight: 500;">
+                            {{ current_user.data_creare.strftime('%d.%m.%Y %H:%M') if current_user.data_creare else '-' }}
+                        </p>
+                    </div>
+                    <div>
+                        <span class="form-label">Ultima conectare</span>
+                        <p style="margin: 4px 0 0; font-size: 14px; font-weight: 500;">
+                            {{ current_user.ultima_conectare.strftime('%d.%m.%Y %H:%M') if current_user.ultima_conectare else '-' }}
+                        </p>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 12px;">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-floppy-disk"></i> Salveaza Modificarile
+                    </button>
+                    <a href="{{ url_for('auth.schimba_parola') }}" class="btn btn-outline">
+                        <i class="fa-solid fa-key"></i> Schimba Parola
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

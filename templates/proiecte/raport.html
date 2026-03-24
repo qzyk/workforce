@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Raport {{ proiect.cod_proiect }} - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.lista') }}">Proiecte</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.detalii', id=proiect.id) }}">{{ proiect.cod_proiect }}</a>
+<span>/</span>
+<span class="active">Raport</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 1000px; margin: 0 auto;">
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-file-lines" style="color: var(--primary);"></i> Raport Proiect
+        </h2>
+        <div style="display: flex; gap: 8px;">
+            <a href="{{ url_for('proiecte.export_excel', id=proiect.id) }}" class="btn btn-success">
+                <i class="fa-solid fa-file-excel"></i> Export Excel
+            </a>
+            <button onclick="window.print()" class="btn btn-outline">
+                <i class="fa-solid fa-print"></i> Tipareste
+            </button>
+        </div>
+    </div>
+
+    <!-- Info Proiect -->
+    <div class="card-panel">
+        <div class="card-panel-header" style="background: var(--primary); color: white;">
+            <h3 style="color: white;"><i class="fa-solid fa-building"></i> {{ proiect.nume }}</h3>
+            <span class="badge-project" style="background: white; color: var(--primary);">{{ proiect.cod_proiect }}</span>
+        </div>
+        <div class="card-panel-body">
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Status</div>
+                    <div class="info-value"><span class="badge-status badge-{{ proiect.status }}">{{ proiect.status|capitalize }}</span></div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Beneficiar</div>
+                    <div class="info-value">{{ proiect.beneficiar or '-' }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Locatie</div>
+                    <div class="info-value">{{ proiect.locatie or '-' }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Manager</div>
+                    <div class="info-value">{{ proiect.manager.get_full_name() if proiect.manager else '-' }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Data Start</div>
+                    <div class="info-value">{{ proiect.data_start.strftime('%d.%m.%Y') if proiect.data_start else '-' }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Data Sfarsit Planificat</div>
+                    <div class="info-value">{{ proiect.data_sfarsit_planificat.strftime('%d.%m.%Y') if proiect.data_sfarsit_planificat else '-' }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Progres</div>
+                    <div class="info-value">{{ proiect.progres or 0 }}%</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Zile Ramase</div>
+                    <div class="info-value">{{ proiect.zile_ramase if proiect.zile_ramase is not none else '-' }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sumar financiar -->
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-coins"></i> Sumar Financiar</h3>
+        </div>
+        <div class="card-panel-body">
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; text-align: center;">
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--gray-500); margin-bottom: 4px;">Buget Total</div>
+                    <div style="font-size: 1.3rem; font-weight: 700; color: var(--primary);">
+                        {{ '{:,.0f}'.format(proiect.buget_total) if proiect.buget_total else '0' }} RON
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--gray-500); margin-bottom: 4px;">Buget Manopera</div>
+                    <div style="font-size: 1.3rem; font-weight: 700;">
+                        {{ '{:,.0f}'.format(proiect.buget_manopera) if proiect.buget_manopera else '0' }} RON
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--gray-500); margin-bottom: 4px;">Cost Manopera Realizat</div>
+                    <div style="font-size: 1.3rem; font-weight: 700; color: var(--danger);">
+                        {{ '{:,.0f}'.format(cost_manopera) }} RON
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--gray-500); margin-bottom: 4px;">Total Ore</div>
+                    <div style="font-size: 1.3rem; font-weight: 700; color: var(--info);">
+                        {{ '{:,.0f}'.format(total_ore) }}h
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Echipa -->
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-users"></i> Echipa ({{ angajati_activi|length }} activi / {{ angajati_asoc|length }} total)</h3>
+        </div>
+        <div class="card-panel-body" style="padding: 0;">
+            {% if angajati_asoc %}
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nr.</th>
+                            <th>Angajat</th>
+                            <th>Functie</th>
+                            <th>Tarif (RON/h)</th>
+                            <th>Data Start</th>
+                            <th>Data Sfarsit</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ap in angajati_asoc %}
+                        {% set activ = not ap.data_sfarsit or ap.data_sfarsit >= today %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td><strong>{{ ap.angajat.nume_complet }}</strong></td>
+                            <td>{{ ap.functie_pe_proiect or ap.angajat.functie or '-' }}</td>
+                            <td>{{ '{:,.2f}'.format(ap.tarif_negociat) if ap.tarif_negociat else '-' }}</td>
+                            <td>{{ ap.data_start.strftime('%d.%m.%Y') if ap.data_start else '-' }}</td>
+                            <td>{{ ap.data_sfarsit.strftime('%d.%m.%Y') if ap.data_sfarsit else '-' }}</td>
+                            <td><span class="badge-status badge-{{ 'activ' if activ else 'inactiv' }}">{{ 'Activ' if activ else 'Dezalocat' }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state" style="padding: 16px;">
+                <p>Niciun angajat pe proiect.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Ore per angajat -->
+    {% if ore_per_angajat %}
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-user-clock"></i> Situatie Ore per Angajat</h3>
+        </div>
+        <div class="card-panel-body" style="padding: 0;">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Angajat</th>
+                            <th style="text-align: right;">Ore Totale</th>
+                            <th style="text-align: right;">Ore Supl. 50%</th>
+                            <th style="text-align: right;">Ore Supl. 100%</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for opa in ore_per_angajat %}
+                        <tr>
+                            <td><strong>{{ opa.nume }} {{ opa.prenume }}</strong></td>
+                            <td style="text-align: right;">{{ '{:,.1f}'.format(opa.total_ore) if opa.total_ore else '0' }}</td>
+                            <td style="text-align: right;">{{ '{:,.1f}'.format(opa.ore_supl_50) if opa.ore_supl_50 else '0' }}</td>
+                            <td style="text-align: right;">{{ '{:,.1f}'.format(opa.ore_supl_100) if opa.ore_supl_100 else '0' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Cost lunar -->
+    {% if cost_lunar %}
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-chart-line"></i> Evolutie Cost Manopera Lunar</h3>
+        </div>
+        <div class="card-panel-body" style="padding: 0;">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Luna</th>
+                            <th style="text-align: right;">Cost Manopera (RON)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for cl in cost_lunar %}
+                        <tr>
+                            <td>{{ cl.label }}</td>
+                            <td style="text-align: right; font-weight: 600;">{{ '{:,.2f}'.format(cl.cost) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div style="text-align: center; margin: 24px 0; font-size: 0.85rem; color: var(--gray-500);">
+        Raport generat la {{ now.strftime('%d.%m.%Y %H:%M') }} de {{ current_user.get_full_name() }}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+@media print {
+    .sidebar, .topbar, .breadcrumb, .btn { display: none !important; }
+    .main-content { margin-left: 0 !important; padding: 0 !important; }
+}
+</style>
+{% endblock %}

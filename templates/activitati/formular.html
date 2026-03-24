@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editeaza' if activitate else 'Adauga' }} Activitate - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('activitati.panou') }}">Activitati</a></li>
+<li class="breadcrumb-item active">{{ 'Editeaza' if activitate else 'Adauga' }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.act-section { background: white; border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.act-section h3 { font-size: 0.95rem; font-weight: 700; color: var(--primary); margin: 0 0 16px 0; padding-bottom: 8px; border-bottom: 2px solid var(--gray-100); }
+.act-section h3 i { margin-right: 6px; }
+.act-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.act-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.act-full { grid-column: 1 / -1; }
+.inst-cards { display: flex; gap: 8px; flex-wrap: wrap; }
+.inst-card { padding: 8px 14px; border-radius: 8px; border: 2px solid var(--gray-200); cursor: pointer; text-align: center; transition: all 0.15s; font-size: 0.82rem; font-weight: 600; min-width: 80px; }
+.inst-card:hover { border-color: var(--gray-400); }
+.inst-card.selected { border-color: currentColor; background: currentColor; }
+.inst-card.selected span { color: white !important; }
+.inst-card.selected i { color: white !important; }
+.slider-container { display: flex; align-items: center; gap: 12px; }
+.slider-container input[type=range] { flex: 1; accent-color: var(--primary); }
+.slider-value { font-size: 1.1rem; font-weight: 700; color: var(--primary); min-width: 48px; text-align: center; }
+.mat-row { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 8px; margin-bottom: 6px; align-items: center; }
+.mat-row .btn-remove { background: var(--danger); color: white; border: none; border-radius: 6px; width: 30px; height: 30px; cursor: pointer; font-size: 0.8rem; }
+.tags-input { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px; border: 1px solid var(--gray-300); border-radius: 8px; min-height: 38px; align-items: center; cursor: text; }
+.tags-input input { border: none; outline: none; flex: 1; min-width: 100px; font-size: 0.88rem; }
+.tag-item { display: inline-flex; align-items: center; gap: 4px; background: var(--primary); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.78rem; font-weight: 600; }
+.tag-remove { cursor: pointer; font-weight: 700; margin-left: 2px; }
+.act-warning { background: #fff3e0; border-left: 3px solid var(--warning); padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; margin-bottom: 14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-clipboard-list" style="color: var(--primary);"></i>
+            {{ 'Editeaza Activitate' if activitate else 'Raport Activitate Zilnica' }}
+        </h2>
+        <a href="{{ url_for('activitati.panou') }}" class="btn btn-outline">
+            <i class="fa-solid fa-arrow-left"></i> Inapoi
+        </a>
+    </div>
+
+    {% if not activitate and pontaj_azi %}
+    <div class="act-warning">
+        <i class="fa-solid fa-info-circle"></i>
+        Pontaj gasit pentru azi pe proiectul <strong>{{ pontaj_azi.proiect.cod_proiect if pontaj_azi.proiect else '' }}</strong>
+        ({{ pontaj_azi.ore_lucrate }}h). Proiectul a fost pre-selectat.
+    </div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('activitati.editeaza', id=activitate.id) if activitate else url_for('activitati.adauga') }}" id="actForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <!-- SECTIUNEA 1: CONTEXT -->
+        <div class="act-section">
+            <h3><i class="fa-solid fa-map-marker-alt"></i> Context</h3>
+            <div class="act-grid">
+                {% if current_user.rol in ['admin', 'manager'] %}
+                <div class="form-group">
+                    <label class="form-label">Angajat *</label>
+                    <select name="angajat_id" class="form-select" required>
+                        <option value="">-- Selecteaza angajat --</option>
+                        {% for a in angajati %}
+                        <option value="{{ a.id }}"
+                            {{ 'selected' if (activitate and activitate.angajat_id == a.id) or (not activitate and angajat_curent and angajat_curent.id == a.id) }}>
+                            {{ a.nume_complet }} ({{ a.functie }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% else %}
+                <input type="hidden" name="angajat_id" value="{{ angajat_curent.id if angajat_curent else '' }}">
+                <div class="form-group">
+                    <label class="form-label">Angajat</label>
+                    <input type="text" class="form-control" value="{{ angajat_curent.nume_complet if angajat_curent else 'Neasociat' }}" disabled>
+                </div>
+                {% endif %}
+                <div class="form-group">
+                    <label class="form-label">Data *</label>
+                    <input type="date" name="data" class="form-control" required
+                           value="{{ activitate.data.strftime('%Y-%m-%d') if activitate else today.strftime('%Y-%m-%d') }}"
+                           max="{{ today.strftime('%Y-%m-%d') }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Proiect *</label>
+                    <select name="proiect_id" class="form-select" required>
+                        <option value="">-- Selecteaza proiect --</option>
+                        {% for p in proiecte %}
+                        <option value="{{ p.id }}"
+                            {{ 'selected' if (activitate and activitate.proiect_id == p.id) or (not activitate and pontaj_azi and pontaj_azi.proiect_id == p.id) }}>
+                            {{ p.cod_proiect }} - {{ p.nume }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Zona de lucru</label>
+                    <input type="text" name="zona_lucru" class="form-control"
+                           value="{{ activitate.zona_lucru if activitate else '' }}"
+                           placeholder="Ex: Etaj 3 - Corp B, Centrala termica..."
+                           list="zone_sugestii">
+                    <datalist id="zone_sugestii">
+                        <option value="Parter">
+                        <option value="Etaj 1">
+                        <option value="Etaj 2">
+                        <option value="Etaj 3">
+                        <option value="Subsol">
+                        <option value="Acoperis/Terasa">
+                        <option value="Centrala termica">
+                        <option value="Sala masini">
+                        <option value="Exterior">
+                    </datalist>
+                </div>
+            </div>
+
+            <!-- Tip instalatie - carduri -->
+            <div class="form-group" style="margin-top: 14px;">
+                <label class="form-label">Tip Instalatie</label>
+                <input type="hidden" name="tip_instalatie_id" id="tipInstInput"
+                       value="{{ activitate.tip_instalatie_id if activitate else '' }}">
+                <div class="inst-cards">
+                    {% for inst in instalatii %}
+                    <div class="inst-card {{ 'selected' if activitate and activitate.tip_instalatie_id == inst.id }}"
+                         style="color: {{ inst.culoare_hex }}; {{ 'border-color: ' + inst.culoare_hex + '; background: ' + inst.culoare_hex + ';' if activitate and activitate.tip_instalatie_id == inst.id }}"
+                         data-id="{{ inst.id }}" onclick="selectInstalatie(this, {{ inst.id }})">
+                        <i class="fa-solid {{ inst.icon_css }}" style="{{ 'color: white;' if activitate and activitate.tip_instalatie_id == inst.id else 'color: ' + inst.culoare_hex + ';' }}"></i><br>
+                        <span style="{{ 'color: white;' if activitate and activitate.tip_instalatie_id == inst.id else 'color: ' + inst.culoare_hex + ';' }}">{{ inst.cod }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTIUNEA 2: ACTIVITATE PRINCIPALA -->
+        <div class="act-section">
+            <h3><i class="fa-solid fa-hammer"></i> Activitate</h3>
+            <div class="form-group">
+                <label class="form-label">Categorie activitate</label>
+                <select name="categorie_activitate_id" class="form-select" id="categorieSelect">
+                    <option value="">-- Selecteaza categorie --</option>
+                    {% for c in categorii %}
+                    <option value="{{ c.id }}" data-inst="{{ c.tip_instalatie_id or '' }}" data-um="{{ c.unitate_masura_default or '' }}"
+                        {{ 'selected' if activitate and activitate.categorie_activitate_id == c.id }}>
+                        {{ c.denumire }}{{ ' [Universal]' if not c.tip_instalatie_id }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Activitate principala * <small style="color:var(--gray-400);">(max 500 caractere)</small></label>
+                <textarea name="activitate_principala" class="form-control" rows="3" maxlength="500" required
+                          placeholder="Descrieti pe scurt activitatea desfasurata...">{{ activitate.activitate_principala if activitate else '' }}</textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Activitate detaliata <small style="color:var(--gray-400);">(max 2000 caractere, optional)</small></label>
+                <textarea name="activitate_detaliata" class="form-control" rows="5" maxlength="2000"
+                          placeholder="Detalii tehnice, locatii precise, metode utilizate...">{{ activitate.activitate_detaliata if activitate else '' }}</textarea>
+            </div>
+        </div>
+
+        <!-- SECTIUNEA 3: CANTITATI -->
+        <div class="act-section">
+            <h3><i class="fa-solid fa-ruler-combined"></i> Cantitati</h3>
+            <div class="act-grid-3">
+                <div class="form-group">
+                    <label class="form-label">Cantitate executata</label>
+                    <input type="number" name="cantitate_executata" class="form-control" step="0.01" min="0"
+                           value="{{ activitate.cantitate_executata if activitate and activitate.cantitate_executata else '' }}"
+                           placeholder="0.00">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Unitate masura</label>
+                    <select name="unitate_masura" class="form-select" id="umSelect">
+                        <option value="">--</option>
+                        <option value="ml" {{ 'selected' if activitate and activitate.unitate_masura == 'ml' }}>ml (metri lineari)</option>
+                        <option value="mp" {{ 'selected' if activitate and activitate.unitate_masura == 'mp' }}>mp (metri patrati)</option>
+                        <option value="mc" {{ 'selected' if activitate and activitate.unitate_masura == 'mc' }}>mc (metri cubi)</option>
+                        <option value="buc" {{ 'selected' if activitate and activitate.unitate_masura == 'buc' }}>buc (bucati)</option>
+                        <option value="kg" {{ 'selected' if activitate and activitate.unitate_masura == 'kg' }}>kg (kilograme)</option>
+                        <option value="set" {{ 'selected' if activitate and activitate.unitate_masura == 'set' }}>set (seturi)</option>
+                        <option value="ore" {{ 'selected' if activitate and activitate.unitate_masura == 'ore' }}>ore</option>
+                        <option value="t" {{ 'selected' if activitate and activitate.unitate_masura == 't' }}>t (tone)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Procent realizare</label>
+                    <div class="slider-container">
+                        <input type="range" name="procent_realizare" min="0" max="100" step="5"
+                               value="{{ activitate.procent_realizare if activitate and activitate.procent_realizare is not none else 0 }}"
+                               oninput="document.getElementById('pctVal').textContent = this.value + '%'">
+                        <span class="slider-value" id="pctVal">{{ activitate.procent_realizare if activitate and activitate.procent_realizare is not none else 0 }}%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTIUNEA 4: RESURSE -->
+        <div class="act-section">
+            <h3><i class="fa-solid fa-boxes-stacked"></i> Resurse Utilizate</h3>
+            <div class="form-group">
+                <label class="form-label">Materiale folosite</label>
+                <div id="materialeContainer">
+                    {% if activitate and activitate.materiale_lista %}
+                    {% for m in activitate.materiale_lista %}
+                    <div class="mat-row">
+                        <input type="text" name="mat_denumire[]" class="form-control" value="{{ m.denumire }}" placeholder="Denumire material">
+                        <input type="text" name="mat_cantitate[]" class="form-control" value="{{ m.cantitate }}" placeholder="Cantitate">
+                        <input type="text" name="mat_um[]" class="form-control" value="{{ m.um }}" placeholder="U.M.">
+                        <button type="button" class="btn-remove" onclick="this.parentElement.remove()"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+                <button type="button" class="btn btn-outline" style="font-size: 0.82rem; margin-top: 6px;" onclick="addMaterialRow()">
+                    <i class="fa-solid fa-plus"></i> Adauga material
+                </button>
+            </div>
+            <div class="form-group" style="margin-top: 14px;">
+                <label class="form-label">Echipamente / Scule utilizate</label>
+                <input type="text" name="echipamente_folosite" class="form-control"
+                       value="{{ activitate.echipamente_folosite if activitate else '' }}"
+                       placeholder="Bormasina, Sudura TIG, Macara, Polizor... (separate prin virgula)">
+            </div>
+        </div>
+
+        <!-- SECTIUNEA 5: PROBLEME SI OBSERVATII -->
+        <div class="act-section">
+            <h3><i class="fa-solid fa-triangle-exclamation"></i> Probleme si Observatii</h3>
+            <div class="act-grid">
+                <div class="form-group">
+                    <label class="form-label">Probleme intampinate</label>
+                    <textarea name="probleme_intampinate" class="form-control" rows="3"
+                              placeholder="Descrieti problemele intampinate...">{{ activitate.probleme_intampinate if activitate else '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Solutii aplicate</label>
+                    <textarea name="solutii_aplicate" class="form-control" rows="3"
+                              placeholder="Ce solutii ati aplicat...">{{ activitate.solutii_aplicate if activitate else '' }}</textarea>
+                </div>
+            </div>
+            <div class="act-grid" style="margin-top: 10px;">
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" name="necesita_aprobare_tehnica" value="1"
+                               {{ 'checked' if activitate and activitate.necesita_aprobare_tehnica }}
+                               style="width: 18px; height: 18px;">
+                        <span class="form-label" style="margin: 0;">Necesita aprobare/decizie tehnica</span>
+                    </label>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top: 10px;">
+                <label class="form-label">Observatii generale</label>
+                <textarea name="observatii" class="form-control" rows="2"
+                          placeholder="Observatii suplimentare...">{{ activitate.observatii if activitate else '' }}</textarea>
+            </div>
+        </div>
+
+        <!-- BUTOANE -->
+        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap;">
+            <a href="{{ url_for('activitati.panou') }}" class="btn btn-outline">Anuleaza</a>
+            <button type="submit" name="actiune" value="draft" class="btn btn-secondary">
+                <i class="fa-solid fa-floppy-disk"></i> Salveaza Draft
+            </button>
+            <button type="submit" name="actiune" value="trimite" class="btn btn-primary">
+                <i class="fa-solid fa-paper-plane"></i> Trimite spre Aprobare
+            </button>
+            {% if not activitate %}
+            <button type="submit" name="actiune" value="alta" class="btn btn-success">
+                <i class="fa-solid fa-plus"></i> Salveaza si Adauga Alta
+            </button>
+            {% endif %}
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function selectInstalatie(el, id) {
+    document.querySelectorAll('.inst-card').forEach(c => {
+        c.classList.remove('selected');
+        c.style.borderColor = '';
+        c.style.background = '';
+        c.querySelector('i').style.color = c.style.color;
+        c.querySelector('span').style.color = c.style.color;
+    });
+    el.classList.add('selected');
+    el.style.borderColor = el.style.color;
+    el.style.background = el.style.color;
+    el.querySelector('i').style.color = 'white';
+    el.querySelector('span').style.color = 'white';
+    document.getElementById('tipInstInput').value = id;
+
+    // Filter categorii
+    filterCategorii(id);
+}
+
+function filterCategorii(instId) {
+    var sel = document.getElementById('categorieSelect');
+    var opts = sel.querySelectorAll('option');
+    opts.forEach(function(opt) {
+        if (!opt.value) return;
+        var optInst = opt.dataset.inst;
+        if (!optInst || optInst == instId) {
+            opt.style.display = '';
+        } else {
+            opt.style.display = 'none';
+            if (opt.selected) opt.selected = false;
+        }
+    });
+}
+
+// Auto-select UM when categorie changes
+document.getElementById('categorieSelect').addEventListener('change', function() {
+    var opt = this.options[this.selectedIndex];
+    var um = opt.dataset.um;
+    if (um) {
+        document.getElementById('umSelect').value = um;
+    }
+});
+
+function addMaterialRow() {
+    var container = document.getElementById('materialeContainer');
+    var row = document.createElement('div');
+    row.className = 'mat-row';
+    row.innerHTML = '<input type="text" name="mat_denumire[]" class="form-control" placeholder="Denumire material">'
+        + '<input type="text" name="mat_cantitate[]" class="form-control" placeholder="Cantitate">'
+        + '<input type="text" name="mat_um[]" class="form-control" placeholder="U.M.">'
+        + '<button type="button" class="btn-remove" onclick="this.parentElement.remove()"><i class="fa-solid fa-xmark"></i></button>';
+    container.appendChild(row);
+}
+
+// Init filter if instalatie is pre-selected
+{% if activitate and activitate.tip_instalatie_id %}
+filterCategorii({{ activitate.tip_instalatie_id }});
+{% endif %}
+</script>
+{% endblock %}

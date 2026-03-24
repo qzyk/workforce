@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Setari Firma - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('setari.index') }}">Setari</a></li>
+<li class="breadcrumb-item active">Date Firma</li>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-building" style="color: var(--primary);"></i> Date Firma
+    </h2>
+</div>
+
+<!-- Nav tabs setari -->
+<div class="setari-tabs" style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+    <a href="{{ url_for('setari.firma') }}" class="btn btn-secondary"><i class="fa-solid fa-building"></i> Firma</a>
+    <a href="{{ url_for('setari.utilizatori') }}" class="btn btn-outline"><i class="fa-solid fa-users-gear"></i> Utilizatori</a>
+    <a href="{{ url_for('setari.sarbatori') }}" class="btn btn-outline"><i class="fa-solid fa-calendar-star"></i> Sarbatori</a>
+    <a href="{{ url_for('setari.backup') }}" class="btn btn-outline"><i class="fa-solid fa-database"></i> Backup</a>
+    <a href="{{ url_for('setari.jurnal') }}" class="btn btn-outline"><i class="fa-solid fa-clipboard-list"></i> Jurnal</a>
+    <a href="{{ url_for('setari.generale') }}" class="btn btn-outline"><i class="fa-solid fa-sliders"></i> Generale</a>
+</div>
+
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-building"></i> Informatii Companie</h3>
+    </div>
+    <div class="card-panel-body">
+        <form method="POST" style="max-width: 800px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">Denumire firma *</label>
+                    <input type="text" name="firma_nume" class="form-control" value="{{ config.firma_nume }}" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">CUI</label>
+                    <input type="text" name="firma_cui" class="form-control" value="{{ config.firma_cui }}" placeholder="RO12345678">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nr. Registrul Comertului</label>
+                    <input type="text" name="firma_reg_com" class="form-control" value="{{ config.firma_reg_com }}" placeholder="J40/1234/2020">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Telefon</label>
+                    <input type="text" name="firma_telefon" class="form-control" value="{{ config.firma_telefon }}">
+                </div>
+                <div class="form-group" style="grid-column: span 2;">
+                    <label class="form-label">Adresa sediu</label>
+                    <textarea name="firma_adresa" class="form-control" rows="2">{{ config.firma_adresa }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="firma_email" class="form-control" value="{{ config.firma_email }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Banca</label>
+                    <input type="text" name="firma_banca" class="form-control" value="{{ config.firma_banca }}">
+                </div>
+                <div class="form-group" style="grid-column: span 2;">
+                    <label class="form-label">IBAN</label>
+                    <input type="text" name="firma_iban" class="form-control" value="{{ config.firma_iban }}" placeholder="RO49BTRL00000000000000">
+                </div>
+            </div>
+
+            <hr style="margin: 24px 0; border-color: var(--gray-200);">
+            <h4 style="margin-bottom: 16px;"><i class="fa-solid fa-user-tie"></i> Reprezentant Legal</h4>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">Nume si prenume</label>
+                    <input type="text" name="firma_reprezentant" class="form-control" value="{{ config.firma_reprezentant }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Functie</label>
+                    <input type="text" name="firma_functie_repr" class="form-control" value="{{ config.firma_functie_repr }}">
+                </div>
+            </div>
+
+            <div style="margin-top: 24px;">
+                <button type="submit" class="btn btn-secondary">
+                    <i class="fa-solid fa-floppy-disk"></i> Salveaza
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

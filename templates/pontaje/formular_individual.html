@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editeaza' if pontaj else 'Adauga' }} Pontaj - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('pontaje.lista') }}">Pontaje</a>
+<span>/</span>
+<span class="active">{{ 'Editeaza' if pontaj else 'Pontaj Individual' }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <h2 style="margin-bottom: 20px;">
+        <i class="fa-solid fa-{{ 'pen' if pontaj else 'clock' }}" style="color: var(--primary);"></i>
+        {{ 'Editeaza Pontaj' if pontaj else 'Pontaj Individual' }}
+    </h2>
+
+    <form method="POST" novalidate id="pontajForm">
+        {{ form.hidden_tag() }}
+        {% if pontaj %}
+        {{ form.pontaj_id(value=pontaj.id) }}
+        {% endif %}
+
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-user"></i> Angajat si Proiect</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">Angajat <span class="text-danger">*</span></label>
+                        {{ form.angajat_id(class_="form-select", id="angajat_id") }}
+                        {% if form.angajat_id.errors %}
+                        <div class="field-error">{{ form.angajat_id.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Proiect <span class="text-danger">*</span></label>
+                        {{ form.proiect_id(class_="form-select", id="proiect_id") }}
+                        {% if form.proiect_id.errors %}
+                        <div class="field-error">{{ form.proiect_id.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Warning duplicat -->
+                <div id="duplicateWarning" style="display: none; margin-top: 12px; padding: 10px; background: #FFF3E0; border: 1px solid var(--warning); border-radius: 8px; font-size: 0.85rem;">
+                    <i class="fa-solid fa-triangle-exclamation" style="color: var(--warning);"></i>
+                    <span id="duplicateMsg">Exista deja un pontaj pentru acest angajat in aceasta zi!</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-clock"></i> Program</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">Data <span class="text-danger">*</span></label>
+                        {{ form.data(class_="form-control", type="date", id="data_pontaj") }}
+                        {% if form.data.errors %}
+                        <div class="field-error">{{ form.data.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Ora Start <span class="text-danger">*</span></label>
+                        {{ form.ora_start(class_="form-control", type="time", id="ora_start") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Ora Sfarsit <span class="text-danger">*</span></label>
+                        {{ form.ora_sfarsit(class_="form-control", type="time", id="ora_sfarsit") }}
+                        {% if form.ora_sfarsit.errors %}
+                        <div class="field-error">{{ form.ora_sfarsit.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tip Zi</label>
+                        {{ form.tip_zi(class_="form-select", id="tip_zi") }}
+                    </div>
+                </div>
+
+                <!-- Preview calcul ore -->
+                <div id="orePreview" style="margin-top: 16px; padding: 16px; background: var(--gray-50); border-radius: 8px;">
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; text-align: center;">
+                        <div>
+                            <div style="font-size: 0.75rem; color: var(--gray-500); margin-bottom: 4px;">ORE NORMALE</div>
+                            <div id="previewNormale" style="font-size: 1.5rem; font-weight: 800; color: var(--primary);">8.00</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75rem; color: var(--gray-500); margin-bottom: 4px;">SUPL. 50%</div>
+                            <div id="previewSupl50" style="font-size: 1.5rem; font-weight: 800; color: var(--warning);">0.00</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75rem; color: var(--gray-500); margin-bottom: 4px;">SUPL. 100%</div>
+                            <div id="previewSupl100" style="font-size: 1.5rem; font-weight: 800; color: var(--danger);">0.00</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75rem; color: var(--gray-500); margin-bottom: 4px;">TOTAL</div>
+                            <div id="previewTotal" style="font-size: 1.5rem; font-weight: 800; color: var(--success);">8.00</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-comment"></i> Observatii</h3>
+            </div>
+            <div class="card-panel-body">
+                {{ form.observatii(class_="form-control", rows="2", placeholder="Observatii optionale...") }}
+            </div>
+        </div>
+
+        <!-- Butoane -->
+        <div style="display: flex; justify-content: space-between; margin-top: 20px; margin-bottom: 40px;">
+            <a href="{{ url_for('pontaje.lista') }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> Anuleaza
+            </a>
+            <div style="display: flex; gap: 8px;">
+                <button type="submit" class="btn btn-outline" name="actiune_btn" value="draft"
+                        onclick="document.getElementById('id_actiune').value='draft'">
+                    <i class="fa-solid fa-save"></i> Salveaza Draft
+                </button>
+                <button type="submit" class="btn btn-primary" name="actiune_btn" value="trimite"
+                        onclick="document.getElementById('id_actiune').value='trimite'">
+                    <i class="fa-solid fa-paper-plane"></i> Trimite spre Aprobare
+                </button>
+            </div>
+        </div>
+        <input type="hidden" name="actiune" id="id_actiune" value="draft">
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.field-error { color: var(--danger); font-size: 0.8rem; margin-top: 4px; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const oraStart = document.getElementById('ora_start');
+const oraSfarsit = document.getElementById('ora_sfarsit');
+const tipZi = document.getElementById('tip_zi');
+const dataPontaj = document.getElementById('data_pontaj');
+const angajatId = document.getElementById('angajat_id');
+
+// Calcul ore AJAX
+function updateOrePreview() {
+    const params = new URLSearchParams({
+        ora_start: oraStart.value,
+        ora_sfarsit: oraSfarsit.value,
+        tip_zi: tipZi.value,
+        data: dataPontaj.value
+    });
+    fetch('{{ url_for("pontaje.calcul_ore") }}?' + params)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('previewNormale').textContent = data.ore_normale.toFixed(2);
+            document.getElementById('previewSupl50').textContent = data.ore_supl_50.toFixed(2);
+            document.getElementById('previewSupl100').textContent = data.ore_supl_100.toFixed(2);
+            document.getElementById('previewTotal').textContent = data.ore_lucrate.toFixed(2);
+        });
+}
+
+oraStart.addEventListener('change', updateOrePreview);
+oraSfarsit.addEventListener('change', updateOrePreview);
+tipZi.addEventListener('change', updateOrePreview);
+dataPontaj.addEventListener('change', () => {
+    updateOrePreview();
+    checkDuplicate();
+});
+
+// Verificare duplicat
+function checkDuplicate() {
+    const aid = angajatId.value;
+    const d = dataPontaj.value;
+    const pid = '{{ pontaj.id if pontaj else 0 }}';
+    if (!aid || aid == '0' || !d) {
+        document.getElementById('duplicateWarning').style.display = 'none';
+        return;
+    }
+    fetch(`{{ url_for("pontaje.verificare_duplicat") }}?angajat_id=${aid}&data=${d}&pontaj_id=${pid}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.exists) {
+                document.getElementById('duplicateWarning').style.display = 'block';
+                document.getElementById('duplicateMsg').textContent =
+                    `Atentie! Exista deja pontaj: ${data.proiect}, ${data.ore}h, status: ${data.status}`;
+            } else {
+                document.getElementById('duplicateWarning').style.display = 'none';
+            }
+        });
+}
+
+angajatId.addEventListener('change', checkDuplicate);
+
+// Init
+{% if not pontaj %}
+dataPontaj.value = dataPontaj.value || '{{ today.strftime("%Y-%m-%d") if today is defined else "" }}';
+{% endif %}
+updateOrePreview();
+</script>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Schimba Parola - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('auth.profil') }}">Profil</a></li>
+<li class="breadcrumb-item active">Schimba Parola</li>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 500px; margin: 0 auto;">
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-key"></i> Schimba Parola</h3>
+        </div>
+        <div class="card-panel-body">
+            <form method="POST" action="{{ url_for('auth.schimba_parola') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label class="form-label">Parola actuala</label>
+                    <input type="password" name="parola_veche" class="form-control" required>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label class="form-label">Parola noua</label>
+                    <input type="password" name="parola_noua" class="form-control" required minlength="6">
+                    <small style="color: var(--gray-500); font-size: 11px;">Minim 6 caractere</small>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 24px;">
+                    <label class="form-label">Confirma parola noua</label>
+                    <input type="password" name="confirma_parola" class="form-control" required>
+                </div>
+
+                <div style="display: flex; gap: 12px;">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-check"></i> Salveaza Parola
+                    </button>
+                    <a href="{{ url_for('auth.profil') }}" class="btn btn-outline">Anuleaza</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

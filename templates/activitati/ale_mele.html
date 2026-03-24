@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Activitatile Mele - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('activitati.panou') }}">Activitati</a></li>
+<li class="breadcrumb-item active">Activitatile Mele</li>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+    <div>
+        <h2 style="margin: 0;"><i class="fa-solid fa-user-clock" style="color: var(--primary);"></i> Activitatile Mele</h2>
+        <div style="font-size: 0.85rem; color: var(--gray-500);">{{ angajat.nume_complet }} &mdash; {{ activitati|length }} activitati</div>
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <form method="GET" style="display: flex; gap: 6px; align-items: center;">
+            <select name="luna" class="form-select" style="width: auto; font-size: 0.85rem;" onchange="this.form.submit()">
+                {% for m in range(1, 13) %}
+                <option value="{{ m }}" {{ 'selected' if luna == m }}>{{ ['','Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'][m] }}</option>
+                {% endfor %}
+            </select>
+            <select name="an" class="form-select" style="width: auto; font-size: 0.85rem;" onchange="this.form.submit()">
+                {% for y in range(2024, 2028) %}
+                <option value="{{ y }}" {{ 'selected' if an == y }}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        <a href="{{ url_for('activitati.adauga') }}" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Adauga</a>
+        <a href="{{ url_for('activitati.panou') }}" class="btn btn-outline"><i class="fa-solid fa-arrow-left"></i></a>
+    </div>
+</div>
+
+<div class="card-panel">
+    <div class="card-panel-body" style="padding: 0;">
+        {% if activitati %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Proiect</th>
+                        <th>Instalatie</th>
+                        <th>Activitate</th>
+                        <th>Cantitate</th>
+                        <th>Status</th>
+                        <th>Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in activitati %}
+                    <tr>
+                        <td style="white-space: nowrap;">{{ a.data.strftime('%d.%m.%Y') }}</td>
+                        <td style="font-size: 0.82rem; font-weight: 600; color: var(--primary);">{{ a.proiect.cod_proiect if a.proiect else '-' }}</td>
+                        <td>
+                            {% if a.tip_instalatie %}
+                            <span style="font-size: 0.78rem; padding: 2px 8px; border-radius: 10px; background: {{ a.tip_instalatie.culoare_hex }}15; color: {{ a.tip_instalatie.culoare_hex }}; font-weight: 600;">{{ a.tip_instalatie.cod }}</span>
+                            {% endif %}
+                        </td>
+                        <td style="max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ a.activitate_scurta }}</td>
+                        <td>{{ a.cantitate_executata or '' }} {{ a.unitate_masura or '' }}</td>
+                        <td><span class="badge-status {{ a.status_badge_class }}">{{ a.status|title }}</span></td>
+                        <td class="actions-cell" style="white-space: nowrap;">
+                            <a href="{{ url_for('activitati.detaliu', id=a.id) }}" class="btn-action btn-view" title="Detalii"><i class="fa-solid fa-eye"></i></a>
+                            {% if a.status in ['draft', 'respins'] %}
+                            <a href="{{ url_for('activitati.editeaza', id=a.id) }}" class="btn-action btn-edit" title="Editeaza"><i class="fa-solid fa-pen"></i></a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding: 40px;">
+            <i class="fa-solid fa-clipboard-list" style="font-size: 2rem; color: var(--gray-300);"></i>
+            <p style="color: var(--gray-500);">Nicio activitate in aceasta luna.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

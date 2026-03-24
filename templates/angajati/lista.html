@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}Angajati - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<span class="active">Angajati</span>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;"><i class="fa-solid fa-hard-hat" style="color: var(--primary);"></i> Angajati</h2>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <a href="{{ url_for('angajati.export_excel') }}" class="btn btn-success">
+            <i class="fa-solid fa-file-excel"></i> Export Excel
+        </a>
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('importModal').classList.add('active')">
+            <i class="fa-solid fa-file-import"></i> Import Excel
+        </button>
+        <a href="{{ url_for('angajati.adauga') }}" class="btn btn-primary">
+            <i class="fa-solid fa-user-plus"></i> Adauga Angajat
+        </a>
+    </div>
+</div>
+
+<!-- Stats Bar -->
+<div class="stats-bar">
+    <div class="stat-mini">
+        <div class="stat-icon bg-success"><i class="fa-solid fa-user-check"></i></div>
+        <div>
+            <div class="stat-number">{{ total_activi }}</div>
+            <div class="stat-label">Activi</div>
+        </div>
+    </div>
+    <div class="stat-mini">
+        <div class="stat-icon bg-gray"><i class="fa-solid fa-user-xmark"></i></div>
+        <div>
+            <div class="stat-number">{{ total_inactivi }}</div>
+            <div class="stat-label">Inactivi</div>
+        </div>
+    </div>
+    <div class="stat-mini">
+        <div class="stat-icon bg-warning"><i class="fa-solid fa-user-clock"></i></div>
+        <div>
+            <div class="stat-number">{{ total_suspendati }}</div>
+            <div class="stat-label">Suspendati</div>
+        </div>
+    </div>
+    <div class="stat-mini">
+        <div class="stat-icon bg-primary"><i class="fa-solid fa-users"></i></div>
+        <div>
+            <div class="stat-number">{{ total_activi + total_inactivi + total_suspendati }}</div>
+            <div class="stat-label">Total</div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtre -->
+<div class="card-panel" style="margin-bottom: 20px;">
+    <div class="card-panel-header" style="cursor: pointer;" onclick="this.parentElement.querySelector('.filter-body').classList.toggle('collapsed')">
+        <h3 style="margin:0; font-size: 0.95rem;"><i class="fa-solid fa-filter"></i> Filtre</h3>
+        <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem;"></i>
+    </div>
+    <div class="card-panel-body filter-body">
+        <form method="GET" action="{{ url_for('angajati.lista') }}">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; align-items: end;">
+                <div class="form-group">
+                    <label class="form-label">Cautare (nume, CNP)</label>
+                    <input type="text" name="cautare" class="form-control" value="{{ cautare }}" placeholder="Cauta angajat...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select">
+                        <option value="">Toate</option>
+                        <option value="activ" {{ 'selected' if status_filtru == 'activ' }}>Activ</option>
+                        <option value="inactiv" {{ 'selected' if status_filtru == 'inactiv' }}>Inactiv</option>
+                        <option value="suspendat" {{ 'selected' if status_filtru == 'suspendat' }}>Suspendat</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Functie</label>
+                    <select name="functie" class="form-select">
+                        <option value="">Toate</option>
+                        {% for val, label in functii %}
+                        <option value="{{ val }}" {{ 'selected' if functie_filtru == val }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Proiect activ</label>
+                    <select name="proiect" class="form-select">
+                        <option value="">Toate</option>
+                        {% for p in proiecte_active %}
+                        <option value="{{ p.id }}" {{ 'selected' if proiect_filtru == p.id|string }}>{{ p.cod_proiect }} - {{ p.nume }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Sortare</label>
+                    <select name="sort" class="form-select">
+                        <option value="nume_asc" {{ 'selected' if sort == 'nume_asc' }}>Nume A-Z</option>
+                        <option value="nume_desc" {{ 'selected' if sort == 'nume_desc' }}>Nume Z-A</option>
+                        <option value="data_angajare_desc" {{ 'selected' if sort == 'data_angajare_desc' }}>Data angajare (recent)</option>
+                        <option value="data_angajare_asc" {{ 'selected' if sort == 'data_angajare_asc' }}>Data angajare (vechi)</option>
+                        <option value="functie" {{ 'selected' if sort == 'functie' }}>Functie</option>
+                    </select>
+                </div>
+                <div class="form-group" style="display: flex; gap: 8px;">
+                    <button type="submit" class="btn btn-primary" style="flex:1;">
+                        <i class="fa-solid fa-search"></i> Filtreaza
+                    </button>
+                    <a href="{{ url_for('angajati.lista') }}" class="btn btn-outline" style="flex:1;">
+                        <i class="fa-solid fa-rotate-left"></i> Reset
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Tabel Angajati -->
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-list"></i> Lista Angajati ({{ pagination.total }})</h3>
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        {% if angajati %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">Foto</th>
+                        <th>Nume Complet</th>
+                        <th>CNP</th>
+                        <th>Functie</th>
+                        <th>Proiect Curent</th>
+                        <th>Data Angajare</th>
+                        <th>Status</th>
+                        <th style="width: 140px;">Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for angajat in angajati %}
+                    <tr>
+                        <td>
+                            {% if angajat.poza_profil %}
+                            <img src="{{ url_for('static', filename='uploads/' + angajat.poza_profil) }}" class="avatar-sm" alt="">
+                            {% else %}
+                            <div class="avatar-placeholder"><i class="fa-solid fa-user"></i></div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('angajati.detalii', id=angajat.id) }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
+                                {{ angajat.nume_complet }}
+                            </a>
+                        </td>
+                        <td style="font-family: monospace; font-size: 0.85rem;">{{ angajat.cnp or '-' }}</td>
+                        <td>{{ dict(functii).get(angajat.functie, angajat.functie) }}</td>
+                        <td>
+                            {% set proiecte_act = angajat.get_proiecte_active() %}
+                            {% if proiecte_act %}
+                                {% for ap in proiecte_act[:2] %}
+                                <span class="badge-project">{{ ap.proiect.cod_proiect }}</span>
+                                {% endfor %}
+                                {% if proiecte_act|length > 2 %}
+                                <span style="font-size: 0.8rem; color: var(--gray-500);">+{{ proiecte_act|length - 2 }}</span>
+                                {% endif %}
+                            {% else %}
+                            <span style="color: var(--gray-400);">-</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ angajat.data_angajare.strftime('%d.%m.%Y') if angajat.data_angajare else '-' }}</td>
+                        <td>
+                            <span class="badge-status badge-{{ angajat.status }}">{{ angajat.status|capitalize }}</span>
+                        </td>
+                        <td>
+                            <div style="display: flex; gap: 4px;">
+                                <a href="{{ url_for('angajati.detalii', id=angajat.id) }}" class="btn-action btn-view" title="Vezi fisa">
+                                    <i class="fa-solid fa-eye"></i>
+                                </a>
+                                <a href="{{ url_for('angajati.editeaza', id=angajat.id) }}" class="btn-action btn-edit" title="Editeaza">
+                                    <i class="fa-solid fa-pen"></i>
+                                </a>
+                                <form method="POST" action="{{ url_for('angajati.dezactiveaza', id=angajat.id) }}" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    {% if angajat.status == 'activ' %}
+                                    <button type="button" class="btn-action btn-delete" title="Dezactiveaza"
+                                        onclick="confirmDelete('{{ url_for('angajati.dezactiveaza', id=angajat.id) }}', 'dezactivarea angajatului {{ angajat.nume_complet }}')">
+                                        <i class="fa-solid fa-user-slash"></i>
+                                    </button>
+                                    {% else %}
+                                    <button type="submit" class="btn-action btn-approve" title="Reactiveaza">
+                                        <i class="fa-solid fa-user-check"></i>
+                                    </button>
+                                    {% endif %}
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginare -->
+        {% if pagination.pages > 1 %}
+        <div class="pagination" style="padding: 16px;">
+            <div class="page-item {{ 'disabled' if not pagination.has_prev }}">
+                <a class="page-link" href="{{ url_for('angajati.lista', page=pagination.prev_num, cautare=cautare, status=status_filtru, functie=functie_filtru, proiect=proiect_filtru, sort=sort) if pagination.has_prev else '#' }}">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </a>
+            </div>
+            {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                {% if p %}
+                <div class="page-item {{ 'active' if p == pagination.page }}">
+                    <a class="page-link" href="{{ url_for('angajati.lista', page=p, cautare=cautare, status=status_filtru, functie=functie_filtru, proiect=proiect_filtru, sort=sort) }}">{{ p }}</a>
+                </div>
+                {% else %}
+                <div class="page-item disabled"><span class="page-link">...</span></div>
+                {% endif %}
+            {% endfor %}
+            <div class="page-item {{ 'disabled' if not pagination.has_next }}">
+                <a class="page-link" href="{{ url_for('angajati.lista', page=pagination.next_num, cautare=cautare, status=status_filtru, functie=functie_filtru, proiect=proiect_filtru, sort=sort) if pagination.has_next else '#' }}">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="empty-state">
+            <i class="fa-solid fa-users" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
+            <h3>Niciun angajat gasit</h3>
+            <p>Nu exista angajati care sa corespunda criteriilor de cautare.</p>
+            <a href="{{ url_for('angajati.adauga') }}" class="btn btn-primary" style="margin-top: 12px;">
+                <i class="fa-solid fa-user-plus"></i> Adauga primul angajat
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Modal Import -->
+<div id="importModal" class="import-modal">
+    <div class="import-modal-content">
+        <h3><i class="fa-solid fa-file-import"></i> Import Angajati din Excel</h3>
+        <p style="color: var(--gray-600); margin-bottom: 16px;">
+            Incarcati un fisier Excel (.xlsx) cu datele angajatilor. Descarcati mai intai template-ul pentru a vedea formatul corect.
+        </p>
+        <a href="{{ url_for('angajati.template_import') }}" class="btn btn-outline" style="margin-bottom: 20px; display: inline-block;">
+            <i class="fa-solid fa-download"></i> Descarca Template
+        </a>
+        <form method="POST" action="{{ url_for('angajati.import_excel') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label class="form-label">Fisier Excel (.xlsx)</label>
+                <input type="file" name="fisier" class="form-control" accept=".xlsx" required>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 16px;">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fa-solid fa-upload"></i> Importa
+                </button>
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('importModal').classList.remove('active')">
+                    Anuleaza
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.filter-body.collapsed { display: none; }
+</style>
+{% endblock %}

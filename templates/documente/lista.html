@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Documente - Lista - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('documente.panou') }}">Documente</a>
+<span>/</span>
+<span class="active">Lista</span>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="font-size: 20px; font-weight: 700; color: var(--gray-800); display: flex; align-items: center; gap: 10px;">
+        <i class="fa-solid fa-file-lines" style="color: var(--primary);"></i> Lista Documente
+    </h2>
+    <a href="{{ url_for('documente.upload') }}" class="btn btn-secondary">
+        <i class="fa-solid fa-cloud-arrow-up"></i> Incarca Document
+    </a>
+</div>
+
+<!-- Filtre -->
+<div class="filter-section">
+    <form method="GET" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; width: 100%;">
+        <div class="form-group" style="flex: 1; min-width: 140px; margin-bottom: 0;">
+            <label class="form-label">Tip document</label>
+            <select name="tip" class="form-select">
+                <option value="">Toate</option>
+                {% for val, label in tipuri %}
+                <option value="{{ val }}" {{ 'selected' if tip_filtru == val }}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="flex: 1; min-width: 160px; margin-bottom: 0;">
+            <label class="form-label">Angajat</label>
+            <select name="angajat_id" class="form-select">
+                <option value="">Toti</option>
+                {% for a in angajati %}
+                <option value="{{ a.id }}" {{ 'selected' if angajat_id_filtru == a.id|string }}>{{ a.nume_complet }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="flex: 0 0 130px; margin-bottom: 0;">
+            <label class="form-label">Status</label>
+            <select name="status" class="form-select">
+                <option value="">Toate</option>
+                <option value="valabil" {{ 'selected' if status_filtru == 'valabil' }}>Valabil</option>
+                <option value="in_curand" {{ 'selected' if status_filtru == 'in_curand' }}>Expira curand</option>
+                <option value="expirat" {{ 'selected' if status_filtru == 'expirat' }}>Expirat</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 0; display: flex; gap: 8px;">
+            <button type="submit" class="btn btn-outline">
+                <i class="fa-solid fa-filter"></i> Filtreaza
+            </button>
+            <a href="{{ url_for('documente.lista') }}" class="btn btn-outline">
+                <i class="fa-solid fa-rotate-left"></i>
+            </a>
+        </div>
+    </form>
+</div>
+
+<!-- Tabel Documente -->
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-table"></i> Documente</h3>
+        {% if documente %}
+        <span style="font-size: 12px; color: var(--gray-500);">
+            Pagina {{ pagination.page }} / {{ pagination.pages }} | Total: <strong>{{ pagination.total }}</strong>
+        </span>
+        {% endif %}
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        {% if documente %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Tip</th>
+                        <th>Denumire</th>
+                        <th>Angajat</th>
+                        <th>Dimensiune</th>
+                        <th>Data Emitere</th>
+                        <th>Data Expirare</th>
+                        <th>Status</th>
+                        <th>Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in documente %}
+                    <tr>
+                        <td>{{ (pagination.page - 1) * pagination.per_page + loop.index }}</td>
+                        <td><span class="badge-project">{{ doc.tip }}</span></td>
+                        <td><i class="fa-solid fa-file" style="color: var(--gray-400); margin-right: 4px;"></i> {{ doc.nume_document }}</td>
+                        <td>
+                            {% if doc.angajat %}
+                            <a href="{{ url_for('documente.lista_angajat', angajat_id=doc.angajat_id) }}" style="color: var(--primary); text-decoration: none; font-weight: 600;">
+                                {{ doc.angajat.nume_complet }}
+                            </a>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>{{ doc.marime_formatata }}</td>
+                        <td>{{ doc.data_emitere.strftime('%d.%m.%Y') if doc.data_emitere else '-' }}</td>
+                        <td>
+                            {% if doc.data_expirare %}
+                            <span style="{{ 'color: var(--danger); font-weight: 600;' if doc.status == 'expirat' else ('color: var(--warning); font-weight: 600;' if doc.status == 'in_curand' else '') }}">
+                                {{ doc.data_expirare.strftime('%d.%m.%Y') }}
+                            </span>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>
+                            <span class="badge-status badge-{{ doc.status }}">
+                                {{ 'Valabil' if doc.status == 'valabil' else 'EXPIRAT' if doc.status == 'expirat' else 'Exp. curand' }}
+                            </span>
+                        </td>
+                        <td class="actions-cell">
+                            {% if doc.fisier_path %}
+                            <a href="{{ url_for('documente.descarca', id=doc.id) }}" class="btn-action btn-view" title="Descarca">
+                                <i class="fa-solid fa-download"></i>
+                            </a>
+                            {% endif %}
+                            <a href="{{ url_for('documente.editeaza', id=doc.id) }}" class="btn-action btn-edit" title="Editeaza">
+                                <i class="fa-solid fa-pen"></i>
+                            </a>
+                            {% if current_user.is_manager %}
+                            <form method="POST" action="{{ url_for('documente.sterge', id=doc.id) }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action btn-delete" title="Sterge"
+                                        onclick="return confirm('Sunteti sigur ca doriti sa stergeti acest document?')">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginare -->
+        {% if pagination.pages > 1 %}
+        <div class="pagination" style="padding: 12px 16px;">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('documente.lista', page=pagination.prev_num, tip=tip_filtru, status=status_filtru, angajat_id=angajat_id_filtru) }}" class="pagination-btn">
+                <i class="fa-solid fa-chevron-left"></i>
+            </a>
+            {% endif %}
+            {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if p %}
+            <a href="{{ url_for('documente.lista', page=p, tip=tip_filtru, status=status_filtru, angajat_id=angajat_id_filtru) }}"
+               class="pagination-btn {{ 'active' if p == pagination.page }}">{{ p }}</a>
+            {% else %}
+            <span class="pagination-btn">...</span>
+            {% endif %}
+            {% endfor %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('documente.lista', page=pagination.next_num, tip=tip_filtru, status=status_filtru, angajat_id=angajat_id_filtru) }}" class="pagination-btn">
+                <i class="fa-solid fa-chevron-right"></i>
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">
+            <i class="fa-solid fa-file-circle-xmark"></i>
+            <p>Nu exista documente.</p>
+            <a href="{{ url_for('documente.upload') }}" class="btn btn-secondary" style="margin-top: 12px;">
+                <i class="fa-solid fa-upload"></i> Incarca primul document
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

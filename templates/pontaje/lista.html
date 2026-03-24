@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Pontaje - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Pontaje</li>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="font-size: 20px; font-weight: 700; color: var(--gray-800); display: flex; align-items: center; gap: 10px;">
+        <i class="fa-solid fa-calendar-check" style="color: var(--primary);"></i> Pontaje
+    </h2>
+    <a href="{{ url_for('pontaje.adauga') }}" class="btn btn-primary">
+        <i class="fa-solid fa-plus"></i> Pontaj Nou
+    </a>
+</div>
+
+<!-- Filtre -->
+<div class="filter-section">
+    <form method="GET" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; width: 100%;">
+        <div class="form-group" style="flex: 0 0 140px; margin-bottom: 0;">
+            <label class="form-label">Data</label>
+            <input type="date" name="data" class="form-control" value="{{ data_filtru }}">
+        </div>
+        <div class="form-group" style="flex: 1; min-width: 160px; margin-bottom: 0;">
+            <label class="form-label">Proiect</label>
+            <select name="proiect_id" class="form-select">
+                <option value="">Toate</option>
+                {% for p in proiecte %}
+                <option value="{{ p.id }}" {{ 'selected' if proiect_id_filtru == p.id|string }}>{{ p.cod_proiect }} - {{ p.nume }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="flex: 1; min-width: 160px; margin-bottom: 0;">
+            <label class="form-label">Angajat</label>
+            <select name="angajat_id" class="form-select">
+                <option value="">Toti</option>
+                {% for a in angajati %}
+                <option value="{{ a.id }}" {{ 'selected' if angajat_id_filtru == a.id|string }}>{{ a.nume_complet }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="flex: 0 0 130px; margin-bottom: 0;">
+            <label class="form-label">Status</label>
+            <select name="status" class="form-select">
+                <option value="">Toate</option>
+                <option value="draft" {{ 'selected' if status_filtru == 'draft' }}>Draft</option>
+                <option value="trimis" {{ 'selected' if status_filtru == 'trimis' }}>Trimis</option>
+                <option value="aprobat" {{ 'selected' if status_filtru == 'aprobat' }}>Aprobat</option>
+                <option value="respins" {{ 'selected' if status_filtru == 'respins' }}>Respins</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 0; display: flex; gap: 6px;">
+            <button type="submit" class="btn btn-outline">
+                <i class="fa-solid fa-filter"></i> Filtreaza
+            </button>
+            <a href="{{ url_for('pontaje.lista') }}" class="btn btn-outline" title="Reseteaza">
+                <i class="fa-solid fa-xmark"></i>
+            </a>
+        </div>
+    </form>
+</div>
+
+<!-- Tabel Pontaje -->
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-table"></i> Lista Pontaje</h3>
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        {% if pontaje %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Angajat</th>
+                        <th>Proiect</th>
+                        <th>Start</th>
+                        <th>Sfarsit</th>
+                        <th>Ore</th>
+                        <th>Supl. 50%</th>
+                        <th>Supl. 100%</th>
+                        <th>Tip Zi</th>
+                        <th>Status</th>
+                        <th>Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pontaj, angajat, proiect in pontaje %}
+                    <tr>
+                        <td>{{ pontaj.data.strftime('%d.%m.%Y') }}</td>
+                        <td><strong>{{ angajat.nume_complet }}</strong></td>
+                        <td><span class="badge-project">{{ proiect.cod_proiect }}</span></td>
+                        <td>{{ pontaj.ora_start }}</td>
+                        <td>{{ pontaj.ora_sfarsit }}</td>
+                        <td><strong>{{ pontaj.ore_lucrate }}h</strong></td>
+                        <td>{{ pontaj.ore_suplimentare_50 or 0 }}h</td>
+                        <td>{{ pontaj.ore_suplimentare_100 or 0 }}h</td>
+                        <td>{{ pontaj.tip_zi|capitalize }}</td>
+                        <td>
+                            <span class="badge-status badge-{{ pontaj.status }}">
+                                {{ pontaj.status|capitalize }}
+                            </span>
+                        </td>
+                        <td class="actions-cell">
+                            {% if pontaj.status == 'draft' %}
+                            <form method="POST" action="{{ url_for('pontaje.trimite', id=pontaj.id) }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action btn-edit" title="Trimite spre aprobare">
+                                    <i class="fa-solid fa-paper-plane"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                            {% if pontaj.status == 'trimis' and current_user.is_manager %}
+                            <form method="POST" action="{{ url_for('pontaje.aproba', id=pontaj.id) }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action btn-approve" title="Aproba">
+                                    <i class="fa-solid fa-check"></i>
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('pontaje.respinge', id=pontaj.id) }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action btn-reject" title="Respinge">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                            {% if pontaj.status in ('draft', 'respins') %}
+                            <button type="button" class="btn-action btn-delete" title="Sterge"
+                                    onclick="confirmDelete('{{ url_for('pontaje.sterge', id=pontaj.id) }}', 'Sunteti sigur ca doriti sa stergeti acest pontaj?')">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fa-solid fa-clock"></i>
+            <p>Nu au fost gasite pontaje.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

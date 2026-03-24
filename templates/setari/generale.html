@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Setari Generale - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('setari.index') }}">Setari</a></li>
+<li class="breadcrumb-item active">Generale</li>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-sliders" style="color: var(--primary);"></i> Setari Generale
+    </h2>
+</div>
+
+<!-- Nav tabs setari -->
+<div class="setari-tabs" style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+    <a href="{{ url_for('setari.firma') }}" class="btn btn-outline"><i class="fa-solid fa-building"></i> Firma</a>
+    <a href="{{ url_for('setari.utilizatori') }}" class="btn btn-outline"><i class="fa-solid fa-users-gear"></i> Utilizatori</a>
+    <a href="{{ url_for('setari.sarbatori') }}" class="btn btn-outline"><i class="fa-solid fa-calendar-star"></i> Sarbatori</a>
+    <a href="{{ url_for('setari.backup') }}" class="btn btn-outline"><i class="fa-solid fa-database"></i> Backup</a>
+    <a href="{{ url_for('setari.jurnal') }}" class="btn btn-outline"><i class="fa-solid fa-clipboard-list"></i> Jurnal</a>
+    <a href="{{ url_for('setari.generale') }}" class="btn btn-secondary"><i class="fa-solid fa-sliders"></i> Generale</a>
+</div>
+
+<form method="POST" style="max-width: 800px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- Program de lucru -->
+    <div class="card-panel" style="margin-bottom: 20px;">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-clock"></i> Program de Lucru</h3>
+        </div>
+        <div class="card-panel-body">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">Ore lucru / zi</label>
+                    <input type="number" name="ore_lucru_zi" class="form-control" value="{{ config.ore_lucru_zi }}" min="1" max="12">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Zile lucru / luna</label>
+                    <input type="number" name="zile_lucru_luna" class="form-control" value="{{ config.zile_lucru_luna }}" min="1" max="31">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Moneda</label>
+                    <input type="text" name="moneda" class="form-control" value="{{ config.moneda }}">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Salarii -->
+    <div class="card-panel" style="margin-bottom: 20px;">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-money-bill-wave"></i> Salarii</h3>
+        </div>
+        <div class="card-panel-body">
+            <div class="form-group" style="max-width: 300px;">
+                <label class="form-label">Salariu minim brut pe economie (RON)</label>
+                <input type="number" name="salariu_minim" class="form-control" value="{{ config.salariu_minim }}" min="0">
+            </div>
+        </div>
+    </div>
+
+    <!-- Alerte & Notificari -->
+    <div class="card-panel" style="margin-bottom: 20px;">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-bell"></i> Alerte & Notificari</h3>
+        </div>
+        <div class="card-panel-body">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">Zile alerta expirare documente</label>
+                    <input type="number" name="zile_alerta_documente" class="form-control"
+                           value="{{ config.zile_alerta_documente }}" min="1" max="90">
+                    <small style="color: var(--gray-500);">Documentele care expira in acest interval vor genera alerte.</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Curatare automata exporturi (zile)</label>
+                    <input type="number" name="cleanup_export_zile" class="form-control"
+                           value="{{ config.cleanup_export_zile }}" min="1" max="365">
+                    <small style="color: var(--gray-500);">Fisierele de export mai vechi vor fi sterse automat.</small>
+                </div>
+            </div>
+            <div style="margin-top: 16px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" name="backup_auto" {{ 'checked' if config.backup_auto }}
+                           style="width: 18px; height: 18px;">
+                    <span>Activare backup automat saptamanal</span>
+                </label>
+            </div>
+            <div style="margin-top: 12px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" name="notificari_email" {{ 'checked' if config.notificari_email }}
+                           style="width: 18px; height: 18px;">
+                    <span>Activare notificari pe email (necesita configurare SMTP)</span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 12px; align-items: center;">
+        <button type="submit" class="btn btn-secondary">
+            <i class="fa-solid fa-floppy-disk"></i> Salveaza Setarile
+        </button>
+        <form method="POST" action="{{ url_for('setari.curata_exporturi') }}" style="display: inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline"
+                    onclick="return confirm('Stergeti fisierele de export mai vechi de {{ config.cleanup_export_zile }} zile?')">
+                <i class="fa-solid fa-broom"></i> Curata Exporturi Vechi
+            </button>
+        </form>
+    </div>
+</form>
+
+<!-- Informatii sistem -->
+<div class="card-panel" style="margin-top: 24px;">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-server"></i> Informatii Sistem</h3>
+    </div>
+    <div class="card-panel-body" id="sysInfo">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;" id="sysGrid">
+            <div style="text-align: center; padding: 8px;">
+                <i class="fa-solid fa-spinner fa-spin" style="color: var(--gray-400);"></i>
+                <div style="font-size: 0.85rem; color: var(--gray-400);">Se incarca...</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Incarca info sistem via AJAX
+fetch('{{ url_for("setari.info_sistem") }}')
+    .then(r => r.json())
+    .then(data => {
+        const grid = document.getElementById('sysGrid');
+        const items = [
+            {icon: 'fa-hard-hat', label: 'Angajati', value: data.angajati_activi + ' / ' + data.angajati, color: '#1a237e'},
+            {icon: 'fa-building', label: 'Proiecte', value: data.proiecte_active + ' active / ' + data.proiecte, color: '#f57c00'},
+            {icon: 'fa-calendar-check', label: 'Pontaje', value: data.pontaje.toLocaleString('ro-RO'), color: '#2e7d32'},
+            {icon: 'fa-file-lines', label: 'Documente', value: data.documente.toLocaleString('ro-RO'), color: '#c62828'},
+            {icon: 'fa-users', label: 'Utilizatori', value: data.utilizatori, color: '#6a1b9a'},
+            {icon: 'fa-chart-bar', label: 'Rapoarte', value: data.rapoarte, color: '#00695c'},
+            {icon: 'fa-database', label: 'DB Size', value: (data.db_size / (1024*1024)).toFixed(1) + ' MB', color: '#37474f'},
+        ];
+        grid.innerHTML = items.map(i => `
+            <div style="text-align: center; padding: 12px;">
+                <i class="fa-solid ${i.icon}" style="font-size: 1.5rem; color: ${i.color}; margin-bottom: 8px;"></i>
+                <div style="font-size: 1.2rem; font-weight: 700;">${i.value}</div>
+                <div style="font-size: 0.8rem; color: var(--gray-500);">${i.label}</div>
+            </div>
+        `).join('');
+    })
+    .catch(() => {
+        document.getElementById('sysGrid').innerHTML = '<div style="color: var(--gray-400);">Nu s-au putut incarca informatiile.</div>';
+    });
+</script>
+{% endblock %}

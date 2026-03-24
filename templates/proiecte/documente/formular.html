@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editare' if doc else 'Adauga' }} Document - {{ proiect.cod_proiect }} - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.lista') }}">Proiecte</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.detalii', id=proiect.id) }}">{{ proiect.cod_proiect }}</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('doc_proiecte.index', proiect_id=proiect.id) }}">Documente</a></li>
+<li class="breadcrumb-item active">{{ 'Editare' if doc else 'Adauga' }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.step-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--gray-200); }
+.step-number { width: 28px; height: 28px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; }
+.step-title { font-weight: 700; font-size: 1.05rem; color: var(--primary); }
+
+.inst-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.inst-card { border: 2px solid var(--gray-200); border-radius: 10px; padding: 12px; text-align: center; cursor: pointer; transition: all .2s; }
+.inst-card:hover { border-color: var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+.inst-card.selected { border-width: 3px; box-shadow: 0 2px 12px rgba(0,0,0,.15); }
+.inst-card i { font-size: 1.5rem; margin-bottom: 6px; display: block; }
+.inst-card span { font-size: 0.8rem; font-weight: 600; }
+
+.etapa-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.etapa-btn { padding: 8px 18px; border: 2px solid var(--gray-200); border-radius: 8px; background: white; cursor: pointer; font-weight: 600; font-size: 0.85rem; transition: all .15s; }
+.etapa-btn:hover { border-color: var(--primary); }
+.etapa-btn.selected { background: var(--primary); color: white; border-color: var(--primary); }
+
+.drop-zone { border: 2px dashed var(--gray-300); border-radius: 10px; padding: 40px; text-align: center; color: var(--gray-400); transition: all .2s; cursor: pointer; }
+.drop-zone:hover, .drop-zone.dragover { border-color: var(--primary); background: rgba(26,35,126,.03); color: var(--primary); }
+.drop-zone.has-file { border-color: #2e7d32; background: #e8f5e9; color: #2e7d32; }
+.drop-zone i { font-size: 2.5rem; margin-bottom: 10px; display: block; }
+.file-info { margin-top: 10px; font-size: 0.85rem; color: var(--gray-600); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid {{ 'fa-file-pen' if doc else 'fa-file-circle-plus' }}" style="color: var(--primary);"></i>
+        {{ 'Editare Document' if doc else 'Adauga Document Nou' }}
+    </h2>
+</div>
+
+<form method="POST" enctype="multipart/form-data" id="docForm" style="max-width: 900px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- PASUL 1: Clasificare -->
+    <div class="card-panel" style="margin-bottom: 20px;">
+        <div class="card-panel-body">
+            <div class="step-header">
+                <span class="step-number">1</span>
+                <span class="step-title">Clasificare Document</span>
+            </div>
+
+            <!-- Tip instalatie - carduri vizuale -->
+            <label class="form-label" style="margin-bottom: 8px;">Tip Instalatie *</label>
+            <input type="hidden" name="tip_instalatie_id" id="tipInstalatieInput"
+                   value="{{ doc.tip_instalatie_id if doc else (pre_instalatie or '') }}">
+            <div class="inst-cards">
+                {% for inst in instalatii %}
+                <div class="inst-card {% if (doc and doc.tip_instalatie_id == inst.id) or (pre_instalatie and pre_instalatie == inst.id) %}selected{% endif %}"
+                     data-id="{{ inst.id }}" data-color="{{ inst.culoare_hex }}"
+                     onclick="selectInstalatie({{ inst.id }}, '{{ inst.culoare_hex }}')">
+                    <i class="fa-solid {{ inst.icon_css }}" style="color: {{ inst.culoare_hex }};"></i>
+                    <span>{{ inst.cod }}</span>
+                    <div style="font-size: 0.7rem; color: var(--gray-500); margin-top: 2px;">{{ inst.denumire[:30] }}</div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Tip document - dropdown AJAX -->
+            <div class="form-group">
+                <label class="form-label">Tip Document</label>
+                <select name="tip_document_id" id="tipDocumentSelect" class="form-select">
+                    <option value="">-- Selectati mai intai tipul de instalatie --</option>
+                </select>
+                <small style="color: var(--gray-500);">Se actualizeaza automat la selectarea instalatiei.</small>
+            </div>
+
+            <!-- Etapa proiect -->
+            <label class="form-label" style="margin-bottom: 8px;">Etapa Proiect</label>
+            <input type="hidden" name="etapa_proiect" id="etapaInput" value="{{ doc.etapa_proiect if doc else 'executie' }}">
+            <div class="etapa-btns">
+                {% for val, label in [('proiectare','Proiectare'),('executie','Executie'),('receptie','Receptie'),('garantie','Garantie')] %}
+                <div class="etapa-btn {% if (doc and doc.etapa_proiect == val) or (not doc and val == 'executie') %}selected{% endif %}"
+                     data-val="{{ val }}" onclick="selectEtapa('{{ val }}')">
+                    <i class="fa-solid {{ 'fa-drafting-compass' if val=='proiectare' else ('fa-helmet-safety' if val=='executie' else ('fa-clipboard-check' if val=='receptie' else 'fa-shield-halved')) }}"></i>
+                    {{ label }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- PASUL 2: Metadate -->
+    <div class="card-panel" style="margin-bottom: 20px;">
+        <div class="card-panel-body">
+            <div class="step-header">
+                <span class="step-number">2</span>
+                <span class="step-title">Informatii Document</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group" style="grid-column: span 2;">
+                    <label class="form-label">Denumire Document *</label>
+                    <input type="text" name="denumire_document" id="denumireInput" class="form-control"
+                           value="{{ doc.denumire_document if doc else '' }}" required
+                           placeholder="Denumirea documentului">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nr. Document</label>
+                    <input type="text" name="nr_document" class="form-control"
+                           value="{{ doc.nr_document if doc else '' }}" placeholder="Ex: PT-HVAC-001">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Revizie</label>
+                    <input type="text" name="revizie" class="form-control"
+                           value="{{ doc.revizie if doc else 'Rev.0' }}" placeholder="Rev.0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Emitent</label>
+                    <input type="text" name="emitent" class="form-control"
+                           value="{{ doc.emitent if doc else '' }}" placeholder="Firma / persoana emitenta">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Elaborat de</label>
+                    <input type="text" name="elaborat_de" class="form-control"
+                           value="{{ doc.elaborat_de if doc else '' }}" placeholder="Proiectant / inginer">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Data Emitere</label>
+                    <input type="date" name="data_emitere" class="form-control"
+                           value="{{ doc.data_emitere.strftime('%Y-%m-%d') if doc and doc.data_emitere else '' }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Data Aprobare</label>
+                    <input type="date" name="data_aprobare" class="form-control"
+                           value="{{ doc.data_aprobare.strftime('%Y-%m-%d') if doc and doc.data_aprobare else '' }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Data Expirare</label>
+                    <input type="date" name="data_expirare" class="form-control"
+                           value="{{ doc.data_expirare.strftime('%Y-%m-%d') if doc and doc.data_expirare else '' }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select">
+                        {% for val, label in [('draft','Draft'),('emis','Emis'),('aprobat','Aprobat'),('in_revizie','In Revizie'),('anulat','Anulat'),('arhivat','Arhivat')] %}
+                        <option value="{{ val }}" {{ 'selected' if doc and doc.status == val }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Observatii</label>
+                <textarea name="observatii" class="form-control" rows="3" placeholder="Observatii, note...">{{ doc.observatii if doc else '' }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- PASUL 3: Fisier -->
+    <div class="card-panel" style="margin-bottom: 20px;">
+        <div class="card-panel-body">
+            <div class="step-header">
+                <span class="step-number">3</span>
+                <span class="step-title">Fisier Document</span>
+            </div>
+
+            {% if doc and doc.fisier_path %}
+            <div style="padding: 10px 14px; background: #e8f5e9; border-radius: 8px; margin-bottom: 14px; font-size: 0.88rem;">
+                <i class="fa-solid fa-file-circle-check" style="color: #2e7d32;"></i>
+                <strong>Fisier existent:</strong> {{ doc.fisier_path.split('/')[-1] if doc.fisier_path else '' }}
+                ({{ doc.marime_formatata }})
+                &mdash; Incarcati un fisier nou doar daca doriti sa inlocuiti.
+            </div>
+            {% endif %}
+
+            <div class="drop-zone" id="dropZone" onclick="document.getElementById('fisierInput').click()">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+                <div><strong>Trage fisierul aici</strong> sau click pentru a selecta</div>
+                <div style="font-size: 0.8rem; margin-top: 4px;">PDF, DWG, DXF, DOCX, XLSX, JPG, PNG, ZIP &middot; Max 50MB</div>
+                <div class="file-info" id="fileInfo" style="display:none;"></div>
+            </div>
+            <input type="file" name="fisier" id="fisierInput" style="display:none;"
+                   accept=".pdf,.dwg,.dxf,.docx,.xlsx,.jpg,.jpeg,.png,.zip">
+        </div>
+    </div>
+
+    <!-- Butoane -->
+    <div style="display: flex; gap: 12px; margin-bottom: 30px;">
+        <a href="{{ url_for('doc_proiecte.index', proiect_id=proiect.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-arrow-left"></i> Inapoi
+        </a>
+        <button type="submit" name="status" value="draft" class="btn btn-outline" style="margin-left: auto;">
+            <i class="fa-solid fa-floppy-disk"></i> Salveaza Draft
+        </button>
+        <button type="submit" name="status" value="emis" class="btn btn-secondary">
+            <i class="fa-solid fa-paper-plane"></i> Salveaza si Emite
+        </button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Selectare instalatie
+function selectInstalatie(id, color) {
+    document.getElementById('tipInstalatieInput').value = id;
+    document.querySelectorAll('.inst-card').forEach(c => {
+        c.classList.remove('selected');
+        c.style.borderColor = '';
+    });
+    const card = document.querySelector('.inst-card[data-id="'+id+'"]');
+    if (card) { card.classList.add('selected'); card.style.borderColor = color; }
+
+    // AJAX: incarca tipuri documente
+    fetch('{{ url_for("doc_proiecte.index", proiect_id=proiect.id) }}api/tipuri-documente/' + id)
+        .then(r => r.json())
+        .then(data => {
+            const sel = document.getElementById('tipDocumentSelect');
+            sel.innerHTML = '<option value="">-- Selectati tipul documentului --</option>';
+            data.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t.id;
+                opt.textContent = t.denumire + (t.obligatoriu ? ' *' : '');
+                {% if pre_tip_doc is defined and pre_tip_doc %}
+                if (t.id == {{ pre_tip_doc or 0 }}) opt.selected = true;
+                {% endif %}
+                sel.appendChild(opt);
+            });
+        }).catch(() => {});
+}
+
+// Selectare etapa
+function selectEtapa(val) {
+    document.getElementById('etapaInput').value = val;
+    document.querySelectorAll('.etapa-btn').forEach(b => b.classList.remove('selected'));
+    document.querySelector('.etapa-btn[data-val="'+val+'"]').classList.add('selected');
+}
+
+// Auto-fill denumire din tip document
+document.getElementById('tipDocumentSelect').addEventListener('change', function() {
+    const sel = this.options[this.selectedIndex];
+    if (sel.value && !document.getElementById('denumireInput').value) {
+        document.getElementById('denumireInput').value = sel.textContent.replace(' *', '').trim();
+    }
+});
+
+// Drag & drop
+const dropZone = document.getElementById('dropZone');
+const fisierInput = document.getElementById('fisierInput');
+const fileInfo = document.getElementById('fileInfo');
+
+['dragenter','dragover'].forEach(e => dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.add('dragover'); }));
+['dragleave','drop'].forEach(e => dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.remove('dragover'); }));
+dropZone.addEventListener('drop', ev => {
+    if (ev.dataTransfer.files.length) {
+        fisierInput.files = ev.dataTransfer.files;
+        showFile(ev.dataTransfer.files[0]);
+    }
+});
+fisierInput.addEventListener('change', () => { if (fisierInput.files[0]) showFile(fisierInput.files[0]); });
+
+function showFile(f) {
+    const maxSize = 50 * 1024 * 1024;
+    if (f.size > maxSize) {
+        fileInfo.innerHTML = '<span style="color:#c62828;">Fisier prea mare! Max 50MB.</span>';
+        fileInfo.style.display = 'block';
+        dropZone.classList.remove('has-file');
+        return;
+    }
+    const size = f.size < 1024*1024 ? (f.size/1024).toFixed(1)+' KB' : (f.size/(1024*1024)).toFixed(1)+' MB';
+    fileInfo.innerHTML = '<i class="fa-solid fa-file-circle-check"></i> <strong>'+f.name+'</strong> ('+size+')';
+    fileInfo.style.display = 'block';
+    dropZone.classList.add('has-file');
+}
+
+// Pre-selectare la editare sau din query params
+{% if doc and doc.tip_instalatie_id %}
+selectInstalatie({{ doc.tip_instalatie_id }}, '{{ doc.tip_instalatie.culoare_hex if doc.tip_instalatie else "#546E7A" }}');
+{% elif pre_instalatie %}
+selectInstalatie({{ pre_instalatie }}, '');
+{% endif %}
+</script>
+{% endblock %}

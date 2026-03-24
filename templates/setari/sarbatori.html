@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Sarbatori Legale - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('setari.index') }}">Setari</a></li>
+<li class="breadcrumb-item active">Sarbatori Legale</li>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-calendar-days" style="color: var(--primary);"></i> Sarbatori Legale {{ an }}
+    </h2>
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <form method="POST" action="{{ url_for('setari.importa_sarbatori', an=an) }}" style="display: inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline"
+                    onclick="return confirm('Importati sarbatorile legale din Romania pentru {{ an }}? Sarbatorile existente vor fi inlocuite.')">
+                <i class="fa-solid fa-flag"></i> Importa Romania {{ an }}
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Nav tabs setari -->
+<div class="setari-tabs" style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+    <a href="{{ url_for('setari.firma') }}" class="btn btn-outline"><i class="fa-solid fa-building"></i> Firma</a>
+    <a href="{{ url_for('setari.utilizatori') }}" class="btn btn-outline"><i class="fa-solid fa-users-gear"></i> Utilizatori</a>
+    <a href="{{ url_for('setari.sarbatori') }}" class="btn btn-secondary"><i class="fa-solid fa-calendar-star"></i> Sarbatori</a>
+    <a href="{{ url_for('setari.backup') }}" class="btn btn-outline"><i class="fa-solid fa-database"></i> Backup</a>
+    <a href="{{ url_for('setari.jurnal') }}" class="btn btn-outline"><i class="fa-solid fa-clipboard-list"></i> Jurnal</a>
+    <a href="{{ url_for('setari.generale') }}" class="btn btn-outline"><i class="fa-solid fa-sliders"></i> Generale</a>
+</div>
+
+<!-- Selector an -->
+<div style="margin-bottom: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+    <span style="font-weight: 600;">An:</span>
+    {% for a in ani_disponibili %}
+    <a href="{{ url_for('setari.sarbatori', an=a) }}"
+       class="btn {{ 'btn-secondary' if a == an else 'btn-outline' }}" style="padding: 4px 12px; font-size: 0.85rem;">
+        {{ a }}
+    </a>
+    {% endfor %}
+</div>
+
+<!-- Adaugare rapida -->
+<div class="card-panel" style="margin-bottom: 20px;">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-plus"></i> Adauga Sarbatoare</h3>
+    </div>
+    <div class="card-panel-body">
+        <form method="POST" action="{{ url_for('setari.adauga_sarbatoare') }}" style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">Data</label>
+                <input type="date" name="data" class="form-control" required>
+            </div>
+            <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
+                <label class="form-label">Denumire</label>
+                <input type="text" name="denumire" class="form-control" placeholder="Denumire sarbatoare" required>
+            </div>
+            <button type="submit" class="btn btn-secondary" style="margin-bottom: 0;">
+                <i class="fa-solid fa-plus"></i> Adauga
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Tabel sarbatori -->
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-calendar-check"></i> Sarbatori {{ an }}</h3>
+        <span style="font-size: 0.85rem; color: var(--gray-500);">{{ sarbatori|length }} sarbatori</span>
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        {% if sarbatori %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Data</th>
+                        <th>Zi</th>
+                        <th>Denumire</th>
+                        <th>Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set zile_sapt = ['Luni', 'Marti', 'Miercuri', 'Joi', 'Vineri', 'Sambata', 'Duminica'] %}
+                    {% for s in sarbatori %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td><strong>{{ s.data.strftime('%d.%m.%Y') }}</strong></td>
+                        <td>{{ zile_sapt[s.data.weekday()] }}</td>
+                        <td>{{ s.denumire }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('setari.sterge_sarbatoare', id=s.id) }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action btn-delete" title="Sterge"
+                                        onclick="return confirm('Stergeti sarbatoarea {{ s.denumire }}?')">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding: 40px;">
+            <i class="fa-solid fa-calendar-xmark" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
+            <h3>Nicio sarbatoare definita pentru {{ an }}</h3>
+            <p>Folositi butonul "Importa Romania {{ an }}" pentru a adauga automat sarbatorile legale.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

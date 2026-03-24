@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% block title %}Activitate #{{ activitate.id }} - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('activitati.panou') }}">Activitati</a></li>
+<li class="breadcrumb-item active">Detaliu #{{ activitate.id }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.act-detail-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.act-detail-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+.act-info-card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 16px; }
+.act-info-card h4 { font-size: 0.85rem; font-weight: 700; color: var(--gray-500); margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+.act-info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--gray-100); font-size: 0.88rem; }
+.act-info-row:last-child { border-bottom: none; }
+.act-info-label { color: var(--gray-500); }
+.act-info-value { font-weight: 600; color: var(--gray-800); text-align: right; max-width: 60%; }
+.act-text-block { background: var(--gray-50); border-radius: 8px; padding: 14px; font-size: 0.88rem; line-height: 1.6; color: var(--gray-700); margin-bottom: 12px; }
+.act-text-block strong { display: block; font-size: 0.78rem; color: var(--gray-500); text-transform: uppercase; margin-bottom: 6px; }
+.act-mat-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.act-mat-table th { background: var(--gray-100); padding: 6px 10px; font-weight: 600; text-align: left; font-size: 0.78rem; text-transform: uppercase; color: var(--gray-500); }
+.act-mat-table td { padding: 6px 10px; border-bottom: 1px solid var(--gray-100); }
+.act-respins-motiv { background: #ffebee; border-left: 3px solid var(--danger); padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="act-detail-header">
+    <div>
+        <h2 style="margin: 0 0 6px 0;">
+            <i class="fa-solid fa-clipboard-list" style="color: var(--primary);"></i>
+            Raport Activitate — {{ activitate.data.strftime('%d.%m.%Y') }}
+        </h2>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <span class="badge-status {{ activitate.status_badge_class }}">{{ activitate.status|title }}</span>
+            {% if activitate.tip_instalatie %}
+            <span style="font-size: 0.82rem; padding: 3px 10px; border-radius: 12px; background: {{ activitate.tip_instalatie.culoare_hex }}15; color: {{ activitate.tip_instalatie.culoare_hex }}; font-weight: 600;">
+                <i class="fa-solid {{ activitate.tip_instalatie.icon_css }}"></i> {{ activitate.tip_instalatie.cod }}
+            </span>
+            {% endif %}
+            {% if activitate.necesita_aprobare_tehnica %}
+            <span style="font-size: 0.78rem; padding: 3px 10px; border-radius: 12px; background: #fff3e0; color: #e65100; font-weight: 600;">
+                <i class="fa-solid fa-triangle-exclamation"></i> Necesita decizie tehnica
+            </span>
+            {% endif %}
+        </div>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        {% if activitate.status in ['draft', 'respins'] %}
+        <a href="{{ url_for('activitati.editeaza', id=activitate.id) }}" class="btn btn-secondary">
+            <i class="fa-solid fa-pen"></i> Editeaza
+        </a>
+        {% endif %}
+        {% if activitate.status == 'draft' %}
+        <form method="POST" action="{{ url_for('activitati.trimite', id=activitate.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Trimite</button>
+        </form>
+        {% endif %}
+        {% if current_user.rol in ['admin', 'manager'] and activitate.status == 'trimis' %}
+        <form method="POST" action="{{ url_for('activitati.aproba', id=activitate.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-success"><i class="fa-solid fa-check"></i> Aproba</button>
+        </form>
+        <button type="button" class="btn btn-outline" style="color: var(--danger); border-color: var(--danger);"
+                onclick="document.getElementById('respingeModal').style.display='flex'">
+            <i class="fa-solid fa-xmark"></i> Respinge
+        </button>
+        {% endif %}
+        {% if activitate.status in ['draft', 'respins'] or current_user.rol == 'admin' %}
+        <form method="POST" action="{{ url_for('activitati.sterge', id=activitate.id) }}" style="display:inline;"
+              onsubmit="return confirm('Sigur doriti sa stergeti aceasta activitate?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline" style="color: var(--danger);"><i class="fa-solid fa-trash"></i></button>
+        </form>
+        {% endif %}
+        <a href="{{ url_for('activitati.panou') }}" class="btn btn-outline"><i class="fa-solid fa-arrow-left"></i> Inapoi</a>
+    </div>
+</div>
+
+{% if activitate.status == 'respins' and activitate.motiv_respingere %}
+<div class="act-respins-motiv">
+    <strong style="color: var(--danger);"><i class="fa-solid fa-xmark-circle"></i> Motiv respingere:</strong>
+    {{ activitate.motiv_respingere }}
+</div>
+{% endif %}
+
+<div class="act-detail-grid">
+    <!-- COLOANA STANGA: Continut -->
+    <div>
+        <!-- Activitate -->
+        <div class="act-info-card">
+            <h4><i class="fa-solid fa-hammer"></i> Activitate</h4>
+            {% if activitate.categorie_activitate %}
+            <div style="font-size: 0.82rem; color: var(--primary); font-weight: 600; margin-bottom: 8px;">
+                <i class="fa-solid fa-tag"></i> {{ activitate.categorie_activitate.denumire }}
+            </div>
+            {% endif %}
+            <div class="act-text-block">
+                <strong>Activitate principala</strong>
+                {{ activitate.activitate_principala }}
+            </div>
+            {% if activitate.activitate_detaliata %}
+            <div class="act-text-block">
+                <strong>Detalii</strong>
+                {{ activitate.activitate_detaliata }}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Cantitati -->
+        {% if activitate.cantitate_executata or activitate.procent_realizare %}
+        <div class="act-info-card">
+            <h4><i class="fa-solid fa-ruler-combined"></i> Cantitati</h4>
+            {% if activitate.cantitate_executata %}
+            <div class="act-info-row">
+                <span class="act-info-label">Cantitate executata</span>
+                <span class="act-info-value">{{ activitate.cantitate_executata }} {{ activitate.unitate_masura or '' }}</span>
+            </div>
+            {% endif %}
+            {% if activitate.procent_realizare is not none %}
+            <div class="act-info-row">
+                <span class="act-info-label">Procent realizare</span>
+                <span class="act-info-value">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 80px; height: 8px; background: var(--gray-100); border-radius: 4px; overflow: hidden;">
+                            <div style="height: 100%; width: {{ activitate.procent_realizare }}%; background: var(--primary); border-radius: 4px;"></div>
+                        </div>
+                        {{ activitate.procent_realizare }}%
+                    </div>
+                </span>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Materiale -->
+        {% if activitate.materiale_lista %}
+        <div class="act-info-card">
+            <h4><i class="fa-solid fa-boxes-stacked"></i> Materiale Folosite</h4>
+            <table class="act-mat-table">
+                <thead><tr><th>Denumire</th><th>Cantitate</th><th>U.M.</th></tr></thead>
+                <tbody>
+                    {% for m in activitate.materiale_lista %}
+                    <tr><td>{{ m.denumire }}</td><td>{{ m.cantitate }}</td><td>{{ m.um }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Echipamente -->
+        {% if activitate.echipamente_lista %}
+        <div class="act-info-card">
+            <h4><i class="fa-solid fa-screwdriver-wrench"></i> Echipamente / Scule</h4>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                {% for e in activitate.echipamente_lista %}
+                <span style="padding: 4px 10px; background: var(--gray-100); border-radius: 14px; font-size: 0.82rem; font-weight: 500;">{{ e }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Probleme -->
+        {% if activitate.probleme_intampinate or activitate.solutii_aplicate %}
+        <div class="act-info-card" style="border-left: 3px solid var(--warning);">
+            <h4><i class="fa-solid fa-triangle-exclamation"></i> Probleme si Solutii</h4>
+            {% if activitate.probleme_intampinate %}
+            <div class="act-text-block" style="background: #fff8e1;">
+                <strong>Probleme intampinate</strong>
+                {{ activitate.probleme_intampinate }}
+            </div>
+            {% endif %}
+            {% if activitate.solutii_aplicate %}
+            <div class="act-text-block" style="background: #e8f5e9;">
+                <strong>Solutii aplicate</strong>
+                {{ activitate.solutii_aplicate }}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if activitate.observatii %}
+        <div class="act-info-card">
+            <h4><i class="fa-solid fa-comment"></i> Observatii</h4>
+            <p style="font-size: 0.88rem; color: var(--gray-700); margin: 0;">{{ activitate.observatii }}</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- COLOANA DREAPTA: Informatii -->
+    <div>
+        <div class="act-info-card">
+            <h4><i class="fa-solid fa-info-circle"></i> Informatii</h4>
+            <div class="act-info-row">
+                <span class="act-info-label">Angajat</span>
+                <span class="act-info-value">{{ activitate.angajat.nume_complet if activitate.angajat else '-' }}</span>
+            </div>
+            <div class="act-info-row">
+                <span class="act-info-label">Proiect</span>
+                <span class="act-info-value">{{ activitate.proiect.cod_proiect if activitate.proiect else '-' }}</span>
+            </div>
+            <div class="act-info-row">
+                <span class="act-info-label">Data</span>
+                <span class="act-info-value">{{ activitate.data.strftime('%d.%m.%Y') }}</span>
+            </div>
+            <div class="act-info-row">
+                <span class="act-info-label">Zona lucru</span>
+                <span class="act-info-value">{{ activitate.zona_lucru or '-' }}</span>
+            </div>
+            <div class="act-info-row">
+                <span class="act-info-label">Instalatie</span>
+                <span class="act-info-value">{{ activitate.tip_instalatie.denumire if activitate.tip_instalatie else '-' }}</span>
+            </div>
+        </div>
+
+        <div class="act-info-card">
+            <h4><i class="fa-solid fa-clock-rotate-left"></i> Status & Aprobare</h4>
+            <div class="act-info-row">
+                <span class="act-info-label">Status</span>
+                <span class="act-info-value"><span class="badge-status {{ activitate.status_badge_class }}">{{ activitate.status|title }}</span></span>
+            </div>
+            {% if activitate.aprobat_de %}
+            <div class="act-info-row">
+                <span class="act-info-label">Aprobat de</span>
+                <span class="act-info-value">{{ activitate.aprobat_de.get_full_name() }}</span>
+            </div>
+            {% endif %}
+            {% if activitate.data_aprobare %}
+            <div class="act-info-row">
+                <span class="act-info-label">Data aprobare</span>
+                <span class="act-info-value">{{ activitate.data_aprobare.strftime('%d.%m.%Y %H:%M') }}</span>
+            </div>
+            {% endif %}
+            <div class="act-info-row">
+                <span class="act-info-label">Introdus la</span>
+                <span class="act-info-value">{{ activitate.introdus_la.strftime('%d.%m.%Y %H:%M') if activitate.introdus_la else '-' }}</span>
+            </div>
+            {% if activitate.modificat_la %}
+            <div class="act-info-row">
+                <span class="act-info-label">Modificat la</span>
+                <span class="act-info-value">{{ activitate.modificat_la.strftime('%d.%m.%Y %H:%M') }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if pontaj_zi %}
+        <div class="act-info-card" style="border-left: 3px solid var(--info);">
+            <h4><i class="fa-solid fa-clock"></i> Pontaj Asociat</h4>
+            <div class="act-info-row">
+                <span class="act-info-label">Ore lucrate</span>
+                <span class="act-info-value">{{ pontaj_zi.ore_lucrate }}h</span>
+            </div>
+            <div class="act-info-row">
+                <span class="act-info-label">Program</span>
+                <span class="act-info-value">{{ pontaj_zi.ora_start or '-' }} - {{ pontaj_zi.ora_sfarsit or '-' }}</span>
+            </div>
+            <div class="act-info-row">
+                <span class="act-info-label">Status pontaj</span>
+                <span class="act-info-value"><span class="badge-status badge-{{ pontaj_zi.status }}">{{ pontaj_zi.status|title }}</span></span>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Modal Respingere -->
+<div id="respingeModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:12px; padding:24px; max-width:500px; width:90%;">
+        <h3 style="margin:0 0 16px;"><i class="fa-solid fa-xmark-circle" style="color:var(--danger);"></i> Respinge Activitate</h3>
+        <form method="POST" action="{{ url_for('activitati.respinge', id=activitate.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label class="form-label">Motiv respingere *</label>
+                <textarea name="motiv_respingere" class="form-control" rows="3" required
+                          placeholder="Explicati motivul respingerii..."></textarea>
+            </div>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('respingeModal').style.display='none'">Anuleaza</button>
+                <button type="submit" class="btn btn-primary" style="background:var(--danger);">Respinge</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

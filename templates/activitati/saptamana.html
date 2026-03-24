@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}View Saptamanal - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('activitati.panou') }}">Activitati</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('activitati.ale_mele') }}">Ale Mele</a></li>
+<li class="breadcrumb-item active">Saptamana {{ saptamana }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.sapt-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+.sapt-day { background: white; border-radius: 10px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); min-height: 150px; }
+.sapt-day.weekend { background: #f5f5f5; }
+.sapt-day.today { outline: 2px solid var(--primary); }
+.sapt-day-header { font-size: 0.82rem; font-weight: 700; color: var(--gray-500); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid var(--gray-100); }
+.sapt-day.today .sapt-day-header { color: var(--primary); border-bottom-color: var(--primary); }
+.sapt-act { font-size: 0.82rem; padding: 8px; margin-bottom: 6px; border-radius: 6px; background: var(--gray-50); border-left: 3px solid var(--primary); }
+.sapt-empty { font-size: 0.8rem; color: var(--gray-400); text-align: center; padding: 20px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-calendar-week" style="color: var(--primary);"></i>
+            Saptamana {{ saptamana }} — {{ angajat.nume_complet }}
+        </h2>
+        <div style="font-size: 0.85rem; color: var(--gray-500);">
+            {{ luni.strftime('%d.%m.%Y') }} - {{ duminica.strftime('%d.%m.%Y') }}
+        </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('activitati.ale_mele_saptamana', an=an, saptamana=saptamana-1) }}" class="btn btn-outline" style="font-size: 0.85rem;">
+            <i class="fa-solid fa-chevron-left"></i> Sapt. anterioara
+        </a>
+        <a href="{{ url_for('activitati.ale_mele_saptamana', an=an, saptamana=saptamana+1) }}" class="btn btn-outline" style="font-size: 0.85rem;">
+            Sapt. urmatoare <i class="fa-solid fa-chevron-right"></i>
+        </a>
+        <a href="{{ url_for('activitati.ale_mele') }}" class="btn btn-outline"><i class="fa-solid fa-arrow-left"></i></a>
+    </div>
+</div>
+
+{% set zile_names = ['Luni', 'Marti', 'Miercuri', 'Joi', 'Vineri', 'Sambata', 'Duminica'] %}
+{% set today_iso = today.isoformat() if today is defined else '' %}
+
+<div class="sapt-grid">
+    {% for zi_date, zi_acts in zile.items() %}
+    {% set wd = zi_date.weekday() %}
+    <div class="sapt-day {{ 'weekend' if wd >= 5 }} {{ 'today' if zi_date.isoformat() == today_iso }}">
+        <div class="sapt-day-header">
+            {{ zile_names[wd] }}<br>
+            <span style="font-size: 1.1rem;">{{ zi_date.strftime('%d.%m') }}</span>
+        </div>
+        {% if zi_acts %}
+            {% for a in zi_acts %}
+            <div class="sapt-act" style="border-left-color: {{ a.tip_instalatie.culoare_hex if a.tip_instalatie else 'var(--primary)' }};">
+                <div style="font-weight: 600; font-size: 0.78rem; color: var(--primary);">
+                    {{ a.proiect.cod_proiect if a.proiect else '' }}
+                    {% if a.tip_instalatie %}<span style="color: {{ a.tip_instalatie.culoare_hex }};">[{{ a.tip_instalatie.cod }}]</span>{% endif %}
+                </div>
+                <div style="margin-top: 3px;">{{ a.activitate_scurta }}</div>
+                <div style="margin-top: 4px; display: flex; justify-content: space-between; align-items: center;">
+                    <span class="badge-status {{ a.status_badge_class }}" style="font-size: 0.68rem;">{{ a.status|title }}</span>
+                    <a href="{{ url_for('activitati.detaliu', id=a.id) }}" style="font-size: 0.72rem; color: var(--primary);">Detalii</a>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="sapt-empty">
+                {% if wd < 5 %}
+                <i class="fa-solid fa-circle-xmark" style="color: var(--danger); font-size: 1.2rem;"></i><br>
+                Lipsa
+                {% else %}
+                Weekend
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

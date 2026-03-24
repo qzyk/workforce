@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editeaza Angajat' if angajat else 'Adauga Angajat' }} - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('angajati.lista') }}">Angajati</a>
+<span>/</span>
+<span class="active">{{ 'Editeaza' if angajat else 'Adauga' }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+    <h2 style="margin-bottom: 24px;">
+        <i class="fa-solid fa-{{ 'user-pen' if angajat else 'user-plus' }}" style="color: var(--primary);"></i>
+        {{ 'Editeaza Angajat' if angajat else 'Adauga Angajat Nou' }}
+    </h2>
+
+    <form method="POST" enctype="multipart/form-data" id="angajatForm" novalidate>
+        {{ form.hidden_tag() }}
+
+        <!-- Sectiunea 1: Date Personale -->
+        <div class="card-panel" style="margin-bottom: 20px;">
+            <div class="card-panel-header">
+                <h3 class="form-section-title" style="margin:0; border:0; padding:0;">
+                    <i class="fa-solid fa-user"></i> Date Personale
+                </h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ form.nume.label.text }} *</label>
+                        {{ form.nume(class_="form-control", placeholder="ex: Popescu") }}
+                        {% for error in form.nume.errors %}
+                        <small style="color: var(--danger);">{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ form.prenume.label.text }} *</label>
+                        {{ form.prenume(class_="form-control", placeholder="ex: Ion") }}
+                        {% for error in form.prenume.errors %}
+                        <small style="color: var(--danger);">{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ form.cnp.label.text }}</label>
+                        {{ form.cnp(class_="form-control", placeholder="13 cifre", maxlength="13", id="cnpInput") }}
+                        <div id="cnpFeedback" class="cnp-feedback"></div>
+                        {% for error in form.cnp.errors %}
+                        <small style="color: var(--danger);">{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ form.telefon.label.text }}</label>
+                        {{ form.telefon(class_="form-control", placeholder="07xxxxxxxx") }}
+                        {% for error in form.telefon.errors %}
+                        <small style="color: var(--danger);">{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ form.email.label.text }}</label>
+                        {{ form.email(class_="form-control", placeholder="email@exemplu.ro", type="email") }}
+                        {% for error in form.email.errors %}
+                        <small style="color: var(--danger);">{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ form.data_nasterii.label.text }}</label>
+                        {{ form.data_nasterii(class_="form-control", type="date") }}
+                        {% for error in form.data_nasterii.errors %}
+                        <small style="color: var(--danger);">{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ form.serie_bi.label.text }}</label>
+                        {{ form.serie_bi(class_="form-control", placeholder="ex: XZ") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ form.nr_bi.label.text }}</label>
+                        {{ form.nr_bi(class_="form-control", placeholder="ex: 123456") }}
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 16px;">
+                    <label class="form-label">{{ form.adresa.label.text }}</label>
+                    {{ form.adresa(class_="form-control", rows="2", placeholder="Adresa completa") }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Sectiunea 2: Date Profesionale -->
+        <div class="card-panel" style="margin-bottom: 20px;">
+            <div class="card-panel-header">
+                <h3 class="form-section-title" style="margin:0; border:0; padding:0;">
+                    <i class="fa-solid fa-briefcase"></i> Date Profesionale
+                </h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ form.functie.label.text }} *</label>
+                        {{ form.functie(class_="form-select") }}
+                        {% for error in form.functie.errors %}
+                        <small style="color: var(--danger);">{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ form.data_angajare.label.text }} *</label>
+                        {{ form.data_angajare(class_="form-control", type="date") }}
+                        {% for error in form.data_angajare.errors %}
+                        <small style="color: var(--danger);">{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ form.tip_contract.label.text }}</label>
+                        {{ form.tip_contract(class_="form-select") }}
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ form.salariu_baza.label.text }}</label>
+                        {{ form.salariu_baza(class_="form-control", placeholder="ex: 4500", step="0.01") }}
+                        {% for error in form.salariu_baza.errors %}
+                        <small style="color: var(--danger);">{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ form.nr_contract.label.text }}</label>
+                        {{ form.nr_contract(class_="form-control", placeholder="ex: CIM-2024-001") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tarif orar (calculat)</label>
+                        <input type="text" class="form-control" id="tarifOrar" readonly
+                               value="{{ '%.2f RON/ora'|format(angajat.tarif_orar) if angajat and angajat.tarif_orar else '-' }}"
+                               style="background: var(--gray-50);">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 16px;">
+                    <label class="form-label">{{ form.specializari.label.text }} (separate prin virgula)</label>
+                    <div class="tag-container" id="tagContainer">
+                        <input type="text" class="tag-input" id="tagInput" placeholder="Adauga specializare si apasa Enter...">
+                    </div>
+                    {{ form.specializari(type="hidden", id="specializariHidden") }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Sectiunea 3: Status (doar editare) -->
+        {% if angajat %}
+        <div class="card-panel" style="margin-bottom: 20px;">
+            <div class="card-panel-header">
+                <h3 class="form-section-title" style="margin:0; border:0; padding:0;">
+                    <i class="fa-solid fa-circle-info"></i> Status Angajat
+                </h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ form.status.label.text }}</label>
+                        {{ form.status(class_="form-select") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ form.data_incetare.label.text }}</label>
+                        {{ form.data_incetare(class_="form-control", type="date") }}
+                        {% for error in form.data_incetare.errors %}
+                        <small style="color: var(--danger);">{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Sectiunea 4: Poza si Observatii -->
+        <div class="card-panel" style="margin-bottom: 20px;">
+            <div class="card-panel-header">
+                <h3 class="form-section-title" style="margin:0; border:0; padding:0;">
+                    <i class="fa-solid fa-image"></i> Poza si Observatii
+                </h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: start;">
+                    <div>
+                        <label class="form-label">Poza profil</label>
+                        <div class="photo-upload-zone" id="photoZone">
+                            {% if angajat and angajat.poza_profil %}
+                            <img src="{{ url_for('static', filename='uploads/' + angajat.poza_profil) }}" id="photoPreview" alt="">
+                            {% else %}
+                            <img src="" id="photoPreview" alt="" style="display: none;">
+                            {% endif %}
+                            <div class="upload-text" id="uploadText">
+                                <i class="fa-solid fa-cloud-arrow-up"></i>
+                                Trage o poza aici<br>sau click pentru selectie
+                            </div>
+                        </div>
+                        <input type="file" name="poza_profil" id="photoInput" accept="image/jpeg,image/png" style="display: none;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ form.observatii.label.text }}</label>
+                        {{ form.observatii(class_="form-control", rows="6", placeholder="Observatii suplimentare...") }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Butoane -->
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-bottom: 40px;">
+            <a href="{{ url_for('angajati.lista') }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> Anuleaza
+            </a>
+            {% if not angajat %}
+            <button type="submit" name="salveaza_si_adauga" class="btn btn-secondary">
+                <i class="fa-solid fa-plus"></i> Salveaza si Adauga Altul
+            </button>
+            {% endif %}
+            <button type="submit" name="salveaza" class="btn btn-primary">
+                <i class="fa-solid fa-check"></i> Salveaza
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// === CNP Live Validation ===
+(function() {
+    const cnpInput = document.getElementById('cnpInput');
+    const feedback = document.getElementById('cnpFeedback');
+    if (!cnpInput) return;
+
+    cnpInput.addEventListener('input', function() {
+        const cnp = this.value.trim();
+        feedback.textContent = '';
+        feedback.className = 'cnp-feedback';
+
+        if (cnp.length === 0) return;
+        if (!/^\d+$/.test(cnp)) {
+            feedback.textContent = 'Doar cifre sunt permise';
+            feedback.classList.add('invalid');
+            return;
+        }
+        if (cnp.length < 13) {
+            feedback.textContent = cnp.length + '/13 cifre';
+            feedback.classList.add('invalid');
+            return;
+        }
+        if (cnp.length > 13) {
+            feedback.textContent = 'Maxim 13 cifre';
+            feedback.classList.add('invalid');
+            return;
+        }
+
+        // Checksum validation
+        const weights = [2, 7, 9, 1, 4, 6, 3, 5, 8, 2, 7, 9];
+        let sum = 0;
+        for (let i = 0; i < 12; i++) {
+            sum += parseInt(cnp[i]) * weights[i];
+        }
+        let control = sum % 11;
+        if (control === 10) control = 1;
+        if (parseInt(cnp[12]) !== control) {
+            feedback.textContent = 'CNP invalid (cifra de control gresita)';
+            feedback.classList.add('invalid');
+            return;
+        }
+
+        // Extract info
+        const sex = parseInt(cnp[0]);
+        const yearPrefix = (sex <= 2) ? '19' : (sex <= 4) ? '18' : '20';
+        const year = yearPrefix + cnp.substring(1, 3);
+        const month = cnp.substring(3, 5);
+        const day = cnp.substring(5, 7);
+        feedback.textContent = 'CNP valid - Data nasterii: ' + day + '.' + month + '.' + year;
+        feedback.classList.add('valid');
+    });
+})();
+
+// === Tag Input for Specializari ===
+(function() {
+    const container = document.getElementById('tagContainer');
+    const input = document.getElementById('tagInput');
+    const hidden = document.getElementById('specializariHidden');
+    if (!container || !input || !hidden) return;
+
+    let tags = hidden.value ? hidden.value.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+    function renderTags() {
+        container.querySelectorAll('.tag-item').forEach(t => t.remove());
+        tags.forEach((tag, i) => {
+            const el = document.createElement('span');
+            el.className = 'tag-item';
+            el.innerHTML = tag + ' <span class="tag-remove" data-idx="' + i + '">&times;</span>';
+            container.insertBefore(el, input);
+        });
+        hidden.value = tags.join(', ');
+    }
+
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            const val = this.value.trim().replace(/,/g, '');
+            if (val && !tags.includes(val)) {
+                tags.push(val);
+                renderTags();
+            }
+            this.value = '';
+        }
+        if (e.key === 'Backspace' && !this.value && tags.length) {
+            tags.pop();
+            renderTags();
+        }
+    });
+
+    container.addEventListener('click', function(e) {
+        if (e.target.classList.contains('tag-remove')) {
+            tags.splice(parseInt(e.target.dataset.idx), 1);
+            renderTags();
+        }
+        input.focus();
+    });
+
+    renderTags();
+})();
+
+// === Photo Drag & Drop ===
+(function() {
+    const zone = document.getElementById('photoZone');
+    const fileInput = document.getElementById('photoInput');
+    const preview = document.getElementById('photoPreview');
+    const text = document.getElementById('uploadText');
+    if (!zone || !fileInput) return;
+
+    zone.addEventListener('click', () => fileInput.click());
+
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            showPreview(e.dataTransfer.files[0]);
+        }
+    });
+
+    fileInput.addEventListener('change', function() {
+        if (this.files.length) showPreview(this.files[0]);
+    });
+
+    function showPreview(file) {
+        if (!file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            preview.src = e.target.result;
+            preview.style.display = 'block';
+            text.style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+    }
+})();
+
+// === Tarif Orar Calculator ===
+(function() {
+    const salariuInput = document.querySelector('[name="salariu_baza"]');
+    const tarifDisplay = document.getElementById('tarifOrar');
+    if (!salariuInput || !tarifDisplay) return;
+
+    salariuInput.addEventListener('input', function() {
+        const val = parseFloat(this.value);
+        if (val && val > 0) {
+            tarifDisplay.value = (val / 168).toFixed(2) + ' RON/ora';
+        } else {
+            tarifDisplay.value = '-';
+        }
+    });
+})();
+</script>
+{% endblock %}

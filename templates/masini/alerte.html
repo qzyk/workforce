@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Alerte Flota Auto - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('masini.lista') }}">Masini</a></li>
+<li class="breadcrumb-item active">Alerte Documente</li>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin: 0;"><i class="fa-solid fa-triangle-exclamation" style="color: #C62828;"></i> Alerte Documente Flota</h2>
+        <div style="font-size: 0.85rem; color: var(--gray-500);">Documente expirate sau care expira in urmatoarele 30 de zile</div>
+    </div>
+    <a href="{{ url_for('masini.lista') }}" class="btn btn-outline" style="font-size: 0.85rem;"><i class="fa-solid fa-arrow-left"></i> Inapoi la Flota</a>
+</div>
+
+{% if alerte %}
+<div class="card-panel">
+    <div class="card-panel-body" style="padding: 0;">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead><tr>
+                    <th>Masina</th><th>Document</th><th>Status</th><th>Zile</th><th>Actiuni</th>
+                </tr></thead>
+                <tbody>
+                    {% for a in alerte %}
+                    <tr style="{{ 'background: #FFF5F5;' if a.tip == 'expirat' else 'background: #FFF8E1;' }}">
+                        <td>
+                            <strong style="color: var(--primary);">{{ a.masina.numar_inmatriculare }}</strong>
+                            <div style="font-size: 0.8rem; color: var(--gray-500);">{{ a.masina.marca }} {{ a.masina.model }}</div>
+                        </td>
+                        <td><strong>{{ a.document }}</strong></td>
+                        <td>
+                            {% if a.tip == 'expirat' %}
+                            <span class="badge-status badge-respins">Expirat</span>
+                            {% else %}
+                            <span class="badge-status badge-trimis">Expira curand</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if a.zile < 0 %}
+                            <strong style="color: #C62828;">{{ -a.zile }} zile depasit</strong>
+                            {% else %}
+                            <strong style="color: #E65100;">{{ a.zile }} zile ramase</strong>
+                            {% endif %}
+                        </td>
+                        <td><a href="{{ url_for('masini.fisa', id=a.masina.id) }}" class="btn-action btn-view" title="Fisa masina"><i class="fa-solid fa-eye"></i></a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card-panel">
+    <div class="card-panel-body" style="text-align: center; padding: 60px;">
+        <i class="fa-solid fa-check-circle" style="font-size: 3rem; color: #2E7D32;"></i>
+        <p style="color: var(--gray-500); margin-top: 10px;">Nicio alerta activa. Toate documentele sunt valabile.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

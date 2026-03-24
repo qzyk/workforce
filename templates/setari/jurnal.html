@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Jurnal Activitate - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('setari.index') }}">Setari</a></li>
+<li class="breadcrumb-item active">Jurnal</li>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-clipboard-list" style="color: var(--primary);"></i> Jurnal Activitate
+    </h2>
+    <form method="POST" action="{{ url_for('setari.curata_jurnal') }}" style="display: inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-outline"
+                onclick="return confirm('Curatati tot jurnalul de activitate?')">
+            <i class="fa-solid fa-broom"></i> Curata Jurnal
+        </button>
+    </form>
+</div>
+
+<!-- Nav tabs setari -->
+<div class="setari-tabs" style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+    <a href="{{ url_for('setari.firma') }}" class="btn btn-outline"><i class="fa-solid fa-building"></i> Firma</a>
+    <a href="{{ url_for('setari.utilizatori') }}" class="btn btn-outline"><i class="fa-solid fa-users-gear"></i> Utilizatori</a>
+    <a href="{{ url_for('setari.sarbatori') }}" class="btn btn-outline"><i class="fa-solid fa-calendar-star"></i> Sarbatori</a>
+    <a href="{{ url_for('setari.backup') }}" class="btn btn-outline"><i class="fa-solid fa-database"></i> Backup</a>
+    <a href="{{ url_for('setari.jurnal') }}" class="btn btn-secondary"><i class="fa-solid fa-clipboard-list"></i> Jurnal</a>
+    <a href="{{ url_for('setari.generale') }}" class="btn btn-outline"><i class="fa-solid fa-sliders"></i> Generale</a>
+</div>
+
+<!-- Cautare -->
+<div class="filter-section" style="margin-bottom: 16px;">
+    <form method="GET" style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+        <div class="form-group" style="min-width: 300px; margin-bottom: 0; flex: 1;">
+            <label class="form-label">Cautare in jurnal</label>
+            <input type="text" name="q" class="form-control" value="{{ cautare }}" placeholder="Cautare actiune, utilizator, detalii...">
+        </div>
+        <div style="margin-bottom: 0; display: flex; gap: 8px;">
+            <button type="submit" class="btn btn-outline"><i class="fa-solid fa-search"></i> Cauta</button>
+            <a href="{{ url_for('setari.jurnal') }}" class="btn btn-outline"><i class="fa-solid fa-rotate-left"></i></a>
+        </div>
+    </form>
+</div>
+
+<!-- Tabel jurnal -->
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-scroll"></i> Intrari Jurnal</h3>
+        <span style="font-size: 0.85rem; color: var(--gray-500);">
+            Pagina {{ pagination.page }} / {{ pagination.pages }} | Total: {{ pagination.total }}
+        </span>
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        {% if entries %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Data & Ora</th>
+                        <th>Utilizator</th>
+                        <th>Actiune</th>
+                        <th>Detalii</th>
+                        <th>IP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in entries %}
+                    <tr>
+                        <td style="white-space: nowrap; font-size: 0.85rem;">
+                            <i class="fa-regular fa-clock" style="color: var(--gray-400);"></i>
+                            {{ e.timestamp }}
+                        </td>
+                        <td><strong>{{ e.utilizator or '-' }}</strong></td>
+                        <td>
+                            <span class="badge-project">{{ e.actiune }}</span>
+                        </td>
+                        <td style="font-size: 0.85rem; max-width: 300px; overflow: hidden; text-overflow: ellipsis;">
+                            {{ e.detalii or '-' }}
+                        </td>
+                        <td style="font-size: 0.8rem; color: var(--gray-400);">{{ e.ip or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginare -->
+        {% if pagination.pages > 1 %}
+        <div class="pagination" style="padding: 12px 16px;">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('setari.jurnal', page=pagination.prev_num, q=cautare) }}" class="pagination-btn">
+                <i class="fa-solid fa-chevron-left"></i>
+            </a>
+            {% endif %}
+            {% for p in range(1, pagination.pages + 1) %}
+                {% if p <= 3 or p > pagination.pages - 2 or (p >= pagination.page - 1 and p <= pagination.page + 1) %}
+                <a href="{{ url_for('setari.jurnal', page=p, q=cautare) }}"
+                   class="pagination-btn {{ 'active' if p == pagination.page }}">{{ p }}</a>
+                {% elif p == 4 or p == pagination.pages - 2 %}
+                <span class="pagination-btn">...</span>
+                {% endif %}
+            {% endfor %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('setari.jurnal', page=pagination.next_num, q=cautare) }}" class="pagination-btn">
+                <i class="fa-solid fa-chevron-right"></i>
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state" style="padding: 40px;">
+            <i class="fa-solid fa-clipboard" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
+            <h3>Jurnal gol</h3>
+            <p>Nu exista intrari in jurnalul de activitate{{ ' pentru cautarea efectuata' if cautare else '' }}.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

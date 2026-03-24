@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}Rapoarte - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<span class="active">Rapoarte</span>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;"><i class="fa-solid fa-chart-bar" style="color: var(--primary);"></i> Generare Rapoarte</h2>
+    <a href="{{ url_for('rapoarte.istoric') }}" class="btn btn-outline">
+        <i class="fa-solid fa-clock-rotate-left"></i> Istoric Rapoarte
+    </a>
+</div>
+
+<!-- Grid 8 carduri rapoarte -->
+<div class="raport-grid">
+
+    <!-- CARD 1: Foaie Colectiva de Prezenta -->
+    <div class="raport-card" style="border-top-color: var(--success);">
+        <div class="raport-card-icon" style="color: var(--success);"><i class="fa-solid fa-clipboard-list"></i></div>
+        <h4>Foaie Colectiva de Prezenta</h4>
+        <p>Format standard constructii, semnat de maistru</p>
+        <form method="POST" action="{{ url_for('rapoarte.foaie_prezenta') }}" class="raport-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="raport-params">
+                <select name="proiect_id" class="form-select form-select-sm" required>
+                    <option value="">Proiect *</option>
+                    {% for p in proiecte %}
+                    <option value="{{ p.id }}">{{ p.cod_proiect }} - {{ p.nume }}</option>
+                    {% endfor %}
+                </select>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                    <select name="luna" class="form-select form-select-sm">
+                        {% for i in range(1, 13) %}
+                        <option value="{{ i }}" {{ 'selected' if i == today.month }}>{{ '%02d'|format(i) }}</option>
+                        {% endfor %}
+                    </select>
+                    <select name="an" class="form-select form-select-sm">
+                        {% for a in range(today.year - 1, today.year + 2) %}
+                        <option value="{{ a }}" {{ 'selected' if a == today.year }}>{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--gray-600);">
+                    <input type="checkbox" name="include_supl" checked> Include ore suplimentare
+                </label>
+            </div>
+            <div class="raport-buttons">
+                <button type="submit" name="format" value="xlsx" class="btn btn-sm btn-success"><i class="fa-solid fa-file-excel"></i> Excel</button>
+                <button type="submit" name="format" value="pdf" class="btn btn-sm btn-danger"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- CARD 2: Stat de Plata -->
+    <div class="raport-card" style="border-top-color: var(--primary);">
+        <div class="raport-card-icon" style="color: var(--primary);"><i class="fa-solid fa-money-check-dollar"></i></div>
+        <h4>Stat de Plata Simplificat</h4>
+        <p>Calcul salarii bazat pe ore lucrate x tarif</p>
+        <form method="POST" action="{{ url_for('rapoarte.stat_plata') }}" class="raport-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="raport-params">
+                <select name="proiect_id" class="form-select form-select-sm">
+                    <option value="">Toti angajatii</option>
+                    {% for p in proiecte %}
+                    <option value="{{ p.id }}">{{ p.cod_proiect }}</option>
+                    {% endfor %}
+                </select>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                    <select name="luna" class="form-select form-select-sm">
+                        {% for i in range(1, 13) %}
+                        <option value="{{ i }}" {{ 'selected' if i == today.month }}>{{ '%02d'|format(i) }}</option>
+                        {% endfor %}
+                    </select>
+                    <select name="an" class="form-select form-select-sm">
+                        {% for a in range(today.year - 1, today.year + 2) %}
+                        <option value="{{ a }}" {{ 'selected' if a == today.year }}>{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="raport-buttons">
+                <button type="submit" name="format" value="xlsx" class="btn btn-sm btn-success"><i class="fa-solid fa-file-excel"></i> Excel</button>
+                <button type="submit" name="format" value="pdf" class="btn btn-sm btn-danger"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- CARD 3: Situatie Proiect -->
+    <div class="raport-card" style="border-top-color: var(--secondary);">
+        <div class="raport-card-icon" style="color: var(--secondary);"><i class="fa-solid fa-building"></i></div>
+        <h4>Situatie Proiect</h4>
+        <p>Raport complet: echipa, ore, costuri</p>
+        <form method="POST" action="{{ url_for('rapoarte.situatie_proiect') }}" class="raport-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="raport-params">
+                <select name="proiect_id" class="form-select form-select-sm" required>
+                    <option value="">Proiect *</option>
+                    {% for p in proiecte %}
+                    <option value="{{ p.id }}">{{ p.cod_proiect }} - {{ p.nume }}</option>
+                    {% endfor %}
+                </select>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                    <input type="date" name="data_start" class="form-control form-control-sm" placeholder="De la">
+                    <input type="date" name="data_sfarsit" class="form-control form-control-sm" placeholder="Pana la">
+                </div>
+                <select name="nivel" class="form-select form-select-sm">
+                    <option value="detaliat">Detaliat</option>
+                    <option value="sumar">Sumar</option>
+                </select>
+            </div>
+            <div class="raport-buttons">
+                <button type="submit" name="format" value="xlsx" class="btn btn-sm btn-success"><i class="fa-solid fa-file-excel"></i> Excel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- CARD 4: Centralizator Ore -->
+    <div class="raport-card" style="border-top-color: var(--info);">
+        <div class="raport-card-icon" style="color: var(--info);"><i class="fa-solid fa-table-cells"></i></div>
+        <h4>Centralizator Ore Lunare</h4>
+        <p>Toate orele per angajat pe o luna</p>
+        <form method="POST" action="{{ url_for('rapoarte.centralizator_ore') }}" class="raport-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="raport-params">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                    <select name="luna" class="form-select form-select-sm">
+                        {% for i in range(1, 13) %}
+                        <option value="{{ i }}" {{ 'selected' if i == today.month }}>{{ '%02d'|format(i) }}</option>
+                        {% endfor %}
+                    </select>
+                    <select name="an" class="form-select form-select-sm">
+                        {% for a in range(today.year - 1, today.year + 2) %}
+                        <option value="{{ a }}" {{ 'selected' if a == today.year }}>{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <select name="grupare" class="form-select form-select-sm">
+                    <option value="angajat">Per angajat</option>
+                    <option value="proiect">Per proiect</option>
+                </select>
+            </div>
+            <div class="raport-buttons">
+                <button type="submit" class="btn btn-sm btn-success"><i class="fa-solid fa-file-excel"></i> Excel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- CARD 5: Raport Documente -->
+    <div class="raport-card" style="border-top-color: var(--danger);">
+        <div class="raport-card-icon" style="color: var(--danger);"><i class="fa-solid fa-file-circle-exclamation"></i></div>
+        <h4>Raport Documente</h4>
+        <p>Status documente si alerte expirare</p>
+        <form method="POST" action="{{ url_for('rapoarte.documente_expirate') }}" class="raport-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="raport-params">
+                <select name="tip_raport" class="form-select form-select-sm">
+                    <option value="toate">Toate documentele</option>
+                    <option value="expirate">Doar expirate</option>
+                    <option value="in_curand">Expira curand</option>
+                </select>
+                <select name="functie" class="form-select form-select-sm">
+                    <option value="">Toate functiile</option>
+                    {% for val, label in [('Muncitor','Muncitor'),('Maistru','Maistru'),('Electrician','Electrician'),('Sudor','Sudor'),('Macaragiu','Macaragiu'),('Inginer','Inginer'),('Sef_echipa','Sef echipa')] %}
+                    <option value="{{ val }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="raport-buttons">
+                <button type="submit" class="btn btn-sm btn-success"><i class="fa-solid fa-file-excel"></i> Excel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- CARD 6: Pontaj Individual -->
+    <div class="raport-card" style="border-top-color: #7B1FA2;">
+        <div class="raport-card-icon" style="color: #7B1FA2;"><i class="fa-solid fa-user-clock"></i></div>
+        <h4>Pontaj Individual</h4>
+        <p>Istoric pontaj detaliat per angajat</p>
+        <form method="POST" action="{{ url_for('rapoarte.pontaj_individual') }}" class="raport-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="raport-params">
+                <select name="angajat_id" class="form-select form-select-sm" required>
+                    <option value="">Angajat *</option>
+                    {% for a in angajati %}
+                    <option value="{{ a.id }}">{{ a.nume_complet }} ({{ a.functie }})</option>
+                    {% endfor %}
+                </select>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                    <input type="date" name="data_start" class="form-control form-control-sm">
+                    <input type="date" name="data_sfarsit" class="form-control form-control-sm">
+                </div>
+            </div>
+            <div class="raport-buttons">
+                <button type="submit" name="format" value="xlsx" class="btn btn-sm btn-success"><i class="fa-solid fa-file-excel"></i> Excel</button>
+                <button type="submit" name="format" value="pdf" class="btn btn-sm btn-danger"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- CARD 7: Prezenta Zilnica -->
+    <div class="raport-card" style="border-top-color: #00838F;">
+        <div class="raport-card-icon" style="color: #00838F;"><i class="fa-solid fa-calendar-day"></i></div>
+        <h4>Prezenta Zilnica</h4>
+        <p>Cine a lucrat intr-o zi specifica</p>
+        <form method="POST" action="{{ url_for('rapoarte.prezenta_zilnica') }}" class="raport-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="raport-params">
+                <input type="date" name="data_zi" class="form-control form-control-sm" value="{{ today.strftime('%Y-%m-%d') }}" required>
+                <select name="proiect_id" class="form-select form-select-sm">
+                    <option value="">Toate proiectele</option>
+                    {% for p in proiecte %}
+                    <option value="{{ p.id }}">{{ p.cod_proiect }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="raport-buttons">
+                <button type="submit" class="btn btn-sm btn-success"><i class="fa-solid fa-file-excel"></i> Excel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- CARD 8: Raport SSM -->
+    <div class="raport-card" style="border-top-color: #E65100;">
+        <div class="raport-card-icon" style="color: #E65100;"><i class="fa-solid fa-hard-hat"></i></div>
+        <h4>Raport SSM</h4>
+        <p>Situatie instructaje si autorizatii</p>
+        <form method="POST" action="{{ url_for('rapoarte.raport_ssm') }}" class="raport-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="raport-params">
+                <select name="tip_document" class="form-select form-select-sm">
+                    <option value="">Toate tipurile SSM</option>
+                    <option value="instructaj_SSM">Instructaj SSM</option>
+                    <option value="fisa_aptitudini">Fisa aptitudini</option>
+                    <option value="autorizatie_ISCIR">Autorizatie ISCIR</option>
+                    <option value="permis_inaltime">Permis inaltime</option>
+                    <option value="certificat_calificare">Certificat calificare</option>
+                </select>
+                <select name="status_ssm" class="form-select form-select-sm">
+                    <option value="">Toate statusurile</option>
+                    <option value="valabil">Valabile</option>
+                    <option value="expirat">Expirate</option>
+                </select>
+            </div>
+            <div class="raport-buttons">
+                <button type="submit" class="btn btn-sm btn-success"><i class="fa-solid fa-file-excel"></i> Excel</button>
+            </div>
+        </form>
+    </div>
+
+</div>
+
+<!-- Rapoarte Recente -->
+{% if recente %}
+<div class="card-panel" style="margin-top: 24px;">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-clock-rotate-left"></i> Generate Recent</h3>
+        <a href="{{ url_for('rapoarte.istoric') }}" class="btn btn-sm btn-outline">Toate</a>
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Titlu</th>
+                    <th>Tip</th>
+                    <th>Format</th>
+                    <th>Dimensiune</th>
+                    <th>Data</th>
+                    <th>Actiuni</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in recente %}
+                <tr>
+                    <td><strong>{{ r.titlu }}</strong></td>
+                    <td><span class="badge-project">{{ tipuri_rapoarte.get(r.tip_raport, r.tip_raport) }}</span></td>
+                    <td><span class="badge-status badge-{{ 'aprobat' if r.format == 'xlsx' else 'respins' }}">{{ r.format|upper }}</span></td>
+                    <td>{{ '%.1f KB'|format(r.dimensiune_fisier / 1024) if r.dimensiune_fisier else '-' }}</td>
+                    <td>{{ r.data_generare.strftime('%d.%m.%Y %H:%M') }}</td>
+                    <td>
+                        <a href="{{ url_for('rapoarte.descarca', id=r.id) }}" class="btn-action btn-view" title="Descarca">
+                            <i class="fa-solid fa-download"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.raport-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+}
+.raport-card {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    border-top: 4px solid var(--gray-300);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    transition: var(--transition);
+}
+.raport-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.raport-card-icon { font-size: 2rem; margin-bottom: 8px; }
+.raport-card h4 { font-size: 1rem; font-weight: 700; color: var(--gray-800); margin-bottom: 4px; }
+.raport-card p { font-size: 0.8rem; color: var(--gray-500); margin-bottom: 16px; line-height: 1.3; }
+.raport-form { margin-top: auto; }
+.raport-params { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.raport-buttons { display: flex; gap: 8px; }
+.raport-buttons .btn { flex: 1; }
+.form-select-sm, .form-control-sm {
+    padding: 5px 8px;
+    font-size: 0.8rem;
+}
+</style>
+{% endblock %}

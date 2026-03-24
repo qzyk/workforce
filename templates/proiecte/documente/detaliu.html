@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.denumire_document }} - {{ proiect.cod_proiect }} - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.lista') }}">Proiecte</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.detalii', id=proiect.id) }}">{{ proiect.cod_proiect }}</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('doc_proiecte.index', proiect_id=proiect.id) }}">Documente</a></li>
+<li class="breadcrumb-item active">Detaliu</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.doc-header { background: white; border-radius: 12px; padding: 20px 24px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 20px; }
+.doc-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 6px; }
+.doc-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.85rem; color: var(--gray-500); align-items: center; }
+.doc-meta .inst-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; color: white; }
+.doc-detail-grid { display: grid; grid-template-columns: 1fr 380px; gap: 20px; }
+@media (max-width: 900px) { .doc-detail-grid { grid-template-columns: 1fr; } }
+.doc-preview { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.08); min-height: 500px; }
+.doc-preview iframe { width: 100%; height: 600px; border: none; }
+.doc-preview .no-preview { padding: 60px; text-align: center; color: var(--gray-400); }
+.doc-preview .no-preview i { font-size: 3rem; margin-bottom: 12px; display: block; }
+.doc-info-panel { display: flex; flex-direction: column; gap: 16px; }
+.doc-info-card { background: white; border-radius: 12px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.doc-info-card h4 { font-size: 0.9rem; font-weight: 700; color: var(--primary); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+.info-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--gray-100); font-size: 0.85rem; }
+.info-row:last-child { border-bottom: none; }
+.info-label { color: var(--gray-500); }
+.info-value { font-weight: 600; }
+
+.badge-status-doc { display: inline-block; padding: 3px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
+.badge-draft { background: #e0e0e0; color: #616161; }
+.badge-emis { background: #bbdefb; color: #1565c0; }
+.badge-aprobat { background: #c8e6c9; color: #2e7d32; }
+.badge-in_revizie, .badge-warning-custom { background: #fff9c4; color: #f57f17; }
+.badge-anulat, .badge-respins { background: #ffcdd2; color: #c62828; }
+.badge-arhivat { background: #cfd8dc; color: #37474f; }
+
+.rev-timeline { position: relative; padding-left: 24px; }
+.rev-timeline::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: var(--gray-200); }
+.rev-item { position: relative; padding: 10px 0; }
+.rev-item::before { content: ''; position: absolute; left: -20px; top: 16px; width: 12px; height: 12px; border-radius: 50%; background: var(--primary); border: 2px solid white; box-shadow: 0 0 0 2px var(--primary); }
+.rev-item:first-child::before { background: #2e7d32; box-shadow: 0 0 0 2px #2e7d32; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header document -->
+<div class="doc-header">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+        <div>
+            <div class="doc-title">{{ doc.denumire_document }}</div>
+            <div class="doc-meta">
+                {% if doc.tip_instalatie %}
+                <span class="inst-badge" style="background: {{ doc.tip_instalatie.culoare_hex }};">
+                    <i class="fa-solid {{ doc.tip_instalatie.icon_css }}"></i> {{ doc.tip_instalatie.cod }}
+                </span>
+                {% endif %}
+                {% if doc.tip_document %}
+                <span>{{ doc.tip_document.denumire }}</span>
+                {% endif %}
+                <span>{{ doc.nr_document or '' }} <strong>{{ doc.revizie }}</strong></span>
+                <span class="badge-status-doc badge-{{ doc.status }}">
+                    {{ doc.status.replace('_',' ')|title }}
+                    {% if doc.status == 'aprobat' %}<i class="fa-solid fa-circle-check"></i>{% endif %}
+                </span>
+            </div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            {% if doc.fisier_path %}
+            <a href="{{ url_for('doc_proiecte.descarca', proiect_id=proiect.id, doc_id=doc.id) }}" class="btn btn-success">
+                <i class="fa-solid fa-download"></i> Descarca
+            </a>
+            {% endif %}
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('revizieModal').style.display='flex'">
+                <i class="fa-solid fa-file-pen"></i> Adauga Revizie
+            </button>
+            <a href="{{ url_for('doc_proiecte.editeaza', proiect_id=proiect.id, doc_id=doc.id) }}" class="btn btn-secondary">
+                <i class="fa-solid fa-pen"></i> Editeaza
+            </a>
+            {% if current_user.is_manager and doc.status in ('emis', 'in_revizie') %}
+            <form method="POST" action="{{ url_for('doc_proiecte.aprobare', proiect_id=proiect.id, doc_id=doc.id) }}" style="display: inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="actiune" value="aproba">
+                <button type="submit" class="btn" style="background: #2e7d32; color: white;"
+                        onclick="return confirm('Aprobati acest document?')">
+                    <i class="fa-solid fa-check"></i> Aproba
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Grid: Preview + Info -->
+<div class="doc-detail-grid">
+    <!-- Preview -->
+    <div class="doc-preview">
+        {% if doc.fisier_path and doc.tip_fisier in ('pdf',) %}
+        <iframe src="{{ url_for('doc_proiecte.preview', proiect_id=proiect.id, doc_id=doc.id) }}"></iframe>
+        {% elif doc.fisier_path and doc.tip_fisier in ('jpg', 'jpeg', 'png') %}
+        <div style="padding: 16px; text-align: center;">
+            <img src="{{ url_for('doc_proiecte.preview', proiect_id=proiect.id, doc_id=doc.id) }}"
+                 style="max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.1);"
+                 alt="{{ doc.denumire_document }}">
+        </div>
+        {% elif doc.fisier_path %}
+        <div class="no-preview">
+            <i class="fa-solid fa-file-lines"></i>
+            <div><strong>{{ doc.tip_fisier|upper if doc.tip_fisier else 'Fisier' }}</strong></div>
+            <div style="margin-top: 8px;">Preview nu este disponibil pentru acest tip de fisier.</div>
+            <a href="{{ url_for('doc_proiecte.descarca', proiect_id=proiect.id, doc_id=doc.id) }}"
+               class="btn btn-outline" style="margin-top: 12px;">
+                <i class="fa-solid fa-download"></i> Descarca pentru vizualizare
+            </a>
+        </div>
+        {% else %}
+        <div class="no-preview">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <div>Niciun fisier incarcat.</div>
+            <a href="{{ url_for('doc_proiecte.editeaza', proiect_id=proiect.id, doc_id=doc.id) }}"
+               class="btn btn-outline" style="margin-top: 12px;">
+                <i class="fa-solid fa-upload"></i> Incarca fisier
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Info panel -->
+    <div class="doc-info-panel">
+        <!-- Informatii generale -->
+        <div class="doc-info-card">
+            <h4><i class="fa-solid fa-circle-info"></i> Informatii Document</h4>
+            <div class="info-row"><span class="info-label">Emitent</span><span class="info-value">{{ doc.emitent or '-' }}</span></div>
+            <div class="info-row"><span class="info-label">Elaborat de</span><span class="info-value">{{ doc.elaborat_de or '-' }}</span></div>
+            <div class="info-row"><span class="info-label">Etapa</span><span class="info-value">{{ doc.etapa_proiect|title if doc.etapa_proiect else '-' }}</span></div>
+            <div class="info-row"><span class="info-label">Data emitere</span><span class="info-value">{{ doc.data_emitere.strftime('%d.%m.%Y') if doc.data_emitere else '-' }}</span></div>
+            <div class="info-row"><span class="info-label">Data aprobare</span><span class="info-value">{{ doc.data_aprobare.strftime('%d.%m.%Y') if doc.data_aprobare else '-' }}</span></div>
+            <div class="info-row">
+                <span class="info-label">Data expirare</span>
+                <span class="info-value {% if doc.is_expirat %}text-danger{% endif %}">
+                    {{ doc.data_expirare.strftime('%d.%m.%Y') if doc.data_expirare else '-' }}
+                    {% if doc.is_expirat %}<i class="fa-solid fa-triangle-exclamation"></i>{% endif %}
+                </span>
+            </div>
+        </div>
+
+        <!-- Informatii upload -->
+        <div class="doc-info-card">
+            <h4><i class="fa-solid fa-upload"></i> Incarcare</h4>
+            <div class="info-row"><span class="info-label">Incarcat de</span><span class="info-value">{{ doc.uploader.get_full_name() if doc.uploader else '-' }}</span></div>
+            <div class="info-row"><span class="info-label">Data upload</span><span class="info-value">{{ doc.data_upload.strftime('%d.%m.%Y %H:%M') if doc.data_upload else '-' }}</span></div>
+            <div class="info-row"><span class="info-label">Dimensiune</span><span class="info-value">{{ doc.marime_formatata }}</span></div>
+            <div class="info-row"><span class="info-label">Tip fisier</span><span class="info-value">{{ doc.tip_fisier|upper if doc.tip_fisier else '-' }}</span></div>
+            {% if doc.aprobat_de %}
+            <div class="info-row"><span class="info-label">Aprobat de</span><span class="info-value">{{ doc.aprobat_de.get_full_name() }}</span></div>
+            {% endif %}
+        </div>
+
+        {% if doc.observatii %}
+        <div class="doc-info-card">
+            <h4><i class="fa-solid fa-note-sticky"></i> Observatii</h4>
+            <div style="font-size: 0.85rem; color: var(--gray-600); white-space: pre-line;">{{ doc.observatii }}</div>
+        </div>
+        {% endif %}
+
+        <!-- Istoric revizii -->
+        <div class="doc-info-card">
+            <h4><i class="fa-solid fa-clock-rotate-left"></i> Istoric Revizii ({{ revizii|length }})</h4>
+            {% if revizii %}
+            <div class="rev-timeline">
+                {% for rev in revizii %}
+                <div class="rev-item">
+                    <div style="font-weight: 600; font-size: 0.88rem;">Rev.{{ rev.nr_revizie }}</div>
+                    <div style="font-size: 0.8rem; color: var(--gray-500);">
+                        {{ rev.data_revizie.strftime('%d.%m.%Y %H:%M') if rev.data_revizie else '-' }}
+                        {% if rev.autor %}&middot; {{ rev.autor.get_full_name() }}{% endif %}
+                    </div>
+                    {% if rev.motiv_revizie %}
+                    <div style="font-size: 0.82rem; color: var(--gray-600); margin-top: 2px;">{{ rev.motiv_revizie }}</div>
+                    {% endif %}
+                    {% if rev.fisier_path %}
+                    <a href="{{ url_for('doc_proiecte.descarca_revizie', proiect_id=proiect.id, rev_id=rev.id) }}"
+                       style="font-size: 0.8rem;"><i class="fa-solid fa-download"></i> Descarca</a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div style="font-size: 0.85rem; color: var(--gray-400); text-align: center; padding: 10px;">
+                Nicio revizie inregistrata.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal Adauga Revizie -->
+<div class="modal-overlay" id="revizieModal" style="display: none;">
+    <div class="modal-box" style="max-width: 500px;">
+        <div class="modal-header-custom">
+            <i class="fa-solid fa-file-pen" style="color: var(--secondary);"></i>
+            <h3>Adauga Revizie Noua</h3>
+        </div>
+        <form method="POST" action="{{ url_for('doc_proiecte.adauga_revizie', proiect_id=proiect.id, doc_id=doc.id) }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label class="form-label">Motiv revizie</label>
+                <textarea name="motiv_revizie" class="form-control" rows="3" placeholder="Descrieti motivul reviziei..."></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Fisier revizie *</label>
+                <input type="file" name="fisier" class="form-control" required
+                       accept=".pdf,.dwg,.dxf,.docx,.xlsx,.jpg,.jpeg,.png,.zip">
+            </div>
+            <div class="modal-actions" style="margin-top: 16px;">
+                <button type="button" class="btn-cancel" onclick="document.getElementById('revizieModal').style.display='none'">Anuleaza</button>
+                <button type="submit" class="btn btn-secondary"><i class="fa-solid fa-upload"></i> Salveaza Revizia</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

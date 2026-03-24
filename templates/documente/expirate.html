@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Documente Expirate - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('documente.panou') }}">Documente</a>
+<span>/</span>
+<span class="active">Raport Expirate</span>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-triangle-exclamation" style="color: var(--danger);"></i>
+        Raport Documente Expirate
+    </h2>
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('documente.export_excel') }}" class="btn btn-success">
+            <i class="fa-solid fa-file-excel"></i> Export Excel
+        </a>
+        <button onclick="window.print()" class="btn btn-outline">
+            <i class="fa-solid fa-print"></i> Printeaza
+        </button>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-bar" style="margin-bottom: 20px;">
+    <div class="stat-mini">
+        <div class="stat-icon" style="background: var(--danger);"><i class="fa-solid fa-file-circle-xmark"></i></div>
+        <div>
+            <div class="stat-number">{{ docs_expirate|length }}</div>
+            <div class="stat-label">Expirate</div>
+        </div>
+    </div>
+    <div class="stat-mini">
+        <div class="stat-icon" style="background: var(--warning);"><i class="fa-solid fa-clock"></i></div>
+        <div>
+            <div class="stat-number">{{ docs_in_curand|length }}</div>
+            <div class="stat-label">Expira in 30 zile</div>
+        </div>
+    </div>
+    <div class="stat-mini">
+        <div class="stat-icon" style="background: var(--info);"><i class="fa-solid fa-users"></i></div>
+        <div>
+            <div class="stat-number">{{ per_angajat|length }}</div>
+            <div class="stat-label">Angajati Afectati</div>
+        </div>
+    </div>
+</div>
+
+<!-- Per Angajat -->
+{% for ang_id, data in per_angajat.items() %}
+<div class="card-panel" style="margin-bottom: 16px;">
+    <div class="card-panel-header">
+        <h3>
+            <a href="{{ url_for('documente.lista_angajat', angajat_id=ang_id) }}" style="color: var(--primary); text-decoration: none;">
+                <i class="fa-solid fa-user"></i> {{ data.angajat.nume_complet }}
+            </a>
+            <small style="font-weight: 400; color: var(--gray-500); margin-left: 8px;">{{ data.angajat.functie }}</small>
+        </h3>
+        <div style="display: flex; gap: 8px;">
+            {% if data.expirate|length > 0 %}
+            <span class="badge-status badge-expirat">{{ data.expirate|length }} expirate</span>
+            {% endif %}
+            {% if data.in_curand|length > 0 %}
+            <span class="badge-status badge-in_curand">{{ data.in_curand|length }} exp. curand</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Tip Document</th>
+                    <th>Denumire</th>
+                    <th>Serie/Numar</th>
+                    <th>Data Expirare</th>
+                    <th>Status</th>
+                    <th>Zile</th>
+                    <th>Actiuni</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for doc in data.expirate %}
+                <tr style="background: #FFF5F5;">
+                    <td><span class="badge-project">{{ tipuri_dict.get(doc.tip, doc.tip) }}</span></td>
+                    <td>{{ doc.nume_document }}</td>
+                    <td>{{ doc.serie_numar or '-' }}</td>
+                    <td style="font-weight: 600; color: var(--danger);">{{ doc.data_expirare.strftime('%d.%m.%Y') if doc.data_expirare else '-' }}</td>
+                    <td><span class="badge-status badge-expirat">EXPIRAT</span></td>
+                    <td>
+                        {% set zile = (today - doc.data_expirare).days if doc.data_expirare else 0 %}
+                        <span style="color: var(--danger); font-weight: 700;">-{{ zile }}z</span>
+                    </td>
+                    <td>
+                        <a href="{{ url_for('documente.upload', angajat_id=ang_id) }}" class="btn-action btn-edit" title="Reinnoieste">
+                            <i class="fa-solid fa-rotate"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% for doc in data.in_curand %}
+                <tr style="background: #FFFDE7;">
+                    <td><span class="badge-project">{{ tipuri_dict.get(doc.tip, doc.tip) }}</span></td>
+                    <td>{{ doc.nume_document }}</td>
+                    <td>{{ doc.serie_numar or '-' }}</td>
+                    <td style="font-weight: 600; color: var(--warning);">{{ doc.data_expirare.strftime('%d.%m.%Y') if doc.data_expirare else '-' }}</td>
+                    <td><span class="badge-status badge-in_curand">Exp. curand</span></td>
+                    <td>
+                        {% set zile = (doc.data_expirare - today).days if doc.data_expirare else 0 %}
+                        <span style="color: var(--warning); font-weight: 700;">{{ zile }}z</span>
+                    </td>
+                    <td>
+                        <a href="{{ url_for('documente.upload', angajat_id=ang_id) }}" class="btn-action btn-edit" title="Reinnoieste">
+                            <i class="fa-solid fa-rotate"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+
+{% if not per_angajat %}
+<div class="card-panel">
+    <div class="card-panel-body">
+        <div class="empty-state" style="padding: 40px;">
+            <i class="fa-solid fa-circle-check" style="font-size: 3rem; color: var(--success); margin-bottom: 16px;"></i>
+            <h3>Totul in regula!</h3>
+            <p>Nu exista documente expirate sau care urmeaza sa expire in urmatoarele 30 de zile.</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+@media print {
+    .sidebar, .header, .btn, .breadcrumb-nav { display: none !important; }
+    .main-content { margin: 0 !important; padding: 10px !important; }
+    .card-panel { box-shadow: none !important; border: 1px solid #ccc !important; break-inside: avoid; }
+}
+</style>
+{% endblock %}

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="INNOVA WORKFORCE - Sistem de Management al Fortei de Munca in Constructii">
+    <title>{% block title %}INNOVA WORKFORCE{% endblock %}</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Font Awesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <!-- Custom CSS -->
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% if current_user.is_authenticated %}
+    <!-- ============================================ -->
+    <!-- SIDEBAR FIX -->
+    <!-- ============================================ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">
+                <i class="fa-solid fa-helmet-safety"></i>
+                <span>INNOVA</span>
+            </div>
+            <small class="sidebar-subtitle">Workforce Manager</small>
+        </div>
+
+        <div class="sidebar-user">
+            <div class="sidebar-avatar">
+                <i class="fa-solid fa-circle-user"></i>
+            </div>
+            <div class="sidebar-user-info">
+                <span class="sidebar-user-name">{{ current_user.get_full_name() }}</span>
+                <span class="sidebar-user-role badge-role-{{ current_user.rol }}">{{ current_user.rol|capitalize }}</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <ul>
+                <li>
+                    <a href="{{ url_for('dashboard.index') }}" class="{% if request.endpoint and request.endpoint.startswith('dashboard') %}active{% endif %}">
+                        <i class="fa-solid fa-house"></i>
+                        <span>Dashboard</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('angajati.lista') }}" class="{% if request.endpoint and 'angajati' in request.endpoint %}active{% endif %}">
+                        <i class="fa-solid fa-hard-hat"></i>
+                        <span>Angajati</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('proiecte.lista') }}" class="{% if request.endpoint and 'proiecte' in request.endpoint %}active{% endif %}">
+                        <i class="fa-solid fa-building"></i>
+                        <span>Proiecte</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('pontaje.lista') }}" class="{% if request.endpoint and 'pontaje' in request.endpoint %}active{% endif %}">
+                        <i class="fa-solid fa-calendar-check"></i>
+                        <span>Pontaje</span>
+                        {% if badge_counts.pontaje_pending > 0 %}
+                        <span class="sidebar-badge badge-warning">{{ badge_counts.pontaje_pending }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('activitati.panou') }}" class="{% if request.endpoint and 'activitati' in request.endpoint %}active{% endif %}">
+                        <i class="fa-solid fa-clipboard-list"></i>
+                        <span>Activitati</span>
+                        {% if badge_counts.activitati_pending is defined and badge_counts.activitati_pending > 0 %}
+                        <span class="sidebar-badge badge-warning">{{ badge_counts.activitati_pending }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('masini.lista') }}" class="{% if request.endpoint and 'masini' in request.endpoint %}active{% endif %}">
+                        <i class="fa-solid fa-car-side"></i>
+                        <span>Masini</span>
+                        {% if badge_counts.masini_alerta is defined and badge_counts.masini_alerta > 0 %}
+                        <span class="sidebar-badge badge-danger">{{ badge_counts.masini_alerta }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('documente.lista') }}" class="{% if request.endpoint and 'documente' in request.endpoint %}active{% endif %}">
+                        <i class="fa-solid fa-file-lines"></i>
+                        <span>Documente</span>
+                        {% if badge_counts.documente_alerta > 0 %}
+                        <span class="sidebar-badge badge-danger">{{ badge_counts.documente_alerta }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('rapoarte.panou') }}" class="{% if request.endpoint and 'rapoarte' in request.endpoint %}active{% endif %}">
+                        <i class="fa-solid fa-chart-bar"></i>
+                        <span>Rapoarte</span>
+                    </a>
+                </li>
+                {% if current_user.is_admin %}
+                <li class="sidebar-divider"></li>
+                <li>
+                    <a href="{{ url_for('setari.firma') }}" class="{% if request.endpoint and 'setari' in request.endpoint %}active{% endif %}">
+                        <i class="fa-solid fa-gear"></i>
+                        <span>Setari</span>
+                    </a>
+                </li>
+                {% endif %}
+                <li class="sidebar-divider"></li>
+                <li>
+                    <a href="{{ url_for('auth.logout') }}" class="sidebar-logout">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                        <span>Deconectare</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        <div class="sidebar-footer">
+            <small>v{{ app_version|default('2.0.0') }}</small>
+        </div>
+    </aside>
+
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- ============================================ -->
+    <!-- MAIN CONTENT WRAPPER -->
+    <!-- ============================================ -->
+    <div class="main-wrapper">
+        <header class="top-header">
+            <div class="header-left">
+                <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <nav class="breadcrumb-nav">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}"><i class="fa-solid fa-house"></i></a></li>
+                        {% block breadcrumb %}{% endblock %}
+                    </ol>
+                </nav>
+            </div>
+            <div class="header-right">
+                <div class="header-clock" id="headerClock">
+                    <i class="fa-regular fa-clock"></i>
+                    <span id="liveClock"></span>
+                </div>
+
+                <div class="header-notifications">
+                    <button class="notification-btn" id="notifBtn" title="Notificari">
+                        <i class="fa-solid fa-bell"></i>
+                        {% if alerte_count > 0 %}
+                        <span class="notification-badge">{{ alerte_count }}</span>
+                        {% endif %}
+                    </button>
+                    <div class="notification-dropdown" id="notifDropdown">
+                        <div class="notif-header">
+                            <strong>Notificari</strong>
+                        </div>
+                        {% if badge_counts.documente_alerta > 0 %}
+                        <a class="notif-item notif-danger" href="{{ url_for('documente.lista') }}">
+                            <i class="fa-solid fa-file-circle-exclamation"></i>
+                            <span>{{ badge_counts.documente_alerta }} documente necesita atentie</span>
+                        </a>
+                        {% endif %}
+                        {% if badge_counts.pontaje_pending > 0 %}
+                        <a class="notif-item notif-warning" href="{{ url_for('pontaje.lista', status='trimis') }}">
+                            <i class="fa-solid fa-hourglass-half"></i>
+                            <span>{{ badge_counts.pontaje_pending }} pontaje in asteptare</span>
+                        </a>
+                        {% endif %}
+                        {% if alerte_count == 0 %}
+                        <div class="notif-empty">
+                            <i class="fa-regular fa-bell-slash"></i>
+                            <span>Nicio notificare</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="header-user-menu">
+                    <button class="user-menu-btn" id="userMenuBtn">
+                        <div class="user-avatar-small">
+                            <i class="fa-solid fa-user"></i>
+                        </div>
+                        <span class="user-name-header">{{ current_user.prenume }}</span>
+                        <i class="fa-solid fa-chevron-down fa-xs"></i>
+                    </button>
+                    <div class="user-dropdown" id="userDropdown">
+                        <div class="user-dropdown-header">
+                            <strong>{{ current_user.get_full_name() }}</strong>
+                            <small>{{ current_user.email }}</small>
+                        </div>
+                        <a href="{{ url_for('auth.profil') }}"><i class="fa-solid fa-user-pen"></i> Profil</a>
+                        <a href="{{ url_for('auth.schimba_parola') }}"><i class="fa-solid fa-key"></i> Schimba parola</a>
+                        <div class="dropdown-divider"></div>
+                        <a href="{{ url_for('auth.logout') }}" class="text-danger"><i class="fa-solid fa-right-from-bracket"></i> Deconectare</a>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-container">
+            {% for category, message in messages %}
+            <div class="flash-message flash-{{ category }}">
+                <i class="fa-solid {% if category == 'success' %}fa-circle-check{% elif category == 'danger' %}fa-circle-xmark{% elif category == 'warning' %}fa-triangle-exclamation{% else %}fa-circle-info{% endif %}"></i>
+                <span>{{ message }}</span>
+                <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <main class="page-content">
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer class="main-footer">
+            <span>&copy; {{ today.year }} INNOVA WORKFORCE v{{ app_version|default('2.0.0') }}</span>
+        </footer>
+    </div>
+    {% else %}
+    {% block public_content %}{% endblock %}
+    {% endif %}
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Modal Confirmare Stergere -->
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal-box">
+            <div class="modal-header-custom">
+                <i class="fa-solid fa-triangle-exclamation text-danger"></i>
+                <h3>Confirmare stergere</h3>
+            </div>
+            <p class="modal-message" id="deleteModalMessage">Sunteti sigur ca doriti sa stergeti acest element?</p>
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeDeleteModal()">Anuleaza</button>
+                <form id="deleteModalForm" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+                    <button type="submit" class="btn-delete-confirm">
+                        <i class="fa-solid fa-trash"></i> Sterge
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <span>Se incarca...</span>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

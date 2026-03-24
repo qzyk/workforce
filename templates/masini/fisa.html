@@ -1,0 +1,537 @@
+{% extends "base.html" %}
+{% block title %}{{ masina.denumire_completa }} - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('masini.lista') }}">Masini</a></li>
+<li class="breadcrumb-item active">{{ masina.numar_inmatriculare }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.car-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+.car-header-left { display: flex; align-items: center; gap: 16px; }
+.car-icon { width: 64px; height: 64px; background: var(--primary); border-radius: 14px; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.6rem; }
+.car-title { font-size: 1.5rem; font-weight: 800; color: var(--primary); letter-spacing: 1.5px; }
+.car-subtitle { font-size: 1rem; font-weight: 600; color: var(--gray-700); }
+
+.tabs-nav { display: flex; gap: 2px; border-bottom: 2px solid var(--gray-100); margin-bottom: 20px; overflow-x: auto; }
+.tab-btn { padding: 10px 18px; border: none; background: none; font-size: 0.85rem; font-weight: 600; color: var(--gray-500); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; white-space: nowrap; transition: all 0.15s; }
+.tab-btn:hover { color: var(--primary); }
+.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+.info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.info-item { padding: 10px 0; border-bottom: 1px solid var(--gray-100); }
+.info-item-label { font-size: 0.75rem; color: var(--gray-500); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.info-item-value { font-size: 0.95rem; font-weight: 600; color: var(--gray-800); margin-top: 2px; }
+
+.alert-card { padding: 12px 16px; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+.alert-card.danger { background: #FFF5F5; border-left: 4px solid #C62828; }
+.alert-card.warning { background: #FFF8E1; border-left: 4px solid #E65100; }
+.alert-card i { font-size: 1.2rem; }
+.alert-card.danger i { color: #C62828; }
+.alert-card.warning i { color: #E65100; }
+
+.doc-timeline { position: relative; padding-left: 20px; }
+.doc-timeline::before { content: ''; position: absolute; left: 5px; top: 0; bottom: 0; width: 2px; background: var(--gray-200); }
+.doc-timeline-item { position: relative; margin-bottom: 16px; padding: 12px 16px; background: white; border-radius: 8px; border: 1px solid var(--gray-100); }
+.doc-timeline-item::before { content: ''; position: absolute; left: -19px; top: 16px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); border: 2px solid white; }
+
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: white; border-radius: 12px; padding: 24px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; }
+.modal-box h3 { margin: 0 0 16px 0; font-size: 1.1rem; }
+
+.foaie-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.foaie-stat { background: var(--gray-50); border-radius: 8px; padding: 12px; text-align: center; }
+.foaie-stat-value { font-size: 1.3rem; font-weight: 800; color: var(--primary); }
+.foaie-stat-label { font-size: 0.72rem; color: var(--gray-500); font-weight: 600; text-transform: uppercase; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="car-header">
+    <div class="car-header-left">
+        <div class="car-icon"><i class="fa-solid fa-car-side"></i></div>
+        <div>
+            <div class="car-title">{{ masina.numar_inmatriculare }}</div>
+            <div class="car-subtitle">{{ masina.marca }} {{ masina.model }}{% if masina.an_fabricatie %} ({{ masina.an_fabricatie }}){% endif %}</div>
+            <div style="margin-top: 4px;">
+                <span class="badge-status {{ masina.status_badge_class }}">{{ masina.status|title }}</span>
+                {% if masina.angajat_responsabil %}
+                <span style="font-size: 0.82rem; color: var(--gray-600); margin-left: 8px;"><i class="fa-solid fa-user"></i> {{ masina.angajat_responsabil.nume_complet }}</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        {% if current_user.is_manager %}
+            {% if masina.status == 'disponibila' %}
+            <button onclick="showModal('modal-atribuie')" class="btn btn-primary" style="font-size: 0.85rem;"><i class="fa-solid fa-user-plus"></i> Atribuie</button>
+            {% elif masina.status == 'atribuita' %}
+            <button onclick="showModal('modal-returneaza')" class="btn btn-outline" style="font-size: 0.85rem;"><i class="fa-solid fa-rotate-left"></i> Returneaza</button>
+            {% endif %}
+            <a href="{{ url_for('masini.editeaza', id=masina.id) }}" class="btn btn-outline" style="font-size: 0.85rem;"><i class="fa-solid fa-pen"></i> Editeaza</a>
+        {% endif %}
+        <a href="{{ url_for('masini.lista') }}" class="btn btn-outline" style="font-size: 0.85rem;"><i class="fa-solid fa-arrow-left"></i> Inapoi</a>
+    </div>
+</div>
+
+<!-- Alerts -->
+{% for a in masina.alerte_documente %}
+<div class="alert-card {{ 'danger' if a.tip == 'expirat' else 'warning' }}">
+    <i class="fa-solid fa-{{ 'circle-exclamation' if a.tip == 'expirat' else 'triangle-exclamation' }}"></i>
+    <div>
+        <strong>{{ a.doc }}</strong> -
+        {% if a.tip == 'expirat' %}Expirat de {{ -a.zile }} zile{% else %}Expira in {{ a.zile }} zile{% endif %}
+    </div>
+</div>
+{% endfor %}
+
+<!-- Tabs -->
+<div class="tabs-nav">
+    <button class="tab-btn active" onclick="switchTab('info')"><i class="fa-solid fa-circle-info"></i> Informatii</button>
+    <button class="tab-btn" onclick="switchTab('documente')"><i class="fa-solid fa-file-contract"></i> Documente <span style="background: var(--gray-200); padding: 1px 6px; border-radius: 8px; font-size: 0.72rem;">{{ documente|length }}</span></button>
+    <button class="tab-btn" onclick="switchTab('atribuiri')"><i class="fa-solid fa-users"></i> Atribuiri <span style="background: var(--gray-200); padding: 1px 6px; border-radius: 8px; font-size: 0.72rem;">{{ atribuiri|length }}</span></button>
+    <button class="tab-btn" onclick="switchTab('foaie')"><i class="fa-solid fa-road"></i> Foaie Parcurs</button>
+    <button class="tab-btn" onclick="switchTab('defectiuni')"><i class="fa-solid fa-wrench"></i> Defectiuni <span style="background: var(--gray-200); padding: 1px 6px; border-radius: 8px; font-size: 0.72rem;">{{ defectiuni|length }}</span></button>
+    <button class="tab-btn" onclick="switchTab('actiuni')"><i class="fa-solid fa-gears"></i> Actiuni</button>
+</div>
+
+<!-- Tab 1: Informatii -->
+<div class="tab-pane active" id="tab-info">
+    <div class="card-panel">
+        <div class="card-panel-body">
+            <h4 style="margin: 0 0 12px 0; font-size: 0.95rem;"><i class="fa-solid fa-car" style="color: var(--primary);"></i> Date Tehnice</h4>
+            <div class="info-grid">
+                <div class="info-item"><div class="info-item-label">Marca</div><div class="info-item-value">{{ masina.marca }}</div></div>
+                <div class="info-item"><div class="info-item-label">Model</div><div class="info-item-value">{{ masina.model }}</div></div>
+                <div class="info-item"><div class="info-item-label">An Fabricatie</div><div class="info-item-value">{{ masina.an_fabricatie or '-' }}</div></div>
+                <div class="info-item"><div class="info-item-label">VIN</div><div class="info-item-value">{{ masina.vin or '-' }}</div></div>
+                <div class="info-item"><div class="info-item-label">Culoare</div><div class="info-item-value">{{ masina.culoare or '-' }}</div></div>
+                <div class="info-item"><div class="info-item-label">Tip Vehicul</div><div class="info-item-value">{{ masina.tip_vehicul|title }}</div></div>
+                <div class="info-item"><div class="info-item-label">Combustibil</div><div class="info-item-value">{{ masina.tip_combustibil|title }}</div></div>
+                <div class="info-item"><div class="info-item-label">Capacitate (cmc)</div><div class="info-item-value">{{ masina.capacitate_cilindrica or '-' }}</div></div>
+                <div class="info-item"><div class="info-item-label">Putere (kW)</div><div class="info-item-value">{{ masina.putere_kw or '-' }}</div></div>
+                <div class="info-item"><div class="info-item-label">Nr. Locuri</div><div class="info-item-value">{{ masina.nr_locuri }}</div></div>
+                <div class="info-item"><div class="info-item-label">Masa Maxima (kg)</div><div class="info-item-value">{{ masina.masa_maxima or '-' }}</div></div>
+                <div class="info-item"><div class="info-item-label">Categorie Permis</div><div class="info-item-value">{{ masina.categorie_permis }}</div></div>
+                <div class="info-item"><div class="info-item-label">KM Bord</div><div class="info-item-value">{{ '{:,}'.format(masina.km_bord or 0) }}</div></div>
+                <div class="info-item"><div class="info-item-label">Consum Mediu (l/100km)</div><div class="info-item-value">{{ masina.consum_mediu or '-' }}</div></div>
+                <div class="info-item"><div class="info-item-label">Serie CIV</div><div class="info-item-value">{{ masina.serie_civ or '-' }}</div></div>
+                <div class="info-item"><div class="info-item-label">Nr. Carte Identitate</div><div class="info-item-value">{{ masina.nr_carte_identitate or '-' }}</div></div>
+            </div>
+
+            <h4 style="margin: 20px 0 12px 0; font-size: 0.95rem;"><i class="fa-solid fa-calendar-check" style="color: var(--secondary);"></i> Date Administrative</h4>
+            <div class="info-grid">
+                <div class="info-item"><div class="info-item-label">Data Achizitie</div><div class="info-item-value">{{ masina.data_achizitie.strftime('%d.%m.%Y') if masina.data_achizitie else '-' }}</div></div>
+                <div class="info-item"><div class="info-item-label">Prima Inmatriculare</div><div class="info-item-value">{{ masina.data_prima_inmatriculare.strftime('%d.%m.%Y') if masina.data_prima_inmatriculare else '-' }}</div></div>
+                <div class="info-item">
+                    <div class="info-item-label">ITP Expira</div>
+                    <div class="info-item-value" style="{{ 'color: #C62828;' if masina.data_itp_expirare and masina.data_itp_expirare < today }}">
+                        {{ masina.data_itp_expirare.strftime('%d.%m.%Y') if masina.data_itp_expirare else '-' }}
+                    </div>
+                </div>
+                <div class="info-item">
+                    <div class="info-item-label">RCA Expira</div>
+                    <div class="info-item-value" style="{{ 'color: #C62828;' if masina.data_rca_expirare and masina.data_rca_expirare < today }}">
+                        {{ masina.data_rca_expirare.strftime('%d.%m.%Y') if masina.data_rca_expirare else '-' }}
+                    </div>
+                </div>
+                <div class="info-item"><div class="info-item-label">CASCO Expira</div><div class="info-item-value">{{ masina.data_casco_expirare.strftime('%d.%m.%Y') if masina.data_casco_expirare else '-' }}</div></div>
+                <div class="info-item"><div class="info-item-label">Rovinieta Expira</div><div class="info-item-value">{{ masina.data_rovinieta_expirare.strftime('%d.%m.%Y') if masina.data_rovinieta_expirare else '-' }}</div></div>
+                <div class="info-item"><div class="info-item-label">Proiect Alocat</div><div class="info-item-value">{{ masina.proiect.cod_proiect ~ ' - ' ~ masina.proiect.nume if masina.proiect else '-' }}</div></div>
+                <div class="info-item"><div class="info-item-label">Sofer Responsabil</div><div class="info-item-value">{{ masina.angajat_responsabil.nume_complet if masina.angajat_responsabil else '-' }}</div></div>
+            </div>
+
+            {% if masina.observatii %}
+            <h4 style="margin: 20px 0 8px 0; font-size: 0.95rem;"><i class="fa-solid fa-sticky-note" style="color: var(--gray-500);"></i> Observatii</h4>
+            <p style="color: var(--gray-600); font-size: 0.9rem;">{{ masina.observatii }}</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Tab 2: Documente -->
+<div class="tab-pane" id="tab-documente">
+    {% if current_user.is_manager %}
+    <div style="text-align: right; margin-bottom: 12px;">
+        <button onclick="showModal('modal-document')" class="btn btn-primary" style="font-size: 0.85rem;"><i class="fa-solid fa-plus"></i> Adauga Document</button>
+    </div>
+    {% endif %}
+
+    {% if documente %}
+    <div class="doc-timeline">
+        {% for doc in documente %}
+        <div class="doc-timeline-item">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <strong style="font-size: 0.9rem;">{{ doc.tip|upper }}</strong>
+                    {% if doc.nume_document %}<span style="color: var(--gray-500); font-size: 0.82rem;"> - {{ doc.nume_document }}</span>{% endif %}
+                    {% if doc.numar_document %}<div style="font-size: 0.8rem; color: var(--gray-500);">Nr: {{ doc.numar_document }}</div>{% endif %}
+                    {% if doc.emitent %}<div style="font-size: 0.8rem; color: var(--gray-500);">Emitent: {{ doc.emitent }}</div>{% endif %}
+                </div>
+                <div style="text-align: right; font-size: 0.82rem;">
+                    {% if doc.data_emitere %}<div>Emis: {{ doc.data_emitere.strftime('%d.%m.%Y') }}</div>{% endif %}
+                    {% if doc.data_expirare %}
+                    <div style="{{ 'color: #C62828; font-weight: 700;' if doc.data_expirare < today }}">
+                        Expira: {{ doc.data_expirare.strftime('%d.%m.%Y') }}
+                    </div>
+                    {% endif %}
+                    {% if doc.cost %}<div style="color: var(--secondary);">Cost: {{ doc.cost }} RON</div>{% endif %}
+                </div>
+            </div>
+            {% if doc.observatii %}<div style="margin-top: 6px; font-size: 0.82rem; color: var(--gray-600);">{{ doc.observatii }}</div>{% endif %}
+            {% if current_user.is_manager %}
+            <div style="margin-top: 8px; text-align: right;">
+                <form method="POST" action="{{ url_for('masini.sterge_document', doc_id=doc.id) }}" style="display: inline;" onsubmit="return confirm('Stergeti acest document?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn-action btn-delete" title="Sterge" style="border: none; background: none; cursor: pointer;"><i class="fa-solid fa-trash"></i></button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card-panel"><div class="card-panel-body" style="text-align: center; padding: 40px; color: var(--gray-400);">
+        <i class="fa-solid fa-file" style="font-size: 2rem;"></i><p>Niciun document inregistrat.</p>
+    </div></div>
+    {% endif %}
+</div>
+
+<!-- Tab 3: Atribuiri -->
+<div class="tab-pane" id="tab-atribuiri">
+    <div class="card-panel">
+        <div class="card-panel-body" style="padding: 0;">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead><tr>
+                        <th>Angajat</th><th>Proiect</th><th>Data Atribuire</th><th>Data Returnare</th><th>KM Preluare</th><th>KM Returnare</th><th>KM Parcursi</th><th>Stare</th>
+                    </tr></thead>
+                    <tbody>
+                        {% for a in atribuiri %}
+                        <tr style="{{ 'background: #E8F5E9;' if a.activa }}">
+                            <td><strong>{{ a.angajat.nume_complet if a.angajat else '-' }}</strong></td>
+                            <td style="font-size: 0.82rem;">{{ a.proiect.cod_proiect if a.proiect else '-' }}</td>
+                            <td>{{ a.data_atribuire.strftime('%d.%m.%Y') if a.data_atribuire else '-' }}</td>
+                            <td>{{ a.data_returnare.strftime('%d.%m.%Y') if a.data_returnare else '<span class="badge-status badge-aprobat">Activa</span>'|safe }}</td>
+                            <td>{{ '{:,}'.format(a.km_preluare) if a.km_preluare else '-' }}</td>
+                            <td>{{ '{:,}'.format(a.km_returnare) if a.km_returnare else '-' }}</td>
+                            <td><strong>{{ '{:,}'.format(a.km_parcursi) if a.km_parcursi else '-' }}</strong></td>
+                            <td style="font-size: 0.82rem;">{{ a.stare_preluare or '-' }} {% if a.stare_returnare %}/ {{ a.stare_returnare }}{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                        {% if not atribuiri %}
+                        <tr><td colspan="8" style="text-align: center; color: var(--gray-400); padding: 30px;">Nicio atribuire inregistrata.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 4: Foaie de Parcurs -->
+<div class="tab-pane" id="tab-foaie">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+        <form method="GET" style="display: flex; gap: 8px; align-items: center;">
+            <select name="luna" class="form-select" style="font-size: 0.85rem; width: auto;" onchange="this.form.submit()">
+                {% for m in range(1, 13) %}
+                <option value="{{ m }}" {{ 'selected' if luna == m }}>{{ ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'][m-1] }}</option>
+                {% endfor %}
+            </select>
+            <select name="an" class="form-select" style="font-size: 0.85rem; width: auto;" onchange="this.form.submit()">
+                {% for y in range(2023, 2028) %}
+                <option value="{{ y }}" {{ 'selected' if an == y }}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        <button onclick="showModal('modal-conducere')" class="btn btn-primary" style="font-size: 0.85rem;"><i class="fa-solid fa-plus"></i> Adauga Inregistrare</button>
+    </div>
+
+    <div class="foaie-summary">
+        <div class="foaie-stat"><div class="foaie-stat-value">{{ '{:,}'.format(total_km_luna) }}</div><div class="foaie-stat-label">KM Parcursi</div></div>
+        <div class="foaie-stat"><div class="foaie-stat-value">{{ '%.1f'|format(total_combustibil) }}</div><div class="foaie-stat-label">Litri Combustibil</div></div>
+        <div class="foaie-stat"><div class="foaie-stat-value">{{ '%.0f'|format(total_cost_combustibil) }}</div><div class="foaie-stat-label">Cost Combustibil (RON)</div></div>
+        <div class="foaie-stat"><div class="foaie-stat-value">{{ conduceri|length }}</div><div class="foaie-stat-label">Inregistrari</div></div>
+    </div>
+
+    <div class="card-panel">
+        <div class="card-panel-body" style="padding: 0;">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead><tr>
+                        <th>Data</th><th>Sofer</th><th>Ruta</th><th>Scop</th><th>KM Start</th><th>KM Sfarsit</th><th>KM</th><th>Combustibil</th><th>Cost</th>
+                    </tr></thead>
+                    <tbody>
+                        {% for c in conduceri %}
+                        <tr>
+                            <td>{{ c.data.strftime('%d.%m') }}</td>
+                            <td style="font-size: 0.82rem;">{{ c.angajat.nume_complet if c.angajat else '-' }}</td>
+                            <td style="font-size: 0.82rem;">{{ c.ruta or '-' }}</td>
+                            <td style="font-size: 0.82rem;">{{ c.scop or '-' }}</td>
+                            <td>{{ '{:,}'.format(c.km_start) }}</td>
+                            <td>{{ '{:,}'.format(c.km_sfarsit) if c.km_sfarsit else '-' }}</td>
+                            <td><strong>{{ c.km_parcursi }}</strong></td>
+                            <td>{{ c.combustibil_alimentat or '-' }} l</td>
+                            <td>{{ c.cost_combustibil or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% if not conduceri %}
+                        <tr><td colspan="9" style="text-align: center; color: var(--gray-400); padding: 30px;">Nicio inregistrare in aceasta luna.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 5: Defectiuni -->
+<div class="tab-pane" id="tab-defectiuni">
+    <div style="text-align: right; margin-bottom: 12px;">
+        <button onclick="showModal('modal-defectiune')" class="btn btn-primary" style="font-size: 0.85rem;"><i class="fa-solid fa-plus"></i> Raporteaza Defectiune</button>
+    </div>
+
+    {% for d in defectiuni %}
+    <div class="card-panel" style="margin-bottom: 12px;">
+        <div class="card-panel-body">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <span class="badge-status {{ d.gravitate_badge_class }}">{{ d.gravitate|title }}</span>
+                    <span class="badge-status {{ d.status_badge_class }}" style="margin-left: 4px;">{{ d.status|replace('_', ' ')|title }}</span>
+                    <span style="font-size: 0.82rem; color: var(--gray-500); margin-left: 8px;">{{ d.data_raportare.strftime('%d.%m.%Y') }}</span>
+                    {% if d.angajat_raportor %}<span style="font-size: 0.82rem; color: var(--gray-500);"> - {{ d.angajat_raportor.nume_complet }}</span>{% endif %}
+                </div>
+                {% if current_user.is_manager and d.status != 'rezolvata' %}
+                <form method="POST" action="{{ url_for('masini.update_defectiune', def_id=d.id) }}" style="display: flex; gap: 6px; align-items: center;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="status_defectiune" class="form-select" style="font-size: 0.8rem; width: auto; padding: 4px 8px;">
+                        {% for val, label in [('raportata','Raportata'),('in_lucru','In lucru'),('rezolvata','Rezolvata'),('amanata','Amanata')] %}
+                        <option value="{{ val }}" {{ 'selected' if d.status == val }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="text" name="cost_reparatie" placeholder="Cost" class="form-control" style="font-size: 0.8rem; width: 80px; padding: 4px 8px;">
+                    <input type="text" name="service_extern" placeholder="Service" class="form-control" style="font-size: 0.8rem; width: 120px; padding: 4px 8px;">
+                    <button type="submit" class="btn btn-primary" style="font-size: 0.8rem; padding: 4px 10px;">Salveaza</button>
+                </form>
+                {% endif %}
+            </div>
+            <p style="margin: 8px 0 0; font-size: 0.9rem; color: var(--gray-700);">{{ d.descriere }}</p>
+            {% if d.detalii_reparatie %}<p style="margin: 4px 0 0; font-size: 0.82rem; color: var(--gray-500);"><i class="fa-solid fa-wrench"></i> {{ d.detalii_reparatie }}</p>{% endif %}
+            {% if d.cost_reparatie %}<span style="font-size: 0.82rem; color: var(--secondary);">Cost reparatie: {{ d.cost_reparatie }} RON</span>{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if not defectiuni %}
+    <div class="card-panel"><div class="card-panel-body" style="text-align: center; padding: 40px; color: var(--gray-400);">
+        <i class="fa-solid fa-check-circle" style="font-size: 2rem; color: #2E7D32;"></i><p>Nicio defectiune inregistrata.</p>
+    </div></div>
+    {% endif %}
+</div>
+
+<!-- Tab 6: Actiuni -->
+<div class="tab-pane" id="tab-actiuni">
+    {% if current_user.is_manager %}
+    <div class="card-panel">
+        <div class="card-panel-body">
+            <h4 style="margin: 0 0 16px 0; font-size: 0.95rem;">Schimba Status Masina</h4>
+            <form method="POST" action="{{ url_for('masini.schimba_status', id=masina.id) }}" style="display: flex; gap: 10px; align-items: center;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <select name="new_status" class="form-select" style="width: auto;">
+                    {% for val, label in [('disponibila','Disponibila'),('atribuita','Atribuita'),('service','In Service'),('casata','Casata'),('vanduta','Vanduta')] %}
+                    <option value="{{ val }}" {{ 'selected' if masina.status == val }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary" style="font-size: 0.85rem;">Actualizeaza</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ============== MODALS ============== -->
+
+<!-- Modal: Atribuie -->
+<div class="modal-overlay" id="modal-atribuie">
+    <div class="modal-box">
+        <h3><i class="fa-solid fa-user-plus" style="color: var(--primary);"></i> Atribuie Masina</h3>
+        <form method="POST" action="{{ url_for('masini.atribuie', id=masina.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label class="form-label">Angajat *</label>
+                <select name="angajat_id" class="form-select" required>
+                    <option value="">-- Selectati --</option>
+                    {% for a in angajati %}<option value="{{ a.id }}">{{ a.nume_complet }} ({{ a.functie }})</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Proiect</label>
+                <select name="proiect_id" class="form-select">
+                    <option value="">-- Fara proiect --</option>
+                    {% for p in proiecte %}<option value="{{ p.id }}">{{ p.cod_proiect }} - {{ p.nume }}</option>{% endfor %}
+                </select>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group"><label class="form-label">Data Atribuire</label><input type="date" name="data_atribuire" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}"></div>
+                <div class="form-group"><label class="form-label">KM Preluare</label><input type="number" name="km_preluare" class="form-control" value="{{ masina.km_bord }}"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Stare Preluare</label>
+                <select name="stare_preluare" class="form-select"><option value="buna">Buna</option><option value="acceptabila">Acceptabila</option><option value="deteriorata">Deteriorata</option></select>
+            </div>
+            <div class="form-group"><label class="form-label">Motiv</label><input type="text" name="motiv" class="form-control" placeholder="Motiv atribuire..."></div>
+            <div class="form-group"><label class="form-label">Observatii</label><textarea name="observatii_atribuire" class="form-control" rows="2"></textarea></div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
+                <button type="button" onclick="hideModal('modal-atribuie')" class="btn btn-outline">Anuleaza</button>
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Atribuie</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Returneaza -->
+<div class="modal-overlay" id="modal-returneaza">
+    <div class="modal-box">
+        <h3><i class="fa-solid fa-rotate-left" style="color: var(--primary);"></i> Returneaza Masina</h3>
+        <form method="POST" action="{{ url_for('masini.returneaza', id=masina.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group"><label class="form-label">KM Returnare</label><input type="number" name="km_returnare" class="form-control" value="{{ masina.km_bord }}"></div>
+            <div class="form-group">
+                <label class="form-label">Stare Returnare</label>
+                <select name="stare_returnare" class="form-select"><option value="buna">Buna</option><option value="acceptabila">Acceptabila</option><option value="deteriorata">Deteriorata</option></select>
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
+                <button type="button" onclick="hideModal('modal-returneaza')" class="btn btn-outline">Anuleaza</button>
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Returneaza</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Document -->
+<div class="modal-overlay" id="modal-document">
+    <div class="modal-box">
+        <h3><i class="fa-solid fa-file-contract" style="color: var(--primary);"></i> Adauga Document</h3>
+        <form method="POST" action="{{ url_for('masini.adauga_document', id=masina.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label class="form-label">Tip Document *</label>
+                <select name="tip_document" class="form-select" required>
+                    {% for val, label in [('itp','ITP'),('rca','RCA'),('casco','CASCO'),('rovinieta','Rovinieta'),('asigurare_persoane','Asigurare Persoane'),('contract_leasing','Contract Leasing'),('fisa_tehnica','Fisa Tehnica'),('altele','Altele')] %}
+                    <option value="{{ val }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group"><label class="form-label">Nume Document</label><input type="text" name="nume_document" class="form-control"></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group"><label class="form-label">Nr. Document</label><input type="text" name="numar_document" class="form-control"></div>
+                <div class="form-group"><label class="form-label">Emitent</label><input type="text" name="emitent" class="form-control"></div>
+                <div class="form-group"><label class="form-label">Data Emitere</label><input type="date" name="data_emitere" class="form-control"></div>
+                <div class="form-group"><label class="form-label">Data Expirare</label><input type="date" name="data_expirare_doc" class="form-control"></div>
+            </div>
+            <div class="form-group"><label class="form-label">Cost (RON)</label><input type="number" step="0.01" name="cost_document" class="form-control"></div>
+            <div class="form-group"><label class="form-label">Observatii</label><textarea name="observatii_document" class="form-control" rows="2"></textarea></div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
+                <button type="button" onclick="hideModal('modal-document')" class="btn btn-outline">Anuleaza</button>
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Salveaza</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Conducere -->
+<div class="modal-overlay" id="modal-conducere">
+    <div class="modal-box">
+        <h3><i class="fa-solid fa-road" style="color: var(--primary);"></i> Adauga Inregistrare Parcurs</h3>
+        <form method="POST" action="{{ url_for('masini.adauga_conducere', id=masina.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label class="form-label">Sofer *</label>
+                    <select name="angajat_id_conducere" class="form-select" required>
+                        <option value="">-- Selectati --</option>
+                        {% for a in angajati %}<option value="{{ a.id }}" {{ 'selected' if masina.angajat_responsabil_id == a.id }}>{{ a.nume_complet }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="form-group"><label class="form-label">Data</label><input type="date" name="data_conducere" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Proiect</label>
+                <select name="proiect_id_conducere" class="form-select">
+                    <option value="">-- Fara proiect --</option>
+                    {% for p in proiecte %}<option value="{{ p.id }}" {{ 'selected' if masina.proiect_id == p.id }}>{{ p.cod_proiect }}</option>{% endfor %}
+                </select>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group"><label class="form-label">KM Start *</label><input type="number" name="km_start" class="form-control" value="{{ masina.km_bord }}" required></div>
+                <div class="form-group"><label class="form-label">KM Sfarsit</label><input type="number" name="km_sfarsit" class="form-control"></div>
+            </div>
+            <div class="form-group"><label class="form-label">Ruta</label><input type="text" name="ruta" class="form-control" placeholder="ex: Bucuresti -> Ploiesti -> Bucuresti"></div>
+            <div class="form-group"><label class="form-label">Scop</label><input type="text" name="scop" class="form-control" placeholder="Transport materiale, deplasare santier..."></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group"><label class="form-label">Combustibil Alimentat (litri)</label><input type="number" step="0.01" name="combustibil_alimentat" class="form-control"></div>
+                <div class="form-group"><label class="form-label">Cost Combustibil (RON)</label><input type="number" step="0.01" name="cost_combustibil" class="form-control"></div>
+            </div>
+            <div class="form-group"><label class="form-label">Observatii</label><textarea name="observatii_conducere" class="form-control" rows="2"></textarea></div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
+                <button type="button" onclick="hideModal('modal-conducere')" class="btn btn-outline">Anuleaza</button>
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Salveaza</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Defectiune -->
+<div class="modal-overlay" id="modal-defectiune">
+    <div class="modal-box">
+        <h3><i class="fa-solid fa-wrench" style="color: #C62828;"></i> Raporteaza Defectiune</h3>
+        <form method="POST" action="{{ url_for('masini.adauga_defectiune', id=masina.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label class="form-label">Raportat de</label>
+                    <select name="raportat_de" class="form-select">
+                        <option value="">-- Selectati --</option>
+                        {% for a in angajati %}<option value="{{ a.id }}" {{ 'selected' if masina.angajat_responsabil_id == a.id }}>{{ a.nume_complet }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="form-group"><label class="form-label">Data</label><input type="date" name="data_raportare" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Gravitate</label>
+                <select name="gravitate" class="form-select">
+                    <option value="mica">Mica</option><option value="medie" selected>Medie</option><option value="mare">Mare</option><option value="critica">Critica</option>
+                </select>
+            </div>
+            <div class="form-group"><label class="form-label">Descriere *</label><textarea name="descriere_defectiune" class="form-control" rows="3" required placeholder="Descrieti defectiunea..."></textarea></div>
+            <div class="form-group"><label class="form-label">Observatii</label><textarea name="observatii_defectiune" class="form-control" rows="2"></textarea></div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
+                <button type="button" onclick="hideModal('modal-defectiune')" class="btn btn-outline">Anuleaza</button>
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Raporteaza</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function switchTab(name) {
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    event.target.closest('.tab-btn').classList.add('active');
+}
+function showModal(id) { document.getElementById(id).classList.add('show'); }
+function hideModal(id) { document.getElementById(id).classList.remove('show'); }
+// Close modal on overlay click
+document.querySelectorAll('.modal-overlay').forEach(m => {
+    m.addEventListener('click', function(e) { if (e.target === this) this.classList.remove('show'); });
+});
+</script>
+{% endblock %}

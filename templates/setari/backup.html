@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Backup & Restore - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('setari.index') }}">Setari</a></li>
+<li class="breadcrumb-item active">Backup</li>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-database" style="color: var(--primary);"></i> Backup & Restore
+    </h2>
+    <form method="POST" action="{{ url_for('setari.creeaza_backup') }}" style="display: inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-secondary"
+                onclick="this.innerHTML='<i class=\'fa-solid fa-spinner fa-spin\'></i> Se creeaza...'; this.disabled=true; this.form.submit();">
+            <i class="fa-solid fa-plus"></i> Creeaza Backup
+        </button>
+    </form>
+</div>
+
+<!-- Nav tabs setari -->
+<div class="setari-tabs" style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+    <a href="{{ url_for('setari.firma') }}" class="btn btn-outline"><i class="fa-solid fa-building"></i> Firma</a>
+    <a href="{{ url_for('setari.utilizatori') }}" class="btn btn-outline"><i class="fa-solid fa-users-gear"></i> Utilizatori</a>
+    <a href="{{ url_for('setari.sarbatori') }}" class="btn btn-outline"><i class="fa-solid fa-calendar-star"></i> Sarbatori</a>
+    <a href="{{ url_for('setari.backup') }}" class="btn btn-secondary"><i class="fa-solid fa-database"></i> Backup</a>
+    <a href="{{ url_for('setari.jurnal') }}" class="btn btn-outline"><i class="fa-solid fa-clipboard-list"></i> Jurnal</a>
+    <a href="{{ url_for('setari.generale') }}" class="btn btn-outline"><i class="fa-solid fa-sliders"></i> Generale</a>
+</div>
+
+<!-- Info sistem -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px;">
+    <div class="stat-card" style="background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <i class="fa-solid fa-database" style="font-size: 1.5rem; color: var(--primary);"></i>
+            <div>
+                <div style="font-weight: 600;">Baza de date</div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">
+                    {% if db_size < 1048576 %}
+                        {{ '%.1f'|format(db_size / 1024) }} KB
+                    {% else %}
+                        {{ '%.1f'|format(db_size / 1048576) }} MB
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="stat-card" style="background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <i class="fa-solid fa-folder-open" style="font-size: 1.5rem; color: var(--secondary);"></i>
+            <div>
+                <div style="font-weight: 600;">Fisiere incarcate</div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">
+                    {{ uploads_count }} fisiere /
+                    {% if uploads_size < 1048576 %}
+                        {{ '%.1f'|format(uploads_size / 1024) }} KB
+                    {% else %}
+                        {{ '%.1f'|format(uploads_size / 1048576) }} MB
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="stat-card" style="background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <i class="fa-solid fa-box-archive" style="font-size: 1.5rem; color: #2e7d32;"></i>
+            <div>
+                <div style="font-weight: 600;">Backup-uri</div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">{{ backups|length }} fisiere</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabel backup-uri -->
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-box-archive"></i> Backup-uri Existente</h3>
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        {% if backups %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Fisier</th>
+                        <th>Dimensiune</th>
+                        <th>Data Creare</th>
+                        <th>Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in backups %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td><strong><i class="fa-solid fa-file-zipper" style="color: var(--secondary);"></i> {{ b.fisier }}</strong></td>
+                        <td>
+                            {% if b.dimensiune < 1048576 %}
+                                {{ '%.1f'|format(b.dimensiune / 1024) }} KB
+                            {% else %}
+                                {{ '%.1f'|format(b.dimensiune / 1048576) }} MB
+                            {% endif %}
+                        </td>
+                        <td>{{ b.data.strftime('%d.%m.%Y %H:%M') }}</td>
+                        <td class="actions-cell">
+                            <a href="{{ url_for('setari.descarca_backup', filename=b.fisier) }}" class="btn-action btn-view" title="Descarca">
+                                <i class="fa-solid fa-download"></i>
+                            </a>
+                            <form method="POST" action="{{ url_for('setari.sterge_backup', filename=b.fisier) }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action btn-delete" title="Sterge"
+                                        onclick="return confirm('Stergeti backup-ul {{ b.fisier }}?')">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding: 40px;">
+            <i class="fa-solid fa-box-archive" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
+            <h3>Niciun backup creat</h3>
+            <p>Folositi butonul "Creeaza Backup" pentru a salva o copie de siguranta.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div style="margin-top: 16px; padding: 12px 16px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
+    <i class="fa-solid fa-circle-info"></i>
+    <strong>Nota:</strong> Backup-ul include baza de date SQLite si toate fisierele incarcate (documente, poze).
+    Restaurarea se face manual prin inlocuirea fisierelor din directorul aplicatiei.
+</div>
+{% endblock %}

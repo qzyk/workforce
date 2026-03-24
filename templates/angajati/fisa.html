@@ -1,0 +1,606 @@
+{% extends "base.html" %}
+{% block title %}{{ angajat.nume_complet }} - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('angajati.lista') }}">Angajati</a>
+<span>/</span>
+<span class="active">{{ angajat.nume_complet }}</span>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+    <div style="display: flex; align-items: center; gap: 16px;">
+        {% if angajat.poza_profil %}
+        <div class="profile-photo-container" style="width: 60px; height: 60px;">
+            <img src="{{ url_for('static', filename='uploads/' + angajat.poza_profil) }}" alt="">
+        </div>
+        {% else %}
+        <div class="profile-photo-default" style="width: 60px; height: 60px; font-size: 1.5rem;">
+            <i class="fa-solid fa-user"></i>
+        </div>
+        {% endif %}
+        <div>
+            <h2 style="margin: 0;">{{ angajat.nume_complet }}</h2>
+            <span style="color: var(--gray-500);">{{ dict(angajat.FUNCTII).get(angajat.functie, angajat.functie) }}</span>
+            <span class="badge-status badge-{{ angajat.status }}" style="margin-left: 8px;">{{ angajat.status|capitalize }}</span>
+        </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('angajati.editeaza', id=angajat.id) }}" class="btn btn-primary">
+            <i class="fa-solid fa-pen"></i> Editeaza
+        </a>
+        <form method="POST" action="{{ url_for('angajati.dezactiveaza', id=angajat.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if angajat.status == 'activ' %}
+            <button type="button" class="btn btn-danger"
+                onclick="confirmDelete('{{ url_for('angajati.dezactiveaza', id=angajat.id) }}', 'dezactivarea angajatului {{ angajat.nume_complet }}')">
+                <i class="fa-solid fa-user-slash"></i> Dezactiveaza
+            </button>
+            {% else %}
+            <button type="submit" class="btn btn-success">
+                <i class="fa-solid fa-user-check"></i> Reactiveaza
+            </button>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+<!-- Tabs -->
+<div class="tab-nav">
+    <button class="tab-btn active" data-tab="personale">
+        <i class="fa-solid fa-user"></i> Date Personale
+    </button>
+    <button class="tab-btn" data-tab="proiecte">
+        <i class="fa-solid fa-building"></i> Proiecte
+        {% if proiecte_asoc %}<span class="badge-tab">{{ proiecte_asoc|length }}</span>{% endif %}
+    </button>
+    <button class="tab-btn" data-tab="pontaje">
+        <i class="fa-solid fa-clock"></i> Pontaje
+    </button>
+    <button class="tab-btn" data-tab="documente">
+        <i class="fa-solid fa-file-alt"></i> Documente
+        {% if doc_expirate %}<span class="badge-tab">{{ doc_expirate }}</span>{% endif %}
+    </button>
+    <button class="tab-btn" data-tab="istoric">
+        <i class="fa-solid fa-history"></i> Istoric
+    </button>
+</div>
+
+<div class="tab-content">
+
+    <!-- TAB 1: DATE PERSONALE -->
+    <div class="tab-pane active" id="tab-personale">
+        <div style="display: grid; grid-template-columns: 200px 1fr; gap: 24px;">
+            <!-- Poza profil -->
+            <div style="text-align: center;">
+                {% if angajat.poza_profil %}
+                <div class="profile-photo-container" id="profilePhoto">
+                    <img src="{{ url_for('static', filename='uploads/' + angajat.poza_profil) }}" alt="">
+                    <div class="photo-overlay" onclick="document.getElementById('pozaInput').click()">
+                        <i class="fa-solid fa-camera"></i> Schimba
+                    </div>
+                </div>
+                {% else %}
+                <div class="profile-photo-default" style="cursor: pointer;" onclick="document.getElementById('pozaInput').click()">
+                    <i class="fa-solid fa-user"></i>
+                </div>
+                {% endif %}
+                <input type="file" id="pozaInput" accept="image/jpeg,image/png" style="display:none;" onchange="uploadPoza(this)">
+                <p style="font-size: 0.8rem; color: var(--gray-400); margin-top: 8px;">Click pentru schimbare</p>
+            </div>
+
+            <!-- Info grids -->
+            <div>
+                <div class="card-panel" style="margin-bottom: 16px;">
+                    <div class="card-panel-header"><h3><i class="fa-solid fa-id-card"></i> Informatii Personale</h3></div>
+                    <div class="card-panel-body">
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">CNP</span>
+                                <span class="info-value" style="font-family: monospace;">{{ angajat.cnp or '-' }}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Serie / Nr. BI</span>
+                                <span class="info-value">{{ angajat.serie_bi or '' }} {{ angajat.nr_bi or '-' }}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Telefon</span>
+                                <span class="info-value">{{ angajat.telefon or '-' }}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Email</span>
+                                <span class="info-value">{{ angajat.email or '-' }}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Data nasterii</span>
+                                <span class="info-value">{{ angajat.data_nasterii.strftime('%d.%m.%Y') if angajat.data_nasterii else '-' }}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Varsta</span>
+                                <span class="info-value">{{ angajat.varsta or '-' }} ani</span>
+                            </div>
+                            <div class="info-item full-width">
+                                <span class="info-label">Adresa</span>
+                                <span class="info-value">{{ angajat.adresa or '-' }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-panel" style="margin-bottom: 16px;">
+                    <div class="card-panel-header"><h3><i class="fa-solid fa-briefcase"></i> Informatii Profesionale</h3></div>
+                    <div class="card-panel-body">
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">Functie</span>
+                                <span class="info-value">{{ dict(angajat.FUNCTII).get(angajat.functie, angajat.functie) }}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Tip contract</span>
+                                <span class="info-value">{{ angajat.tip_contract|capitalize if angajat.tip_contract else '-' }}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Nr. contract</span>
+                                <span class="info-value">{{ angajat.nr_contract or '-' }}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Data angajare</span>
+                                <span class="info-value">{{ angajat.data_angajare.strftime('%d.%m.%Y') if angajat.data_angajare else '-' }}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Salariu baza</span>
+                                <span class="info-value">{{ '%.2f RON'|format(angajat.salariu_baza|float) if angajat.salariu_baza else '-' }}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Tarif orar</span>
+                                <span class="info-value">{{ '%.2f RON/ora'|format(angajat.tarif_orar) if angajat.tarif_orar else '-' }}</span>
+                            </div>
+                            {% if angajat.specializari %}
+                            <div class="info-item full-width">
+                                <span class="info-label">Specializari</span>
+                                <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px;">
+                                    {% for spec in angajat.specializari.split(',') %}
+                                    <span class="tag-item">{{ spec.strip() }}</span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            {% endif %}
+                            {% if angajat.data_incetare %}
+                            <div class="info-item">
+                                <span class="info-label">Data incetare</span>
+                                <span class="info-value" style="color: var(--danger);">{{ angajat.data_incetare.strftime('%d.%m.%Y') }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Statistici rapide -->
+                <div class="card-panel">
+                    <div class="card-panel-header"><h3><i class="fa-solid fa-chart-bar"></i> Statistici</h3></div>
+                    <div class="card-panel-body">
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; text-align: center;">
+                            <div>
+                                <div style="font-size: 2rem; font-weight: 700; color: var(--primary);">{{ '%.1f'|format(ore_luna) }}</div>
+                                <div style="font-size: 0.82rem; color: var(--gray-500);">Ore luna curenta</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 2rem; font-weight: 700; color: var(--secondary);">{{ angajat.get_proiecte_active()|length }}</div>
+                                <div style="font-size: 0.82rem; color: var(--gray-500);">Proiecte active</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 2rem; font-weight: 700; color: var(--danger);">{{ doc_expirate + doc_expira_curand }}</div>
+                                <div style="font-size: 0.82rem; color: var(--gray-500);">Documente alerta</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: PROIECTE -->
+    <div class="tab-pane" id="tab-proiecte">
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-building"></i> Proiecte Asignate ({{ proiecte_asoc|length }})</h3>
+            </div>
+            <div class="card-panel-body" style="padding: 0;">
+                {% if proiecte_asoc %}
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Cod Proiect</th>
+                                <th>Nume Proiect</th>
+                                <th>Functie pe Proiect</th>
+                                <th>Tarif Negociat</th>
+                                <th>Data Start</th>
+                                <th>Data Sfarsit</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ap in proiecte_asoc %}
+                            <tr>
+                                <td><span class="badge-project">{{ ap.proiect.cod_proiect }}</span></td>
+                                <td><a href="{{ url_for('proiecte.detalii', id=ap.proiect.id) }}" style="color: var(--primary); text-decoration: none; font-weight: 500;">{{ ap.proiect.nume }}</a></td>
+                                <td>{{ ap.functie_pe_proiect or '-' }}</td>
+                                <td>{{ '%.2f RON/ora'|format(ap.tarif_negociat|float) if ap.tarif_negociat else '-' }}</td>
+                                <td>{{ ap.data_start.strftime('%d.%m.%Y') if ap.data_start else '-' }}</td>
+                                <td>{{ ap.data_sfarsit.strftime('%d.%m.%Y') if ap.data_sfarsit else 'In curs' }}</td>
+                                <td><span class="badge-status badge-{{ ap.proiect.status }}">{{ ap.proiect.status|capitalize }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <i class="fa-solid fa-building" style="font-size: 2rem; color: var(--gray-300); margin-bottom: 12px;"></i>
+                    <p>Nu este asignat la niciun proiect.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 3: PONTAJE -->
+    <div class="tab-pane" id="tab-pontaje">
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-clock"></i> Calendar Pontaje</h3>
+            </div>
+            <div class="card-panel-body">
+                <!-- Legenda -->
+                <div class="cal-legend">
+                    <div class="cal-legend-item"><div class="cal-legend-color" style="background: #e8f5e9; border: 1px solid #a5d6a7;"></div> Prezent</div>
+                    <div class="cal-legend-item"><div class="cal-legend-color" style="background: #ffebee; border: 1px solid #ef9a9a;"></div> Absent</div>
+                    <div class="cal-legend-item"><div class="cal-legend-color" style="background: #e3f2fd; border: 1px solid #90caf9;"></div> Concediu (CO)</div>
+                    <div class="cal-legend-item"><div class="cal-legend-color" style="background: #fce4ec; border: 1px solid #f48fb1;"></div> Medical (CM)</div>
+                    <div class="cal-legend-item"><div class="cal-legend-color" style="background: var(--gray-100);"></div> Weekend</div>
+                </div>
+
+                <!-- Navigare luna -->
+                <div class="cal-month-nav">
+                    <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+                    <span class="month-label" id="monthLabel"></span>
+                    <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+
+                <!-- Calendar grid -->
+                <div class="pontaj-calendar" id="calendarGrid"></div>
+
+                <!-- Statistici lunare -->
+                <div class="cal-stats" id="calStats"></div>
+            </div>
+        </div>
+
+        <!-- Popup detalii pontaj -->
+        <div class="pontaj-popup" id="pontajPopup">
+            <div class="pontaj-popup-content">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h3 style="margin: 0;" id="popupTitle">Detalii Pontaj</h3>
+                    <button onclick="document.getElementById('pontajPopup').classList.remove('active')" style="border: none; background: none; font-size: 1.3rem; cursor: pointer;">&times;</button>
+                </div>
+                <div id="popupBody"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 4: DOCUMENTE -->
+    <div class="tab-pane" id="tab-documente">
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-file-alt"></i> Documente ({{ documente|length }})</h3>
+                {% if doc_expirate %}
+                <span class="badge-status badge-inactiv">{{ doc_expirate }} expirate</span>
+                {% endif %}
+            </div>
+            <div class="card-panel-body" style="padding: 0;">
+                {% if documente %}
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Tip Document</th>
+                                <th>Nume</th>
+                                <th>Data Emitere</th>
+                                <th>Data Expirare</th>
+                                <th>Valabilitate</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for doc in documente %}
+                            {% set today = now.date() if now else none %}
+                            <tr>
+                                <td>
+                                    <i class="fa-solid fa-file-pdf" style="color: var(--danger);"></i>
+                                    {{ doc.tip|replace('_', ' ')|capitalize }}
+                                </td>
+                                <td>{{ doc.nume_document }}</td>
+                                <td>{{ doc.data_emitere.strftime('%d.%m.%Y') if doc.data_emitere else '-' }}</td>
+                                <td>{{ doc.data_expirare.strftime('%d.%m.%Y') if doc.data_expirare else '-' }}</td>
+                                <td style="min-width: 120px;">
+                                    {% if doc.data_expirare %}
+                                        {% set days_left = (doc.data_expirare - today).days if today else 0 %}
+                                        {% if days_left < 0 %}
+                                        <div class="expiry-bar"><div class="expiry-fill danger" style="width: 100%;"></div></div>
+                                        <small style="color: var(--danger);">Expirat ({{ -days_left }} zile)</small>
+                                        {% elif days_left <= 30 %}
+                                        <div class="expiry-bar"><div class="expiry-fill warning" style="width: {{ ((30 - days_left) / 30 * 100)|int }}%;"></div></div>
+                                        <small style="color: var(--warning);">{{ days_left }} zile ramase</small>
+                                        {% else %}
+                                        {% set pct = (100 - (days_left / 365 * 100))|int %}
+                                        <div class="expiry-bar"><div class="expiry-fill ok" style="width: {{ pct if pct > 5 else 5 }}%;"></div></div>
+                                        <small style="color: var(--success);">{{ days_left }} zile ramase</small>
+                                        {% endif %}
+                                    {% else %}
+                                    <span style="color: var(--gray-400);">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge-status badge-{{ doc.status_calculat }}">{{ doc.status_calculat|capitalize }}</span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <i class="fa-solid fa-file" style="font-size: 2rem; color: var(--gray-300); margin-bottom: 12px;"></i>
+                    <p>Niciun document incarcat.</p>
+                    <a href="{{ url_for('documente.upload') }}" class="btn btn-outline" style="margin-top: 8px;">
+                        <i class="fa-solid fa-upload"></i> Incarca Document
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 5: ISTORIC -->
+    <div class="tab-pane" id="tab-istoric">
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-history"></i> Istoric Angajat</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="position: relative; padding-left: 30px;">
+                    <!-- Timeline -->
+                    <div style="position: absolute; left: 10px; top: 0; bottom: 0; width: 2px; background: var(--gray-200);"></div>
+
+                    <div style="margin-bottom: 20px; position: relative;">
+                        <div style="position: absolute; left: -26px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--primary);"></div>
+                        <div style="font-weight: 600;">Creat in sistem</div>
+                        <div style="font-size: 0.85rem; color: var(--gray-500);">{{ angajat.data_creare.strftime('%d.%m.%Y %H:%M') if angajat.data_creare else '-' }}</div>
+                    </div>
+
+                    {% if angajat.data_angajare %}
+                    <div style="margin-bottom: 20px; position: relative;">
+                        <div style="position: absolute; left: -26px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--success);"></div>
+                        <div style="font-weight: 600;">Data angajare</div>
+                        <div style="font-size: 0.85rem; color: var(--gray-500);">{{ angajat.data_angajare.strftime('%d.%m.%Y') }}</div>
+                    </div>
+                    {% endif %}
+
+                    {% if angajat.data_actualizare and angajat.data_actualizare != angajat.data_creare %}
+                    <div style="margin-bottom: 20px; position: relative;">
+                        <div style="position: absolute; left: -26px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--secondary);"></div>
+                        <div style="font-weight: 600;">Ultima actualizare</div>
+                        <div style="font-size: 0.85rem; color: var(--gray-500);">{{ angajat.data_actualizare.strftime('%d.%m.%Y %H:%M') }}</div>
+                    </div>
+                    {% endif %}
+
+                    {% if angajat.data_incetare %}
+                    <div style="margin-bottom: 20px; position: relative;">
+                        <div style="position: absolute; left: -26px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--danger);"></div>
+                        <div style="font-weight: 600;">Data incetare contract</div>
+                        <div style="font-size: 0.85rem; color: var(--gray-500);">{{ angajat.data_incetare.strftime('%d.%m.%Y') }}</div>
+                    </div>
+                    {% endif %}
+
+                    {% for c in concedii %}
+                    <div style="margin-bottom: 20px; position: relative;">
+                        <div style="position: absolute; left: -26px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--info);"></div>
+                        <div style="font-weight: 600;">Concediu {{ c.tip }} ({{ c.nr_zile }} zile)</div>
+                        <div style="font-size: 0.85rem; color: var(--gray-500);">
+                            {{ c.data_start.strftime('%d.%m.%Y') }} - {{ c.data_sfarsit.strftime('%d.%m.%Y') }}
+                            <span class="badge-status badge-{{ c.status }}">{{ c.status|capitalize }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+
+                    <div style="position: relative;">
+                        <div style="position: absolute; left: -26px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--gray-300);"></div>
+                        <div style="font-weight: 600; color: var(--gray-400);">Status curent: {{ angajat.status|capitalize }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// === Tab Switching ===
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        this.classList.add('active');
+        document.getElementById('tab-' + this.dataset.tab).classList.add('active');
+
+        if (this.dataset.tab === 'pontaje' && !window._calendarLoaded) {
+            window._calendarLoaded = true;
+            loadCalendar();
+        }
+    });
+});
+
+// === Photo Upload AJAX ===
+function uploadPoza(input) {
+    if (!input.files.length) return;
+    const form = new FormData();
+    form.append('poza', input.files[0]);
+    form.append('csrf_token', '{{ csrf_token() }}');
+
+    fetch('{{ url_for("angajati.upload_poza", id=angajat.id) }}', {
+        method: 'POST',
+        body: form,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error || 'Eroare la upload');
+        }
+    })
+    .catch(() => alert('Eroare la upload'));
+}
+
+// === Calendar Pontaje ===
+const MONTHS_RO = ['Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
+                   'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie'];
+const DAYS_RO = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du'];
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth() + 1;
+let calData = {};
+
+function changeMonth(delta) {
+    calMonth += delta;
+    if (calMonth > 12) { calMonth = 1; calYear++; }
+    if (calMonth < 1) { calMonth = 12; calYear--; }
+    loadCalendar();
+}
+
+function loadCalendar() {
+    document.getElementById('monthLabel').textContent = MONTHS_RO[calMonth - 1] + ' ' + calYear;
+
+    fetch('{{ url_for("angajati.pontaje_json", id=angajat.id) }}?luna=' + calMonth + '&an=' + calYear)
+    .then(r => r.json())
+    .then(data => {
+        calData = {};
+        data.events.forEach(e => { calData[e.data] = e; });
+        renderCalendar(data);
+        renderStats(data.stats);
+    })
+    .catch(() => {
+        document.getElementById('calendarGrid').innerHTML = '<p style="grid-column:1/-1; text-align:center; color:var(--gray-400);">Eroare la incarcare</p>';
+    });
+}
+
+function renderCalendar(data) {
+    const grid = document.getElementById('calendarGrid');
+    let html = '';
+
+    // Headers
+    DAYS_RO.forEach(d => { html += '<div class="cal-header">' + d + '</div>'; });
+
+    // First day of month
+    const firstDay = new Date(calYear, calMonth - 1, 1);
+    const lastDay = new Date(calYear, calMonth, 0).getDate();
+    let startDow = firstDay.getDay(); // 0=Sun
+    startDow = startDow === 0 ? 6 : startDow - 1; // Convert to Mon=0
+
+    // Empty cells
+    for (let i = 0; i < startDow; i++) { html += '<div class="cal-day empty"></div>'; }
+
+    const today = new Date();
+    const todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+
+    // Concedii set
+    const concediiDays = {};
+    if (data.concedii) {
+        data.concedii.forEach(c => {
+            let d = new Date(c.data_start);
+            const end = new Date(c.data_sfarsit);
+            while (d <= end) {
+                const ds = d.toISOString().slice(0,10);
+                concediiDays[ds] = c.tip;
+                d.setDate(d.getDate() + 1);
+            }
+        });
+    }
+
+    for (let day = 1; day <= lastDay; day++) {
+        const dateStr = calYear + '-' + String(calMonth).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+        const dow = new Date(calYear, calMonth - 1, day).getDay();
+        const isWeekend = (dow === 0 || dow === 6);
+        const pontaj = calData[dateStr];
+        const concediu = concediiDays[dateStr];
+        const isToday = (dateStr === todayStr);
+
+        let cls = 'cal-day';
+        if (isToday) cls += ' today';
+
+        if (pontaj) {
+            if (pontaj.tip_zi === 'co' || concediu === 'CO') cls += ' co';
+            else if (pontaj.tip_zi === 'cm' || concediu === 'CM') cls += ' cm';
+            else if (pontaj.ore > 8) cls += ' suplimentar';
+            else cls += ' lucratoare';
+        } else if (concediu) {
+            cls += concediu === 'CO' ? ' co' : ' cm';
+        } else if (isWeekend) {
+            cls += ' weekend';
+        }
+
+        const oreText = pontaj ? pontaj.ore.toFixed(1) + 'h' : '';
+        html += '<div class="' + cls + '" onclick="showPontajDetail(\'' + dateStr + '\')">';
+        html += '<span class="cal-num">' + day + '</span>';
+        if (oreText) html += '<span class="cal-ore">' + oreText + '</span>';
+        html += '</div>';
+    }
+
+    grid.innerHTML = html;
+}
+
+function renderStats(stats) {
+    const el = document.getElementById('calStats');
+    if (!stats) { el.innerHTML = ''; return; }
+    el.innerHTML = `
+        <div class="cal-stat-item"><div class="cal-stat-val">${stats.total_ore}</div><div class="cal-stat-lbl">Ore totale</div></div>
+        <div class="cal-stat-item"><div class="cal-stat-val">${stats.ore_normale}</div><div class="cal-stat-lbl">Ore normale</div></div>
+        <div class="cal-stat-item"><div class="cal-stat-val">${stats.ore_suplimentare_50}</div><div class="cal-stat-lbl">Suplimentare 50%</div></div>
+        <div class="cal-stat-item"><div class="cal-stat-val">${stats.ore_suplimentare_100}</div><div class="cal-stat-lbl">Suplimentare 100%</div></div>
+        <div class="cal-stat-item"><div class="cal-stat-val">${stats.zile_lucrate}</div><div class="cal-stat-lbl">Zile lucrate</div></div>
+    `;
+}
+
+function showPontajDetail(dateStr) {
+    const p = calData[dateStr];
+    const popup = document.getElementById('pontajPopup');
+    const body = document.getElementById('popupBody');
+    const parts = dateStr.split('-');
+    document.getElementById('popupTitle').textContent = parts[2] + '.' + parts[1] + '.' + parts[0];
+
+    if (!p) {
+        body.innerHTML = '<p style="color: var(--gray-400);">Nu exista pontaj pentru aceasta zi.</p>';
+    } else {
+        body.innerHTML = `
+            <div class="info-grid" style="gap: 12px;">
+                <div class="info-item"><span class="info-label">Program</span><span class="info-value">${p.ora_start || '-'} - ${p.ora_sfarsit || '-'}</span></div>
+                <div class="info-item"><span class="info-label">Ore lucrate</span><span class="info-value">${p.ore.toFixed(1)} ore</span></div>
+                <div class="info-item"><span class="info-label">Tip zi</span><span class="info-value">${p.tip_zi}</span></div>
+                <div class="info-item"><span class="info-label">Proiect</span><span class="info-value">${p.proiect || '-'}</span></div>
+                <div class="info-item"><span class="info-label">Status</span><span class="info-value"><span class="badge-status badge-${p.status}">${p.status}</span></span></div>
+            </div>
+        `;
+    }
+    popup.classList.add('active');
+}
+
+// Close popup on backdrop click
+document.getElementById('pontajPopup').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('active');
+});
+</script>
+{% endblock %}

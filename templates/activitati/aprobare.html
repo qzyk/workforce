@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Aprobare Activitati - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('activitati.panou') }}">Activitati</a></li>
+<li class="breadcrumb-item active">Aprobare</li>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin: 0;"><i class="fa-solid fa-check-double" style="color: var(--primary);"></i> Aprobare Activitati</h2>
+        <div style="font-size: 0.85rem; color: var(--gray-500); margin-top: 4px;">
+            {{ activitati|length }} activitati in asteptare de aprobare
+        </div>
+    </div>
+    <a href="{{ url_for('activitati.panou') }}" class="btn btn-outline"><i class="fa-solid fa-arrow-left"></i> Inapoi</a>
+</div>
+
+{% if activitati %}
+<form method="POST" action="{{ url_for('activitati.aprobare_masa') }}" id="masaForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div style="display: flex; gap: 8px; margin-bottom: 14px; align-items: center;">
+        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
+            <input type="checkbox" id="selectAll" onclick="toggleAll(this.checked)" style="width: 16px; height: 16px;">
+            Selecteaza toate
+        </label>
+        <button type="submit" name="actiune" value="aproba" class="btn btn-success" style="font-size: 0.85rem;">
+            <i class="fa-solid fa-check-double"></i> Aproba Selectate
+        </button>
+        <button type="button" class="btn btn-outline" style="font-size: 0.85rem; color: var(--danger); border-color: var(--danger);"
+                onclick="document.getElementById('masaRespinge').style.display='block'">
+            <i class="fa-solid fa-xmark"></i> Respinge Selectate
+        </button>
+    </div>
+
+    <div id="masaRespinge" style="display:none; margin-bottom: 14px; padding: 12px; background: #ffebee; border-radius: 8px;">
+        <div class="form-group" style="margin: 0;">
+            <label class="form-label">Motiv respingere (pentru toate selectate)</label>
+            <div style="display: flex; gap: 8px;">
+                <input type="text" name="motiv_respingere" class="form-control" placeholder="Motiv respingere...">
+                <button type="submit" name="actiune" value="respinge" class="btn btn-primary" style="background: var(--danger); white-space: nowrap;">
+                    Respinge
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card-panel">
+        <div class="card-panel-body" style="padding: 0;">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;"></th>
+                            <th>Data</th>
+                            <th>Angajat</th>
+                            <th>Proiect</th>
+                            <th>Instalatie</th>
+                            <th>Activitate</th>
+                            <th>Cantitate</th>
+                            <th style="width: 60px;">Tehnic</th>
+                            <th>Actiuni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in activitati %}
+                        <tr>
+                            <td><input type="checkbox" name="activitate_ids[]" value="{{ a.id }}" class="act-check" style="width: 16px; height: 16px;"></td>
+                            <td style="white-space: nowrap;">{{ a.data.strftime('%d.%m.%Y') }}</td>
+                            <td><strong>{{ a.angajat.nume_complet if a.angajat else '-' }}</strong></td>
+                            <td style="font-size: 0.82rem; font-weight: 600; color: var(--primary);">{{ a.proiect.cod_proiect if a.proiect else '-' }}</td>
+                            <td>
+                                {% if a.tip_instalatie %}
+                                <span style="font-size: 0.78rem; padding: 2px 8px; border-radius: 10px; background: {{ a.tip_instalatie.culoare_hex }}15; color: {{ a.tip_instalatie.culoare_hex }}; font-weight: 600;">
+                                    {{ a.tip_instalatie.cod }}
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                {{ a.activitate_scurta }}
+                            </td>
+                            <td>{{ a.cantitate_executata or '' }} {{ a.unitate_masura or '' }}</td>
+                            <td>
+                                {% if a.necesita_aprobare_tehnica %}
+                                <i class="fa-solid fa-triangle-exclamation" style="color: var(--warning);" title="Necesita decizie tehnica"></i>
+                                {% endif %}
+                            </td>
+                            <td class="actions-cell" style="white-space: nowrap;">
+                                <a href="{{ url_for('activitati.detaliu', id=a.id) }}" class="btn-action btn-view" title="Detalii"><i class="fa-solid fa-eye"></i></a>
+                                <form method="POST" action="{{ url_for('activitati.aproba', id=a.id) }}" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-action btn-approve" title="Aproba"><i class="fa-solid fa-check"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</form>
+{% else %}
+<div class="card-panel">
+    <div class="card-panel-body">
+        <div class="empty-state" style="padding: 40px;">
+            <i class="fa-solid fa-check-circle" style="font-size: 2.5rem; color: var(--success);"></i>
+            <p style="margin-top: 12px; color: var(--gray-500);">Toate activitatile au fost procesate. Nu exista activitati in asteptare.</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleAll(checked) {
+    document.querySelectorAll('.act-check').forEach(cb => cb.checked = checked);
+}
+</script>
+{% endblock %}

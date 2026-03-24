@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Documente {{ angajat.nume_complet }} - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('documente.panou') }}">Documente</a>
+<span>/</span>
+<span class="active">{{ angajat.nume_complet }}</span>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-folder-open" style="color: var(--primary);"></i>
+            Documente - {{ angajat.nume_complet }}
+        </h2>
+        <small style="color: var(--gray-500);">{{ angajat.functie }} | Marca: {{ angajat.nr_contract or '-' }}</small>
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <select id="switchAngajat" class="form-select" style="min-width: 200px;" onchange="switchAngajat()">
+            {% for a in angajati %}
+            <option value="{{ a.id }}" {{ 'selected' if a.id == angajat.id }}>{{ a.nume_complet }}</option>
+            {% endfor %}
+        </select>
+        <a href="{{ url_for('documente.upload', angajat_id=angajat.id) }}" class="btn btn-secondary">
+            <i class="fa-solid fa-cloud-arrow-up"></i> Incarca
+        </a>
+    </div>
+</div>
+
+<!-- Indicator documente obligatorii -->
+<div class="card-panel" style="margin-bottom: 20px;">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-clipboard-check"></i> Documente Obligatorii ({{ angajat.functie }})</h3>
+        <span style="font-size: 0.85rem;">
+            {{ obligatorii|length - lipsa|length }} / {{ obligatorii|length }} complete
+        </span>
+    </div>
+    <div class="card-panel-body">
+        <!-- Progress bar -->
+        {% set pct = ((obligatorii|length - lipsa|length) / obligatorii|length * 100) if obligatorii|length > 0 else 100 %}
+        <div class="expiry-bar" style="margin-bottom: 16px;">
+            <div class="expiry-bar-fill" style="width: {{ pct|int }}%; background: {{ 'var(--success)' if pct == 100 else 'var(--warning)' if pct >= 50 else 'var(--danger)' }};"></div>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            {% for tip in obligatorii %}
+            {% set are_doc = tip not in lipsa %}
+            <div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px;
+                         background: {{ '#E8F5E9' if are_doc else '#FFEBEE' }};
+                         color: {{ 'var(--success)' if are_doc else 'var(--danger)' }};
+                         font-size: 0.85rem; font-weight: 600;">
+                <i class="fa-solid {{ 'fa-circle-check' if are_doc else 'fa-circle-xmark' }}"></i>
+                {{ tipuri_dict.get(tip, tip) }}
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if lipsa %}
+        <div style="margin-top: 12px; padding: 8px 12px; background: #FFF3E0; border-radius: var(--radius-sm); font-size: 0.85rem; color: var(--warning);">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <strong>{{ lipsa|length }} document(e) lipsa:</strong>
+            {% for t in lipsa %}{{ tipuri_dict.get(t, t) }}{% if not loop.last %}, {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Grila documente per tip -->
+{% if documente %}
+<div class="doc-grid">
+    {% for doc in documente %}
+    <div class="doc-card doc-card-{{ doc.status }}">
+        <div class="doc-card-icon">
+            {% set ext = doc.fisier_path.rsplit('.', 1)[1].lower() if doc.fisier_path and '.' in doc.fisier_path else 'file' %}
+            {% if ext == 'pdf' %}
+            <i class="fa-solid fa-file-pdf" style="color: #E53935; font-size: 2rem;"></i>
+            {% elif ext in ('jpg', 'jpeg', 'png') %}
+            <i class="fa-solid fa-file-image" style="color: #43A047; font-size: 2rem;"></i>
+            {% elif ext == 'docx' %}
+            <i class="fa-solid fa-file-word" style="color: #1565C0; font-size: 2rem;"></i>
+            {% else %}
+            <i class="fa-solid fa-file" style="color: var(--gray-400); font-size: 2rem;"></i>
+            {% endif %}
+        </div>
+        <div class="doc-card-body">
+            <div class="doc-card-title">{{ doc.nume_document }}</div>
+            <div class="doc-card-type">{{ tipuri_dict.get(doc.tip, doc.tip) }}</div>
+            <div class="doc-card-meta">
+                {% if doc.serie_numar %}<span>{{ doc.serie_numar }}</span>{% endif %}
+                <span>{{ doc.marime_formatata }}</span>
+            </div>
+            {% if doc.data_expirare %}
+            <div class="doc-card-expiry">
+                {% set zile = (doc.data_expirare - today).days if doc.data_expirare else 0 %}
+                {% if doc.status == 'expirat' %}
+                <span style="color: var(--danger); font-weight: 600;">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Expirat {{ doc.data_expirare.strftime('%d.%m.%Y') }}
+                </span>
+                {% elif doc.status == 'in_curand' %}
+                <span style="color: var(--warning); font-weight: 600;">
+                    <i class="fa-solid fa-clock"></i> Expira in {{ zile }} zile ({{ doc.data_expirare.strftime('%d.%m.%Y') }})
+                </span>
+                {% else %}
+                <span style="color: var(--success);">
+                    <i class="fa-solid fa-circle-check"></i> Valabil pana la {{ doc.data_expirare.strftime('%d.%m.%Y') }}
+                </span>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="doc-card-expiry">
+                <span style="color: var(--gray-500);"><i class="fa-solid fa-infinity"></i> Permanent</span>
+            </div>
+            {% endif %}
+        </div>
+        <div class="doc-card-actions">
+            {% if doc.fisier_path %}
+            {% set ext2 = doc.fisier_path.rsplit('.', 1)[1].lower() if '.' in doc.fisier_path else '' %}
+            {% if ext2 in ('pdf', 'jpg', 'jpeg', 'png') %}
+            <a href="{{ url_for('documente.preview', id=doc.id) }}" target="_blank" class="btn-action btn-view" title="Previzualizare">
+                <i class="fa-solid fa-eye"></i>
+            </a>
+            {% endif %}
+            <a href="{{ url_for('documente.descarca', id=doc.id) }}" class="btn-action btn-view" title="Descarca">
+                <i class="fa-solid fa-download"></i>
+            </a>
+            {% endif %}
+            <a href="{{ url_for('documente.editeaza', id=doc.id) }}" class="btn-action btn-edit" title="Editeaza">
+                <i class="fa-solid fa-pen"></i>
+            </a>
+            {% if current_user.is_manager %}
+            <form method="POST" action="{{ url_for('documente.sterge', id=doc.id) }}" style="display: inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-action btn-delete" title="Sterge"
+                        onclick="return confirm('Sunteti sigur ca doriti sa stergeti acest document?')">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card-panel">
+    <div class="card-panel-body">
+        <div class="empty-state" style="padding: 40px;">
+            <i class="fa-solid fa-folder-open" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
+            <h3>Niciun document</h3>
+            <p>Nu exista documente incarcate pentru {{ angajat.nume_complet }}.</p>
+            <a href="{{ url_for('documente.upload', angajat_id=angajat.id) }}" class="btn btn-secondary" style="margin-top: 16px;">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Incarca primul document
+            </a>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.doc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+}
+.doc-card {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    border-left: 4px solid var(--gray-200);
+    transition: var(--transition);
+}
+.doc-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.doc-card-valabil { border-left-color: var(--success); }
+.doc-card-in_curand { border-left-color: var(--warning); background: #FFFDE7; }
+.doc-card-expirat { border-left-color: var(--danger); background: #FFF5F5; }
+.doc-card-icon { flex: 0 0 auto; padding-top: 4px; }
+.doc-card-body { flex: 1; min-width: 0; }
+.doc-card-title { font-weight: 700; font-size: 0.95rem; color: var(--gray-800); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-card-type { font-size: 0.8rem; color: var(--primary); font-weight: 600; margin-bottom: 4px; }
+.doc-card-meta { font-size: 0.75rem; color: var(--gray-500); display: flex; gap: 8px; margin-bottom: 6px; }
+.doc-card-expiry { font-size: 0.8rem; }
+.doc-card-actions { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var today = new Date();
+
+function switchAngajat() {
+    var sel = document.getElementById('switchAngajat');
+    if (sel.value) {
+        window.location = '{{ url_for("documente.lista_angajat", angajat_id=0) }}'.replace('/0', '/' + sel.value);
+    }
+}
+</script>
+{% endblock %}

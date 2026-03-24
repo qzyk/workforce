@@ -1,0 +1,66 @@
+<!-- Formular rapid AJAX modal -->
+<div style="padding: 20px;">
+    <h3 style="margin: 0 0 16px;"><i class="fa-solid fa-bolt" style="color: var(--warning);"></i> Adauga Rapida Activitate</h3>
+    <form method="POST" action="{{ url_for('activitati.adauga_rapida') }}" id="rapidForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if angajat_curent %}
+        <input type="hidden" name="angajat_id" value="{{ angajat_curent.id }}">
+        {% endif %}
+        <input type="hidden" name="data" value="{{ today.strftime('%Y-%m-%d') if today is defined else '' }}">
+
+        <div class="form-group">
+            <label class="form-label">Proiect *</label>
+            <select name="proiect_id" class="form-select" required>
+                <option value="">-- Selecteaza --</option>
+                {% for p in proiecte %}
+                <option value="{{ p.id }}">{{ p.cod_proiect }} - {{ p.nume }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Tip Instalatie</label>
+            <select name="tip_instalatie_id" class="form-select">
+                <option value="">--</option>
+                {% for i in instalatii %}
+                <option value="{{ i.id }}">{{ i.cod }} - {{ i.denumire }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Activitate principala *</label>
+            <textarea name="activitate_principala" class="form-control" rows="3" required maxlength="500"
+                      placeholder="Descrieti pe scurt activitatea..."></textarea>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+                <label class="form-label">Zona lucru</label>
+                <input type="text" name="zona_lucru" class="form-control" placeholder="Ex: Etaj 2">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Cantitate</label>
+                <div style="display: flex; gap: 6px;">
+                    <input type="number" name="cantitate_executata" class="form-control" step="0.01" placeholder="0">
+                    <select name="unitate_masura" class="form-select" style="width: 90px;">
+                        <option value="">--</option>
+                        <option value="ml">ml</option>
+                        <option value="mp">mp</option>
+                        <option value="buc">buc</option>
+                        <option value="kg">kg</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px;">
+            <button type="submit" name="actiune" value="draft" class="btn btn-secondary">
+                <i class="fa-solid fa-floppy-disk"></i> Draft
+            </button>
+            <button type="submit" name="actiune" value="trimite" class="btn btn-primary">
+                <i class="fa-solid fa-paper-plane"></i> Trimite
+            </button>
+        </div>
+    </form>
+</div>

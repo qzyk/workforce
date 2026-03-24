@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+{% block title %}Documente - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<span class="active">Documente</span>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;"><i class="fa-solid fa-file-shield" style="color: var(--primary);"></i> Gestiune Documente</h2>
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('documente.upload') }}" class="btn btn-secondary">
+            <i class="fa-solid fa-cloud-arrow-up"></i> Incarca Document
+        </a>
+        <a href="{{ url_for('documente.export_excel') }}" class="btn btn-success">
+            <i class="fa-solid fa-file-excel"></i> Export Excel
+        </a>
+    </div>
+</div>
+
+<!-- Stats Bar -->
+<div class="stats-bar" style="margin-bottom: 20px;">
+    <div class="stat-mini">
+        <div class="stat-icon bg-primary"><i class="fa-solid fa-file-lines"></i></div>
+        <div>
+            <div class="stat-number">{{ stats.total }}</div>
+            <div class="stat-label">Total Documente</div>
+        </div>
+    </div>
+    <div class="stat-mini" style="cursor: pointer;" onclick="window.location='{{ url_for('documente.lista', status='valabil') }}'">
+        <div class="stat-icon bg-success"><i class="fa-solid fa-circle-check"></i></div>
+        <div>
+            <div class="stat-number">{{ stats.valabile }}</div>
+            <div class="stat-label">Valabile</div>
+        </div>
+    </div>
+    <div class="stat-mini" style="cursor: pointer;" onclick="window.location='{{ url_for('documente.expirate') }}'">
+        <div class="stat-icon" style="background: var(--warning);"><i class="fa-solid fa-clock"></i></div>
+        <div>
+            <div class="stat-number">{{ stats.in_curand }}</div>
+            <div class="stat-label">Expira Curand</div>
+        </div>
+    </div>
+    <div class="stat-mini" style="cursor: pointer;" onclick="window.location='{{ url_for('documente.expirate') }}'">
+        <div class="stat-icon" style="background: var(--danger);"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <div>
+            <div class="stat-number">{{ stats.expirate }}</div>
+            <div class="stat-label">Expirate</div>
+        </div>
+    </div>
+</div>
+
+<!-- ALERTE: Documente Expirate -->
+{% if expirate %}
+<div class="card-panel" style="margin-bottom: 20px; border-left: 4px solid var(--danger);">
+    <div class="card-panel-header" style="background: #FFEBEE;">
+        <h3 style="color: var(--danger);"><i class="fa-solid fa-triangle-exclamation"></i> Documente EXPIRATE ({{ expirate|length }})</h3>
+        <a href="{{ url_for('documente.expirate') }}" class="btn btn-sm btn-outline">Vezi toate</a>
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Angajat</th>
+                        <th>Tip Document</th>
+                        <th>Denumire</th>
+                        <th>Expirat la</th>
+                        <th>Zile depasire</th>
+                        <th>Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in expirate %}
+                    <tr style="background: #FFF5F5;">
+                        <td>
+                            <a href="{{ url_for('documente.lista_angajat', angajat_id=doc.angajat_id) }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
+                                {{ doc.angajat.nume_complet if doc.angajat else '-' }}
+                            </a>
+                        </td>
+                        <td><span class="badge-project">{{ tipuri_dict.get(doc.tip, doc.tip) }}</span></td>
+                        <td>{{ doc.nume_document }}</td>
+                        <td style="color: var(--danger); font-weight: 600;">{{ doc.data_expirare.strftime('%d.%m.%Y') if doc.data_expirare else '-' }}</td>
+                        <td>
+                            {% set zile = (today - doc.data_expirare).days if doc.data_expirare else 0 %}
+                            <span style="color: var(--danger); font-weight: 700;">{{ zile }} zile</span>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('documente.upload', angajat_id=doc.angajat_id) }}" class="btn-action btn-edit" title="Reinnoieste">
+                                <i class="fa-solid fa-rotate"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ALERTE: Expira Curand -->
+{% if expira_curand %}
+<div class="card-panel" style="margin-bottom: 20px; border-left: 4px solid var(--warning);">
+    <div class="card-panel-header" style="background: #FFF8E1;">
+        <h3 style="color: var(--warning);"><i class="fa-solid fa-clock"></i> Expira in 30 zile ({{ expira_curand|length }})</h3>
+        <a href="{{ url_for('documente.expirate') }}" class="btn btn-sm btn-outline">Vezi toate</a>
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Angajat</th>
+                        <th>Tip Document</th>
+                        <th>Denumire</th>
+                        <th>Expira la</th>
+                        <th>Zile ramase</th>
+                        <th>Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in expira_curand %}
+                    <tr style="background: #FFFDE7;">
+                        <td>
+                            <a href="{{ url_for('documente.lista_angajat', angajat_id=doc.angajat_id) }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
+                                {{ doc.angajat.nume_complet if doc.angajat else '-' }}
+                            </a>
+                        </td>
+                        <td><span class="badge-project">{{ tipuri_dict.get(doc.tip, doc.tip) }}</span></td>
+                        <td>{{ doc.nume_document }}</td>
+                        <td style="color: var(--warning); font-weight: 600;">{{ doc.data_expirare.strftime('%d.%m.%Y') if doc.data_expirare else '-' }}</td>
+                        <td>
+                            {% set zile = (doc.data_expirare - today).days if doc.data_expirare else 0 %}
+                            <span style="color: var(--warning); font-weight: 700;">{{ zile }} zile</span>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('documente.upload', angajat_id=doc.angajat_id) }}" class="btn-action btn-edit" title="Reinnoieste">
+                                <i class="fa-solid fa-rotate"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <!-- Angajati cu documente lipsa -->
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-user-xmark" style="color: var(--danger);"></i> Documente Lipsa per Angajat</h3>
+        </div>
+        <div class="card-panel-body" style="padding: 0; max-height: 400px; overflow-y: auto;">
+            {% if angajati_alerte %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Angajat</th>
+                        <th>Functie</th>
+                        <th>Lipsa</th>
+                        <th>Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in angajati_alerte %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('documente.lista_angajat', angajat_id=item.angajat.id) }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
+                                {{ item.angajat.nume_complet }}
+                            </a>
+                        </td>
+                        <td>{{ item.angajat.functie }}</td>
+                        <td>
+                            <span style="color: var(--danger); font-weight: 700;">{{ item.nr_lipsa }}</span>
+                            <small style="color: var(--gray-500); display: block; font-size: 0.75rem;">
+                                {% for t in item.lipsa[:3] %}{{ tipuri_dict.get(t, t) }}{% if not loop.last %}, {% endif %}{% endfor %}{% if item.lipsa|length > 3 %}...{% endif %}
+                            </small>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('documente.upload', angajat_id=item.angajat.id) }}" class="btn-action btn-edit" title="Incarca">
+                                <i class="fa-solid fa-upload"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state" style="padding: 24px;">
+                <i class="fa-solid fa-circle-check" style="font-size: 2rem; color: var(--success); margin-bottom: 8px;"></i>
+                <p>Toti angajatii au documentele obligatorii complete!</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Ultimele documente incarcate -->
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-clock-rotate-left"></i> Incarcate Recent</h3>
+            <a href="{{ url_for('documente.lista') }}" class="btn btn-sm btn-outline">Toate</a>
+        </div>
+        <div class="card-panel-body" style="padding: 0; max-height: 400px; overflow-y: auto;">
+            {% if recente %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Document</th>
+                        <th>Angajat</th>
+                        <th>Data</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in recente %}
+                    <tr>
+                        <td>
+                            <div style="font-weight: 600; font-size: 0.85rem;">{{ doc.nume_document }}</div>
+                            <small style="color: var(--gray-500);">{{ tipuri_dict.get(doc.tip, doc.tip) }}</small>
+                        </td>
+                        <td>{{ doc.angajat.nume_complet if doc.angajat else '-' }}</td>
+                        <td style="font-size: 0.85rem;">{{ doc.data_upload.strftime('%d.%m.%Y') if doc.data_upload else '-' }}</td>
+                        <td>
+                            <span class="badge-status badge-{{ doc.status }}">
+                                {{ 'Valabil' if doc.status == 'valabil' else 'EXPIRAT' if doc.status == 'expirat' else 'Exp. curand' }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state" style="padding: 24px;">
+                <p>Niciun document incarcat.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Acces rapid per angajat -->
+<div class="card-panel" style="margin-top: 20px;">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-users"></i> Documente per Angajat</h3>
+    </div>
+    <div class="card-panel-body">
+        <form method="GET" id="angajatSelectForm" style="max-width: 400px;">
+            <div class="form-group">
+                <label class="form-label">Selectati angajatul</label>
+                <select class="form-select" id="selectAngajat" onchange="goToAngajat()">
+                    <option value="">-- Selectati --</option>
+                    {% for a in angajati_alerte %}
+                    <option value="{{ a.angajat.id }}">{{ a.angajat.nume_complet }} ({{ a.angajat.functie }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// today variable for template
+var today = new Date();
+
+function goToAngajat() {
+    var sel = document.getElementById('selectAngajat');
+    if (sel.value) {
+        window.location = '{{ url_for("documente.lista_angajat", angajat_id=0) }}'.replace('/0', '/' + sel.value);
+    }
+}
+</script>
+{% endblock %}

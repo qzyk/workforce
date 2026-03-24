@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Istoric Rapoarte - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('rapoarte.panou') }}">Rapoarte</a>
+<span>/</span>
+<span class="active">Istoric</span>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-clock-rotate-left" style="color: var(--primary);"></i> Istoric Rapoarte
+    </h2>
+    <a href="{{ url_for('rapoarte.panou') }}" class="btn btn-secondary">
+        <i class="fa-solid fa-plus"></i> Genereaza Raport Nou
+    </a>
+</div>
+
+<!-- Filtre -->
+<div class="filter-section" style="margin-bottom: 16px;">
+    <form method="GET" style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+        <div class="form-group" style="min-width: 200px; margin-bottom: 0;">
+            <label class="form-label">Tip raport</label>
+            <select name="tip" class="form-select">
+                <option value="">Toate tipurile</option>
+                {% for key, label in tipuri_rapoarte.items() %}
+                <option value="{{ key }}" {{ 'selected' if tip_filtru == key }}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="margin-bottom: 0; display: flex; gap: 8px;">
+            <button type="submit" class="btn btn-outline"><i class="fa-solid fa-filter"></i> Filtreaza</button>
+            <a href="{{ url_for('rapoarte.istoric') }}" class="btn btn-outline"><i class="fa-solid fa-rotate-left"></i></a>
+        </div>
+    </form>
+</div>
+
+<!-- Tabel -->
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-box-archive"></i> Rapoarte Generate</h3>
+        {% if rapoarte %}
+        <span style="font-size: 0.85rem; color: var(--gray-500);">
+            Pagina {{ pagination.page }} / {{ pagination.pages }} | Total: {{ pagination.total }}
+        </span>
+        {% endif %}
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        {% if rapoarte %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Titlu</th>
+                        <th>Tip Raport</th>
+                        <th>Format</th>
+                        <th>Dimensiune</th>
+                        <th>Data Generare</th>
+                        <th>Generat de</th>
+                        <th>Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rapoarte %}
+                    <tr>
+                        <td>{{ (pagination.page - 1) * pagination.per_page + loop.index }}</td>
+                        <td><strong>{{ r.titlu }}</strong></td>
+                        <td><span class="badge-project">{{ tipuri_rapoarte.get(r.tip_raport, r.tip_raport) }}</span></td>
+                        <td>
+                            {% if r.format == 'xlsx' %}
+                            <span class="badge-status badge-aprobat"><i class="fa-solid fa-file-excel"></i> XLSX</span>
+                            {% elif r.format == 'pdf' %}
+                            <span class="badge-status badge-respins"><i class="fa-solid fa-file-pdf"></i> PDF</span>
+                            {% else %}
+                            <span class="badge-status badge-draft">{{ r.format|upper }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if r.dimensiune_fisier %}
+                                {% if r.dimensiune_fisier < 1024 %}
+                                    {{ r.dimensiune_fisier }} B
+                                {% elif r.dimensiune_fisier < 1048576 %}
+                                    {{ '%.1f'|format(r.dimensiune_fisier / 1024) }} KB
+                                {% else %}
+                                    {{ '%.1f'|format(r.dimensiune_fisier / 1048576) }} MB
+                                {% endif %}
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>{{ r.data_generare.strftime('%d.%m.%Y %H:%M') if r.data_generare else '-' }}</td>
+                        <td>{{ r.generator.get_full_name() if r.generator else '-' }}</td>
+                        <td class="actions-cell">
+                            <a href="{{ url_for('rapoarte.descarca', id=r.id) }}" class="btn-action btn-view" title="Descarca">
+                                <i class="fa-solid fa-download"></i>
+                            </a>
+                            {% if current_user.is_manager %}
+                            <form method="POST" action="{{ url_for('rapoarte.sterge', id=r.id) }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action btn-delete" title="Sterge"
+                                        onclick="return confirm('Stergeti acest raport din istoric?')">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginare -->
+        {% if pagination.pages > 1 %}
+        <div class="pagination" style="padding: 12px 16px;">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('rapoarte.istoric', page=pagination.prev_num, tip=tip_filtru) }}" class="pagination-btn">
+                <i class="fa-solid fa-chevron-left"></i>
+            </a>
+            {% endif %}
+            {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if p %}
+            <a href="{{ url_for('rapoarte.istoric', page=p, tip=tip_filtru) }}"
+               class="pagination-btn {{ 'active' if p == pagination.page }}">{{ p }}</a>
+            {% else %}
+            <span class="pagination-btn">...</span>
+            {% endif %}
+            {% endfor %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('rapoarte.istoric', page=pagination.next_num, tip=tip_filtru) }}" class="pagination-btn">
+                <i class="fa-solid fa-chevron-right"></i>
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state" style="padding: 40px;">
+            <i class="fa-solid fa-box-archive" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
+            <h3>Niciun raport generat</h3>
+            <p>Nu exista rapoarte in istoric{{ ' pentru acest tip' if tip_filtru else '' }}.</p>
+            <a href="{{ url_for('rapoarte.panou') }}" class="btn btn-secondary" style="margin-top: 16px;">
+                <i class="fa-solid fa-chart-bar"></i> Genereaza primul raport
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

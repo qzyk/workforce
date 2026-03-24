@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}Pontaj in Masa - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('pontaje.lista') }}">Pontaje</a>
+<span>/</span>
+<span class="active">Pontaj in Masa</span>
+{% endblock %}
+
+{% block content %}
+<h2 style="margin-bottom: 20px;">
+    <i class="fa-solid fa-users" style="color: var(--primary);"></i> Pontaj in Masa
+</h2>
+
+<form method="POST" id="masaForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- Selectie proiect si data -->
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-building"></i> Proiect si Data</h3>
+        </div>
+        <div class="card-panel-body">
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 16px; align-items: end;">
+                <div class="form-group">
+                    <label class="form-label">Proiect <span class="text-danger">*</span></label>
+                    <select name="proiect_id" id="proiectSelect" class="form-select" required>
+                        <option value="">-- Selectati proiect --</option>
+                        {% for p in proiecte %}
+                        <option value="{{ p.id }}">{{ p.cod_proiect }} - {{ p.nume }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Data <span class="text-danger">*</span></label>
+                    <input type="date" name="data" id="dataMasa" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Ora Start implicita</label>
+                    <input type="time" id="defaultStart" class="form-control" value="08:00">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Ora Sfarsit implicita</label>
+                    <input type="time" id="defaultEnd" class="form-control" value="16:00">
+                </div>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" style="margin-top: 8px;" onclick="applyDefaultTimes()">
+                <i class="fa-solid fa-clock"></i> Aplica orele la toti
+            </button>
+        </div>
+    </div>
+
+    <!-- Tabel angajati -->
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-list"></i> Angajati pe Proiect</h3>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label style="font-size: 0.85rem; cursor: pointer;">
+                    <input type="checkbox" id="selectAll" checked onchange="toggleAll(this.checked)"> Selecteaza toti
+                </label>
+            </div>
+        </div>
+        <div class="card-panel-body" style="padding: 0;">
+            <div id="angajatiContainer">
+                <div class="empty-state" style="padding: 24px;">
+                    <i class="fa-solid fa-building" style="font-size: 2rem; color: var(--gray-300);"></i>
+                    <p>Selectati un proiect pentru a incarca angajatii.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Butoane -->
+    <div style="display: flex; justify-content: space-between; margin-top: 20px; margin-bottom: 40px;">
+        <a href="{{ url_for('pontaje.lista') }}" class="btn btn-outline">
+            <i class="fa-solid fa-xmark"></i> Anuleaza
+        </a>
+        <div style="display: flex; gap: 8px;">
+            <button type="submit" class="btn btn-outline" onclick="document.getElementById('actiuneMasa').value='draft'">
+                <i class="fa-solid fa-save"></i> Salveaza ca Draft
+            </button>
+            <button type="submit" class="btn btn-primary" onclick="document.getElementById('actiuneMasa').value='trimite'">
+                <i class="fa-solid fa-paper-plane"></i> Trimite spre Aprobare
+            </button>
+        </div>
+    </div>
+    <input type="hidden" name="actiune" id="actiuneMasa" value="draft">
+</form>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.masa-row {
+    display: grid;
+    grid-template-columns: 40px 40px 1fr 120px 100px 100px 80px 120px 1fr;
+    gap: 8px;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 0.85rem;
+}
+.masa-row:hover { background: var(--gray-50); }
+.masa-header {
+    background: var(--gray-50);
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--gray-600);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.masa-row .form-control,
+.masa-row .form-select {
+    padding: 4px 8px;
+    font-size: 0.85rem;
+    min-height: auto;
+    height: 32px;
+}
+.masa-duplicate {
+    background: #FFF3E0;
+    border-left: 3px solid var(--warning);
+}
+.masa-ore { font-weight: 700; color: var(--primary); text-align: center; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const proiectSelect = document.getElementById('proiectSelect');
+const container = document.getElementById('angajatiContainer');
+const tipuriZi = {{ tipuri_zi|tojson }};
+
+proiectSelect.addEventListener('change', loadAngajati);
+
+function loadAngajati() {
+    const pid = proiectSelect.value;
+    if (!pid) {
+        container.innerHTML = '<div class="empty-state" style="padding:24px;"><p>Selectati un proiect.</p></div>';
+        return;
+    }
+
+    container.innerHTML = '<div style="padding:16px;text-align:center;"><i class="fa-solid fa-spinner fa-spin"></i> Se incarca...</div>';
+
+    fetch('{{ url_for("pontaje.angajati_proiect", proiect_id=0) }}'.replace('/0', '/' + pid))
+        .then(r => r.json())
+        .then(angajati => {
+            if (angajati.length === 0) {
+                container.innerHTML = '<div class="empty-state" style="padding:24px;"><p>Nu exista angajati activi pe acest proiect.</p></div>';
+                return;
+            }
+
+            let html = '<div class="masa-header masa-row"><div></div><div></div><div>Angajat</div><div>Functie</div><div>Ora Start</div><div>Ora Sfarsit</div><div>Ore</div><div>Tip Zi</div><div>Obs.</div></div>';
+
+            angajati.forEach(a => {
+                const defStart = document.getElementById('defaultStart').value;
+                const defEnd = document.getElementById('defaultEnd').value;
+                let tipOptions = '';
+                tipuriZi.forEach(t => {
+                    tipOptions += `<option value="${t[0]}">${t[1]}</option>`;
+                });
+
+                html += `<div class="masa-row" id="row_${a.id}">
+                    <div><input type="checkbox" name="angajat_ids" value="${a.id}" checked class="angajat-check"></div>
+                    <div>`;
+                if (a.poza) {
+                    html += `<img src="/static/uploads/${a.poza}" class="avatar-sm" style="width:30px;height:30px;">`;
+                } else {
+                    html += '<div class="avatar-placeholder" style="width:30px;height:30px;font-size:0.7rem;"><i class="fa-solid fa-user"></i></div>';
+                }
+                html += `</div>
+                    <div><strong>${a.nume_complet}</strong></div>
+                    <div style="color:var(--gray-600);font-size:0.8rem;">${a.functie}</div>
+                    <div><input type="time" name="ora_start_${a.id}" value="${defStart}" class="form-control ora-start" data-id="${a.id}" onchange="calcOre(${a.id})"></div>
+                    <div><input type="time" name="ora_sfarsit_${a.id}" value="${defEnd}" class="form-control ora-sfarsit" data-id="${a.id}" onchange="calcOre(${a.id})"></div>
+                    <div class="masa-ore" id="ore_${a.id}">7.50</div>
+                    <div><select name="tip_zi_${a.id}" class="form-select" id="tip_${a.id}" onchange="calcOre(${a.id})">${tipOptions}</select></div>
+                    <div><input type="text" name="observatii_${a.id}" class="form-control" placeholder=""></div>
+                </div>`;
+            });
+
+            container.innerHTML = html;
+
+            // Calculate initial
+            angajati.forEach(a => calcOre(a.id));
+        });
+}
+
+function calcOre(aid) {
+    const start = document.querySelector(`input[name="ora_start_${aid}"]`).value;
+    const end = document.querySelector(`input[name="ora_sfarsit_${aid}"]`).value;
+    const tip = document.getElementById(`tip_${aid}`).value;
+    const d = document.getElementById('dataMasa').value;
+
+    fetch(`{{ url_for("pontaje.calcul_ore") }}?ora_start=${start}&ora_sfarsit=${end}&tip_zi=${tip}&data=${d}`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById(`ore_${aid}`).textContent = data.ore_lucrate.toFixed(2);
+        });
+}
+
+function toggleAll(checked) {
+    document.querySelectorAll('.angajat-check').forEach(cb => cb.checked = checked);
+}
+
+function applyDefaultTimes() {
+    const defStart = document.getElementById('defaultStart').value;
+    const defEnd = document.getElementById('defaultEnd').value;
+    document.querySelectorAll('.ora-start').forEach(el => { el.value = defStart; });
+    document.querySelectorAll('.ora-sfarsit').forEach(el => { el.value = defEnd; });
+    // Recalculate all
+    document.querySelectorAll('.ora-start').forEach(el => {
+        const aid = el.dataset.id;
+        calcOre(aid);
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% block title %}Documente Proiect {{ proiect.cod_proiect }} - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.lista') }}">Proiecte</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.detalii', id=proiect.id) }}">{{ proiect.cod_proiect }}</a></li>
+<li class="breadcrumb-item active">Documente</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.dp-header-info { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85rem; color: var(--gray-600); margin-top: 6px; }
+.dp-header-info span { display: inline-flex; align-items: center; gap: 4px; }
+.dp-progress-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.dp-progress-card { background: white; border-radius: 10px; padding: 14px 18px; box-shadow: 0 1px 4px rgba(0,0,0,.07); border-left: 5px solid var(--gray-300); display: flex; flex-direction: column; gap: 8px; }
+.dp-progress-top { display: flex; justify-content: space-between; align-items: center; }
+.dp-progress-label { font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 6px; }
+.dp-progress-label i { width: 22px; text-align: center; }
+.dp-progress-stats { font-size: 0.8rem; color: var(--gray-500); }
+.dp-progress-bar-bg { background: var(--gray-100); border-radius: 6px; height: 8px; overflow: hidden; }
+.dp-progress-bar-fill { height: 100%; border-radius: 6px; transition: width .4s; }
+.dp-progress-bottom { font-size: 0.78rem; color: var(--gray-500); }
+.dp-progress-bottom .lipsa { color: #c62828; font-weight: 600; }
+.dp-progress-bottom .complet { color: #2e7d32; font-weight: 600; }
+
+.dp-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--gray-200); margin-bottom: 0; overflow-x: auto; }
+.dp-tab { padding: 10px 18px; font-size: 0.88rem; font-weight: 600; color: var(--gray-500); cursor: pointer; text-decoration: none; border-bottom: 3px solid transparent; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transition: all .2s; }
+.dp-tab:hover { color: var(--primary); background: var(--gray-50); }
+.dp-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+.dp-tab .tab-badge { background: var(--gray-200); color: var(--gray-600); font-size: 0.7rem; padding: 1px 7px; border-radius: 10px; font-weight: 700; }
+.dp-tab.active .tab-badge { background: var(--primary); color: white; }
+
+.dp-etapa-bar { display: flex; gap: 6px; padding: 12px 0; flex-wrap: wrap; }
+.dp-etapa-btn { padding: 5px 14px; font-size: 0.82rem; border-radius: 16px; background: var(--gray-100); color: var(--gray-600); text-decoration: none; font-weight: 500; transition: all .15s; }
+.dp-etapa-btn:hover { background: var(--gray-200); }
+.dp-etapa-btn.active { background: var(--primary); color: white; }
+
+.dp-tab-content { display: none; }
+.dp-tab-content.active { display: block; }
+
+.dp-lipsa-row { background: #ffebee !important; }
+.dp-lipsa-row td { color: #b71c1c; }
+
+.badge-status-doc { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+.badge-draft { background: #e0e0e0; color: #616161; }
+.badge-emis { background: #bbdefb; color: #1565c0; }
+.badge-aprobat { background: #c8e6c9; color: #2e7d32; }
+.badge-in_revizie, .badge-warning-custom { background: #fff9c4; color: #f57f17; }
+.badge-anulat, .badge-respins { background: #ffcdd2; color: #c62828; }
+.badge-arhivat { background: #cfd8dc; color: #37474f; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+    <div>
+        <h2 style="margin: 0 0 4px 0;">
+            <i class="fa-solid fa-folder-open" style="color: var(--primary);"></i>
+            Documente Proiect: {{ proiect.cod_proiect }} {{ proiect.nume }}
+        </h2>
+        <div class="dp-header-info">
+            <span><i class="fa-solid fa-location-dot"></i> {{ proiect.locatie or '-' }}</span>
+            <span><i class="fa-solid fa-handshake"></i> {{ proiect.beneficiar or '-' }}</span>
+            <span class="badge-status badge-{{ proiect.status }}">{{ proiect.status|capitalize }}</span>
+            {% if proiect.manager %}
+            <span><i class="fa-solid fa-user-tie"></i> {{ proiect.manager.get_full_name() }}</span>
+            {% endif %}
+        </div>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <a href="{{ url_for('doc_proiecte.adauga', proiect_id=proiect.id) }}" class="btn btn-secondary">
+            <i class="fa-solid fa-plus"></i> Adauga Document
+        </a>
+        <a href="{{ url_for('doc_proiecte.export_index', proiect_id=proiect.id) }}" class="btn btn-success">
+            <i class="fa-solid fa-file-excel"></i> Export Index
+        </a>
+        <a href="{{ url_for('doc_proiecte.verificare_completitudine', proiect_id=proiect.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-clipboard-check"></i> Verificare
+        </a>
+    </div>
+</div>
+
+<!-- Bara progres per instalatie -->
+<div class="dp-progress-grid">
+    {% for comp in completitudine %}
+    <div class="dp-progress-card" style="border-left-color: {{ comp.instalatie.culoare_hex }};">
+        <div class="dp-progress-top">
+            <span class="dp-progress-label" style="color: {{ comp.instalatie.culoare_hex }};">
+                <i class="fa-solid {{ comp.instalatie.icon_css }}"></i> {{ comp.instalatie.cod }}
+            </span>
+            <span class="dp-progress-stats">{{ comp.prezente }}/{{ comp.total_obligatorii }} obligatorii</span>
+        </div>
+        <div class="dp-progress-bar-bg">
+            <div class="dp-progress-bar-fill" style="width: {{ comp.procent }}%; background: {{ comp.instalatie.culoare_hex }};"></div>
+        </div>
+        <div class="dp-progress-bottom">
+            {% if comp.lipsa|length > 0 %}
+            <span class="lipsa">{{ comp.lipsa|length }} lipsa obligatorii</span>
+            {% else %}
+            <span class="complet"><i class="fa-solid fa-check"></i> Complet</span>
+            {% endif %}
+            {% if comp.expirate > 0 %}
+            &middot; <span style="color: #e65100;">{{ comp.expirate }} expirate</span>
+            {% endif %}
+            &middot; {{ comp.total_docs }} total documente
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Tabs per instalatie -->
+<div class="dp-tabs" id="instTabs">
+    {% for inst in instalatii %}
+    <a class="dp-tab {% if (tab_activ == inst.cod) or (not tab_activ and loop.first) %}active{% endif %}"
+       data-tab="{{ inst.cod }}" onclick="switchTab('{{ inst.cod }}')"
+       style="{% if (tab_activ == inst.cod) or (not tab_activ and loop.first) %}border-bottom-color: {{ inst.culoare_hex }}; color: {{ inst.culoare_hex }};{% endif %}"
+       data-color="{{ inst.culoare_hex }}">
+        <i class="fa-solid {{ inst.icon_css }}"></i>
+        {{ inst.cod }}
+        <span class="tab-badge">{{ documente_per_inst.get(inst.cod, [])|length }}</span>
+    </a>
+    {% endfor %}
+</div>
+
+<!-- Continut tab-uri -->
+{% for inst in instalatii %}
+<div class="dp-tab-content {% if (tab_activ == inst.cod) or (not tab_activ and loop.first) %}active{% endif %}"
+     id="tab-{{ inst.cod }}">
+
+    <!-- Sub-tabs etape -->
+    <div class="dp-etapa-bar">
+        <a class="dp-etapa-btn {% if not etapa_activa %}active{% endif %}"
+           href="{{ url_for('doc_proiecte.index', proiect_id=proiect.id, tab=inst.cod) }}">Toate</a>
+        {% for val, label in [('proiectare','Proiectare'),('executie','Executie'),('receptie','Receptie'),('garantie','Garantie')] %}
+        <a class="dp-etapa-btn {% if etapa_activa == val %}active{% endif %}"
+           href="{{ url_for('doc_proiecte.index', proiect_id=proiect.id, tab=inst.cod, etapa=val) }}">{{ label }}</a>
+        {% endfor %}
+    </div>
+
+    <!-- Tabel documente -->
+    <div class="card-panel" style="margin-bottom: 12px;">
+        <div class="card-panel-body" style="padding: 0;">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nr</th>
+                            <th>Tip Document</th>
+                            <th>Denumire</th>
+                            <th>Nr.Doc / Rev.</th>
+                            <th>Data Emitere</th>
+                            <th>Status</th>
+                            <th>Emitent</th>
+                            <th>Actiuni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set docs = documente_per_inst.get(inst.cod, []) %}
+                        {% for doc in docs %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td style="font-size: 0.82rem;">{{ doc.tip_document.denumire if doc.tip_document else '-' }}</td>
+                            <td><strong>{{ doc.denumire_document }}</strong></td>
+                            <td>
+                                {{ doc.nr_document or '-' }}
+                                <span style="color: var(--gray-400); font-size: 0.8rem;">{{ doc.revizie }}</span>
+                            </td>
+                            <td>{{ doc.data_emitere.strftime('%d.%m.%Y') if doc.data_emitere else '-' }}</td>
+                            <td>
+                                <span class="badge-status-doc badge-{{ doc.status }}">
+                                    {{ doc.status.replace('_',' ')|title }}
+                                    {% if doc.status == 'aprobat' %}<i class="fa-solid fa-check" style="font-size: 0.65rem;"></i>{% endif %}
+                                </span>
+                            </td>
+                            <td style="font-size: 0.82rem;">{{ doc.emitent or '-' }}</td>
+                            <td class="actions-cell" style="white-space: nowrap;">
+                                {% if doc.fisier_path %}
+                                <a href="{{ url_for('doc_proiecte.preview', proiect_id=proiect.id, doc_id=doc.id) }}"
+                                   class="btn-action btn-view" title="Preview" target="_blank"><i class="fa-solid fa-eye"></i></a>
+                                <a href="{{ url_for('doc_proiecte.descarca', proiect_id=proiect.id, doc_id=doc.id) }}"
+                                   class="btn-action btn-approve" title="Descarca"><i class="fa-solid fa-download"></i></a>
+                                {% endif %}
+                                <a href="{{ url_for('doc_proiecte.detaliu', proiect_id=proiect.id, doc_id=doc.id) }}"
+                                   class="btn-action btn-edit" title="Detalii / Revizie"><i class="fa-solid fa-file-pen"></i></a>
+                                <a href="{{ url_for('doc_proiecte.editeaza', proiect_id=proiect.id, doc_id=doc.id) }}"
+                                   class="btn-action btn-edit" title="Editeaza"><i class="fa-solid fa-pen"></i></a>
+                                <form method="POST" action="{{ url_for('doc_proiecte.sterge', proiect_id=proiect.id, doc_id=doc.id) }}" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-action btn-delete" title="Sterge"
+                                            onclick="return confirm('Stergeti documentul {{ doc.denumire_document }}?')">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+
+                        <!-- Documente obligatorii lipsa -->
+                        {% set lipsa = lipsa_per_inst.get(inst.cod, []) %}
+                        {% for tip_doc in lipsa %}
+                        <tr class="dp-lipsa-row">
+                            <td><i class="fa-solid fa-triangle-exclamation"></i></td>
+                            <td style="font-size: 0.82rem;">{{ tip_doc.denumire }}</td>
+                            <td><strong>LIPSA</strong></td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td><span class="badge-status-doc badge-anulat">Lipsa</span></td>
+                            <td>-</td>
+                            <td>
+                                <a href="{{ url_for('doc_proiecte.adauga', proiect_id=proiect.id, instalatie=inst.id, tip_doc=tip_doc.id) }}"
+                                   class="btn btn-sm" style="padding: 2px 10px; font-size: 0.75rem; background: #c62828; color: white; border-radius: 4px; text-decoration: none;">
+                                    <i class="fa-solid fa-plus"></i> Adauga
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+
+                        {% if not docs and not lipsa %}
+                        <tr>
+                            <td colspan="8" style="text-align: center; padding: 30px; color: var(--gray-400);">
+                                <i class="fa-solid fa-folder-open" style="font-size: 1.5rem; margin-bottom: 8px;"></i><br>
+                                Niciun document pentru {{ inst.denumire }}
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function switchTab(cod) {
+    document.querySelectorAll('.dp-tab').forEach(t => {
+        t.classList.remove('active');
+        t.style.borderBottomColor = 'transparent';
+        t.style.color = '';
+    });
+    document.querySelectorAll('.dp-tab-content').forEach(c => c.classList.remove('active'));
+
+    const tab = document.querySelector('.dp-tab[data-tab="'+cod+'"]');
+    const content = document.getElementById('tab-'+cod);
+    if (tab && content) {
+        tab.classList.add('active');
+        tab.style.borderBottomColor = tab.dataset.color;
+        tab.style.color = tab.dataset.color;
+        content.classList.add('active');
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Eroare server - INNOVA WORKFORCE{% endblock %}
+
+{% block content %}
+<div class="empty-state" style="padding: 60px 20px;">
+    <i class="fa-solid fa-gear" style="font-size: 60px; color: var(--danger);"></i>
+    <h1 style="font-size: 48px; font-weight: 800; margin: 16px 0 8px; color: var(--gray-800);">500</h1>
+    <h4 style="color: var(--gray-600); margin-bottom: 16px;">Eroare interna de server</h4>
+    <p style="color: var(--gray-500); margin-bottom: 24px;">A aparut o eroare neasteptata. Va rugam incercati din nou.</p>
+    <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary">
+        <i class="fa-solid fa-house"></i> Inapoi la Dashboard
+    </a>
+</div>
+{% endblock %}
+
+{% block public_content %}
+<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg);">
+    <div style="text-align: center; padding: 40px;">
+        <i class="fa-solid fa-gear" style="font-size: 60px; color: var(--danger);"></i>
+        <h1 style="font-size: 48px; font-weight: 800; margin: 16px 0;">500</h1>
+        <p style="color: var(--gray-600);">Eroare interna de server.</p>
+        <a href="/" class="btn btn-primary" style="margin-top: 16px;">
+            <i class="fa-solid fa-house"></i> Pagina principala
+        </a>
+    </div>
+</div>
+{% endblock %}

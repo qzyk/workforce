@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Editeaza Document - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('documente.panou') }}">Documente</a>
+<span>/</span>
+{% if doc.angajat %}
+<a href="{{ url_for('documente.lista_angajat', angajat_id=doc.angajat_id) }}">{{ doc.angajat.nume_complet }}</a>
+<span>/</span>
+{% endif %}
+<span class="active">Editeaza</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 700px; margin: 0 auto;">
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-pen-to-square"></i> Editeaza Document</h3>
+        </div>
+        <div class="card-panel-body">
+            <!-- Info fisier -->
+            <div style="padding: 12px 16px; background: var(--gray-50); border-radius: var(--radius-sm); margin-bottom: 20px; display: flex; align-items: center; gap: 12px;">
+                <i class="fa-solid fa-file" style="font-size: 1.5rem; color: var(--primary);"></i>
+                <div>
+                    <div style="font-weight: 600;">{{ doc.nume_document }}</div>
+                    <small style="color: var(--gray-500);">
+                        {{ doc.marime_formatata }} |
+                        Incarcat {{ doc.data_upload.strftime('%d.%m.%Y %H:%M') if doc.data_upload else '-' }}
+                        {% if doc.angajat %} | {{ doc.angajat.nume_complet }}{% endif %}
+                    </small>
+                </div>
+            </div>
+
+            <form method="POST" novalidate>
+                {{ form.hidden_tag() }}
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">Tip Document <span class="text-danger">*</span></label>
+                        {{ form.tip(class_="form-select") }}
+                        {% if form.tip.errors %}
+                        <div style="color: var(--danger); font-size: 0.8rem;">{{ form.tip.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Denumire <span class="text-danger">*</span></label>
+                        {{ form.nume_document(class_="form-control") }}
+                        {% if form.nume_document.errors %}
+                        <div style="color: var(--danger); font-size: 0.8rem;">{{ form.nume_document.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Emitent</label>
+                        {{ form.emitent(class_="form-control") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Serie / Numar</label>
+                        {{ form.serie_numar(class_="form-control") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Data Emitere</label>
+                        {{ form.data_emitere(class_="form-control") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Data Expirare</label>
+                        {{ form.data_expirare(class_="form-control") }}
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 16px;">
+                    <label class="form-label">Observatii</label>
+                    {{ form.observatii(class_="form-control", rows="2") }}
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-save"></i> Salveaza
+                    </button>
+                    {% if doc.angajat_id %}
+                    <a href="{{ url_for('documente.lista_angajat', angajat_id=doc.angajat_id) }}" class="btn btn-outline">
+                        <i class="fa-solid fa-xmark"></i> Anuleaza
+                    </a>
+                    {% else %}
+                    <a href="{{ url_for('documente.panou') }}" class="btn btn-outline">
+                        <i class="fa-solid fa-xmark"></i> Anuleaza
+                    </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+
+{% block title %}Pontaje - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<span class="active">Pontaje</span>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;"><i class="fa-solid fa-calendar-check" style="color: var(--primary);"></i> Pontaje</h2>
+</div>
+
+<!-- SECTIUNEA 1: Actiuni rapide -->
+<div class="stats-bar" style="margin-bottom: 20px;">
+    <div class="stat-mini">
+        <div class="stat-icon bg-success"><i class="fa-solid fa-user-check"></i></div>
+        <div>
+            <div class="stat-number">{{ pontaje_azi }} / {{ total_angajati_activi }}</div>
+            <div class="stat-label">Pontaje Astazi</div>
+        </div>
+    </div>
+    <div class="stat-mini" style="cursor: pointer;" onclick="window.location='{{ url_for('pontaje.adauga') }}'">
+        <div class="stat-icon bg-primary"><i class="fa-solid fa-plus"></i></div>
+        <div>
+            <div class="stat-number" style="font-size: 0.9rem;">Pontaj Individual</div>
+            <div class="stat-label">Adauga</div>
+        </div>
+    </div>
+    <div class="stat-mini" style="cursor: pointer;" onclick="window.location='{{ url_for('pontaje.adauga_multiplu') }}'">
+        <div class="stat-icon bg-warning"><i class="fa-solid fa-users"></i></div>
+        <div>
+            <div class="stat-number" style="font-size: 0.9rem;">Pontaj in Masa</div>
+            <div class="stat-label">Echipa</div>
+        </div>
+    </div>
+    {% if current_user.is_manager %}
+    <div class="stat-mini" style="cursor: pointer;" onclick="window.location='{{ url_for('pontaje.aprobare') }}'">
+        <div class="stat-icon" style="background: {{ 'var(--danger)' if pontaje_de_aprobat > 0 else 'var(--gray-400)' }};"><i class="fa-solid fa-clipboard-check"></i></div>
+        <div>
+            <div class="stat-number">{{ pontaje_de_aprobat }}</div>
+            <div class="stat-label">De Aprobat</div>
+        </div>
+    </div>
+    {% endif %}
+    <div class="stat-mini" style="cursor: pointer;" onclick="window.location='{{ url_for('pontaje.calendar_view') }}'">
+        <div class="stat-icon" style="background: var(--info);"><i class="fa-solid fa-calendar-days"></i></div>
+        <div>
+            <div class="stat-number" style="font-size: 0.9rem;">Calendar</div>
+            <div class="stat-label">Per Angajat</div>
+        </div>
+    </div>
+</div>
+
+<!-- SECTIUNEA 2: Calendar lunar -->
+<div class="card-panel" style="margin-bottom: 20px;">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-calendar"></i> Calendar Prezenta</h3>
+        <div class="cal-month-nav">
+            {% set prev_month = luna - 1 if luna > 1 else 12 %}
+            {% set prev_year = anul if luna > 1 else anul - 1 %}
+            {% set next_month = luna + 1 if luna < 12 else 1 %}
+            {% set next_year = anul if luna < 12 else anul + 1 %}
+            <a href="{{ url_for('pontaje.lista', luna=prev_month, anul=prev_year) }}" class="btn btn-sm btn-outline">
+                <i class="fa-solid fa-chevron-left"></i>
+            </a>
+            <span style="font-weight: 600; min-width: 140px; text-align: center;">
+                {% set month_names = ['', 'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie', 'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie'] %}
+                {{ month_names[luna] }} {{ anul }}
+            </span>
+            <a href="{{ url_for('pontaje.lista', luna=next_month, anul=next_year) }}" class="btn btn-sm btn-outline">
+                <i class="fa-solid fa-chevron-right"></i>
+            </a>
+        </div>
+    </div>
+    <div class="card-panel-body">
+        <div style="display: flex; gap: 20px;">
+            <!-- Calendar Grid -->
+            <div style="flex: 1;">
+                <div class="pontaj-calendar" style="grid-template-columns: repeat(7, 1fr);">
+                    <!-- Header zile -->
+                    {% for zi in ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du'] %}
+                    <div class="cal-header" style="{{ 'color: var(--danger);' if loop.index > 5 }}">{{ zi }}</div>
+                    {% endfor %}
+
+                    <!-- Empty cells for first day offset -->
+                    {% for _ in range(first_dow) %}
+                    <div class="cal-day empty"></div>
+                    {% endfor %}
+
+                    {% for cd in calendar_data %}
+                    <div class="cal-day cal-{{ cd.tip }} {{ 'today' if cd.is_today }}"
+                         onclick="showDayDetail('{{ cd.data.strftime('%Y-%m-%d') }}', {{ cd.zi }})"
+                         style="cursor: pointer;">
+                        <span class="cal-day-num">{{ cd.zi }}</span>
+                        {% if cd.nr_pontaje > 0 and cd.tip not in ('weekend', 'sarbatoare', 'viitor') %}
+                        <span class="cal-day-count">{{ cd.nr_pontaje }}</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Legend -->
+                <div class="cal-legend" style="margin-top: 12px;">
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #2e7d32;"></span> >80%</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #66bb6a;"></span> 50-80%</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #fdd835;"></span> 20-50%</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #ef5350;"></span> <20%</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: var(--gray-200);"></span> Weekend</div>
+                </div>
+            </div>
+
+            <!-- Day Detail Sidebar -->
+            <div id="dayDetailSidebar" style="width: 320px; display: none;">
+                <div class="card-panel" style="margin: 0;">
+                    <div class="card-panel-header">
+                        <h3 id="dayDetailTitle"><i class="fa-solid fa-calendar-day"></i> Detalii Zi</h3>
+                    </div>
+                    <div class="card-panel-body" id="dayDetailContent" style="padding: 0; max-height: 350px; overflow-y: auto;">
+                        <div class="empty-state" style="padding: 16px;">
+                            <p>Click pe o zi din calendar</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SECTIUNEA 3: Tabel pontaje + Filtre + Export -->
+<div class="card-panel" style="margin-bottom: 20px;">
+    <div class="card-panel-header" style="cursor: pointer;" onclick="this.parentElement.querySelector('.filter-body').classList.toggle('collapsed')">
+        <h3 style="margin:0; font-size: 0.95rem;"><i class="fa-solid fa-filter"></i> Filtre</h3>
+        <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem;"></i>
+    </div>
+    <div class="card-panel-body filter-body">
+        <form method="GET" action="{{ url_for('pontaje.lista') }}">
+            <input type="hidden" name="luna" value="{{ luna }}">
+            <input type="hidden" name="anul" value="{{ anul }}">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; align-items: end;">
+                <div class="form-group">
+                    <label class="form-label">Data</label>
+                    <input type="date" name="data" class="form-control" value="{{ data_filtru }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Proiect</label>
+                    <select name="proiect_id" class="form-select">
+                        <option value="">Toate</option>
+                        {% for p in proiecte %}
+                        <option value="{{ p.id }}" {{ 'selected' if proiect_id_filtru == p.id|string }}>{{ p.cod_proiect }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Angajat</label>
+                    <select name="angajat_id" class="form-select">
+                        <option value="">Toti</option>
+                        {% for a in angajati %}
+                        <option value="{{ a.id }}" {{ 'selected' if angajat_id_filtru == a.id|string }}>{{ a.nume_complet }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select">
+                        <option value="">Toate</option>
+                        <option value="draft" {{ 'selected' if status_filtru == 'draft' }}>Draft</option>
+                        <option value="trimis" {{ 'selected' if status_filtru == 'trimis' }}>Trimis</option>
+                        <option value="aprobat" {{ 'selected' if status_filtru == 'aprobat' }}>Aprobat</option>
+                        <option value="respins" {{ 'selected' if status_filtru == 'respins' }}>Respins</option>
+                    </select>
+                </div>
+                <div class="form-group" style="display: flex; gap: 8px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">
+                        <i class="fa-solid fa-search"></i> Filtreaza
+                    </button>
+                    <a href="{{ url_for('pontaje.lista', luna=luna, anul=anul) }}" class="btn btn-outline" style="flex: 1;">
+                        <i class="fa-solid fa-rotate-left"></i>
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Export + Import -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <span style="font-size: 0.9rem; color: var(--gray-600);">{{ pontaje|length }} pontaje afisate</span>
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('pontaje.export_lunar', luna=luna, anul=anul) }}" class="btn btn-sm btn-success">
+            <i class="fa-solid fa-file-excel"></i> Export Luna
+        </a>
+        <a href="{{ url_for('pontaje.template_import') }}" class="btn btn-sm btn-outline">
+            <i class="fa-solid fa-download"></i> Template
+        </a>
+        <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('importModal').classList.add('active')">
+            <i class="fa-solid fa-file-import"></i> Import
+        </button>
+    </div>
+</div>
+
+<div class="card-panel">
+    <div class="card-panel-body" style="padding: 0;">
+        {% if pontaje %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Angajat</th>
+                        <th>Proiect</th>
+                        <th>Start</th>
+                        <th>Sfarsit</th>
+                        <th>Ore</th>
+                        <th>Supl.</th>
+                        <th>Tip Zi</th>
+                        <th>Status</th>
+                        <th style="width: 130px;">Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in pontaje %}
+                    <tr>
+                        <td>{{ p.data.strftime('%d.%m.%Y') if p.data else '-' }}</td>
+                        <td>
+                            <a href="{{ url_for('pontaje.calendar_view', angajat_id=p.angajat_id, luna=luna, anul=anul) }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
+                                {{ p.angajat.nume_complet if p.angajat else '-' }}
+                            </a>
+                        </td>
+                        <td><span class="badge-project">{{ p.proiect.cod_proiect if p.proiect else '-' }}</span></td>
+                        <td>{{ p.ora_start or '-' }}</td>
+                        <td>{{ p.ora_sfarsit or '-' }}</td>
+                        <td><strong>{{ p.ore_lucrate or 0 }}h</strong></td>
+                        <td>
+                            {% set supl = (p.ore_suplimentare_50 or 0) + (p.ore_suplimentare_100 or 0) %}
+                            {% if supl > 0 %}
+                            <span style="color: var(--danger); font-weight: 600;">{{ supl }}h</span>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>{{ p.tip_zi|capitalize if p.tip_zi else '-' }}</td>
+                        <td><span class="badge-status badge-{{ p.status }}">{{ p.status|capitalize }}</span></td>
+                        <td>
+                            <div style="display: flex; gap: 4px;">
+                                {% if p.status == 'draft' %}
+                                <form method="POST" action="{{ url_for('pontaje.trimite', id=p.id) }}" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-action btn-edit" title="Trimite">
+                                        <i class="fa-solid fa-paper-plane"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                                {% if p.status in ('draft', 'respins') %}
+                                <a href="{{ url_for('pontaje.editeaza', id=p.id) }}" class="btn-action btn-edit" title="Editeaza">
+                                    <i class="fa-solid fa-pen"></i>
+                                </a>
+                                <form method="POST" action="{{ url_for('pontaje.sterge', id=p.id) }}" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-action btn-delete" title="Sterge"
+                                            onclick="return confirm('Stergeti acest pontaj?')">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                                {% if p.status == 'trimis' and current_user.is_manager %}
+                                <form method="POST" action="{{ url_for('pontaje.aproba', id=p.id) }}" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-action btn-approve" title="Aproba">
+                                        <i class="fa-solid fa-check"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding: 24px;">
+            <i class="fa-solid fa-clock" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
+            <h3>Niciun pontaj gasit</h3>
+            <p>Nu exista pontaje care sa corespunda criteriilor selectate.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Modal Import -->
+<div id="importModal" class="import-modal">
+    <div class="import-modal-content">
+        <h3><i class="fa-solid fa-file-import"></i> Import Pontaje din Excel</h3>
+        <p style="color: var(--gray-600); margin-bottom: 16px;">
+            Incarcati un fisier Excel (.xlsx) cu pontajele. Descarcati template-ul pentru formatul corect.
+        </p>
+        <a href="{{ url_for('pontaje.template_import') }}" class="btn btn-outline" style="margin-bottom: 20px; display: inline-block;">
+            <i class="fa-solid fa-download"></i> Descarca Template
+        </a>
+        <form method="POST" action="{{ url_for('pontaje.import_excel') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label class="form-label">Fisier Excel (.xlsx)</label>
+                <input type="file" name="fisier" class="form-control" accept=".xlsx" required>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 16px;">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fa-solid fa-upload"></i> Importa
+                </button>
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('importModal').classList.remove('active')">
+                    Anuleaza
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.filter-body.collapsed { display: none; }
+.cal-plin { background: #2e7d32; color: white; }
+.cal-bun { background: #66bb6a; color: white; }
+.cal-mediu { background: #fdd835; color: #333; }
+.cal-slab { background: #ef5350; color: white; }
+.cal-zero { background: var(--gray-100); }
+.cal-weekend { background: var(--gray-100); color: var(--gray-400); }
+.cal-sarbatoare { background: #FFCDD2; color: var(--danger); }
+.cal-viitor { background: white; color: var(--gray-300); }
+.cal-day-count {
+    font-size: 0.7rem;
+    font-weight: 700;
+    display: block;
+    line-height: 1;
+}
+.cal-legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    color: var(--gray-600);
+}
+.cal-legend-item { display: flex; align-items: center; gap: 4px; }
+.cal-legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    display: inline-block;
+}
+#dayDetailSidebar .data-table td,
+#dayDetailSidebar .data-table th { font-size: 0.8rem; padding: 6px 8px; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function showDayDetail(dateStr, day) {
+    const sidebar = document.getElementById('dayDetailSidebar');
+    const title = document.getElementById('dayDetailTitle');
+    const content = document.getElementById('dayDetailContent');
+
+    sidebar.style.display = 'block';
+    title.innerHTML = '<i class="fa-solid fa-calendar-day"></i> ' + day + '.' + '{{ luna }}'.padStart(2,'0') + '.{{ anul }}';
+    content.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray-400);"><i class="fa-solid fa-spinner fa-spin"></i></div>';
+
+    fetch('{{ url_for("pontaje.situatie_zilnica") }}?data=' + dateStr)
+        .then(r => r.json())
+        .then(data => {
+            if (data.length === 0) {
+                content.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray-400);">Niciun pontaj in aceasta zi.</div>';
+                return;
+            }
+            let html = '<table class="data-table"><thead><tr><th>Angajat</th><th>Proiect</th><th>Ore</th><th>Status</th></tr></thead><tbody>';
+            data.forEach(p => {
+                html += '<tr>';
+                html += '<td><strong>' + p.angajat + '</strong></td>';
+                html += '<td>' + p.proiect + '</td>';
+                html += '<td>' + p.ore_lucrate + 'h</td>';
+                html += '<td><span class="badge-status badge-' + p.status + '">' + p.status.charAt(0).toUpperCase() + p.status.slice(1) + '</span></td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            content.innerHTML = html;
+        });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+
+{% block title %}Proiecte - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<span class="active">Proiecte</span>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;"><i class="fa-solid fa-building" style="color: var(--primary);"></i> Proiecte</h2>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <a href="{{ url_for('proiecte.adauga') }}" class="btn btn-primary">
+            <i class="fa-solid fa-plus"></i> Proiect Nou
+        </a>
+    </div>
+</div>
+
+<!-- Stats Bar -->
+<div class="stats-bar">
+    <div class="stat-mini">
+        <div class="stat-icon bg-success"><i class="fa-solid fa-play"></i></div>
+        <div>
+            <div class="stat-number">{{ total_active }}</div>
+            <div class="stat-label">Active</div>
+        </div>
+    </div>
+    <div class="stat-mini">
+        <div class="stat-icon" style="background: var(--info);"><i class="fa-solid fa-clock"></i></div>
+        <div>
+            <div class="stat-number">{{ total_planificate }}</div>
+            <div class="stat-label">Planificate</div>
+        </div>
+    </div>
+    <div class="stat-mini">
+        <div class="stat-icon bg-gray"><i class="fa-solid fa-check-double"></i></div>
+        <div>
+            <div class="stat-number">{{ total_finalizate }}</div>
+            <div class="stat-label">Finalizate</div>
+        </div>
+    </div>
+    <div class="stat-mini">
+        <div class="stat-icon bg-warning"><i class="fa-solid fa-pause"></i></div>
+        <div>
+            <div class="stat-number">{{ total_suspendate }}</div>
+            <div class="stat-label">Suspendate</div>
+        </div>
+    </div>
+    <div class="stat-mini">
+        <div class="stat-icon bg-primary"><i class="fa-solid fa-coins"></i></div>
+        <div>
+            <div class="stat-number">{{ '{:,.0f}'.format(buget_total_all) }}</div>
+            <div class="stat-label">Buget Total (RON)</div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtre -->
+<div class="card-panel" style="margin-bottom: 20px;">
+    <div class="card-panel-header" style="cursor: pointer;" onclick="this.parentElement.querySelector('.filter-body').classList.toggle('collapsed')">
+        <h3 style="margin:0; font-size: 0.95rem;"><i class="fa-solid fa-filter"></i> Filtre</h3>
+        <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem;"></i>
+    </div>
+    <div class="card-panel-body filter-body">
+        <form method="GET" action="{{ url_for('proiecte.lista') }}">
+            <input type="hidden" name="view" value="{{ view_mode }}">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; align-items: end;">
+                <div class="form-group">
+                    <label class="form-label">Cautare</label>
+                    <input type="text" name="cautare" class="form-control" value="{{ cautare }}" placeholder="Nume, cod, beneficiar...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select">
+                        <option value="">Toate</option>
+                        <option value="planificat" {{ 'selected' if status_filtru == 'planificat' }}>Planificat</option>
+                        <option value="activ" {{ 'selected' if status_filtru == 'activ' }}>Activ</option>
+                        <option value="suspendat" {{ 'selected' if status_filtru == 'suspendat' }}>Suspendat</option>
+                        <option value="finalizat" {{ 'selected' if status_filtru == 'finalizat' }}>Finalizat</option>
+                        <option value="anulat" {{ 'selected' if status_filtru == 'anulat' }}>Anulat</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Manager</label>
+                    <select name="manager" class="form-select">
+                        <option value="">Toti</option>
+                        {% for m in manageri %}
+                        <option value="{{ m.id }}" {{ 'selected' if manager_filtru == m.id|string }}>{{ m.get_full_name() }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Sortare</label>
+                    <select name="sort" class="form-select">
+                        <option value="data_start_desc" {{ 'selected' if sort == 'data_start_desc' }}>Data start (recent)</option>
+                        <option value="data_start_asc" {{ 'selected' if sort == 'data_start_asc' }}>Data start (vechi)</option>
+                        <option value="nume_asc" {{ 'selected' if sort == 'nume_asc' }}>Nume A-Z</option>
+                        <option value="nume_desc" {{ 'selected' if sort == 'nume_desc' }}>Nume Z-A</option>
+                        <option value="buget_desc" {{ 'selected' if sort == 'buget_desc' }}>Buget (descrescator)</option>
+                        <option value="status" {{ 'selected' if sort == 'status' }}>Status</option>
+                    </select>
+                </div>
+                <div class="form-group" style="display: flex; gap: 8px;">
+                    <button type="submit" class="btn btn-primary" style="flex:1;">
+                        <i class="fa-solid fa-search"></i> Filtreaza
+                    </button>
+                    <a href="{{ url_for('proiecte.lista') }}" class="btn btn-outline" style="flex:1;">
+                        <i class="fa-solid fa-rotate-left"></i> Reset
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- View Toggle -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <span style="font-size: 0.9rem; color: var(--gray-600);">{{ pagination.total }} proiecte gasite</span>
+    <div style="display: flex; gap: 4px;">
+        <a href="{{ url_for('proiecte.lista', view='cards', status=status_filtru, cautare=cautare, manager=manager_filtru, sort=sort) }}"
+           class="btn-action {{ 'btn-view' if view_mode == 'cards' else '' }}" title="Carduri"
+           style="{{ 'background: var(--primary); color: white;' if view_mode == 'cards' else '' }}">
+            <i class="fa-solid fa-grip"></i>
+        </a>
+        <a href="{{ url_for('proiecte.lista', view='table', status=status_filtru, cautare=cautare, manager=manager_filtru, sort=sort) }}"
+           class="btn-action {{ 'btn-view' if view_mode == 'table' else '' }}" title="Tabel"
+           style="{{ 'background: var(--primary); color: white;' if view_mode == 'table' else '' }}">
+            <i class="fa-solid fa-list"></i>
+        </a>
+    </div>
+</div>
+
+{% if proiecte %}
+
+    {% if view_mode == 'table' %}
+    <!-- TABLE VIEW -->
+    <div class="card-panel">
+        <div class="card-panel-body" style="padding: 0;">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Cod</th>
+                            <th>Nume Proiect</th>
+                            <th>Beneficiar</th>
+                            <th>Locatie</th>
+                            <th>Data Start</th>
+                            <th>Progres</th>
+                            <th>Buget (RON)</th>
+                            <th>Status</th>
+                            <th style="width: 120px;">Actiuni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in proiecte %}
+                        <tr>
+                            <td><span class="badge-project">{{ p.cod_proiect }}</span></td>
+                            <td>
+                                <a href="{{ url_for('proiecte.detalii', id=p.id) }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
+                                    {{ p.nume }}
+                                </a>
+                            </td>
+                            <td>{{ p.beneficiar or '-' }}</td>
+                            <td>{{ p.locatie or '-' }}</td>
+                            <td>{{ p.data_start.strftime('%d.%m.%Y') if p.data_start else '-' }}</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div class="progress-bar-wrapper" style="height: 6px; flex: 1; min-width: 60px;">
+                                        <div class="progress-bar-fill" style="width: {{ p.progres or 0 }}%; min-width: 0; font-size: 0;"></div>
+                                    </div>
+                                    <span style="font-size: 0.8rem; font-weight: 600; min-width: 32px;">{{ p.progres or 0 }}%</span>
+                                </div>
+                            </td>
+                            <td style="font-weight: 500;">{{ '{:,.0f}'.format(p.buget_total) if p.buget_total else '-' }}</td>
+                            <td><span class="badge-status badge-{{ p.status }}">{{ p.status|capitalize }}</span></td>
+                            <td>
+                                <div style="display: flex; gap: 4px;">
+                                    <a href="{{ url_for('proiecte.detalii', id=p.id) }}" class="btn-action btn-view" title="Detalii">
+                                        <i class="fa-solid fa-eye"></i>
+                                    </a>
+                                    <a href="{{ url_for('proiecte.editeaza', id=p.id) }}" class="btn-action btn-edit" title="Editeaza">
+                                        <i class="fa-solid fa-pen"></i>
+                                    </a>
+                                    <a href="{{ url_for('proiecte.export_excel', id=p.id) }}" class="btn-action" title="Export Excel" style="color: var(--success);">
+                                        <i class="fa-solid fa-file-excel"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- CARDS VIEW -->
+    <div class="proiecte-grid">
+        {% for p in proiecte %}
+        <div class="card-panel proiect-card">
+            <div class="card-panel-header">
+                <span class="badge-project">{{ p.cod_proiect }}</span>
+                <span class="badge-status badge-{{ p.status }}">{{ p.status|capitalize }}</span>
+            </div>
+            <div class="card-panel-body">
+                <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 12px; color: var(--gray-800);">
+                    <a href="{{ url_for('proiecte.detalii', id=p.id) }}" style="color: inherit; text-decoration: none;">{{ p.nume }}</a>
+                </h4>
+                <div style="font-size: 0.85rem; color: var(--gray-600); display: flex; flex-direction: column; gap: 6px;">
+                    <div><i class="fa-solid fa-user-tie" style="width: 18px; color: var(--gray-400);"></i> {{ p.beneficiar or '-' }}</div>
+                    <div><i class="fa-solid fa-location-dot" style="width: 18px; color: var(--gray-400);"></i> {{ p.locatie or '-' }}</div>
+                    <div><i class="fa-solid fa-calendar" style="width: 18px; color: var(--gray-400);"></i> {{ p.data_start.strftime('%d.%m.%Y') if p.data_start else '-' }}</div>
+                    <div><i class="fa-solid fa-coins" style="width: 18px; color: var(--gray-400);"></i> {{ '{:,.0f}'.format(p.buget_total) if p.buget_total else '-' }} RON</div>
+                    {% set nr_ang = p.get_angajati_activi()|length %}
+                    <div><i class="fa-solid fa-users" style="width: 18px; color: var(--gray-400);"></i> {{ nr_ang }} angajat{{ 'i' if nr_ang != 1 }}</div>
+                </div>
+
+                {% if p.progres is not none %}
+                <div style="margin-top: 14px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <small style="color: var(--gray-500);">Progres</small>
+                        <small style="font-weight: 600;">{{ p.progres }}%</small>
+                    </div>
+                    <div class="progress-bar-wrapper" style="height: 8px;">
+                        <div class="progress-bar-fill" style="width: {{ p.progres }}%; min-width: 0; font-size: 0;"></div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if p.zile_ramase is not none %}
+                <div style="margin-top: 8px; font-size: 0.8rem;">
+                    <i class="fa-solid fa-hourglass-half" style="color: var(--gray-400);"></i>
+                    <strong>Zile ramase:</strong>
+                    <span style="color: {{ 'var(--danger)' if p.zile_ramase <= 7 else ('var(--warning)' if p.zile_ramase <= 30 else 'var(--success)') }}; font-weight: 600;">
+                        {{ p.zile_ramase }}
+                    </span>
+                </div>
+                {% endif %}
+            </div>
+            <div style="padding: 12px 20px; border-top: 1px solid var(--gray-200); display: flex; justify-content: space-between;">
+                <a href="{{ url_for('proiecte.detalii', id=p.id) }}" class="btn btn-sm btn-primary">
+                    <i class="fa-solid fa-eye"></i> Detalii
+                </a>
+                <div style="display: flex; gap: 4px;">
+                    <a href="{{ url_for('proiecte.editeaza', id=p.id) }}" class="btn btn-sm btn-outline">
+                        <i class="fa-solid fa-pen"></i>
+                    </a>
+                    <a href="{{ url_for('proiecte.export_excel', id=p.id) }}" class="btn btn-sm btn-outline" style="color: var(--success);">
+                        <i class="fa-solid fa-file-excel"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Paginare -->
+    {% if pagination.pages > 1 %}
+    <div class="pagination" style="margin-top: 20px;">
+        <div class="page-item {{ 'disabled' if not pagination.has_prev }}">
+            <a class="page-link" href="{{ url_for('proiecte.lista', page=pagination.prev_num, cautare=cautare, status=status_filtru, manager=manager_filtru, sort=sort, view=view_mode) if pagination.has_prev else '#' }}">
+                <i class="fa-solid fa-chevron-left"></i>
+            </a>
+        </div>
+        {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if p %}
+            <div class="page-item {{ 'active' if p == pagination.page }}">
+                <a class="page-link" href="{{ url_for('proiecte.lista', page=p, cautare=cautare, status=status_filtru, manager=manager_filtru, sort=sort, view=view_mode) }}">{{ p }}</a>
+            </div>
+            {% else %}
+            <div class="page-item disabled"><span class="page-link">...</span></div>
+            {% endif %}
+        {% endfor %}
+        <div class="page-item {{ 'disabled' if not pagination.has_next }}">
+            <a class="page-link" href="{{ url_for('proiecte.lista', page=pagination.next_num, cautare=cautare, status=status_filtru, manager=manager_filtru, sort=sort, view=view_mode) if pagination.has_next else '#' }}">
+                <i class="fa-solid fa-chevron-right"></i>
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+{% else %}
+<div class="card-panel">
+    <div class="card-panel-body">
+        <div class="empty-state">
+            <i class="fa-solid fa-folder-open" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
+            <h3>Niciun proiect gasit</h3>
+            <p>Nu exista proiecte care sa corespunda criteriilor de cautare.</p>
+            <a href="{{ url_for('proiecte.adauga') }}" class="btn btn-primary" style="margin-top: 12px;">
+                <i class="fa-solid fa-plus"></i> Adauga primul proiect
+            </a>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.filter-body.collapsed { display: none; }
+.proiecte-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 20px;
+}
+.proiect-card { margin-bottom: 0; transition: transform 0.15s, box-shadow 0.15s; }
+.proiect-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.12); }
+</style>
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editare' if edit else 'Adaugare' }} Utilizator - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('setari.index') }}">Setari</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('setari.utilizatori') }}">Utilizatori</a></li>
+<li class="breadcrumb-item active">{{ 'Editare' if edit else 'Adaugare' }}</li>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid {{ 'fa-user-pen' if edit else 'fa-user-plus' }}" style="color: var(--primary);"></i>
+        {{ 'Editare Utilizator' if edit else 'Adaugare Utilizator' }}
+    </h2>
+</div>
+
+<div class="card-panel">
+    <div class="card-panel-body">
+        <form method="POST" style="max-width: 600px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">Nume *</label>
+                    <input type="text" name="nume" class="form-control" value="{{ user.nume if user else '' }}" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Prenume *</label>
+                    <input type="text" name="prenume" class="form-control" value="{{ user.prenume if user else '' }}" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Email *</label>
+                <input type="email" name="email" class="form-control" value="{{ user.email if user else '' }}" required>
+            </div>
+
+            {% if not edit %}
+            <div class="form-group">
+                <label class="form-label">Parola * (minim 6 caractere)</label>
+                <input type="password" name="parola" class="form-control" minlength="6" required>
+            </div>
+            {% endif %}
+
+            <div class="form-group">
+                <label class="form-label">Rol *</label>
+                <select name="rol" class="form-select">
+                    <option value="operator" {{ 'selected' if user and user.rol == 'operator' }}>Operator</option>
+                    <option value="manager" {{ 'selected' if user and user.rol == 'manager' }}>Manager</option>
+                    <option value="admin" {{ 'selected' if user and user.rol == 'admin' }}>Administrator</option>
+                </select>
+                <small style="color: var(--gray-500);">
+                    <strong>Operator</strong>: Poate vedea si introduce date.
+                    <strong>Manager</strong>: Poate aproba pontaje si gestiona proiecte.
+                    <strong>Admin</strong>: Acces complet la sistem.
+                </small>
+            </div>
+
+            <div style="margin-top: 24px; display: flex; gap: 12px;">
+                <button type="submit" class="btn btn-secondary">
+                    <i class="fa-solid fa-floppy-disk"></i> {{ 'Salveaza' if edit else 'Creeaza Utilizator' }}
+                </button>
+                <a href="{{ url_for('setari.utilizatori') }}" class="btn btn-outline">
+                    <i class="fa-solid fa-xmark"></i> Anuleaza
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

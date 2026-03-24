@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}Incarca Document - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('documente.panou') }}">Documente</a>
+<span>/</span>
+<span class="active">Incarca</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-cloud-arrow-up"></i> Incarca Document</h3>
+        </div>
+        <div class="card-panel-body">
+            <form method="POST" enctype="multipart/form-data" id="uploadForm" novalidate>
+                {{ form.hidden_tag() }}
+
+                <!-- Drag & Drop Zone -->
+                <div id="dropZone" class="drop-zone" onclick="document.getElementById('fisier-input').click();">
+                    <i class="fa-solid fa-cloud-arrow-up" style="font-size: 3rem; color: var(--primary); margin-bottom: 12px;"></i>
+                    <p style="font-weight: 600; font-size: 1.1rem; color: var(--gray-700);">Trageti fisierul aici</p>
+                    <p style="color: var(--gray-500); font-size: 0.85rem;">sau click pentru selectare</p>
+                    <p style="color: var(--gray-400); font-size: 0.75rem; margin-top: 8px;">
+                        PDF, JPG, PNG, DOCX - max 10 MB
+                    </p>
+                    <div id="fileInfo" style="display: none; margin-top: 12px; padding: 8px 16px; background: var(--gray-100); border-radius: var(--radius-sm);">
+                        <i class="fa-solid fa-file-check" style="color: var(--success);"></i>
+                        <span id="fileName" style="font-weight: 600;"></span>
+                        <span id="fileSize" style="color: var(--gray-500); margin-left: 8px;"></span>
+                    </div>
+                </div>
+                <div style="display: none;">
+                    {{ form.fisier(id="fisier-input", accept=".pdf,.jpg,.jpeg,.png,.docx") }}
+                </div>
+
+                {% if form.fisier.errors %}
+                <div style="color: var(--danger); font-size: 0.85rem; margin-top: 4px;">
+                    {% for err in form.fisier.errors %}{{ err }}{% endfor %}
+                </div>
+                {% endif %}
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px;">
+                    <!-- Angajat -->
+                    <div class="form-group">
+                        <label class="form-label">Angajat <span class="text-danger">*</span></label>
+                        {{ form.angajat_id(class_="form-select") }}
+                        {% if form.angajat_id.errors %}
+                        <div style="color: var(--danger); font-size: 0.8rem;">{{ form.angajat_id.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Tip Document -->
+                    <div class="form-group">
+                        <label class="form-label">Tip Document <span class="text-danger">*</span></label>
+                        {{ form.tip(class_="form-select", id="tipSelect", onchange="autoFillExpiry()") }}
+                        {% if form.tip.errors %}
+                        <div style="color: var(--danger); font-size: 0.8rem;">{{ form.tip.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Denumire -->
+                    <div class="form-group">
+                        <label class="form-label">Denumire Document <span class="text-danger">*</span></label>
+                        {{ form.nume_document(class_="form-control", placeholder="ex: CI Ion Popescu") }}
+                        {% if form.nume_document.errors %}
+                        <div style="color: var(--danger); font-size: 0.8rem;">{{ form.nume_document.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Proiect -->
+                    <div class="form-group">
+                        <label class="form-label">Proiect (optional)</label>
+                        {{ form.proiect_id(class_="form-select") }}
+                    </div>
+
+                    <!-- Emitent -->
+                    <div class="form-group">
+                        <label class="form-label">Emitent</label>
+                        {{ form.emitent(class_="form-control", placeholder="ex: Politia Sector 3") }}
+                    </div>
+
+                    <!-- Serie/Numar -->
+                    <div class="form-group">
+                        <label class="form-label">Serie / Numar</label>
+                        {{ form.serie_numar(class_="form-control", placeholder="ex: RR 123456") }}
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                    <!-- Data Emitere -->
+                    <div class="form-group">
+                        <label class="form-label">Data Emitere</label>
+                        {{ form.data_emitere(class_="form-control", id="dataEmitere", onchange="autoFillExpiry()") }}
+                    </div>
+
+                    <!-- Data Expirare -->
+                    <div class="form-group">
+                        <label class="form-label">Data Expirare</label>
+                        {{ form.data_expirare(class_="form-control", id="dataExpirare") }}
+                        <small id="expiryHint" style="color: var(--gray-500); font-size: 0.75rem;"></small>
+                    </div>
+                </div>
+
+                <!-- Observatii -->
+                <div class="form-group" style="margin-top: 16px;">
+                    <label class="form-label">Observatii</label>
+                    {{ form.observatii(class_="form-control", rows="2") }}
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <button type="submit" class="btn btn-secondary" id="submitBtn">
+                        <i class="fa-solid fa-cloud-arrow-up"></i> Incarca Document
+                    </button>
+                    <a href="{{ url_for('documente.panou') }}" class="btn btn-outline">
+                        <i class="fa-solid fa-xmark"></i> Anuleaza
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.drop-zone {
+    border: 2px dashed var(--gray-300);
+    border-radius: var(--radius);
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: var(--transition);
+    background: var(--gray-50);
+}
+.drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--primary);
+    background: #E8EAF6;
+}
+.drop-zone.has-file {
+    border-color: var(--success);
+    background: #E8F5E9;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Durate expirare per tip document (zile)
+var durataExpirare = {{ durata_expirare | tojson }};
+
+// Drag & Drop
+var dropZone = document.getElementById('dropZone');
+var fileInput = document.getElementById('fisier-input');
+var fileInfo = document.getElementById('fileInfo');
+var fileName = document.getElementById('fileName');
+var fileSize = document.getElementById('fileSize');
+
+['dragenter', 'dragover'].forEach(function(evt) {
+    dropZone.addEventListener(evt, function(e) {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+});
+
+['dragleave', 'drop'].forEach(function(evt) {
+    dropZone.addEventListener(evt, function(e) {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+    });
+});
+
+dropZone.addEventListener('drop', function(e) {
+    var files = e.dataTransfer.files;
+    if (files.length > 0) {
+        fileInput.files = files;
+        showFileInfo(files[0]);
+    }
+});
+
+fileInput.addEventListener('change', function() {
+    if (this.files.length > 0) {
+        showFileInfo(this.files[0]);
+    }
+});
+
+function showFileInfo(file) {
+    var ext = file.name.split('.').pop().toLowerCase();
+    var allowed = ['pdf', 'jpg', 'jpeg', 'png', 'docx'];
+    if (allowed.indexOf(ext) === -1) {
+        alert('Tip de fisier nepermis! Extensii acceptate: pdf, jpg, jpeg, png, docx');
+        fileInput.value = '';
+        return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+        alert('Fisierul depaseste limita de 10 MB!');
+        fileInput.value = '';
+        return;
+    }
+    fileInfo.style.display = 'block';
+    fileName.textContent = file.name;
+    fileSize.textContent = '(' + (file.size / 1024 / 1024).toFixed(2) + ' MB)';
+    dropZone.classList.add('has-file');
+}
+
+// Auto-fill data expirare
+function autoFillExpiry() {
+    var tip = document.getElementById('tipSelect').value;
+    var dataEmitere = document.getElementById('dataEmitere').value;
+    var dataExpirare = document.getElementById('dataExpirare');
+    var hint = document.getElementById('expiryHint');
+
+    if (!tip || !durataExpirare[tip]) {
+        hint.textContent = '';
+        return;
+    }
+
+    var durata = durataExpirare[tip];
+    if (durata === 0) {
+        hint.textContent = 'Document permanent (fara expirare)';
+        dataExpirare.value = '';
+        return;
+    }
+
+    hint.textContent = 'Durata standard: ' + Math.round(durata/30) + ' luni';
+
+    if (dataEmitere) {
+        var d = new Date(dataEmitere);
+        d.setDate(d.getDate() + durata);
+        var yyyy = d.getFullYear();
+        var mm = String(d.getMonth() + 1).padStart(2, '0');
+        var dd = String(d.getDate()).padStart(2, '0');
+        dataExpirare.value = yyyy + '-' + mm + '-' + dd;
+        hint.textContent = 'Auto-calculat: ' + dd + '.' + mm + '.' + yyyy + ' (' + Math.round(durata/30) + ' luni)';
+    }
+}
+</script>
+{% endblock %}

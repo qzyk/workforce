@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editeaza' if proiect else 'Adauga' }} Proiect - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.lista') }}">Proiecte</a>
+<span>/</span>
+<span class="active">{{ 'Editeaza' if proiect else 'Adauga' }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+    <h2 style="margin-bottom: 20px;">
+        <i class="fa-solid fa-{{ 'pen' if proiect else 'plus' }}" style="color: var(--primary);"></i>
+        {{ 'Editeaza Proiect' if proiect else 'Proiect Nou' }}
+    </h2>
+
+    <form method="POST" novalidate>
+        {{ form.hidden_tag() }}
+        {% if proiect %}
+        {{ form.proiect_id(value=proiect.id) }}
+        {% endif %}
+
+        <!-- Identificare -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-id-card"></i> Identificare Proiect</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">Cod Proiect <span class="text-danger">*</span></label>
+                        {{ form.cod_proiect(class_="form-control", placeholder="PRJ-2026-001") }}
+                        {% if form.cod_proiect.errors %}
+                        <div class="field-error">{{ form.cod_proiect.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Nume Proiect <span class="text-danger">*</span></label>
+                        {{ form.nume(class_="form-control", placeholder="Denumirea proiectului") }}
+                        {% if form.nume.errors %}
+                        <div class="field-error">{{ form.nume.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 16px;">
+                    <label class="form-label">Descriere</label>
+                    {{ form.descriere(class_="form-control", rows="3", placeholder="Descrierea proiectului...") }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Locatie si Beneficiar -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-location-dot"></i> Locatie si Beneficiar</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">Judet</label>
+                        {{ form.judet(class_="form-select") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Localitate</label>
+                        {{ form.localitate(class_="form-control", placeholder="Orasul / comuna") }}
+                    </div>
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label class="form-label">Adresa Santier</label>
+                        {{ form.adresa_santier(class_="form-control", placeholder="Adresa completa a santierului") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Beneficiar</label>
+                        {{ form.beneficiar(class_="form-control", placeholder="Numele beneficiarului") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Nr. Contract Beneficiar</label>
+                        {{ form.nr_contract_beneficiar(class_="form-control", placeholder="Numar contract") }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Planificare -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-calendar-days"></i> Planificare</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: repeat({{ 3 if proiect else 2 }}, 1fr); gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">Data Start <span class="text-danger">*</span></label>
+                        {{ form.data_start(class_="form-control", type="date") }}
+                        {% if form.data_start.errors %}
+                        <div class="field-error">{{ form.data_start.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Data Sfarsit Planificata</label>
+                        {{ form.data_sfarsit_planificat(class_="form-control", type="date") }}
+                        {% if form.data_sfarsit_planificat.errors %}
+                        <div class="field-error">{{ form.data_sfarsit_planificat.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+                    {% if proiect %}
+                    <div class="form-group">
+                        <label class="form-label">Data Sfarsit Reala</label>
+                        {{ form.data_sfarsit_real(class_="form-control", type="date") }}
+                    </div>
+                    {% endif %}
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">Manager Proiect</label>
+                        {{ form.manager_id(class_="form-select") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Status <span class="text-danger">*</span></label>
+                        {{ form.status(class_="form-select") }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Buget -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-coins"></i> Buget</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">Buget Total (RON)</label>
+                        {{ form.buget_total(class_="form-control", placeholder="0.00", step="0.01", min="0", id="buget_total") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Buget Manopera (RON)</label>
+                        {{ form.buget_manopera(class_="form-control", placeholder="0.00", step="0.01", min="0", id="buget_manopera") }}
+                    </div>
+                </div>
+                <div id="buget-info" style="margin-top: 12px; padding: 10px; background: var(--gray-50); border-radius: 8px; font-size: 0.85rem; color: var(--gray-600); display: none;">
+                    <i class="fa-solid fa-info-circle" style="color: var(--info);"></i>
+                    Manopera: <strong id="buget-pct">0</strong>% din bugetul total
+                </div>
+            </div>
+        </div>
+
+        <!-- Butoane -->
+        <div style="display: flex; justify-content: space-between; margin-top: 20px; margin-bottom: 40px;">
+            <a href="{{ url_for('proiecte.lista') }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> Anuleaza
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-check"></i> {{ 'Salveaza Modificarile' if proiect else 'Creeaza Proiect' }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.field-error {
+    color: var(--danger);
+    font-size: 0.8rem;
+    margin-top: 4px;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Buget percentage calculator
+const bugetTotal = document.getElementById('buget_total');
+const bugetManopera = document.getElementById('buget_manopera');
+const bugetInfo = document.getElementById('buget-info');
+const bugetPct = document.getElementById('buget-pct');
+
+function updateBugetInfo() {
+    const total = parseFloat(bugetTotal.value) || 0;
+    const manopera = parseFloat(bugetManopera.value) || 0;
+    if (total > 0 && manopera > 0) {
+        bugetInfo.style.display = 'block';
+        bugetPct.textContent = ((manopera / total) * 100).toFixed(1);
+    } else {
+        bugetInfo.style.display = 'none';
+    }
+}
+
+bugetTotal.addEventListener('input', updateBugetInfo);
+bugetManopera.addEventListener('input', updateBugetInfo);
+updateBugetInfo();
+</script>
+{% endblock %}

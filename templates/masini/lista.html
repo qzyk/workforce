@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block title %}Flota Auto - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Masini</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.fleet-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.fleet-stat { background: white; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); text-align: center; }
+.fleet-stat-value { font-size: 1.8rem; font-weight: 800; }
+.fleet-stat-label { font-size: 0.78rem; color: var(--gray-500); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.fleet-stat.green .fleet-stat-value { color: #2E7D32; }
+.fleet-stat.blue .fleet-stat-value { color: var(--primary); }
+.fleet-stat.orange .fleet-stat-value { color: #E65100; }
+.fleet-stat.red .fleet-stat-value { color: #C62828; }
+
+.car-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.car-card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden; transition: transform 0.15s, box-shadow 0.15s; }
+.car-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+.car-card-header { padding: 16px; display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid var(--gray-100); }
+.car-card-nr { font-size: 1.1rem; font-weight: 800; color: var(--primary); letter-spacing: 1px; }
+.car-card-body { padding: 16px; }
+.car-card-marca { font-size: 1rem; font-weight: 700; color: var(--gray-800); margin-bottom: 8px; }
+.car-card-info { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.82rem; }
+.car-card-info dt { color: var(--gray-500); font-weight: 500; }
+.car-card-info dd { color: var(--gray-800); font-weight: 600; margin: 0; }
+.car-card-footer { padding: 12px 16px; background: var(--gray-50); display: flex; justify-content: space-between; align-items: center; }
+.car-card-alerts { display: flex; gap: 4px; }
+.car-alert-badge { font-size: 0.68rem; padding: 2px 8px; border-radius: 10px; font-weight: 700; }
+.car-alert-badge.danger { background: #FFCDD2; color: #C62828; }
+.car-alert-badge.warning { background: #FFF3E0; color: #E65100; }
+.view-toggle { display: flex; gap: 4px; }
+.view-toggle a { padding: 6px 10px; border-radius: 6px; color: var(--gray-500); text-decoration: none; font-size: 0.85rem; }
+.view-toggle a.active { background: var(--primary); color: white; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+    <div>
+        <h2 style="margin: 0;"><i class="fa-solid fa-car-side" style="color: var(--primary);"></i> Flota Auto</h2>
+        <div style="font-size: 0.85rem; color: var(--gray-500);">Gestiune masini de serviciu si atribuire angajati</div>
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <div class="view-toggle">
+            <a href="{{ url_for('masini.lista', view='card', cautare=cautare, status=status, tip_vehicul=tip_vehicul, combustibil=combustibil, proiect_id=proiect_id, sort=sort) }}" class="{{ 'active' if view == 'card' }}" title="Vizualizare carduri"><i class="fa-solid fa-grip"></i></a>
+            <a href="{{ url_for('masini.lista', view='table', cautare=cautare, status=status, tip_vehicul=tip_vehicul, combustibil=combustibil, proiect_id=proiect_id, sort=sort) }}" class="{{ 'active' if view == 'table' }}" title="Vizualizare tabel"><i class="fa-solid fa-table-list"></i></a>
+        </div>
+        {% if current_user.is_manager %}
+        <a href="{{ url_for('masini.export_excel') }}" class="btn btn-outline" style="font-size: 0.85rem;"><i class="fa-solid fa-file-excel"></i> Export</a>
+        <a href="{{ url_for('masini.alerte') }}" class="btn btn-outline" style="font-size: 0.85rem; {{ 'color: #C62828; border-color: #C62828;' if docs_expirate > 0 }}">
+            <i class="fa-solid fa-triangle-exclamation"></i> Alerte {% if docs_expirate > 0 %}<span style="background: #C62828; color: white; padding: 1px 6px; border-radius: 10px; font-size: 0.72rem; margin-left: 4px;">{{ docs_expirate }}</span>{% endif %}
+        </a>
+        <a href="{{ url_for('masini.adauga') }}" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Adauga Masina</a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="fleet-stats">
+    <div class="fleet-stat green">
+        <div class="fleet-stat-value">{{ disponibile }}</div>
+        <div class="fleet-stat-label">Disponibile</div>
+    </div>
+    <div class="fleet-stat blue">
+        <div class="fleet-stat-value">{{ atribuite }}</div>
+        <div class="fleet-stat-label">Atribuite</div>
+    </div>
+    <div class="fleet-stat orange">
+        <div class="fleet-stat-value">{{ in_service }}</div>
+        <div class="fleet-stat-label">In Service</div>
+    </div>
+    <div class="fleet-stat red">
+        <div class="fleet-stat-value">{{ docs_expirate }}</div>
+        <div class="fleet-stat-label">Documente Expirate</div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card-panel" style="margin-bottom: 16px;">
+    <div class="card-panel-body" style="padding: 10px 16px;">
+        <form method="GET" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;">
+            <input type="hidden" name="view" value="{{ view }}">
+            <div class="form-group" style="margin: 0; min-width: 180px;">
+                <label class="form-label" style="font-size: 0.75rem;">Cautare</label>
+                <input type="text" name="cautare" class="form-control" value="{{ cautare }}" placeholder="Nr., marca, model, VIN..." style="font-size: 0.85rem;">
+            </div>
+            <div class="form-group" style="margin: 0; min-width: 130px;">
+                <label class="form-label" style="font-size: 0.75rem;">Status</label>
+                <select name="status" class="form-select" style="font-size: 0.85rem;">
+                    <option value="">Toate</option>
+                    {% for val, label in [('disponibila','Disponibila'),('atribuita','Atribuita'),('service','In Service'),('casata','Casata'),('vanduta','Vanduta')] %}
+                    <option value="{{ val }}" {{ 'selected' if status == val }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0; min-width: 130px;">
+                <label class="form-label" style="font-size: 0.75rem;">Tip</label>
+                <select name="tip_vehicul" class="form-select" style="font-size: 0.85rem;">
+                    <option value="">Toate</option>
+                    {% for val, label in [('autoturism','Autoturism'),('autoutilitara','Autoutilitara'),('basculanta','Basculanta'),('duba','Duba'),('autocamion','Autocamion'),('autospeciala','Autospeciala')] %}
+                    <option value="{{ val }}" {{ 'selected' if tip_vehicul == val }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0; min-width: 130px;">
+                <label class="form-label" style="font-size: 0.75rem;">Combustibil</label>
+                <select name="combustibil" class="form-select" style="font-size: 0.85rem;">
+                    <option value="">Toate</option>
+                    {% for val, label in [('motorina','Motorina'),('benzina','Benzina'),('electric','Electric'),('hybrid','Hybrid'),('gpl','GPL')] %}
+                    <option value="{{ val }}" {{ 'selected' if combustibil == val }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0; min-width: 130px;">
+                <label class="form-label" style="font-size: 0.75rem;">Proiect</label>
+                <select name="proiect_id" class="form-select" style="font-size: 0.85rem;">
+                    <option value="">Toate</option>
+                    {% for p in proiecte %}
+                    <option value="{{ p.id }}" {{ 'selected' if proiect_id == p.id|string }}>{{ p.cod_proiect }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <button type="submit" class="btn btn-primary" style="font-size: 0.85rem;"><i class="fa-solid fa-filter"></i> Filtreaza</button>
+            </div>
+            {% if cautare or status or tip_vehicul or combustibil or proiect_id %}
+            <div class="form-group" style="margin: 0;">
+                <a href="{{ url_for('masini.lista', view=view) }}" class="btn btn-outline" style="font-size: 0.85rem;"><i class="fa-solid fa-xmark"></i> Reset</a>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+{% if masini %}
+    {% if view == 'card' %}
+    <!-- Card View -->
+    <div class="car-grid">
+        {% for m in masini %}
+        <div class="car-card">
+            <div class="car-card-header">
+                <div>
+                    <div class="car-card-nr">{{ m.numar_inmatriculare }}</div>
+                    <div class="car-card-marca">{{ m.marca }} {{ m.model }}</div>
+                </div>
+                <span class="badge-status {{ m.status_badge_class }}">{{ m.status|title }}</span>
+            </div>
+            <div class="car-card-body">
+                <dl class="car-card-info">
+                    <dt>An</dt><dd>{{ m.an_fabricatie or '-' }}</dd>
+                    <dt>Tip</dt><dd>{{ m.tip_vehicul|title }}</dd>
+                    <dt>Combustibil</dt><dd>{{ m.tip_combustibil|title }}</dd>
+                    <dt>KM Bord</dt><dd>{{ '{:,}'.format(m.km_bord or 0) }}</dd>
+                    <dt>Sofer</dt><dd>{{ m.angajat_responsabil.nume_complet if m.angajat_responsabil else '-' }}</dd>
+                    <dt>Proiect</dt><dd>{{ m.proiect.cod_proiect if m.proiect else '-' }}</dd>
+                </dl>
+            </div>
+            <div class="car-card-footer">
+                <div class="car-card-alerts">
+                    {% for a in m.alerte_documente %}
+                    <span class="car-alert-badge {{ 'danger' if a.tip == 'expirat' else 'warning' }}">
+                        {{ a.doc }} {{ a.zile }}z
+                    </span>
+                    {% endfor %}
+                </div>
+                <a href="{{ url_for('masini.fisa', id=m.id) }}" class="btn-action btn-view" title="Detalii"><i class="fa-solid fa-eye"></i></a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <!-- Table View -->
+    <div class="card-panel">
+        <div class="card-panel-body" style="padding: 0;">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nr. Inm.</th>
+                            <th>Marca / Model</th>
+                            <th>An</th>
+                            <th>Tip</th>
+                            <th>KM</th>
+                            <th>Sofer</th>
+                            <th>Proiect</th>
+                            <th>Status</th>
+                            <th>Alerte</th>
+                            <th>Actiuni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in masini %}
+                        <tr>
+                            <td><strong style="color: var(--primary); letter-spacing: 0.5px;">{{ m.numar_inmatriculare }}</strong></td>
+                            <td>{{ m.marca }} {{ m.model }}</td>
+                            <td>{{ m.an_fabricatie or '-' }}</td>
+                            <td style="font-size: 0.82rem;">{{ m.tip_vehicul|title }}</td>
+                            <td>{{ '{:,}'.format(m.km_bord or 0) }}</td>
+                            <td style="font-size: 0.82rem;">{{ m.angajat_responsabil.nume_complet if m.angajat_responsabil else '-' }}</td>
+                            <td style="font-size: 0.82rem; color: var(--primary); font-weight: 600;">{{ m.proiect.cod_proiect if m.proiect else '-' }}</td>
+                            <td><span class="badge-status {{ m.status_badge_class }}">{{ m.status|title }}</span></td>
+                            <td>
+                                {% for a in m.alerte_documente %}
+                                <span class="car-alert-badge {{ 'danger' if a.tip == 'expirat' else 'warning' }}" style="font-size: 0.68rem;">{{ a.doc }}</span>
+                                {% endfor %}
+                            </td>
+                            <td class="actions-cell">
+                                <a href="{{ url_for('masini.fisa', id=m.id) }}" class="btn-action btn-view" title="Detalii"><i class="fa-solid fa-eye"></i></a>
+                                {% if current_user.is_manager %}
+                                <a href="{{ url_for('masini.editeaza', id=m.id) }}" class="btn-action btn-edit" title="Editeaza"><i class="fa-solid fa-pen"></i></a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Pagination -->
+    {% if pagination.pages > 1 %}
+    <div style="display: flex; justify-content: center; margin-top: 20px; gap: 4px;">
+        {% if pagination.has_prev %}
+        <a href="{{ url_for('masini.lista', page=pagination.prev_num, view=view, cautare=cautare, status=status, tip_vehicul=tip_vehicul, combustibil=combustibil, proiect_id=proiect_id, sort=sort) }}" class="btn btn-outline" style="font-size: 0.85rem;"><i class="fa-solid fa-chevron-left"></i></a>
+        {% endif %}
+        {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if p %}
+            <a href="{{ url_for('masini.lista', page=p, view=view, cautare=cautare, status=status, tip_vehicul=tip_vehicul, combustibil=combustibil, proiect_id=proiect_id, sort=sort) }}" class="btn {{ 'btn-primary' if p == pagination.page else 'btn-outline' }}" style="font-size: 0.85rem; min-width: 36px;">{{ p }}</a>
+            {% else %}
+            <span style="padding: 6px; color: var(--gray-400);">...</span>
+            {% endif %}
+        {% endfor %}
+        {% if pagination.has_next %}
+        <a href="{{ url_for('masini.lista', page=pagination.next_num, view=view, cautare=cautare, status=status, tip_vehicul=tip_vehicul, combustibil=combustibil, proiect_id=proiect_id, sort=sort) }}" class="btn btn-outline" style="font-size: 0.85rem;"><i class="fa-solid fa-chevron-right"></i></a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+{% else %}
+<div class="card-panel">
+    <div class="card-panel-body">
+        <div class="empty-state" style="padding: 60px;">
+            <i class="fa-solid fa-car-side" style="font-size: 3rem; color: var(--gray-300);"></i>
+            <p style="color: var(--gray-500); margin-top: 10px;">Nicio masina gasita.</p>
+            {% if current_user.is_manager %}
+            <a href="{{ url_for('masini.adauga') }}" class="btn btn-primary" style="margin-top: 10px;"><i class="fa-solid fa-plus"></i> Adauga Prima Masina</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editeaza' if masina else 'Adauga' }} Masina - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('masini.lista') }}">Masini</a></li>
+{% if masina %}
+<li class="breadcrumb-item"><a href="{{ url_for('masini.fisa', id=masina.id) }}">{{ masina.numar_inmatriculare }}</a></li>
+<li class="breadcrumb-item active">Editeaza</li>
+{% else %}
+<li class="breadcrumb-item active">Adauga Masina</li>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+    <h2 style="margin-bottom: 20px;">
+        <i class="fa-solid fa-{{ 'pen' if masina else 'plus' }}" style="color: var(--primary);"></i>
+        {{ 'Editeaza' if masina else 'Adauga' }} Masina
+    </h2>
+
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <!-- Sectiunea 1: Identificare -->
+        <div class="card-panel" style="margin-bottom: 16px;">
+            <div class="card-panel-header"><h3 class="card-panel-title"><i class="fa-solid fa-fingerprint"></i> Identificare</h3></div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px;">
+                    <div class="form-group">
+                        <label class="form-label">Nr. Inmatriculare *</label>
+                        <input type="text" name="numar_inmatriculare" class="form-control" value="{{ masina.numar_inmatriculare if masina else '' }}" required placeholder="ex: B 123 ABC" style="text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Marca *</label>
+                        <input type="text" name="marca" class="form-control" value="{{ masina.marca if masina else '' }}" required placeholder="ex: Dacia, Toyota, VW...">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Model *</label>
+                        <input type="text" name="model" class="form-control" value="{{ masina.model if masina else '' }}" required placeholder="ex: Duster, Hilux, Crafter...">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">VIN</label>
+                        <input type="text" name="vin" class="form-control" value="{{ masina.vin if masina else '' }}" maxlength="17" placeholder="17 caractere" style="text-transform: uppercase;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">An Fabricatie</label>
+                        <input type="number" name="an_fabricatie" class="form-control" value="{{ masina.an_fabricatie if masina else '' }}" min="1990" max="2030">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Culoare</label>
+                        <input type="text" name="culoare" class="form-control" value="{{ masina.culoare if masina else '' }}" placeholder="ex: Alb, Gri...">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sectiunea 2: Tehnice -->
+        <div class="card-panel" style="margin-bottom: 16px;">
+            <div class="card-panel-header"><h3 class="card-panel-title"><i class="fa-solid fa-gears"></i> Date Tehnice</h3></div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">
+                    <div class="form-group">
+                        <label class="form-label">Tip Vehicul</label>
+                        <select name="tip_vehicul" class="form-select">
+                            {% for val, label in [('autoturism','Autoturism'),('autoutilitara','Autoutilitara'),('basculanta','Basculanta'),('duba','Duba'),('autocamion','Autocamion'),('autospeciala','Autospeciala')] %}
+                            <option value="{{ val }}" {{ 'selected' if masina and masina.tip_vehicul == val }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Combustibil</label>
+                        <select name="tip_combustibil" class="form-select">
+                            {% for val, label in [('motorina','Motorina'),('benzina','Benzina'),('electric','Electric'),('hybrid','Hybrid'),('gpl','GPL')] %}
+                            <option value="{{ val }}" {{ 'selected' if masina and masina.tip_combustibil == val }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Capacitate (cmc)</label>
+                        <input type="number" name="capacitate_cilindrica" class="form-control" value="{{ masina.capacitate_cilindrica if masina else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Putere (kW)</label>
+                        <input type="number" name="putere_kw" class="form-control" value="{{ masina.putere_kw if masina else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Nr. Locuri</label>
+                        <input type="number" name="nr_locuri" class="form-control" value="{{ masina.nr_locuri if masina else 5 }}" min="1" max="50">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Masa Maxima (kg)</label>
+                        <input type="number" name="masa_maxima" class="form-control" value="{{ masina.masa_maxima if masina else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Categorie Permis</label>
+                        <select name="categorie_permis" class="form-select">
+                            {% for cat in ['B', 'C', 'CE', 'D'] %}
+                            <option value="{{ cat }}" {{ 'selected' if masina and masina.categorie_permis == cat }}>{{ cat }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">KM Bord</label>
+                        <input type="number" name="km_bord" class="form-control" value="{{ masina.km_bord if masina else 0 }}" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Consum Mediu (l/100km)</label>
+                        <input type="number" step="0.1" name="consum_mediu" class="form-control" value="{{ masina.consum_mediu if masina else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Serie CIV</label>
+                        <input type="text" name="serie_civ" class="form-control" value="{{ masina.serie_civ if masina else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Nr. Carte Identitate</label>
+                        <input type="text" name="nr_carte_identitate" class="form-control" value="{{ masina.nr_carte_identitate if masina else '' }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sectiunea 3: Administrative -->
+        <div class="card-panel" style="margin-bottom: 16px;">
+            <div class="card-panel-header"><h3 class="card-panel-title"><i class="fa-solid fa-calendar-check"></i> Date Administrative & Documente</h3></div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">
+                    <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <select name="status" class="form-select">
+                            {% for val, label in [('disponibila','Disponibila'),('atribuita','Atribuita'),('service','In Service'),('casata','Casata'),('vanduta','Vanduta')] %}
+                            <option value="{{ val }}" {{ 'selected' if masina and masina.status == val }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Proiect Alocat</label>
+                        <select name="proiect_id" class="form-select">
+                            <option value="">-- Fara proiect --</option>
+                            {% for p in proiecte %}<option value="{{ p.id }}" {{ 'selected' if masina and masina.proiect_id == p.id }}>{{ p.cod_proiect }} - {{ p.nume }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Sofer Responsabil</label>
+                        <select name="angajat_responsabil_id" class="form-select">
+                            <option value="">-- Neselectat --</option>
+                            {% for a in angajati %}<option value="{{ a.id }}" {{ 'selected' if masina and masina.angajat_responsabil_id == a.id }}>{{ a.nume_complet }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group"><label class="form-label">Data Achizitie</label><input type="date" name="data_achizitie" class="form-control" value="{{ masina.data_achizitie.strftime('%Y-%m-%d') if masina and masina.data_achizitie else '' }}"></div>
+                    <div class="form-group"><label class="form-label">Prima Inmatriculare</label><input type="date" name="data_prima_inmatriculare" class="form-control" value="{{ masina.data_prima_inmatriculare.strftime('%Y-%m-%d') if masina and masina.data_prima_inmatriculare else '' }}"></div>
+                    <div class="form-group"><label class="form-label">ITP Expira</label><input type="date" name="data_itp_expirare" class="form-control" value="{{ masina.data_itp_expirare.strftime('%Y-%m-%d') if masina and masina.data_itp_expirare else '' }}"></div>
+                    <div class="form-group"><label class="form-label">RCA Expira</label><input type="date" name="data_rca_expirare" class="form-control" value="{{ masina.data_rca_expirare.strftime('%Y-%m-%d') if masina and masina.data_rca_expirare else '' }}"></div>
+                    <div class="form-group"><label class="form-label">CASCO Expira</label><input type="date" name="data_casco_expirare" class="form-control" value="{{ masina.data_casco_expirare.strftime('%Y-%m-%d') if masina and masina.data_casco_expirare else '' }}"></div>
+                    <div class="form-group"><label class="form-label">Rovinieta Expira</label><input type="date" name="data_rovinieta_expirare" class="form-control" value="{{ masina.data_rovinieta_expirare.strftime('%Y-%m-%d') if masina and masina.data_rovinieta_expirare else '' }}"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Observatii -->
+        <div class="card-panel" style="margin-bottom: 16px;">
+            <div class="card-panel-body">
+                <div class="form-group">
+                    <label class="form-label">Observatii</label>
+                    <textarea name="observatii" class="form-control" rows="3" placeholder="Observatii generale...">{{ masina.observatii if masina else '' }}</textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Butoane -->
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <a href="{{ url_for('masini.fisa', id=masina.id) if masina else url_for('masini.lista') }}" class="btn btn-outline"><i class="fa-solid fa-xmark"></i> Anuleaza</a>
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> {{ 'Actualizeaza' if masina else 'Adauga Masina' }}</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

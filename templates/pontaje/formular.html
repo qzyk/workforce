@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Inregistrare Pontaj - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('pontaje.lista') }}">Pontaje</a></li>
+<li class="breadcrumb-item active">Inregistrare</li>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 700px; margin: 0 auto;">
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-clock"></i> Inregistrare Pontaj</h3>
+        </div>
+        <div class="card-panel-body">
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">Angajat <span class="text-danger">*</span></label>
+                        <select name="angajat_id" class="form-select" required>
+                            <option value="">-- Selecteaza angajat --</option>
+                            {% for ang in angajati %}
+                            <option value="{{ ang.id }}">{{ ang.nume_complet }} ({{ ang.functie }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Proiect <span class="text-danger">*</span></label>
+                        <select name="proiect_id" class="form-select" required>
+                            <option value="">-- Selecteaza proiect --</option>
+                            {% for p in proiecte %}
+                            <option value="{{ p.id }}">{{ p.cod_proiect }} - {{ p.nume }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">Data <span class="text-danger">*</span></label>
+                        <input type="date" name="data" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Ora Start</label>
+                        <input type="time" name="ora_start" class="form-control" value="08:00">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Ora Sfarsit</label>
+                        <input type="time" name="ora_sfarsit" class="form-control" value="16:00">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 16px;">
+                    <label class="form-label">Tip Zi</label>
+                    <select name="tip_zi" class="form-select" style="max-width: 300px;">
+                        {% for val, label in tipuri_zi %}
+                        <option value="{{ val }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-top: 16px;">
+                    <label class="form-label">Observatii</label>
+                    <textarea name="observatii" class="form-control" rows="2"></textarea>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-check"></i> Inregistreaza Pontaj
+                    </button>
+                    <a href="{{ url_for('pontaje.lista') }}" class="btn btn-outline">
+                        <i class="fa-solid fa-xmark"></i> Anuleaza
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
