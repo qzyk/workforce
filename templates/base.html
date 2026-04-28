@@ -81,8 +81,29 @@
                         <span>Activitati</span>
                         {% if badge_counts.activitati_pending is defined and badge_counts.activitati_pending > 0 %}
                         <span class="sidebar-badge badge-warning">{{ badge_counts.activitati_pending }}</span>
+                        {% elif badge_counts.activitati_azi is defined and badge_counts.activitati_azi > 0 %}
+                        <span class="sidebar-badge badge-info">{{ badge_counts.activitati_azi }}</span>
                         {% endif %}
                     </a>
+                    {% if request.endpoint and 'activitati' in request.endpoint %}
+                    <ul class="sidebar-submenu" style="list-style:none; padding:4px 0 4px 36px; margin:0;">
+                        <li>
+                            <a href="{{ url_for('activitati.panou') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;">
+                                <i class="fa-solid fa-list" style="margin-right:6px; font-size:0.75rem;"></i> Toate
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('activitati.panou', tip='saptamanala') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;">
+                                <i class="fa-solid fa-calendar-week" style="margin-right:6px; font-size:0.75rem;"></i> Saptamanale
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('activitati.panou', tip='lunara') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;">
+                                <i class="fa-solid fa-calendar" style="margin-right:6px; font-size:0.75rem;"></i> Lunare
+                            </a>
+                        </li>
+                    </ul>
+                    {% endif %}
                 </li>
                 <li>
                     <a href="{{ url_for('masini.lista') }}" class="{% if request.endpoint and 'masini' in request.endpoint %}active{% endif %}">

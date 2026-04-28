@@ -89,7 +89,7 @@ def create_app(config_name='default'):
     @app.context_processor
     def inject_global_data():
         alerte_count = 0
-        badge_counts = {'pontaje_pending': 0, 'documente_alerta': 0, 'activitati_pending': 0, 'masini_alerta': 0, 'total_alerte': 0}
+        badge_counts = {'pontaje_pending': 0, 'documente_alerta': 0, 'activitati_pending': 0, 'activitati_azi': 0, 'masini_alerta': 0, 'total_alerte': 0}
 
         if current_user.is_authenticated:
             # Documente expirate + expira curand
@@ -108,6 +108,20 @@ def create_app(config_name='default'):
             if current_user.is_manager:
                 badge_counts['pontaje_pending'] = Pontaj.query.filter_by(status='trimis').count()
                 badge_counts['activitati_pending'] = RaportActivitate.query.filter_by(status='trimis').count()
+
+            # Activitati planificate azi (intervalul start..end include data curenta)
+            try:
+                today_d = date.today()
+                badge_counts['activitati_azi'] = RaportActivitate.query.filter(
+                    RaportActivitate.status_executie == 'planificata',
+                    RaportActivitate.data <= today_d,
+                    db.or_(
+                        RaportActivitate.data_sfarsit.is_(None),
+                        RaportActivitate.data_sfarsit >= today_d,
+                    ),
+                ).count()
+            except Exception:
+                badge_counts['activitati_azi'] = 0
 
             # Alerte masini (documente expirate)
             masini_alerta = 0
@@ -167,6 +181,52 @@ def create_app(config_name='default'):
             click.echo('[OK] Date demo incarcate cu succes.')
 
         click.echo('[OK] Baza de date initializata!')
+
+    # --------------------------------------------------------
+    # COMANDA CLI: flask migrate-activitati
+    # Adauga coloanele noi din extensia modulului Activitati
+    # --------------------------------------------------------
+    @app.cli.command('migrate-activitati')
+    def migrate_activitati_command():
+        """Adauga coloane noi pe tabelul rapoarte_activitati (idempotent)."""
+        from sqlalchemy import inspect, text
+        insp = inspect(db.engine)
+        if 'rapoarte_activitati' not in insp.get_table_names():
+            click.echo('[INFO] Tabelul rapoarte_activitati nu exista. Rulez db.create_all().')
+            db.create_all()
+            click.echo('[OK] Tabele create.')
+            return
+
+        existing_cols = {col['name'] for col in insp.get_columns('rapoarte_activitati')}
+        coloane_noi = [
+            ('tip_activitate', "VARCHAR(20) NOT NULL DEFAULT 'zilnica'"),
+            ('data_sfarsit', 'DATE'),
+            ('numar_saptamana', 'INTEGER'),
+            ('luna_an', 'VARCHAR(7)'),
+            ('supervisor_id', 'INTEGER'),
+            ('subordonati_ids', 'TEXT'),
+            ('ore_lucrate', 'NUMERIC(5,2)'),
+            ('status_executie', "VARCHAR(20) NOT NULL DEFAULT 'planificata'"),
+        ]
+
+        adaugate = 0
+        with db.engine.begin() as conn:
+            for col_name, col_def in coloane_noi:
+                if col_name in existing_cols:
+                    click.echo(f'[SKIP] Coloana {col_name} exista deja.')
+                    continue
+                try:
+                    conn.execute(text(f'ALTER TABLE rapoarte_activitati ADD COLUMN {col_name} {col_def}'))
+                    click.echo(f'[OK] Coloana {col_name} adaugata.')
+                    adaugate += 1
+                except Exception as e:
+                    click.echo(f'[EROARE] La adaugarea coloanei {col_name}: {e}')
+
+            # Permite proiect_id NULL (pentru activitati lunare/saptamanale fara proiect specific)
+            # SQLite nu suporta ALTER COLUMN; in PostgreSQL/MySQL se face altfel.
+            # Pe SQLite, structura noua se preia la urmatoarea recreare.
+
+        click.echo(f'[FINAL] {adaugate} coloane noi adaugate. Migrare completa.')
 
     def _incarca_date_demo():
         """Incarca date demonstrative in baza de date."""

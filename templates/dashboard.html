@@ -92,6 +92,20 @@
             {% endif %}
         </div>
     </div>
+
+    <!-- Card Activitati Planificate Azi -->
+    <a href="{{ url_for('activitati.panou', status_executie='planificata') }}" class="stat-card stat-primary" style="text-decoration:none;">
+        <div class="stat-icon">
+            <i class="fa-solid fa-clipboard-list"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-label">Activitati Azi</span>
+            <span class="stat-value">{{ badge_counts.activitati_azi if badge_counts.activitati_azi is defined else 0 }}</span>
+            <span class="stat-sub-info">
+                <i class="fa-solid fa-calendar-day"></i> Planificate astazi
+            </span>
+        </div>
+    </a>
 </div>
 
 <!-- ============================================ -->

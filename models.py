@@ -659,14 +659,29 @@ class RaportActivitate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     angajat_id = db.Column(db.Integer, db.ForeignKey('angajati.id'), nullable=False)
     proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'), nullable=False)
-    data = db.Column(db.Date, nullable=False)
+    data = db.Column(db.Date, nullable=False)  # data inceput (start_date)
 
     tip_instalatie_id = db.Column(db.Integer, db.ForeignKey('tipuri_instalatii.id'), nullable=True)
     categorie_activitate_id = db.Column(db.Integer, db.ForeignKey('categorii_activitati.id'), nullable=True)
 
     zona_lucru = db.Column(db.String(200))
-    activitate_principala = db.Column(db.String(500), nullable=False)
-    activitate_detaliata = db.Column(db.Text)  # max 2000 chars
+    activitate_principala = db.Column(db.String(500), nullable=False)  # title
+    activitate_detaliata = db.Column(db.Text)  # description (max 2000 chars)
+
+    # === EXTENSIE: tip activitate (zilnica/saptamanala/lunara) ===
+    tip_activitate = db.Column(db.String(20), default='zilnica', nullable=False)
+    data_sfarsit = db.Column(db.Date, nullable=True)  # end_date
+    numar_saptamana = db.Column(db.Integer, nullable=True)  # ISO week
+    luna_an = db.Column(db.String(7), nullable=True)         # 'YYYY-MM'
+
+    # === EXTENSIE: supervisor + subordonati ===
+    supervisor_id = db.Column(db.Integer, db.ForeignKey('angajati.id'), nullable=True)
+    subordonati_ids = db.Column(db.Text, nullable=True)  # JSON array de IDs angajati
+
+    # === EXTENSIE: ore + status executie ===
+    ore_lucrate = db.Column(db.Numeric(5, 2), nullable=True)
+    status_executie = db.Column(db.String(20), default='planificata', nullable=False)
+    # planificata, in_desfasurare, finalizata
 
     materiale_folosite = db.Column(db.Text)      # JSON array [{denumire, cantitate, um}]
     echipamente_folosite = db.Column(db.Text)     # lista echipamente/scule
@@ -682,7 +697,7 @@ class RaportActivitate(db.Model):
     necesita_aprobare_tehnica = db.Column(db.Boolean, default=False)
 
     status = db.Column(db.String(20), default='draft')
-    # draft, trimis, aprobat, respins
+    # draft, trimis, aprobat, respins (workflow aprobare)
 
     aprobat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
     data_aprobare = db.Column(db.DateTime, nullable=True)
@@ -692,7 +707,10 @@ class RaportActivitate(db.Model):
     modificat_la = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relatii
-    angajat = db.relationship('Angajat', backref=db.backref('rapoarte_activitati', lazy='dynamic'))
+    angajat = db.relationship('Angajat', foreign_keys=[angajat_id],
+                              backref=db.backref('rapoarte_activitati', lazy='dynamic'))
+    supervisor = db.relationship('Angajat', foreign_keys=[supervisor_id],
+                                 backref=db.backref('activitati_supervizate', lazy='dynamic'))
     proiect = db.relationship('Proiect', backref=db.backref('rapoarte_activitati', lazy='dynamic'))
     tip_instalatie = db.relationship('TipInstalatie', backref=db.backref('rapoarte_activitati', lazy='dynamic'))
     categorie_activitate = db.relationship('CategorieActivitate', backref=db.backref('rapoarte', lazy='dynamic'))
@@ -704,6 +722,18 @@ class RaportActivitate(db.Model):
         ('trimis', 'Trimis'),
         ('aprobat', 'Aprobat'),
         ('respins', 'Respins'),
+    ]
+
+    TIPURI_ACTIVITATE = [
+        ('zilnica', 'Zilnica'),
+        ('saptamanala', 'Saptamanala'),
+        ('lunara', 'Lunara'),
+    ]
+
+    STATUSURI_EXECUTIE = [
+        ('planificata', 'Planificata'),
+        ('in_desfasurare', 'In desfasurare'),
+        ('finalizata', 'Finalizata'),
     ]
 
     UNITATI_MASURA = [
@@ -753,8 +783,71 @@ class RaportActivitate(db.Model):
             return [e.strip() for e in self.echipamente_folosite.split(',') if e.strip()]
         return []
 
+    @property
+    def subordonati_lista(self):
+        """Parseaza JSON subordonati_ids -> lista de IDs (int)."""
+        import json
+        if self.subordonati_ids:
+            try:
+                data = json.loads(self.subordonati_ids)
+                return [int(x) for x in data if str(x).strip()]
+            except (json.JSONDecodeError, TypeError, ValueError):
+                return []
+        return []
+
+    @property
+    def subordonati_obiecte(self):
+        """Returneaza obiecte Angajat pentru subordonatii setati."""
+        ids = self.subordonati_lista
+        if not ids:
+            return []
+        return Angajat.query.filter(Angajat.id.in_(ids)).all()
+
+    @property
+    def status_executie_badge_class(self):
+        mapping = {
+            'planificata': 'badge-draft',
+            'in_desfasurare': 'badge-trimis',
+            'finalizata': 'badge-aprobat',
+        }
+        return mapping.get(self.status_executie, 'badge-draft')
+
+    @property
+    def tip_badge_class(self):
+        """Clasa CSS pentru badge tip activitate."""
+        mapping = {
+            'zilnica': 'badge-tip-zilnica',
+            'saptamanala': 'badge-tip-saptamanala',
+            'lunara': 'badge-tip-lunara',
+        }
+        return mapping.get(self.tip_activitate, 'badge-tip-zilnica')
+
+    @property
+    def perioada_text(self):
+        """Returneaza un text descriptiv pentru perioada activitatii."""
+        if self.tip_activitate == 'saptamanala' and self.numar_saptamana:
+            return f'Saptamana {self.numar_saptamana}'
+        if self.tip_activitate == 'lunara' and self.luna_an:
+            try:
+                y, m = self.luna_an.split('-')
+                LUNI_RO = ['Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
+                           'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie']
+                return f'{LUNI_RO[int(m)-1]} {y}'
+            except (ValueError, IndexError):
+                return self.luna_an
+        return self.data.strftime('%d.%m.%Y') if self.data else '-'
+
+    def calculeaza_perioada(self):
+        """Auto-completeaza numar_saptamana / luna_an din data si tip_activitate."""
+        if not self.data:
+            return
+        if self.tip_activitate == 'saptamanala':
+            self.numar_saptamana = self.data.isocalendar()[1]
+        elif self.tip_activitate == 'lunara':
+            self.luna_an = self.data.strftime('%Y-%m')
+
     def __repr__(self):
-        return f'<RaportActivitate {self.angajat_id} {self.data}>'
+        return f'<RaportActivitate {self.angajat_id} {self.data} {self.tip_activitate}>'
 
 
 # ============================================================

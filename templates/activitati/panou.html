@@ -21,6 +21,14 @@
 .act-filter-bar .form-group { margin: 0; min-width: 150px; }
 .act-filter-bar .form-group label { font-size: 0.75rem; margin-bottom: 2px; }
 .badge-aprobare { background: var(--danger); color: white; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; margin-left: 4px; }
+.badge-tip { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+.badge-tip-zilnica { background: #E3F2FD; color: #1565C0; }
+.badge-tip-saptamanala { background: #E8F5E9; color: #2E7D32; }
+.badge-tip-lunara { background: #FFF3E0; color: #EF6C00; }
+.badge-exec { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 700; }
+.badge-exec-planificata { background: #ECEFF1; color: #455A64; }
+.badge-exec-in_desfasurare { background: #FFF8E1; color: #F57F17; }
+.badge-exec-finalizata { background: #E8F5E9; color: #2E7D32; }
 </style>
 {% endblock %}
 
@@ -43,7 +51,10 @@
             <button class="btn btn-success" onclick="document.getElementById('exportMenu').classList.toggle('show')" type="button">
                 <i class="fa-solid fa-chart-bar"></i> Exporturi <i class="fa-solid fa-caret-down"></i>
             </button>
-            <div id="exportMenu" class="dropdown-content" style="display:none; position:absolute; right:0; top:100%; background:white; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.15); z-index:100; min-width:200px; padding:6px 0;">
+            <div id="exportMenu" class="dropdown-content" style="display:none; position:absolute; right:0; top:100%; background:white; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.15); z-index:100; min-width:240px; padding:6px 0;">
+                <a href="{{ url_for('activitati.export_innova', luna=today.strftime('%Y-%m')) }}" style="display:block; padding:8px 16px; color:var(--gray-700); text-decoration:none; font-size:0.85rem; background:#F1F8E9; border-bottom:1px solid var(--gray-100); font-weight:600;">
+                    <i class="fa-solid fa-file-excel" style="color: var(--success);"></i> Export INNOVA (luna curenta)
+                </a>
                 <a href="{{ url_for('activitati.raport_saptamanal') }}" style="display:block; padding:8px 16px; color:var(--gray-700); text-decoration:none; font-size:0.85rem;">
                     <i class="fa-solid fa-file-excel" style="color: var(--success);"></i> Export Saptamanal
                 </a>
@@ -177,7 +188,25 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Status</label>
+                    <label class="form-label">Tip activitate</label>
+                    <select name="tip" class="form-select" style="font-size: 0.85rem;">
+                        <option value="">Toate</option>
+                        <option value="zilnica" {{ 'selected' if f_tip == 'zilnica' }}>Zilnica</option>
+                        <option value="saptamanala" {{ 'selected' if f_tip == 'saptamanala' }}>Saptamanala</option>
+                        <option value="lunara" {{ 'selected' if f_tip == 'lunara' }}>Lunara</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status executie</label>
+                    <select name="status_executie" class="form-select" style="font-size: 0.85rem;">
+                        <option value="">Toate</option>
+                        <option value="planificata" {{ 'selected' if f_status_executie == 'planificata' }}>Planificata</option>
+                        <option value="in_desfasurare" {{ 'selected' if f_status_executie == 'in_desfasurare' }}>In desfasurare</option>
+                        <option value="finalizata" {{ 'selected' if f_status_executie == 'finalizata' }}>Finalizata</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status aprobare</label>
                     <select name="status" class="form-select" style="font-size: 0.85rem;">
                         <option value="">Toate</option>
                         <option value="draft" {{ 'selected' if f_status == 'draft' }}>Draft</option>
@@ -218,11 +247,13 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Data</th>
-                        <th>Angajat</th>
+                        <th>Tip</th>
+                        <th>Titlu</th>
                         <th>Proiect</th>
-                        <th>Instalatie</th>
-                        <th>Activitate</th>
+                        <th>Angajat</th>
+                        <th>Sapt./Luna</th>
+                        <th>Data start</th>
+                        <th>Ore</th>
                         <th>Status</th>
                         <th>Actiuni</th>
                     </tr>
@@ -230,25 +261,31 @@
                 <tbody>
                     {% for a in activitati_recente %}
                     <tr>
-                        <td style="white-space: nowrap;">{{ a.data.strftime('%d.%m.%Y') }}</td>
-                        <td><strong>{{ a.angajat.nume_complet if a.angajat else '-' }}</strong></td>
+                        <td>
+                            <span class="badge-tip {{ a.tip_badge_class }}">{{ a.tip_activitate|capitalize }}</span>
+                        </td>
+                        <td style="max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            <strong>{{ a.activitate_scurta }}</strong>
+                            {% if a.tip_instalatie %}
+                            <span style="font-size: 0.7rem; padding: 1px 6px; border-radius: 8px; background: {{ a.tip_instalatie.culoare_hex }}15; color: {{ a.tip_instalatie.culoare_hex }}; font-weight: 600; margin-left: 4px;">
+                                {{ a.tip_instalatie.cod }}
+                            </span>
+                            {% endif %}
+                        </td>
                         <td>
                             <span style="font-size: 0.82rem; font-weight: 600; color: var(--primary);">
                                 {{ a.proiect.cod_proiect if a.proiect else '-' }}
                             </span>
                         </td>
-                        <td>
-                            {% if a.tip_instalatie %}
-                            <span style="font-size: 0.78rem; padding: 2px 8px; border-radius: 10px; background: {{ a.tip_instalatie.culoare_hex }}15; color: {{ a.tip_instalatie.culoare_hex }}; font-weight: 600;">
-                                {{ a.tip_instalatie.cod }}
-                            </span>
-                            {% else %}-{% endif %}
-                        </td>
-                        <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                            {{ a.activitate_scurta }}
+                        <td>{{ a.angajat.nume_complet if a.angajat else '-' }}</td>
+                        <td style="font-size: 0.82rem; color: var(--gray-600);">{{ a.perioada_text }}</td>
+                        <td style="white-space: nowrap;">{{ a.data.strftime('%d.%m.%Y') }}</td>
+                        <td style="text-align: right; white-space: nowrap;">
+                            {% if a.ore_lucrate %}{{ '%g'|format(a.ore_lucrate|float) }}h{% else %}-{% endif %}
                         </td>
                         <td>
-                            <span class="badge-status {{ a.status_badge_class }}">{{ a.status|title }}</span>
+                            <span class="badge-exec badge-exec-{{ a.status_executie }}" style="display:block; margin-bottom:2px;">{{ a.status_executie|replace('_', ' ')|title }}</span>
+                            <span class="badge-status {{ a.status_badge_class }}" style="font-size: 0.7rem;">{{ a.status|title }}</span>
                         </td>
                         <td class="actions-cell" style="white-space: nowrap;">
                             <a href="{{ url_for('activitati.detaliu', id=a.id) }}" class="btn-action btn-view" title="Detalii">

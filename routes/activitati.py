@@ -137,6 +137,8 @@ def panou():
     f_proiect = request.args.get('proiect_id', '', type=int) or None
     f_instalatie = request.args.get('tip_instalatie_id', '', type=int) or None
     f_status = request.args.get('status', '')
+    f_tip = request.args.get('tip', '')  # tip_activitate: zilnica/saptamanala/lunara
+    f_status_executie = request.args.get('status_executie', '')
     f_data_start = request.args.get('data_start', '')
     f_data_end = request.args.get('data_end', '')
 
@@ -153,6 +155,10 @@ def panou():
         query = query.filter_by(tip_instalatie_id=f_instalatie)
     if f_status:
         query = query.filter_by(status=f_status)
+    if f_tip in ('zilnica', 'saptamanala', 'lunara'):
+        query = query.filter_by(tip_activitate=f_tip)
+    if f_status_executie in ('planificata', 'in_desfasurare', 'finalizata'):
+        query = query.filter_by(status_executie=f_status_executie)
     if f_data_start:
         try:
             ds = datetime.strptime(f_data_start, '%Y-%m-%d').date()
@@ -199,6 +205,8 @@ def panou():
         f_proiect=f_proiect,
         f_instalatie=f_instalatie,
         f_status=f_status,
+        f_tip=f_tip,
+        f_status_executie=f_status_executie,
         f_data_start=f_data_start,
         f_data_end=f_data_end,
     )
@@ -326,8 +334,18 @@ def _salveaza_activitate(activitate, rapida=False):
     """Logica comuna salvare activitate (add/edit)."""
     try:
         angajat_id = request.form.get('angajat_id', type=int)
-        proiect_id = request.form.get('proiect_id', type=int)
+        proiect_id = request.form.get('proiect_id', type=int) or None
         data_str = request.form.get('data', '')
+        data_sfarsit_str = request.form.get('data_sfarsit', '').strip()
+        tip_activitate = request.form.get('tip_activitate', 'zilnica').strip() or 'zilnica'
+        if tip_activitate not in ('zilnica', 'saptamanala', 'lunara'):
+            tip_activitate = 'zilnica'
+        supervisor_id = request.form.get('supervisor_id', type=int) or None
+        subordonati_raw = request.form.getlist('subordonati_ids[]') or request.form.getlist('subordonati_ids')
+        ore_lucrate_str = request.form.get('ore_lucrate', '').strip()
+        status_executie = request.form.get('status_executie', 'planificata').strip() or 'planificata'
+        if status_executie not in ('planificata', 'in_desfasurare', 'finalizata'):
+            status_executie = 'planificata'
         tip_instalatie_id = request.form.get('tip_instalatie_id', type=int) or None
         categorie_id = request.form.get('categorie_activitate_id', type=int) or None
         zona_lucru = request.form.get('zona_lucru', '').strip()
@@ -347,13 +365,36 @@ def _salveaza_activitate(activitate, rapida=False):
             flash('Angajatul si proiectul sunt obligatorii.', 'danger')
             return redirect(request.url)
         if not activitate_principala:
-            flash('Activitatea principala este obligatorie.', 'danger')
+            flash('Titlul activitatii este obligatoriu.', 'danger')
             return redirect(request.url)
         if not data_str:
-            flash('Data este obligatorie.', 'danger')
+            flash('Data de inceput este obligatorie.', 'danger')
             return redirect(request.url)
 
         data_val = datetime.strptime(data_str, '%Y-%m-%d').date()
+        data_sfarsit_val = None
+        if data_sfarsit_str:
+            try:
+                data_sfarsit_val = datetime.strptime(data_sfarsit_str, '%Y-%m-%d').date()
+            except ValueError:
+                data_sfarsit_val = None
+
+        # subordonati_ids - parseaza si curata
+        subordonati_ids_clean = []
+        for raw_val in subordonati_raw:
+            try:
+                v = int(raw_val)
+                if v != angajat_id and v not in subordonati_ids_clean:
+                    subordonati_ids_clean.append(v)
+            except (ValueError, TypeError):
+                continue
+        subordonati_json = json.dumps(subordonati_ids_clean) if subordonati_ids_clean else None
+
+        # ore lucrate
+        try:
+            ore_lucrate_val = Decimal(ore_lucrate_str) if ore_lucrate_str else None
+        except (ValueError, TypeError):
+            ore_lucrate_val = None
 
         # Materiale JSON
         materiale_json = '[]'
@@ -380,6 +421,12 @@ def _salveaza_activitate(activitate, rapida=False):
         activitate.angajat_id = angajat_id
         activitate.proiect_id = proiect_id
         activitate.data = data_val
+        activitate.data_sfarsit = data_sfarsit_val
+        activitate.tip_activitate = tip_activitate
+        activitate.supervisor_id = supervisor_id if supervisor_id != angajat_id else None
+        activitate.subordonati_ids = subordonati_json
+        activitate.ore_lucrate = ore_lucrate_val
+        activitate.status_executie = status_executie
         activitate.tip_instalatie_id = tip_instalatie_id
         activitate.categorie_activitate_id = categorie_id
         activitate.zona_lucru = zona_lucru
@@ -394,6 +441,9 @@ def _salveaza_activitate(activitate, rapida=False):
         activitate.solutii_aplicate = solutii or None
         activitate.observatii = observatii or None
         activitate.necesita_aprobare_tehnica = necesita_aprobare
+
+        # Auto-completare numar_saptamana / luna_an din tip si data inceput
+        activitate.calculeaza_perioada()
 
         if actiune == 'trimite':
             activitate.status = 'trimis'
@@ -1237,4 +1287,377 @@ def raport_proiect():
     return render_template('activitati/raport_proiect.html',
         proiect=proiect,
         activitati=activitati,
+    )
+
+
+# ============================================================
+# EXPORT INNOVA - Structura xlsx exacta dupa template-ul referinta
+# Un sheet per angajat, grupare pe saptamani in luna
+# ============================================================
+
+LUNI_RO = [
+    '', 'ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie',
+    'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'
+]
+
+
+def _get_company_name():
+    """Citeste numele firmei din config-ul aplicatiei (fallback INNOVA)."""
+    try:
+        from routes.setari import _load_config
+        cfg = _load_config()
+        nume = cfg.get('firma_nume', '').strip()
+        if nume:
+            # Extrage doar prima parte (ex: "INNOVA CONSTRUCT SRL" -> "INNOVA")
+            short = nume.split()[0] if nume else 'INNOVA'
+            return short, nume
+    except Exception:
+        pass
+    return 'INNOVA', 'INNOVA CONSTRUCT SRL'
+
+
+def _saptamani_din_luna(an, luna, sarbatori_set):
+    """
+    Returneaza lista de saptamani din luna sub forma:
+    [(numar_sapt_iso, [zile_lucratoare]), ...]
+    Zilele sunt date() din luni->vineri (inclusiv weekend daca e zi lucrata oficial).
+    Pentru template INNOVA: doar zilele din luna care cad pe Luni-Vineri (+ Sambata daca e setata in sarbatori cu lucru).
+    """
+    import calendar
+    _, last_day = calendar.monthrange(an, luna)
+
+    saptamani = {}  # iso_week -> list of dates
+    for d in range(1, last_day + 1):
+        zi = date(an, luna, d)
+        # Includem doar zilele de Luni-Vineri (weekday 0-4) - matching template INNOVA
+        if zi.weekday() <= 4:
+            iso_w = zi.isocalendar()[1]
+            saptamani.setdefault(iso_w, []).append(zi)
+
+    # Sortare dupa numarul sapt si numerotare locala (1, 2, 3, 4, 5)
+    sorted_weeks = sorted(saptamani.items())
+    rezultat = []
+    for idx, (iso_w, zile) in enumerate(sorted_weeks, start=1):
+        rezultat.append((idx, iso_w, zile))
+    return rezultat
+
+
+def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
+    """
+    Returneaza lista de texte de activitate pentru un angajat in saptamana data.
+    Include: activitati zilnice (cu data in zile_saptamana) + saptamanale + lunare relevante.
+    """
+    if not zile_saptamana:
+        return []
+
+    prima_zi = min(zile_saptamana)
+    ultima_zi = max(zile_saptamana)
+    iso_week = prima_zi.isocalendar()[1]
+    luna_an = f'{an:04d}-{luna:02d}'
+
+    # Daily: data intre prima si ultima zi
+    daily = RaportActivitate.query.filter(
+        RaportActivitate.angajat_id == angajat_id,
+        RaportActivitate.tip_activitate == 'zilnica',
+        RaportActivitate.data >= prima_zi,
+        RaportActivitate.data <= ultima_zi,
+    ).all()
+
+    # Weekly: same iso week sau interval suprapus
+    weekly = RaportActivitate.query.filter(
+        RaportActivitate.angajat_id == angajat_id,
+        RaportActivitate.tip_activitate == 'saptamanala',
+        db.or_(
+            RaportActivitate.numar_saptamana == iso_week,
+            db.and_(
+                RaportActivitate.data <= ultima_zi,
+                db.or_(
+                    RaportActivitate.data_sfarsit.is_(None),
+                    RaportActivitate.data_sfarsit >= prima_zi,
+                ),
+            ),
+        ),
+    ).all()
+
+    # Monthly: aceeasi luna_an
+    monthly = RaportActivitate.query.filter(
+        RaportActivitate.angajat_id == angajat_id,
+        RaportActivitate.tip_activitate == 'lunara',
+        db.or_(
+            RaportActivitate.luna_an == luna_an,
+            db.and_(
+                RaportActivitate.data >= date(an, luna, 1),
+                RaportActivitate.data < (date(an + (1 if luna == 12 else 0), 1 if luna == 12 else luna + 1, 1)),
+            ),
+        ),
+    ).all()
+
+    texte = []
+    seen_ids = set()
+    for grup in (weekly, daily, monthly):
+        for a in grup:
+            if a.id in seen_ids:
+                continue
+            seen_ids.add(a.id)
+            t = (a.activitate_principala or '').strip()
+            if a.activitate_detaliata:
+                detalii = a.activitate_detaliata.strip()
+                if detalii and detalii not in t:
+                    t = t + (' - ' + detalii if t else detalii)
+            if t:
+                texte.append(t)
+    return texte
+
+
+def _construieste_sheet_angajat(wb, angajat, an, luna, company_short, sheet_index=0):
+    """Construieste un sheet INNOVA pentru un angajat intr-o luna data."""
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+    # Titlu sheet (max 31 caractere, evita caractere ilegale)
+    base_title = angajat.nume_complet
+    illegal = '[]:*?/\\'
+    safe_title = ''.join(c for c in base_title if c not in illegal)[:31]
+    if not safe_title:
+        safe_title = f'Angajat {angajat.id}'
+
+    # Asigura titlu unic
+    existing_titles = {ws.title for ws in wb.worksheets}
+    final_title = safe_title
+    suffix = 2
+    while final_title in existing_titles:
+        final_title = f'{safe_title[:28]}_{suffix}'[:31]
+        suffix += 1
+
+    if sheet_index == 0 and len(wb.worksheets) == 1 and wb.active.title == 'Sheet':
+        ws = wb.active
+        ws.title = final_title
+    else:
+        ws = wb.create_sheet(title=final_title)
+
+    # === Stiluri ===
+    titlu_font = Font(name='Calibri', size=12, bold=True, color='FF0000')
+    nume_font = Font(name='Calibri', size=11, bold=True)
+    saptamana_font = Font(name='Calibri', size=10, bold=True)
+    cell_font = Font(name='Calibri', size=10)
+    yellow_fill = PatternFill(start_color='FFFFFF00', end_color='FFFFFF00', fill_type='solid')
+    thin = Side(style='thin', color='000000')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    align_left_wrap = Alignment(horizontal='left', vertical='center', wrap_text=True)
+
+    # === Latimi coloane (matching template original) ===
+    ws.column_dimensions['A'].width = 8.78
+    ws.column_dimensions['B'].width = 20.22
+    ws.column_dimensions['C'].width = 20.22
+    ws.column_dimensions['D'].width = 12.78
+    ws.column_dimensions['E'].width = 31.11
+
+    # === Rand 3: Titlu ===
+    luna_text = LUNI_RO[luna]
+    titlu = f'Raport de activitate {company_short} - {luna_text} {an}'
+    ws['B3'] = titlu
+    ws['B3'].font = titlu_font
+    ws['B3'].alignment = align_center
+    ws.row_dimensions[3].height = 19.8
+
+    # === Rand 6: Numele angajatului (B6:E6 merged) ===
+    ws.merge_cells('B6:E6')
+    ws['B6'] = angajat.nume_complet
+    ws['B6'].font = nume_font
+    ws['B6'].alignment = align_center
+    ws.row_dimensions[6].height = 40.2
+
+    # === Rand 7: Separator (D7:E7 merged, gol) ===
+    ws.merge_cells('D7:E7')
+    ws.row_dimensions[7].height = 25.8
+
+    # === Saptamani ===
+    sarbatori_legale = set()
+    sarb_query = SarbatoareLegala.query.filter_by(an=an).all()
+    for s in sarb_query:
+        if s.data.month == luna:
+            sarbatori_legale.add(s.data)
+
+    saptamani = _saptamani_din_luna(an, luna, sarbatori_legale)
+    if not saptamani:
+        return ws
+
+    # Calculeaza randul de inceput pentru zone saptamani (start cu 8)
+    current_row = 8
+    luna_capitalizata = luna_text.capitalize()
+    primul_rand_sapt = current_row
+    ultimul_rand_sapt = None
+
+    for sapt_idx, iso_week, zile in saptamani:
+        nr_zile = len(zile)
+        if nr_zile == 0:
+            continue
+
+        start_row = current_row
+        end_row = current_row + nr_zile - 1
+        ultimul_rand_sapt = end_row
+
+        # === Coloana C: Saptamana X (merged pe nr_zile randuri) ===
+        if nr_zile > 1:
+            ws.merge_cells(start_row=start_row, start_column=3, end_row=end_row, end_column=3)
+        c_cell = ws.cell(row=start_row, column=3, value=f'Saptamana {sapt_idx}')
+        c_cell.font = saptamana_font
+        c_cell.alignment = align_center
+        c_cell.border = border
+
+        # === Coloana D: zile individuale ===
+        # === Coloana E: text activitati (merged pe nr_zile randuri) ===
+        if nr_zile > 1:
+            ws.merge_cells(start_row=start_row, start_column=5, end_row=end_row, end_column=5)
+        texte = _activitati_pentru_saptamana(angajat.id, zile, luna, an)
+        text_e = '\n'.join(texte) if texte else ''
+        e_cell = ws.cell(row=start_row, column=5, value=text_e)
+        e_cell.font = cell_font
+        e_cell.alignment = align_center
+        e_cell.border = border
+
+        # Populare zile in coloana D
+        for offset, zi in enumerate(zile):
+            r = start_row + offset
+            d_cell = ws.cell(row=r, column=4, value=zi)
+            d_cell.number_format = 'd mmm.'
+            d_cell.font = cell_font
+            d_cell.alignment = align_center
+            d_cell.border = border
+            ws.row_dimensions[r].height = 15.75
+            # Sarbatoare legala -> fill galben
+            if zi in sarbatori_legale:
+                d_cell.fill = yellow_fill
+
+            # Setam border si pe celulele adiacente C, E (chiar daca sunt merged, primul cell are border)
+            ws.cell(row=r, column=3).border = border
+            ws.cell(row=r, column=5).border = border
+
+        current_row = end_row + 1
+
+    # === Coloana B: Numele lunii (merged pe TOATE randurile de saptamani) ===
+    if ultimul_rand_sapt and ultimul_rand_sapt >= primul_rand_sapt:
+        ws.merge_cells(start_row=primul_rand_sapt, start_column=2,
+                       end_row=ultimul_rand_sapt, end_column=2)
+        b_cell = ws.cell(row=primul_rand_sapt, column=2, value=luna_capitalizata)
+        b_cell.font = saptamana_font
+        b_cell.alignment = align_center
+        b_cell.border = border
+        # Border pe toate celulele B din zona
+        for r in range(primul_rand_sapt, ultimul_rand_sapt + 1):
+            ws.cell(row=r, column=2).border = border
+
+    return ws
+
+
+@activitati_bp.route('/raport/innova')
+@activitati_bp.route('/export')
+@login_required
+def export_innova():
+    """
+    Export xlsx cu structura INNOVA exacta:
+    - Un sheet per angajat
+    - Titlu rosu bold "Raport de activitate <COMPANY> - <luna> <an>"
+    - Numele angajatului in B6:E6
+    - Saptamani grupate cu activitati concatenate
+
+    Parametri suportati (query string):
+    - ?angajat_id=X         exporta doar acel angajat
+    - ?luna=YYYY-MM         filtreaza luna (default: luna curenta)
+    - ?tip=zilnica|saptamanala|lunara  filtreaza tip activitati incluse
+    """
+    from openpyxl import Workbook
+
+    today = date.today()
+
+    # === Parametri ===
+    luna_param = request.args.get('luna', '').strip()
+    if luna_param:
+        try:
+            an, luna = luna_param.split('-')
+            an = int(an)
+            luna = int(luna)
+            if not (1 <= luna <= 12):
+                raise ValueError
+        except ValueError:
+            flash('Format luna invalid (folositi YYYY-MM).', 'danger')
+            return redirect(url_for('activitati.panou'))
+    else:
+        an = today.year
+        luna = today.month
+
+    f_angajat_id = request.args.get('angajat_id', type=int) or None
+    f_tip = request.args.get('tip', '').strip()  # zilnica/saptamanala/lunara
+
+    # === Determinare angajati de exportat ===
+    operator_angajat = _get_angajat_for_user(current_user)
+    if current_user.rol == 'operator':
+        if not operator_angajat:
+            flash('Nu sunteti asociat unui angajat.', 'warning')
+            return redirect(url_for('activitati.panou'))
+        angajati = [operator_angajat]
+    elif f_angajat_id:
+        ang = Angajat.query.get(f_angajat_id)
+        if not ang:
+            flash('Angajat inexistent.', 'danger')
+            return redirect(url_for('activitati.panou'))
+        angajati = [ang]
+    else:
+        # Toti angajatii care au activitati in luna ceruta
+        prima_zi = date(an, luna, 1)
+        if luna == 12:
+            ultima_zi = date(an, 12, 31)
+        else:
+            from calendar import monthrange
+            ultima_zi = date(an, luna, monthrange(an, luna)[1])
+
+        q = db.session.query(RaportActivitate.angajat_id).filter(
+            RaportActivitate.data >= prima_zi,
+            RaportActivitate.data <= ultima_zi,
+        )
+        if f_tip in ('zilnica', 'saptamanala', 'lunara'):
+            q = q.filter(RaportActivitate.tip_activitate == f_tip)
+        angajati_ids = [r[0] for r in q.distinct().all() if r[0]]
+        if angajati_ids:
+            angajati = Angajat.query.filter(Angajat.id.in_(angajati_ids)).order_by(
+                Angajat.nume, Angajat.prenume
+            ).all()
+        else:
+            # Fallback: toti angajatii activi
+            angajati = Angajat.query.filter_by(status='activ').order_by(
+                Angajat.nume, Angajat.prenume
+            ).all()
+
+    if not angajati:
+        flash('Niciun angajat de exportat.', 'warning')
+        return redirect(url_for('activitati.panou'))
+
+    # === Construire workbook ===
+    company_short, _ = _get_company_name()
+    wb = Workbook()
+    # Sterge sheet-ul implicit; il vom recrea cu primul angajat
+    default_ws = wb.active
+    default_ws.title = 'Sheet'
+
+    for idx, ang in enumerate(angajati):
+        _construieste_sheet_angajat(wb, ang, an, luna, company_short, sheet_index=idx)
+
+    # === Salvare si raspuns ===
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    luna_text = LUNI_RO[luna]
+    if len(angajati) == 1:
+        ang = angajati[0]
+        nume_curat = f'{ang.nume}_{ang.prenume}'.replace(' ', '_')
+        filename = f'Raport_activitate_{nume_curat}_{luna_text}_{an}.xlsx'
+    else:
+        filename = f'Raport_activitate_{company_short}_{luna_text}_{an}.xlsx'
+
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=filename,
     )

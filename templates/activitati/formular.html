@@ -30,6 +30,14 @@
 .tag-item { display: inline-flex; align-items: center; gap: 4px; background: var(--primary); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.78rem; font-weight: 600; }
 .tag-remove { cursor: pointer; font-weight: 700; margin-left: 2px; }
 .act-warning { background: #fff3e0; border-left: 3px solid var(--warning); padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; margin-bottom: 14px; }
+.tip-pill { display:inline-block; padding:6px 14px; border-radius:8px; cursor:pointer; font-weight:600; border:2px solid var(--gray-200); background:white; transition:all 0.15s; }
+.tip-pill.active { background: var(--primary); color: white; border-color: var(--primary); }
+.tip-pill:hover { border-color: var(--primary); }
+.preview-perioada { display:inline-block; margin-left:10px; padding:4px 12px; border-radius:6px; background:#E3F2FD; color:#1565C0; font-weight:600; font-size:0.85rem; }
+.subordinate-list { display:flex; flex-wrap:wrap; gap:6px; padding:8px; border:1px solid var(--gray-300); border-radius:8px; max-height:140px; overflow-y:auto; background:white; }
+.subordinate-item { display:flex; align-items:center; gap:6px; padding:4px 10px; background:var(--gray-100); border-radius:14px; font-size:0.82rem; cursor:pointer; user-select:none; }
+.subordinate-item input[type=checkbox] { margin:0; cursor:pointer; }
+.subordinate-item.selected { background:var(--primary); color:white; }
 </style>
 {% endblock %}
 
@@ -56,14 +64,39 @@
     <form method="POST" action="{{ url_for('activitati.editeaza', id=activitate.id) if activitate else url_for('activitati.adauga') }}" id="actForm">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+        <!-- SECTIUNEA 0: TIP ACTIVITATE -->
+        <div class="act-section">
+            <h3><i class="fa-solid fa-layer-group"></i> Tip Activitate</h3>
+            <input type="hidden" name="tip_activitate" id="tipActivitateInput"
+                   value="{{ activitate.tip_activitate if activitate else 'zilnica' }}">
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <span class="tip-pill {{ 'active' if (not activitate or activitate.tip_activitate == 'zilnica') }}"
+                      data-tip="zilnica" onclick="setTipActivitate('zilnica')">
+                    <i class="fa-solid fa-calendar-day"></i> Zilnica
+                </span>
+                <span class="tip-pill {{ 'active' if activitate and activitate.tip_activitate == 'saptamanala' }}"
+                      data-tip="saptamanala" onclick="setTipActivitate('saptamanala')">
+                    <i class="fa-solid fa-calendar-week"></i> Saptamanala
+                </span>
+                <span class="tip-pill {{ 'active' if activitate and activitate.tip_activitate == 'lunara' }}"
+                      data-tip="lunara" onclick="setTipActivitate('lunara')">
+                    <i class="fa-solid fa-calendar"></i> Lunara
+                </span>
+                <span id="previewPerioada" class="preview-perioada" style="display:none;"></span>
+            </div>
+            <div style="margin-top:10px; font-size:0.8rem; color:var(--gray-500);">
+                <i class="fa-solid fa-info-circle"></i> Saptamana / luna se calculeaza automat din data de inceput.
+            </div>
+        </div>
+
         <!-- SECTIUNEA 1: CONTEXT -->
         <div class="act-section">
             <h3><i class="fa-solid fa-map-marker-alt"></i> Context</h3>
             <div class="act-grid">
                 {% if current_user.rol in ['admin', 'manager'] %}
                 <div class="form-group">
-                    <label class="form-label">Angajat *</label>
-                    <select name="angajat_id" class="form-select" required>
+                    <label class="form-label">Angajat principal *</label>
+                    <select name="angajat_id" id="angajatPrincipalSelect" class="form-select" required>
                         <option value="">-- Selecteaza angajat --</option>
                         {% for a in angajati %}
                         <option value="{{ a.id }}"
@@ -74,21 +107,25 @@
                     </select>
                 </div>
                 {% else %}
-                <input type="hidden" name="angajat_id" value="{{ angajat_curent.id if angajat_curent else '' }}">
+                <input type="hidden" name="angajat_id" id="angajatPrincipalSelect" value="{{ angajat_curent.id if angajat_curent else '' }}">
                 <div class="form-group">
-                    <label class="form-label">Angajat</label>
+                    <label class="form-label">Angajat principal</label>
                     <input type="text" class="form-control" value="{{ angajat_curent.nume_complet if angajat_curent else 'Neasociat' }}" disabled>
                 </div>
                 {% endif %}
                 <div class="form-group">
-                    <label class="form-label">Data *</label>
-                    <input type="date" name="data" class="form-control" required
-                           value="{{ activitate.data.strftime('%Y-%m-%d') if activitate else today.strftime('%Y-%m-%d') }}"
-                           max="{{ today.strftime('%Y-%m-%d') }}">
+                    <label class="form-label">Data inceput *</label>
+                    <input type="date" name="data" id="dataInceput" class="form-control" required
+                           value="{{ activitate.data.strftime('%Y-%m-%d') if activitate else today.strftime('%Y-%m-%d') }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Data sfarsit (optional)</label>
+                    <input type="date" name="data_sfarsit" class="form-control"
+                           value="{{ activitate.data_sfarsit.strftime('%Y-%m-%d') if activitate and activitate.data_sfarsit else '' }}">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Proiect *</label>
-                    <select name="proiect_id" class="form-select" required>
+                    <select name="proiect_id" id="proiectSelect" class="form-select" required>
                         <option value="">-- Selecteaza proiect --</option>
                         {% for p in proiecte %}
                         <option value="{{ p.id }}"
@@ -99,6 +136,20 @@
                     </select>
                 </div>
                 <div class="form-group">
+                    <label class="form-label">Ore lucrate</label>
+                    <input type="number" name="ore_lucrate" class="form-control" step="0.5" min="0"
+                           value="{{ '%g'|format(activitate.ore_lucrate|float) if activitate and activitate.ore_lucrate else '' }}"
+                           placeholder="Ex: 8.0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status executie</label>
+                    <select name="status_executie" class="form-select">
+                        <option value="planificata" {{ 'selected' if activitate and activitate.status_executie == 'planificata' }}>Planificata</option>
+                        <option value="in_desfasurare" {{ 'selected' if activitate and activitate.status_executie == 'in_desfasurare' }}>In desfasurare</option>
+                        <option value="finalizata" {{ 'selected' if activitate and activitate.status_executie == 'finalizata' }}>Finalizata</option>
+                    </select>
+                </div>
+                <div class="form-group act-full">
                     <label class="form-label">Zona de lucru</label>
                     <input type="text" name="zona_lucru" class="form-control"
                            value="{{ activitate.zona_lucru if activitate else '' }}"
@@ -132,6 +183,40 @@
                         <span style="{{ 'color: white;' if activitate and activitate.tip_instalatie_id == inst.id else 'color: ' + inst.culoare_hex + ';' }}">{{ inst.cod }}</span>
                     </div>
                     {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTIUNEA 1.5: ECHIPA - SUPERVISOR + SUBORDONATI -->
+        <div class="act-section">
+            <h3><i class="fa-solid fa-people-group"></i> Echipa</h3>
+            <div class="act-grid">
+                <div class="form-group">
+                    <label class="form-label">Supervisor / Sef direct</label>
+                    <select name="supervisor_id" class="form-select">
+                        <option value="">-- Niciun supervisor --</option>
+                        {% for a in angajati %}
+                        <option value="{{ a.id }}"
+                            {{ 'selected' if activitate and activitate.supervisor_id == a.id }}>
+                            {{ a.nume_complet }} ({{ a.functie }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Angajati in subordine</label>
+                    <div class="subordinate-list">
+                        {% set sub_ids = activitate.subordonati_lista if activitate else [] %}
+                        {% for a in angajati %}
+                        <label class="subordinate-item {{ 'selected' if a.id in sub_ids }}">
+                            <input type="checkbox" name="subordonati_ids[]" value="{{ a.id }}"
+                                   {{ 'checked' if a.id in sub_ids }}
+                                   onchange="this.parentElement.classList.toggle('selected', this.checked)">
+                            <span>{{ a.nume_complet }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <small style="color:var(--gray-500); font-size:0.78rem;">Bifati angajatii care sunt in subordinea acestei activitati.</small>
                 </div>
             </div>
         </div>
@@ -339,5 +424,54 @@ function addMaterialRow() {
 {% if activitate and activitate.tip_instalatie_id %}
 filterCategorii({{ activitate.tip_instalatie_id }});
 {% endif %}
+
+// =====================================================
+// TIP ACTIVITATE: Preview saptamana / luna + ajustare proiect required
+// =====================================================
+const LUNI_RO = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie',
+                 'Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'];
+
+function getISOWeek(d) {
+    var date = new Date(d.getTime());
+    date.setHours(0, 0, 0, 0);
+    // Joia anterioara/curenta determina anul ISO
+    date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+    var week1 = new Date(date.getFullYear(), 0, 4);
+    return 1 + Math.round(((date - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+}
+
+function setTipActivitate(tip) {
+    document.getElementById('tipActivitateInput').value = tip;
+    document.querySelectorAll('.tip-pill').forEach(function(p) {
+        p.classList.toggle('active', p.dataset.tip === tip);
+    });
+    updatePreviewPerioada();
+}
+
+function updatePreviewPerioada() {
+    var tip = document.getElementById('tipActivitateInput').value;
+    var dataInput = document.getElementById('dataInceput').value;
+    var preview = document.getElementById('previewPerioada');
+    if (!dataInput || tip === 'zilnica') {
+        preview.style.display = 'none';
+        return;
+    }
+    var d = new Date(dataInput + 'T00:00:00');
+    if (isNaN(d.getTime())) {
+        preview.style.display = 'none';
+        return;
+    }
+    if (tip === 'saptamanala') {
+        preview.textContent = 'Saptamana: ' + getISOWeek(d);
+        preview.style.display = 'inline-block';
+    } else if (tip === 'lunara') {
+        preview.textContent = 'Luna: ' + LUNI_RO[d.getMonth()] + ' ' + d.getFullYear();
+        preview.style.display = 'inline-block';
+    }
+}
+
+document.getElementById('dataInceput').addEventListener('change', updatePreviewPerioada);
+// Initial render
+updatePreviewPerioada();
 </script>
 {% endblock %}
