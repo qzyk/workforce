@@ -1,0 +1,6 @@
+database/*.db
+database/*.json
+uploads/
+exports/
+__pycache__/
+.DS_Store
