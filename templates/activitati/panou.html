@@ -47,14 +47,14 @@
         <a href="{{ url_for('activitati.calendar_view') }}" class="btn btn-outline">
             <i class="fa-solid fa-calendar-days"></i> Calendar
         </a>
+        <button type="button" class="btn btn-success" onclick="openExportInnovaModal()">
+            <i class="fa-solid fa-file-excel"></i> Export INNOVA
+        </button>
         <div class="dropdown" style="position: relative; display: inline-block;">
-            <button class="btn btn-success" onclick="document.getElementById('exportMenu').classList.toggle('show')" type="button">
-                <i class="fa-solid fa-chart-bar"></i> Exporturi <i class="fa-solid fa-caret-down"></i>
+            <button class="btn btn-outline" onclick="document.getElementById('exportMenu').classList.toggle('show')" type="button">
+                <i class="fa-solid fa-chart-bar"></i> Alte exporturi <i class="fa-solid fa-caret-down"></i>
             </button>
             <div id="exportMenu" class="dropdown-content" style="display:none; position:absolute; right:0; top:100%; background:white; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.15); z-index:100; min-width:240px; padding:6px 0;">
-                <a href="{{ url_for('activitati.export_innova', luna=today.strftime('%Y-%m')) }}" style="display:block; padding:8px 16px; color:var(--gray-700); text-decoration:none; font-size:0.85rem; background:#F1F8E9; border-bottom:1px solid var(--gray-100); font-weight:600;">
-                    <i class="fa-solid fa-file-excel" style="color: var(--success);"></i> Export INNOVA (luna curenta)
-                </a>
                 <a href="{{ url_for('activitati.raport_saptamanal') }}" style="display:block; padding:8px 16px; color:var(--gray-700); text-decoration:none; font-size:0.85rem;">
                     <i class="fa-solid fa-file-excel" style="color: var(--success);"></i> Export Saptamanal
                 </a>
@@ -66,6 +66,49 @@
                 </a>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- MODAL EXPORT INNOVA -->
+<div id="exportInnovaModal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center;">
+    <div class="modal-box" style="background:white; border-radius:12px; padding:24px; max-width:520px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px; padding-bottom:12px; border-bottom:2px solid var(--gray-100);">
+            <i class="fa-solid fa-file-excel" style="color:var(--success); font-size:1.4rem;"></i>
+            <h3 style="margin:0; font-size:1.1rem;">Generare Raport INNOVA</h3>
+        </div>
+        <form method="GET" action="{{ url_for('activitati.export_innova') }}" id="exportInnovaForm">
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label">Luna *</label>
+                <input type="month" name="luna" value="{{ today.strftime('%Y-%m') }}" class="form-control" required>
+            </div>
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label">Angajat</label>
+                <select name="angajat_id" class="form-select">
+                    <option value="">— Toti angajatii cu activitati —</option>
+                    {% for a in angajati %}
+                    <option value="{{ a.id }}">{{ a.nume_complet }} ({{ a.functie }})</option>
+                    {% endfor %}
+                </select>
+                <small style="color:var(--gray-500); font-size:0.78rem;">Daca lasati gol, exportul include cate un sheet pentru fiecare angajat care are activitati in luna selectata.</small>
+            </div>
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label">Tip activitati incluse</label>
+                <select name="tip" class="form-select">
+                    <option value="">Toate tipurile</option>
+                    <option value="zilnica">Doar zilnice</option>
+                    <option value="saptamanala">Doar saptamanale</option>
+                    <option value="lunara">Doar lunare</option>
+                </select>
+            </div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+                <button type="button" onclick="closeExportInnovaModal()" class="btn btn-outline">
+                    Anuleaza
+                </button>
+                <button type="submit" class="btn btn-success">
+                    <i class="fa-solid fa-download"></i> Descarca Excel
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -326,11 +369,31 @@
 // Toggle export dropdown
 document.addEventListener('click', function(e) {
     var menu = document.getElementById('exportMenu');
+    if (!menu) return;
     if (!e.target.closest('.dropdown')) {
         menu.style.display = 'none';
     } else {
         menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
     }
+});
+
+// Modal Export INNOVA
+function openExportInnovaModal() {
+    document.getElementById('exportInnovaModal').style.display = 'flex';
+}
+function closeExportInnovaModal() {
+    document.getElementById('exportInnovaModal').style.display = 'none';
+}
+// Inchidere modal pe click fundal sau tasta Escape
+document.getElementById('exportInnovaModal').addEventListener('click', function(e) {
+    if (e.target === this) closeExportInnovaModal();
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeExportInnovaModal();
+});
+// Dupa submit, inchide modalul (descarcarea continua in fundal)
+document.getElementById('exportInnovaForm').addEventListener('submit', function() {
+    setTimeout(closeExportInnovaModal, 600);
 });
 </script>
 {% endblock %}
