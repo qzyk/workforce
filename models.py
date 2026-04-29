@@ -678,6 +678,9 @@ class RaportActivitate(db.Model):
     supervisor_id = db.Column(db.Integer, db.ForeignKey('angajati.id'), nullable=True)
     subordonati_ids = db.Column(db.Text, nullable=True)  # JSON array de IDs angajati
 
+    # === EXTENSIE: multi-proiect (proiect_id ramane primarul) ===
+    proiecte_ids = db.Column(db.Text, nullable=True)  # JSON array de IDs proiecte
+
     # === EXTENSIE: ore + status executie ===
     ore_lucrate = db.Column(db.Numeric(5, 2), nullable=True)
     status_executie = db.Column(db.String(20), default='planificata', nullable=False)
@@ -802,6 +805,28 @@ class RaportActivitate(db.Model):
         if not ids:
             return []
         return Angajat.query.filter(Angajat.id.in_(ids)).all()
+
+    @property
+    def proiecte_lista(self):
+        """Lista de IDs proiecte (din JSON sau fallback la proiect_id)."""
+        import json
+        if self.proiecte_ids:
+            try:
+                data = json.loads(self.proiecte_ids)
+                ids = [int(x) for x in data if str(x).strip()]
+                if ids:
+                    return ids
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+        return [self.proiect_id] if self.proiect_id else []
+
+    @property
+    def proiecte_obiecte(self):
+        """Obiecte Proiect asociate cu activitatea (multi-proiect)."""
+        ids = self.proiecte_lista
+        if not ids:
+            return []
+        return Proiect.query.filter(Proiect.id.in_(ids)).all()
 
     @property
     def status_executie_badge_class(self):

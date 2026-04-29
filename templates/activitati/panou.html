@@ -82,14 +82,24 @@
                 <input type="month" name="luna" value="{{ today.strftime('%Y-%m') }}" class="form-control" required>
             </div>
             <div class="form-group" style="margin-bottom:14px;">
-                <label class="form-label">Angajat</label>
-                <select name="angajat_id" class="form-select">
-                    <option value="">— Toti angajatii cu activitati —</option>
+                <label class="form-label">Angajati</label>
+                <div style="display:flex; gap:8px; margin-bottom:6px;">
+                    <button type="button" class="btn btn-outline" style="font-size:0.78rem; padding:4px 10px;" onclick="selectAllAngajati(true)">
+                        <i class="fa-solid fa-check-double"></i> Selecteaza toti
+                    </button>
+                    <button type="button" class="btn btn-outline" style="font-size:0.78rem; padding:4px 10px;" onclick="selectAllAngajati(false)">
+                        <i class="fa-solid fa-xmark"></i> Deselecteaza
+                    </button>
+                </div>
+                <select name="angajat_id" id="exportAngajatiSelect" multiple class="form-select" size="7" style="height:auto;">
                     {% for a in angajati %}
                     <option value="{{ a.id }}">{{ a.nume_complet }} ({{ a.functie }})</option>
                     {% endfor %}
                 </select>
-                <small style="color:var(--gray-500); font-size:0.78rem;">Daca lasati gol, exportul include cate un sheet pentru fiecare angajat care are activitati in luna selectata.</small>
+                <small style="color:var(--gray-500); font-size:0.78rem;">
+                    Tine apasat <strong>Ctrl</strong> (Windows) sau <strong>Cmd</strong> (Mac) pentru a selecta mai multi.
+                    Daca nu selectati nimic, exportul include cate un sheet pentru fiecare angajat care are activitati in luna selectata.
+                </small>
             </div>
             <div class="form-group" style="margin-bottom:14px;">
                 <label class="form-label">Tip activitati incluse</label>
@@ -316,9 +326,16 @@
                             {% endif %}
                         </td>
                         <td>
-                            <span style="font-size: 0.82rem; font-weight: 600; color: var(--primary);">
-                                {{ a.proiect.cod_proiect if a.proiect else '-' }}
-                            </span>
+                            {% set proiecte_obj = a.proiecte_obiecte %}
+                            {% if proiecte_obj|length > 1 %}
+                                <span style="font-size:0.82rem; font-weight:600; color:var(--primary);" title="{{ proiecte_obj|map(attribute='cod_proiect')|join(', ') }}">
+                                    {{ proiecte_obj[0].cod_proiect }} <small style="color:var(--gray-500); font-weight:normal;">+{{ proiecte_obj|length - 1 }}</small>
+                                </span>
+                            {% elif a.proiect %}
+                                <span style="font-size: 0.82rem; font-weight: 600; color: var(--primary);">
+                                    {{ a.proiect.cod_proiect }}
+                                </span>
+                            {% else %}-{% endif %}
                         </td>
                         <td>{{ a.angajat.nume_complet if a.angajat else '-' }}</td>
                         <td style="font-size: 0.82rem; color: var(--gray-600);">{{ a.perioada_text }}</td>
@@ -383,6 +400,10 @@ function openExportInnovaModal() {
 }
 function closeExportInnovaModal() {
     document.getElementById('exportInnovaModal').style.display = 'none';
+}
+function selectAllAngajati(select) {
+    var sel = document.getElementById('exportAngajatiSelect');
+    Array.from(sel.options).forEach(function(o) { o.selected = select; });
 }
 // Inchidere modal pe click fundal sau tasta Escape
 document.getElementById('exportInnovaModal').addEventListener('click', function(e) {

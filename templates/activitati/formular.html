@@ -123,17 +123,24 @@
                     <input type="date" name="data_sfarsit" class="form-control"
                            value="{{ activitate.data_sfarsit.strftime('%Y-%m-%d') if activitate and activitate.data_sfarsit else '' }}">
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Proiect *</label>
-                    <select name="proiect_id" id="proiectSelect" class="form-select" required>
-                        <option value="">-- Selecteaza proiect --</option>
+                <div class="form-group act-full">
+                    <label class="form-label">
+                        Proiecte *
+                        <small style="color:var(--gray-500); font-weight:normal; font-size:0.78rem;">(Ctrl/Cmd-click pentru mai multe; primul devine principal)</small>
+                    </label>
+                    {% set selected_proiecte = activitate.proiecte_lista if activitate else ([pontaj_azi.proiect_id] if pontaj_azi else []) %}
+                    <select name="proiect_ids[]" id="proiectSelect" class="form-select" multiple size="5" style="height:auto;">
                         {% for p in proiecte %}
                         <option value="{{ p.id }}"
-                            {{ 'selected' if (activitate and activitate.proiect_id == p.id) or (not activitate and pontaj_azi and pontaj_azi.proiect_id == p.id) }}>
+                            {{ 'selected' if p.id in selected_proiecte }}>
                             {{ p.cod_proiect }} - {{ p.nume }}
                         </option>
                         {% endfor %}
                     </select>
+                    <div style="margin-top:6px; display:flex; gap:6px;">
+                        <button type="button" class="btn btn-outline" style="font-size:0.75rem; padding:3px 10px;" onclick="toggleProiecte(true)">Selecteaza toate</button>
+                        <button type="button" class="btn btn-outline" style="font-size:0.75rem; padding:3px 10px;" onclick="toggleProiecte(false)">Deselecteaza</button>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Ore lucrate</label>
@@ -473,5 +480,23 @@ function updatePreviewPerioada() {
 document.getElementById('dataInceput').addEventListener('change', updatePreviewPerioada);
 // Initial render
 updatePreviewPerioada();
+
+// Multi-select proiecte: toggle helpers
+function toggleProiecte(select) {
+    var sel = document.getElementById('proiectSelect');
+    Array.from(sel.options).forEach(function(o) { o.selected = select; });
+}
+
+// Validare submit: cel putin un proiect selectat
+document.getElementById('actForm').addEventListener('submit', function(e) {
+    var sel = document.getElementById('proiectSelect');
+    if (!sel) return;
+    var selected = Array.from(sel.options).filter(function(o) { return o.selected; });
+    if (selected.length === 0) {
+        e.preventDefault();
+        alert('Selectati cel putin un proiect.');
+        sel.focus();
+    }
+});
 </script>
 {% endblock %}

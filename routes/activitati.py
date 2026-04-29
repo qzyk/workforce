@@ -334,7 +334,23 @@ def _salveaza_activitate(activitate, rapida=False):
     """Logica comuna salvare activitate (add/edit)."""
     try:
         angajat_id = request.form.get('angajat_id', type=int)
-        proiect_id = request.form.get('proiect_id', type=int) or None
+        # Multi-proiect: accepta atat 'proiect_ids[]' (multi) cat si 'proiect_id' (legacy)
+        proiect_ids_raw = request.form.getlist('proiect_ids[]') or request.form.getlist('proiect_ids')
+        proiecte_ids_clean = []
+        for v in proiect_ids_raw:
+            try:
+                n = int(v)
+                if n > 0 and n not in proiecte_ids_clean:
+                    proiecte_ids_clean.append(n)
+            except (ValueError, TypeError):
+                continue
+        if not proiecte_ids_clean:
+            # Fallback la single proiect_id (forma veche)
+            single = request.form.get('proiect_id', type=int)
+            if single:
+                proiecte_ids_clean = [single]
+        proiect_id = proiecte_ids_clean[0] if proiecte_ids_clean else None
+        proiecte_json = json.dumps(proiecte_ids_clean) if proiecte_ids_clean else None
         data_str = request.form.get('data', '')
         data_sfarsit_str = request.form.get('data_sfarsit', '').strip()
         tip_activitate = request.form.get('tip_activitate', 'zilnica').strip() or 'zilnica'
@@ -362,7 +378,7 @@ def _salveaza_activitate(activitate, rapida=False):
 
         # Validare
         if not angajat_id or not proiect_id:
-            flash('Angajatul si proiectul sunt obligatorii.', 'danger')
+            flash('Angajatul si cel putin un proiect sunt obligatorii.', 'danger')
             return redirect(request.url)
         if not activitate_principala:
             flash('Titlul activitatii este obligatoriu.', 'danger')
@@ -420,6 +436,7 @@ def _salveaza_activitate(activitate, rapida=False):
 
         activitate.angajat_id = angajat_id
         activitate.proiect_id = proiect_id
+        activitate.proiecte_ids = proiecte_json
         activitate.data = data_val
         activitate.data_sfarsit = data_sfarsit_val
         activitate.tip_activitate = tip_activitate
@@ -1586,7 +1603,16 @@ def export_innova():
         an = today.year
         luna = today.month
 
-    f_angajat_id = request.args.get('angajat_id', type=int) or None
+    # Suporta atat ?angajat_id=X cat si ?angajat_id=X&angajat_id=Y (multi-select)
+    f_angajat_ids_raw = request.args.getlist('angajat_id')
+    f_angajat_ids = []
+    for v in f_angajat_ids_raw:
+        try:
+            n = int(v)
+            if n > 0 and n not in f_angajat_ids:
+                f_angajat_ids.append(n)
+        except (ValueError, TypeError):
+            continue
     f_tip = request.args.get('tip', '').strip()  # zilnica/saptamanala/lunara
 
     # === Determinare angajati de exportat ===
@@ -1596,12 +1622,13 @@ def export_innova():
             flash('Nu sunteti asociat unui angajat.', 'warning')
             return redirect(url_for('activitati.panou'))
         angajati = [operator_angajat]
-    elif f_angajat_id:
-        ang = Angajat.query.get(f_angajat_id)
-        if not ang:
-            flash('Angajat inexistent.', 'danger')
+    elif f_angajat_ids:
+        angajati = Angajat.query.filter(Angajat.id.in_(f_angajat_ids)).order_by(
+            Angajat.nume, Angajat.prenume
+        ).all()
+        if not angajati:
+            flash('Niciunul din angajatii selectati nu exista.', 'danger')
             return redirect(url_for('activitati.panou'))
-        angajati = [ang]
     else:
         # Toti angajatii care au activitati in luna ceruta
         prima_zi = date(an, luna, 1)
