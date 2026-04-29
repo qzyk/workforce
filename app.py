@@ -123,6 +123,38 @@ def create_app(config_name='default'):
             except Exception:
                 badge_counts['activitati_azi'] = 0
 
+        # Zile de nastere VIP (Manager_calitate / Director / Inginer / Sef_santier)
+        zile_de_nastere = []
+        if current_user.is_authenticated:
+            try:
+                today_d = date.today()
+                FUNCTII_VIP = ['Manager_calitate', 'Director', 'Inginer', 'Sef_santier']
+                angajati_vip = Angajat.query.filter(
+                    Angajat.functie.in_(FUNCTII_VIP),
+                    Angajat.status == 'activ',
+                    Angajat.data_nasterii.isnot(None),
+                    db.extract('month', Angajat.data_nasterii) == today_d.month,
+                    db.extract('day', Angajat.data_nasterii) == today_d.day,
+                ).all()
+                FUNCTIE_LABELS = {
+                    'Manager_calitate': 'Manager Calitate',
+                    'Director': 'Director',
+                    'Inginer': 'Inginer',
+                    'Sef_santier': 'Sef Santier',
+                }
+                for a in angajati_vip:
+                    varsta = None
+                    if a.data_nasterii:
+                        varsta = today_d.year - a.data_nasterii.year
+                    zile_de_nastere.append({
+                        'id': a.id,
+                        'nume_complet': a.nume_complet,
+                        'functie': FUNCTIE_LABELS.get(a.functie, a.functie),
+                        'varsta': varsta,
+                    })
+            except Exception:
+                zile_de_nastere = []
+
             # Alerte masini (documente expirate)
             masini_alerta = 0
             for m in Masina.query.filter(Masina.status.notin_(['casata', 'vanduta'])).all():
@@ -137,6 +169,7 @@ def create_app(config_name='default'):
             'today': date.today(),
             'badge_counts': badge_counts,
             'alerte_count': alerte_count,
+            'zile_de_nastere': zile_de_nastere,
             'app_version': '2.0.0'
         }
 
