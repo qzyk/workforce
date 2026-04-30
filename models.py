@@ -681,6 +681,10 @@ class RaportActivitate(db.Model):
     # === EXTENSIE: multi-proiect (proiect_id ramane primarul) ===
     proiecte_ids = db.Column(db.Text, nullable=True)  # JSON array de IDs proiecte
 
+    # === EXTENSIE: marcaj zile lucrate suplimentar ===
+    include_sambata = db.Column(db.Boolean, default=False, nullable=False)
+    include_duminica = db.Column(db.Boolean, default=False, nullable=False)
+
     # === EXTENSIE: ore + status executie ===
     ore_lucrate = db.Column(db.Numeric(5, 2), nullable=True)
     status_executie = db.Column(db.String(20), default='planificata', nullable=False)

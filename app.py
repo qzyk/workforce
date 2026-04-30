@@ -241,6 +241,8 @@ def create_app(config_name='default'):
             ('ore_lucrate', 'NUMERIC(5,2)'),
             ('status_executie', "VARCHAR(20) NOT NULL DEFAULT 'planificata'"),
             ('proiecte_ids', 'TEXT'),
+            ('include_sambata', 'BOOLEAN NOT NULL DEFAULT 0'),
+            ('include_duminica', 'BOOLEAN NOT NULL DEFAULT 0'),
         ]
 
         adaugate = 0

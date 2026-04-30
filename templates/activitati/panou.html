@@ -77,23 +77,43 @@
             <h3 style="margin:0; font-size:1.1rem;">Generare Raport INNOVA</h3>
         </div>
         <form method="GET" action="{{ url_for('activitati.export_innova') }}" id="exportInnovaForm">
-            <input type="hidden" name="luna" id="exportLunaHidden" value="{{ today.strftime('%Y-%m') }}">
+            <input type="hidden" name="luna_start" id="exportLunaStartHidden" value="{{ today.strftime('%Y-%m') }}">
+            <input type="hidden" name="luna_end" id="exportLunaEndHidden" value="{{ today.strftime('%Y-%m') }}">
+            {% set luni_ro = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'] %}
+
             <div class="form-group" style="margin-bottom:14px;">
-                <label class="form-label">Perioada *</label>
+                <label class="form-label">De la *</label>
                 <div style="display:grid; grid-template-columns: 2fr 1fr; gap:8px;">
-                    <select id="exportLunaSelect" class="form-select">
-                        {% set luni_ro = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'] %}
+                    <select id="exportLunaStartSelect" class="form-select">
                         {% for i in range(1, 13) %}
                         <option value="{{ '%02d'|format(i) }}" {{ 'selected' if i == today.month }}>{{ luni_ro[i-1] }}</option>
                         {% endfor %}
                     </select>
-                    <select id="exportAnSelect" class="form-select">
+                    <select id="exportAnStartSelect" class="form-select">
                         {% for y in range(today.year - 5, today.year + 2) %}
                         <option value="{{ y }}" {{ 'selected' if y == today.year }}>{{ y }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                <small style="color:var(--gray-500); font-size:0.78rem;">Selecteaza luna si anul. Poti exporta inclusiv rapoarte din lunile trecute.</small>
+            </div>
+
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label">Pana la *</label>
+                <div style="display:grid; grid-template-columns: 2fr 1fr; gap:8px;">
+                    <select id="exportLunaEndSelect" class="form-select">
+                        {% for i in range(1, 13) %}
+                        <option value="{{ '%02d'|format(i) }}" {{ 'selected' if i == today.month }}>{{ luni_ro[i-1] }}</option>
+                        {% endfor %}
+                    </select>
+                    <select id="exportAnEndSelect" class="form-select">
+                        {% for y in range(today.year - 5, today.year + 2) %}
+                        <option value="{{ y }}" {{ 'selected' if y == today.year }}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <small style="color:var(--gray-500); font-size:0.78rem;">
+                    Pentru o singura luna, lasa De la = Pana la. Pentru raport pe mai multe luni, alege intervalul (max 36 luni).
+                </small>
             </div>
             <div class="form-group" style="margin-bottom:14px;">
                 <label class="form-label">Angajati</label>
@@ -419,15 +439,19 @@ function selectAllAngajati(select) {
     var sel = document.getElementById('exportAngajatiSelect');
     Array.from(sel.options).forEach(function(o) { o.selected = select; });
 }
-// Sincronizare luna+an in campul hidden (format YYYY-MM)
+// Sincronizare interval Luna+An in campurile hidden (format YYYY-MM)
 function syncLunaHidden() {
-    var luna = document.getElementById('exportLunaSelect').value;
-    var an = document.getElementById('exportAnSelect').value;
-    document.getElementById('exportLunaHidden').value = an + '-' + luna;
+    var ls = document.getElementById('exportLunaStartSelect').value;
+    var as_ = document.getElementById('exportAnStartSelect').value;
+    var le = document.getElementById('exportLunaEndSelect').value;
+    var ae = document.getElementById('exportAnEndSelect').value;
+    document.getElementById('exportLunaStartHidden').value = as_ + '-' + ls;
+    document.getElementById('exportLunaEndHidden').value = ae + '-' + le;
 }
-document.getElementById('exportLunaSelect').addEventListener('change', syncLunaHidden);
-document.getElementById('exportAnSelect').addEventListener('change', syncLunaHidden);
-// La submit, asigura valoarea finala
+['exportLunaStartSelect', 'exportAnStartSelect', 'exportLunaEndSelect', 'exportAnEndSelect'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('change', syncLunaHidden);
+});
 document.getElementById('exportInnovaForm').addEventListener('submit', syncLunaHidden);
 // Inchidere modal pe click fundal sau tasta Escape
 document.getElementById('exportInnovaModal').addEventListener('click', function(e) {

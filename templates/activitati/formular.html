@@ -87,6 +87,27 @@
             <div style="margin-top:10px; font-size:0.8rem; color:var(--gray-500);">
                 <i class="fa-solid fa-info-circle"></i> Saptamana / luna se calculeaza automat din data de inceput.
             </div>
+            <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--gray-200); display:flex; gap:18px; flex-wrap:wrap;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" name="include_sambata" value="1"
+                           {{ 'checked' if activitate and activitate.include_sambata }}
+                           style="width:18px; height:18px;">
+                    <span style="font-size:0.88rem; font-weight:600; color:#E65100;">
+                        <i class="fa-solid fa-calendar-day"></i> S-a lucrat si sambata
+                    </span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" name="include_duminica" value="1"
+                           {{ 'checked' if activitate and activitate.include_duminica }}
+                           style="width:18px; height:18px;">
+                    <span style="font-size:0.88rem; font-weight:600; color:#BF360C;">
+                        <i class="fa-solid fa-calendar-day"></i> S-a lucrat si duminica
+                    </span>
+                </label>
+            </div>
+            <div style="margin-top:6px; font-size:0.75rem; color:var(--gray-500);">
+                Bifeaza daca activitatea include zile de weekend lucrate. Acestea vor aparea in raportul Excel exportat (sambata in portocaliu, duminica in rosu).
+            </div>
         </div>
 
         <!-- SECTIUNEA 1: CONTEXT -->

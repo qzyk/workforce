@@ -374,6 +374,8 @@ def _salveaza_activitate(activitate, rapida=False):
         solutii = request.form.get('solutii_aplicate', '').strip()
         observatii = request.form.get('observatii', '').strip()
         necesita_aprobare = bool(request.form.get('necesita_aprobare_tehnica'))
+        include_sambata = bool(request.form.get('include_sambata'))
+        include_duminica = bool(request.form.get('include_duminica'))
         actiune = request.form.get('actiune', 'draft')  # draft / trimite / alta
 
         # Validare
@@ -458,6 +460,8 @@ def _salveaza_activitate(activitate, rapida=False):
         activitate.solutii_aplicate = solutii or None
         activitate.observatii = observatii or None
         activitate.necesita_aprobare_tehnica = necesita_aprobare
+        activitate.include_sambata = include_sambata
+        activitate.include_duminica = include_duminica
 
         # Auto-completare numar_saptamana / luna_an din tip si data inceput
         activitate.calculeaza_perioada()
@@ -1333,30 +1337,99 @@ def _get_company_name():
     return 'INNOVA', 'INNOVA CONSTRUCT SRL'
 
 
-def _saptamani_din_luna(an, luna, sarbatori_set):
+def _saptamani_din_luna(an, luna, sarbatori_set, zile_extra_lucrate=None):
     """
     Returneaza lista de saptamani din luna sub forma:
-    [(numar_sapt_iso, [zile_lucratoare]), ...]
-    Zilele sunt date() din luni->vineri (inclusiv weekend daca e zi lucrata oficial).
-    Pentru template INNOVA: doar zilele din luna care cad pe Luni-Vineri (+ Sambata daca e setata in sarbatori cu lucru).
+    [(numar_sapt_local, numar_sapt_iso, [zile_lucratoare]), ...]
+    - Default: include doar Luni-Vineri (weekday 0-4)
+    - zile_extra_lucrate: set de date() suplimentare (de ex sambete cu activitate) care
+      vor fi incluse in saptamana corespunzatoare.
     """
     import calendar
+    if zile_extra_lucrate is None:
+        zile_extra_lucrate = set()
+
     _, last_day = calendar.monthrange(an, luna)
 
     saptamani = {}  # iso_week -> list of dates
     for d in range(1, last_day + 1):
         zi = date(an, luna, d)
-        # Includem doar zilele de Luni-Vineri (weekday 0-4) - matching template INNOVA
-        if zi.weekday() <= 4:
+        # Includem Luni-Vineri sau zilele extra (sambete/duminici cu activitate)
+        if zi.weekday() <= 4 or zi in zile_extra_lucrate:
             iso_w = zi.isocalendar()[1]
             saptamani.setdefault(iso_w, []).append(zi)
 
-    # Sortare dupa numarul sapt si numerotare locala (1, 2, 3, 4, 5)
     sorted_weeks = sorted(saptamani.items())
     rezultat = []
     for idx, (iso_w, zile) in enumerate(sorted_weeks, start=1):
-        rezultat.append((idx, iso_w, zile))
+        # Sorteaza zilele crescator
+        zile_sortate = sorted(zile)
+        rezultat.append((idx, iso_w, zile_sortate))
     return rezultat
+
+
+def _zile_extra_lucrate_pentru_angajat(angajat_id, an, luna):
+    """
+    Returneaza set de date (sambata/duminica) care apar ca zile lucrate pentru angajat in luna.
+    Reguli:
+    - Activitate zilnica cu data in sambata/duminica -> include acea zi
+    - Activitate saptamanala/lunara cu include_sambata=True -> include sambetele
+    - Activitate saptamanala/lunara cu include_duminica=True -> include duminicile
+    """
+    import calendar
+    _, last_day = calendar.monthrange(an, luna)
+    prima = date(an, luna, 1)
+    ultima = date(an, luna, last_day)
+
+    extra = set()
+
+    # 1. Activitati zilnice in weekend
+    daily_weekends = RaportActivitate.query.filter(
+        RaportActivitate.angajat_id == angajat_id,
+        RaportActivitate.tip_activitate == 'zilnica',
+        RaportActivitate.data >= prima,
+        RaportActivitate.data <= ultima,
+    ).all()
+    for a in daily_weekends:
+        if a.data and a.data.weekday() >= 5:
+            extra.add(a.data)
+
+    # 2. Activitati saptamanale/lunare cu include_sambata sau include_duminica
+    luna_an = f'{an:04d}-{luna:02d}'
+    flagged = RaportActivitate.query.filter(
+        RaportActivitate.angajat_id == angajat_id,
+        RaportActivitate.tip_activitate.in_(['saptamanala', 'lunara']),
+        db.or_(
+            RaportActivitate.include_sambata == True,
+            RaportActivitate.include_duminica == True,
+        ),
+        db.or_(
+            RaportActivitate.luna_an == luna_an,
+            db.and_(
+                RaportActivitate.data <= ultima,
+                db.or_(
+                    RaportActivitate.data_sfarsit.is_(None),
+                    RaportActivitate.data_sfarsit >= prima,
+                ),
+            ),
+        ),
+    ).all()
+
+    for a in flagged:
+        # Determina intervalul activitatii in luna data
+        ds = max(a.data, prima) if a.data else prima
+        df = min(a.data_sfarsit, ultima) if a.data_sfarsit else ultima
+        if a.tip_activitate == 'lunara' and a.luna_an == luna_an:
+            ds, df = prima, ultima
+        cur = ds
+        while cur <= df:
+            if a.include_sambata and cur.weekday() == 5:
+                extra.add(cur)
+            if a.include_duminica and cur.weekday() == 6:
+                extra.add(cur)
+            cur += timedelta(days=1)
+
+    return extra
 
 
 def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
@@ -1426,18 +1499,236 @@ def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
     return texte
 
 
-def _construieste_sheet_angajat(wb, angajat, an, luna, company_short, sheet_index=0):
-    """Construieste un sheet INNOVA pentru un angajat intr-o luna data."""
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+# === STILURI XLSX (cu paleta consistenta) ===
+COLOR_PRIMARY = '1A237E'     # albastru INNOVA
+COLOR_TITLE_RED = 'C62828'   # rosu titlu
+COLOR_HEADER_BG = '283593'   # albastru header
+COLOR_HEADER_FG = 'FFFFFF'   # text alb pe header
+COLOR_SAT_BG = 'FFE0B2'      # portocaliu deschis pentru sambata
+COLOR_SUN_BG = 'FFCCBC'      # portocaliu mai inchis pentru duminica
+COLOR_HOLIDAY_BG = 'FFF59D'  # galben pentru sarbatoare
+COLOR_ZEBRA_BG = 'F5F7FA'    # gri foarte deschis pentru randuri zebra
+COLOR_TOTAL_BG = 'C5CAE9'    # albastru deschis pentru totaluri
+COLOR_BORDER = '90A4AE'
 
-    # Titlu sheet (max 31 caractere, evita caractere ilegale)
+
+def _stiluri_xlsx():
+    """Returneaza un dict cu stilurile reutilizabile pentru exportul xlsx."""
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    thin = Side(style='thin', color=COLOR_BORDER)
+    medium = Side(style='medium', color=COLOR_PRIMARY)
+    return {
+        'titlu_font': Font(name='Calibri', size=14, bold=True, color=COLOR_TITLE_RED),
+        'subtitlu_font': Font(name='Calibri', size=10, italic=True, color='546E7A'),
+        'nume_font': Font(name='Calibri', size=12, bold=True, color='1A237E'),
+        'luna_font': Font(name='Calibri', size=11, bold=True, color=COLOR_HEADER_FG),
+        'saptamana_font': Font(name='Calibri', size=10, bold=True, color='37474F'),
+        'cell_font': Font(name='Calibri', size=10),
+        'cell_font_bold': Font(name='Calibri', size=10, bold=True),
+        'sat_font': Font(name='Calibri', size=10, bold=True, color='E65100'),
+        'sun_font': Font(name='Calibri', size=10, bold=True, color='BF360C'),
+        'header_font': Font(name='Calibri', size=10, bold=True, color=COLOR_HEADER_FG),
+        'total_font': Font(name='Calibri', size=10, bold=True, color='1A237E'),
+        'sat_fill': PatternFill(start_color=COLOR_SAT_BG, end_color=COLOR_SAT_BG, fill_type='solid'),
+        'sun_fill': PatternFill(start_color=COLOR_SUN_BG, end_color=COLOR_SUN_BG, fill_type='solid'),
+        'holiday_fill': PatternFill(start_color=COLOR_HOLIDAY_BG, end_color=COLOR_HOLIDAY_BG, fill_type='solid'),
+        'header_fill': PatternFill(start_color=COLOR_HEADER_BG, end_color=COLOR_HEADER_BG, fill_type='solid'),
+        'zebra_fill': PatternFill(start_color=COLOR_ZEBRA_BG, end_color=COLOR_ZEBRA_BG, fill_type='solid'),
+        'total_fill': PatternFill(start_color=COLOR_TOTAL_BG, end_color=COLOR_TOTAL_BG, fill_type='solid'),
+        'border_thin': Border(left=thin, right=thin, top=thin, bottom=thin),
+        'border_medium_top': Border(left=thin, right=thin, top=medium, bottom=thin),
+        'align_center': Alignment(horizontal='center', vertical='center', wrap_text=True),
+        'align_left': Alignment(horizontal='left', vertical='center', wrap_text=True),
+    }
+
+
+def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zile_extra=None):
+    """
+    Adauga o sectiune luna in worksheet, incepand cu randul start_row.
+    Returneaza randul urmator dupa sectiune (gol pentru spatiu).
+    Structura per luna:
+      - Rand titlu luna (B:E merged) cu nume luna + an
+      - Rand de tabel cu coloanele Saptamana | Zi | Data | Activitati
+      - Saptamani grupate (B = nume luna merged, C = saptamana, D = zile, E = activitati)
+      - Rand TOTAL la final
+    """
+    if zile_extra is None:
+        zile_extra = _zile_extra_lucrate_pentru_angajat(angajat.id, an, luna)
+
+    luna_text = LUNI_RO[luna].capitalize()
+
+    # Sarbatori legale in luna
+    sarbatori = set()
+    for s in SarbatoareLegala.query.filter_by(an=an).all():
+        if s.data.month == luna:
+            sarbatori.add(s.data)
+
+    saptamani = _saptamani_din_luna(an, luna, sarbatori, zile_extra)
+    if not saptamani:
+        # Daca nu sunt zile lucratoare in luna, lasam un placeholder
+        ws.merge_cells(start_row=start_row, start_column=2, end_row=start_row, end_column=5)
+        c = ws.cell(row=start_row, column=2, value=f'{luna_text} {an} — Nicio zi lucratoare')
+        c.font = S['subtitlu_font']
+        c.alignment = S['align_center']
+        return start_row + 2
+
+    # === Header luna (rand titlu) ===
+    ws.merge_cells(start_row=start_row, start_column=2, end_row=start_row, end_column=5)
+    titlu_cell = ws.cell(row=start_row, column=2, value=f'{luna_text.upper()} {an}')
+    titlu_cell.font = S['luna_font']
+    titlu_cell.fill = S['header_fill']
+    titlu_cell.alignment = S['align_center']
+    titlu_cell.border = S['border_thin']
+    for col in range(2, 6):
+        ws.cell(row=start_row, column=col).fill = S['header_fill']
+        ws.cell(row=start_row, column=col).border = S['border_thin']
+    ws.row_dimensions[start_row].height = 24
+
+    # === Rand header coloane ===
+    header_row = start_row + 1
+    headers = ['Luna', 'Saptamana', 'Data', 'Activitati desfasurate']
+    for col_idx, h in enumerate(headers, start=2):
+        c = ws.cell(row=header_row, column=col_idx, value=h)
+        c.font = S['header_font']
+        c.fill = S['header_fill']
+        c.alignment = S['align_center']
+        c.border = S['border_thin']
+    ws.row_dimensions[header_row].height = 22
+
+    # === Saptamani ===
+    current_row = header_row + 1
+    primul_rand_sapt = current_row
+    ultimul_rand_sapt = None
+    total_zile_lucrate = 0
+    total_ore = 0.0
+
+    for idx_sapt, (sapt_idx, iso_week, zile) in enumerate(saptamani):
+        nr_zile = len(zile)
+        if nr_zile == 0:
+            continue
+        sr, er = current_row, current_row + nr_zile - 1
+        ultimul_rand_sapt = er
+        zebra = (idx_sapt % 2 == 1)
+
+        # Coloana C: numele sapt
+        if nr_zile > 1:
+            ws.merge_cells(start_row=sr, start_column=3, end_row=er, end_column=3)
+        c_cell = ws.cell(row=sr, column=3, value=f'Saptamana {sapt_idx}\n(S{iso_week})')
+        c_cell.font = S['saptamana_font']
+        c_cell.alignment = S['align_center']
+        c_cell.border = S['border_thin']
+
+        # Coloana E: activitati
+        if nr_zile > 1:
+            ws.merge_cells(start_row=sr, start_column=5, end_row=er, end_column=5)
+        texte = _activitati_pentru_saptamana(angajat.id, zile, luna, an)
+        text_e = '\n• '.join(texte) if texte else '—'
+        if texte:
+            text_e = '• ' + text_e
+        e_cell = ws.cell(row=sr, column=5, value=text_e)
+        e_cell.font = S['cell_font']
+        e_cell.alignment = S['align_left']
+        e_cell.border = S['border_thin']
+
+        # Calculeaza ore in saptamana din activitati zilnice
+        ore_sapt = 0.0
+        for a in RaportActivitate.query.filter(
+            RaportActivitate.angajat_id == angajat.id,
+            RaportActivitate.tip_activitate == 'zilnica',
+            RaportActivitate.data >= min(zile),
+            RaportActivitate.data <= max(zile),
+            RaportActivitate.ore_lucrate.isnot(None),
+        ).all():
+            try:
+                ore_sapt += float(a.ore_lucrate)
+            except (TypeError, ValueError):
+                pass
+        total_ore += ore_sapt
+
+        # Populare zile (coloana D)
+        for off, zi in enumerate(zile):
+            r = sr + off
+            d_cell = ws.cell(row=r, column=4, value=zi)
+            d_cell.number_format = 'dd mmm. (ddd)'
+            d_cell.alignment = S['align_center']
+            d_cell.border = S['border_thin']
+            ws.row_dimensions[r].height = 16.5
+            total_zile_lucrate += 1
+
+            # Coloreaza dupa tip
+            if zi in sarbatori:
+                d_cell.fill = S['holiday_fill']
+                d_cell.font = S['cell_font_bold']
+            elif zi.weekday() == 5:  # sambata
+                d_cell.fill = S['sat_fill']
+                d_cell.font = S['sat_font']
+            elif zi.weekday() == 6:  # duminica
+                d_cell.fill = S['sun_fill']
+                d_cell.font = S['sun_font']
+            elif zebra:
+                d_cell.fill = S['zebra_fill']
+                d_cell.font = S['cell_font']
+            else:
+                d_cell.font = S['cell_font']
+
+            ws.cell(row=r, column=3).border = S['border_thin']
+            ws.cell(row=r, column=5).border = S['border_thin']
+
+        current_row = er + 1
+
+    # === Coloana B: numele lunii (merged pe toate sapt) ===
+    if ultimul_rand_sapt and ultimul_rand_sapt >= primul_rand_sapt:
+        ws.merge_cells(start_row=primul_rand_sapt, start_column=2,
+                       end_row=ultimul_rand_sapt, end_column=2)
+        b_cell = ws.cell(row=primul_rand_sapt, column=2, value=luna_text)
+        b_cell.font = S['nume_font']
+        b_cell.alignment = S['align_center']
+        b_cell.fill = S['zebra_fill']
+        b_cell.border = S['border_thin']
+        for r in range(primul_rand_sapt, ultimul_rand_sapt + 1):
+            ws.cell(row=r, column=2).border = S['border_thin']
+
+    # === Rand total luna ===
+    total_row = (ultimul_rand_sapt or current_row) + 1
+    ws.merge_cells(start_row=total_row, start_column=2, end_row=total_row, end_column=3)
+    t1 = ws.cell(row=total_row, column=2, value=f'TOTAL {luna_text.upper()}')
+    t1.font = S['total_font']
+    t1.fill = S['total_fill']
+    t1.alignment = S['align_center']
+    t1.border = S['border_thin']
+    for col in (3,):
+        ws.cell(row=total_row, column=col).fill = S['total_fill']
+
+    t2 = ws.cell(row=total_row, column=4, value=f'{total_zile_lucrate} zile')
+    t2.font = S['total_font']
+    t2.fill = S['total_fill']
+    t2.alignment = S['align_center']
+    t2.border = S['border_thin']
+
+    t3_text = f'{total_ore:.1f} ore lucrate' if total_ore > 0 else 'Total ore: nespecificat'
+    t3 = ws.cell(row=total_row, column=5, value=t3_text)
+    t3.font = S['total_font']
+    t3.fill = S['total_fill']
+    t3.alignment = S['align_center']
+    t3.border = S['border_thin']
+    ws.row_dimensions[total_row].height = 22
+
+    return total_row + 2  # 1 rand gol intre luni
+
+
+def _construieste_sheet_angajat(wb, angajat, perioade, company_short, sheet_index=0):
+    """
+    Construieste un sheet INNOVA pentru un angajat, pe o lista de perioade [(an, luna), ...].
+    """
+    S = _stiluri_xlsx()
+
+    # Titlu sheet (max 31 caractere, evita caractere ilegale Excel)
     base_title = angajat.nume_complet
     illegal = '[]:*?/\\'
     safe_title = ''.join(c for c in base_title if c not in illegal)[:31]
     if not safe_title:
         safe_title = f'Angajat {angajat.id}'
 
-    # Asigura titlu unic
     existing_titles = {ws.title for ws in wb.worksheets}
     final_title = safe_title
     suffix = 2
@@ -1451,118 +1742,56 @@ def _construieste_sheet_angajat(wb, angajat, an, luna, company_short, sheet_inde
     else:
         ws = wb.create_sheet(title=final_title)
 
-    # === Stiluri ===
-    titlu_font = Font(name='Calibri', size=12, bold=True, color='FF0000')
-    nume_font = Font(name='Calibri', size=11, bold=True)
-    saptamana_font = Font(name='Calibri', size=10, bold=True)
-    cell_font = Font(name='Calibri', size=10)
-    yellow_fill = PatternFill(start_color='FFFFFF00', end_color='FFFFFF00', fill_type='solid')
-    thin = Side(style='thin', color='000000')
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    align_left_wrap = Alignment(horizontal='left', vertical='center', wrap_text=True)
+    # Latimi coloane optimizate
+    ws.column_dimensions['A'].width = 4.0
+    ws.column_dimensions['B'].width = 16.0
+    ws.column_dimensions['C'].width = 18.0
+    ws.column_dimensions['D'].width = 18.0
+    ws.column_dimensions['E'].width = 60.0
 
-    # === Latimi coloane (matching template original) ===
-    ws.column_dimensions['A'].width = 8.78
-    ws.column_dimensions['B'].width = 20.22
-    ws.column_dimensions['C'].width = 20.22
-    ws.column_dimensions['D'].width = 12.78
-    ws.column_dimensions['E'].width = 31.11
+    # === Rand 2: Titlu mare cu numele firmei + perioada ===
+    if perioade:
+        prima_p = perioade[0]
+        ultima_p = perioade[-1]
+        if prima_p == ultima_p:
+            perioada_text = f'{LUNI_RO[prima_p[1]].capitalize()} {prima_p[0]}'
+        else:
+            perioada_text = f'{LUNI_RO[prima_p[1]].capitalize()} {prima_p[0]} — {LUNI_RO[ultima_p[1]].capitalize()} {ultima_p[0]}'
+    else:
+        perioada_text = ''
 
-    # === Rand 3: Titlu ===
-    luna_text = LUNI_RO[luna]
-    titlu = f'Raport de activitate {company_short} - {luna_text} {an}'
-    ws['B3'] = titlu
-    ws['B3'].font = titlu_font
-    ws['B3'].alignment = align_center
-    ws.row_dimensions[3].height = 19.8
+    ws.merge_cells('B2:E2')
+    titlu_cell = ws.cell(row=2, column=2, value=f'RAPORT DE ACTIVITATE {company_short.upper()}')
+    titlu_cell.font = S['titlu_font']
+    titlu_cell.alignment = S['align_center']
+    ws.row_dimensions[2].height = 28
 
-    # === Rand 6: Numele angajatului (B6:E6 merged) ===
-    ws.merge_cells('B6:E6')
-    ws['B6'] = angajat.nume_complet
-    ws['B6'].font = nume_font
-    ws['B6'].alignment = align_center
-    ws.row_dimensions[6].height = 40.2
+    ws.merge_cells('B3:E3')
+    sub_cell = ws.cell(row=3, column=2, value=perioada_text)
+    sub_cell.font = S['subtitlu_font']
+    sub_cell.alignment = S['align_center']
+    ws.row_dimensions[3].height = 18
 
-    # === Rand 7: Separator (D7:E7 merged, gol) ===
-    ws.merge_cells('D7:E7')
-    ws.row_dimensions[7].height = 25.8
+    # === Rand 5: Numele angajatului ===
+    ws.merge_cells('B5:E5')
+    nume_cell = ws.cell(row=5, column=2, value=f'Angajat: {angajat.nume_complet}    |    Functie: {angajat.functie}')
+    nume_cell.font = S['nume_font']
+    nume_cell.alignment = S['align_center']
+    nume_cell.fill = S['zebra_fill']
+    nume_cell.border = S['border_thin']
+    for col in range(2, 6):
+        ws.cell(row=5, column=col).fill = S['zebra_fill']
+        ws.cell(row=5, column=col).border = S['border_thin']
+    ws.row_dimensions[5].height = 24
 
-    # === Saptamani ===
-    sarbatori_legale = set()
-    sarb_query = SarbatoareLegala.query.filter_by(an=an).all()
-    for s in sarb_query:
-        if s.data.month == luna:
-            sarbatori_legale.add(s.data)
+    # === Sectiuni pe luna ===
+    current_row = 7
+    for an, luna in perioade:
+        zile_extra = _zile_extra_lucrate_pentru_angajat(angajat.id, an, luna)
+        current_row = _adauga_sectiune_luna(ws, angajat, an, luna, company_short, current_row, S, zile_extra)
 
-    saptamani = _saptamani_din_luna(an, luna, sarbatori_legale)
-    if not saptamani:
-        return ws
-
-    # Calculeaza randul de inceput pentru zone saptamani (start cu 8)
-    current_row = 8
-    luna_capitalizata = luna_text.capitalize()
-    primul_rand_sapt = current_row
-    ultimul_rand_sapt = None
-
-    for sapt_idx, iso_week, zile in saptamani:
-        nr_zile = len(zile)
-        if nr_zile == 0:
-            continue
-
-        start_row = current_row
-        end_row = current_row + nr_zile - 1
-        ultimul_rand_sapt = end_row
-
-        # === Coloana C: Saptamana X (merged pe nr_zile randuri) ===
-        if nr_zile > 1:
-            ws.merge_cells(start_row=start_row, start_column=3, end_row=end_row, end_column=3)
-        c_cell = ws.cell(row=start_row, column=3, value=f'Saptamana {sapt_idx}')
-        c_cell.font = saptamana_font
-        c_cell.alignment = align_center
-        c_cell.border = border
-
-        # === Coloana D: zile individuale ===
-        # === Coloana E: text activitati (merged pe nr_zile randuri) ===
-        if nr_zile > 1:
-            ws.merge_cells(start_row=start_row, start_column=5, end_row=end_row, end_column=5)
-        texte = _activitati_pentru_saptamana(angajat.id, zile, luna, an)
-        text_e = '\n'.join(texte) if texte else ''
-        e_cell = ws.cell(row=start_row, column=5, value=text_e)
-        e_cell.font = cell_font
-        e_cell.alignment = align_center
-        e_cell.border = border
-
-        # Populare zile in coloana D
-        for offset, zi in enumerate(zile):
-            r = start_row + offset
-            d_cell = ws.cell(row=r, column=4, value=zi)
-            d_cell.number_format = 'd mmm.'
-            d_cell.font = cell_font
-            d_cell.alignment = align_center
-            d_cell.border = border
-            ws.row_dimensions[r].height = 15.75
-            # Sarbatoare legala -> fill galben
-            if zi in sarbatori_legale:
-                d_cell.fill = yellow_fill
-
-            # Setam border si pe celulele adiacente C, E (chiar daca sunt merged, primul cell are border)
-            ws.cell(row=r, column=3).border = border
-            ws.cell(row=r, column=5).border = border
-
-        current_row = end_row + 1
-
-    # === Coloana B: Numele lunii (merged pe TOATE randurile de saptamani) ===
-    if ultimul_rand_sapt and ultimul_rand_sapt >= primul_rand_sapt:
-        ws.merge_cells(start_row=primul_rand_sapt, start_column=2,
-                       end_row=ultimul_rand_sapt, end_column=2)
-        b_cell = ws.cell(row=primul_rand_sapt, column=2, value=luna_capitalizata)
-        b_cell.font = saptamana_font
-        b_cell.alignment = align_center
-        b_cell.border = border
-        # Border pe toate celulele B din zona
-        for r in range(primul_rand_sapt, ultimul_rand_sapt + 1):
-            ws.cell(row=r, column=2).border = border
+    # Freeze panes pentru a tine titlul vizibil la scroll
+    ws.freeze_panes = 'A6'
 
     return ws
 
@@ -1587,21 +1816,56 @@ def export_innova():
 
     today = date.today()
 
-    # === Parametri ===
-    luna_param = request.args.get('luna', '').strip()
-    if luna_param:
+    # === Parametri perioada ===
+    # Suporta atat luna_start/luna_end (interval) cat si luna (compat)
+    luna_start_param = request.args.get('luna_start', '').strip()
+    luna_end_param = request.args.get('luna_end', '').strip()
+    luna_param = request.args.get('luna', '').strip()  # legacy
+
+    if not luna_start_param and luna_param:
+        luna_start_param = luna_param
+    if not luna_end_param and luna_param:
+        luna_end_param = luna_param
+    if not luna_start_param:
+        luna_start_param = today.strftime('%Y-%m')
+    if not luna_end_param:
+        luna_end_param = luna_start_param
+
+    def _parse_luna(s):
         try:
-            an, luna = luna_param.split('-')
-            an = int(an)
-            luna = int(luna)
-            if not (1 <= luna <= 12):
+            y, m = s.split('-')
+            y, m = int(y), int(m)
+            if not (1 <= m <= 12):
                 raise ValueError
-        except ValueError:
-            flash('Format luna invalid (folositi YYYY-MM).', 'danger')
-            return redirect(url_for('activitati.panou'))
-    else:
-        an = today.year
-        luna = today.month
+            return y, m
+        except (ValueError, AttributeError):
+            return None
+
+    p_start = _parse_luna(luna_start_param)
+    p_end = _parse_luna(luna_end_param)
+    if not p_start or not p_end:
+        flash('Format perioada invalid (folositi YYYY-MM).', 'danger')
+        return redirect(url_for('activitati.panou'))
+
+    # Asigura ordinea corecta start <= end
+    if (p_end[0], p_end[1]) < (p_start[0], p_start[1]):
+        p_start, p_end = p_end, p_start
+
+    # Construieste lista de luni in interval
+    perioade = []
+    cy, cm = p_start
+    while (cy, cm) <= (p_end[0], p_end[1]):
+        perioade.append((cy, cm))
+        cm += 1
+        if cm > 12:
+            cm = 1
+            cy += 1
+        if len(perioade) > 36:
+            break
+
+    # Pentru compatibilitate cu logica veche (selectia angajatilor cu activitati)
+    an = p_start[0]
+    luna = p_start[1]
 
     # Suporta atat ?angajat_id=X cat si ?angajat_id=X&angajat_id=Y (multi-select)
     f_angajat_ids_raw = request.args.getlist('angajat_id')
@@ -1630,13 +1894,10 @@ def export_innova():
             flash('Niciunul din angajatii selectati nu exista.', 'danger')
             return redirect(url_for('activitati.panou'))
     else:
-        # Toti angajatii care au activitati in luna ceruta
-        prima_zi = date(an, luna, 1)
-        if luna == 12:
-            ultima_zi = date(an, 12, 31)
-        else:
-            from calendar import monthrange
-            ultima_zi = date(an, luna, monthrange(an, luna)[1])
+        # Toti angajatii care au activitati in oricare luna din interval
+        from calendar import monthrange
+        prima_zi = date(p_start[0], p_start[1], 1)
+        ultima_zi = date(p_end[0], p_end[1], monthrange(p_end[0], p_end[1])[1])
 
         q = db.session.query(RaportActivitate.angajat_id).filter(
             RaportActivitate.data >= prima_zi,
@@ -1667,20 +1928,25 @@ def export_innova():
     default_ws.title = 'Sheet'
 
     for idx, ang in enumerate(angajati):
-        _construieste_sheet_angajat(wb, ang, an, luna, company_short, sheet_index=idx)
+        _construieste_sheet_angajat(wb, ang, perioade, company_short, sheet_index=idx)
 
     # === Salvare si raspuns ===
     output = BytesIO()
     wb.save(output)
     output.seek(0)
 
-    luna_text = LUNI_RO[luna]
+    # Numele fisierului
+    if p_start == p_end:
+        perioada_text = f'{LUNI_RO[p_start[1]]}_{p_start[0]}'
+    else:
+        perioada_text = f'{LUNI_RO[p_start[1]]}_{p_start[0]}_-_{LUNI_RO[p_end[1]]}_{p_end[0]}'
+
     if len(angajati) == 1:
         ang = angajati[0]
         nume_curat = f'{ang.nume}_{ang.prenume}'.replace(' ', '_')
-        filename = f'Raport_activitate_{nume_curat}_{luna_text}_{an}.xlsx'
+        filename = f'Raport_activitate_{nume_curat}_{perioada_text}.xlsx'
     else:
-        filename = f'Raport_activitate_{company_short}_{luna_text}_{an}.xlsx'
+        filename = f'Raport_activitate_{company_short}_{perioada_text}.xlsx'
 
     return send_file(
         output,
