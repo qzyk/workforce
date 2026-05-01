@@ -685,6 +685,10 @@ class RaportActivitate(db.Model):
     include_sambata = db.Column(db.Boolean, default=False, nullable=False)
     include_duminica = db.Column(db.Boolean, default=False, nullable=False)
 
+    # === EXTENSIE: detalii pe zi (pentru activitati saptamanale/lunare) ===
+    # JSON array de obiecte: [{data, proiect_id, text, ore}, ...]
+    detalii_pe_zi = db.Column(db.Text, nullable=True)
+
     # === EXTENSIE: ore + status executie ===
     ore_lucrate = db.Column(db.Numeric(5, 2), nullable=True)
     status_executie = db.Column(db.String(20), default='planificata', nullable=False)
@@ -831,6 +835,40 @@ class RaportActivitate(db.Model):
         if not ids:
             return []
         return Proiect.query.filter(Proiect.id.in_(ids)).all()
+
+    @property
+    def detalii_pe_zi_lista(self):
+        """Parseaza JSON detalii_pe_zi -> lista de dict-uri [{data, proiect_id, text, ore}, ...]"""
+        import json
+        if not self.detalii_pe_zi:
+            return []
+        try:
+            data = json.loads(self.detalii_pe_zi)
+            if not isinstance(data, list):
+                return []
+            curate = []
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                # Convert date string to date object daca e nevoie
+                d_str = item.get('data')
+                if d_str:
+                    try:
+                        from datetime import datetime as _dt
+                        item['_data_obj'] = _dt.strptime(d_str, '%Y-%m-%d').date()
+                    except (ValueError, TypeError):
+                        item['_data_obj'] = None
+                curate.append(item)
+            return curate
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def detalii_pentru_data(self, zi_date):
+        """Returneaza detaliul pentru o anumita zi (sau None)."""
+        for d in self.detalii_pe_zi_lista:
+            if d.get('_data_obj') == zi_date:
+                return d
+        return None
 
     @property
     def status_executie_badge_class(self):

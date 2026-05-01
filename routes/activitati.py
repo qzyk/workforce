@@ -378,6 +378,12 @@ def _salveaza_activitate(activitate, rapida=False):
         include_duminica = bool(request.form.get('include_duminica'))
         actiune = request.form.get('actiune', 'draft')  # draft / trimite / alta
 
+        # Detalii pe zi (pentru saptamanala/lunara): liste paralele
+        det_data_list = request.form.getlist('detaliu_data[]')
+        det_proiect_list = request.form.getlist('detaliu_proiect[]')
+        det_text_list = request.form.getlist('detaliu_text[]')
+        det_ore_list = request.form.getlist('detaliu_ore[]')
+
         # Validare
         if not angajat_id or not proiect_id:
             flash('Angajatul si cel putin un proiect sunt obligatorii.', 'danger')
@@ -430,6 +436,37 @@ def _salveaza_activitate(activitate, rapida=False):
                     })
             materiale_json = json.dumps(materiale, ensure_ascii=False)
 
+        # Construire JSON detalii pe zi (doar randuri cu macar un camp completat)
+        detalii_json = None
+        if tip_activitate in ('saptamanala', 'lunara') and det_data_list:
+            detalii_curate = []
+            for i, d_str in enumerate(det_data_list):
+                d_str = (d_str or '').strip()
+                if not d_str:
+                    continue
+                proi_str = det_proiect_list[i] if i < len(det_proiect_list) else ''
+                text = (det_text_list[i] if i < len(det_text_list) else '').strip()
+                ore_str = (det_ore_list[i] if i < len(det_ore_list) else '').strip()
+                # Sare peste randuri complet goale (dar pastreaza data ca placeholder)
+                if not text and not ore_str and not proi_str:
+                    continue
+                item = {'data': d_str}
+                if proi_str:
+                    try:
+                        item['proiect_id'] = int(proi_str)
+                    except (ValueError, TypeError):
+                        pass
+                if text:
+                    item['text'] = text[:500]
+                if ore_str:
+                    try:
+                        item['ore'] = float(ore_str)
+                    except (ValueError, TypeError):
+                        pass
+                detalii_curate.append(item)
+            if detalii_curate:
+                detalii_json = json.dumps(detalii_curate, ensure_ascii=False)
+
         echipamente = request.form.get('echipamente_folosite', '').strip()
 
         if activitate is None:
@@ -462,6 +499,7 @@ def _salveaza_activitate(activitate, rapida=False):
         activitate.necesita_aprobare_tehnica = necesita_aprobare
         activitate.include_sambata = include_sambata
         activitate.include_duminica = include_duminica
+        activitate.detalii_pe_zi = detalii_json
 
         # Auto-completare numar_saptamana / luna_an din tip si data inceput
         activitate.calculeaza_perioada()
@@ -1432,10 +1470,64 @@ def _zile_extra_lucrate_pentru_angajat(angajat_id, an, luna):
     return extra
 
 
+def _detalii_pe_zi_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
+    """
+    Returneaza dict {data: text} cu detalii per zi din activitatile saptamanale/lunare
+    care au detalii_pe_zi populate.
+    """
+    if not zile_saptamana:
+        return {}
+
+    prima_zi = min(zile_saptamana)
+    ultima_zi = max(zile_saptamana)
+    iso_week = prima_zi.isocalendar()[1]
+    luna_an = f'{an:04d}-{luna:02d}'
+
+    rapoarte = RaportActivitate.query.filter(
+        RaportActivitate.angajat_id == angajat_id,
+        RaportActivitate.tip_activitate.in_(['saptamanala', 'lunara']),
+        RaportActivitate.detalii_pe_zi.isnot(None),
+        db.or_(
+            RaportActivitate.numar_saptamana == iso_week,
+            RaportActivitate.luna_an == luna_an,
+            db.and_(
+                RaportActivitate.data <= ultima_zi,
+                db.or_(
+                    RaportActivitate.data_sfarsit.is_(None),
+                    RaportActivitate.data_sfarsit >= prima_zi,
+                ),
+            ),
+        ),
+    ).all()
+
+    rezultat = {}
+    zile_set = set(zile_saptamana)
+    for r in rapoarte:
+        for det in r.detalii_pe_zi_lista:
+            d_obj = det.get('_data_obj')
+            if d_obj and d_obj in zile_set:
+                text_parts = []
+                if det.get('text'):
+                    text_parts.append(det['text'])
+                if det.get('proiect_id'):
+                    p = Proiect.query.get(det['proiect_id'])
+                    if p:
+                        text_parts.append(f'[{p.cod_proiect}]')
+                if det.get('ore'):
+                    text_parts.append(f"({det['ore']}h)")
+                if text_parts:
+                    rezultat.setdefault(d_obj, []).append(' '.join(text_parts))
+
+    # Concateneaza listele cu newline
+    return {d: '\n'.join(texte) for d, texte in rezultat.items()}
+
+
 def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
     """
     Returneaza lista de texte de activitate pentru un angajat in saptamana data.
     Include: activitati zilnice (cu data in zile_saptamana) + saptamanale + lunare relevante.
+    NU include activitatile saptamanale/lunare care au detalii_pe_zi (pentru ca acelea sunt
+    afisate per zi separata).
     """
     if not zile_saptamana:
         return []
@@ -1453,10 +1545,14 @@ def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
         RaportActivitate.data <= ultima_zi,
     ).all()
 
-    # Weekly: same iso week sau interval suprapus
+    # Weekly: same iso week sau interval suprapus, EXCLUS cele cu detalii_pe_zi
     weekly = RaportActivitate.query.filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate == 'saptamanala',
+        db.or_(
+            RaportActivitate.detalii_pe_zi.is_(None),
+            RaportActivitate.detalii_pe_zi == '',
+        ),
         db.or_(
             RaportActivitate.numar_saptamana == iso_week,
             db.and_(
@@ -1469,10 +1565,14 @@ def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
         ),
     ).all()
 
-    # Monthly: aceeasi luna_an
+    # Monthly: aceeasi luna_an, EXCLUS cele cu detalii_pe_zi
     monthly = RaportActivitate.query.filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate == 'lunara',
+        db.or_(
+            RaportActivitate.detalii_pe_zi.is_(None),
+            RaportActivitate.detalii_pe_zi == '',
+        ),
         db.or_(
             RaportActivitate.luna_an == luna_an,
             db.and_(
@@ -1619,16 +1719,37 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
         c_cell.border = S['border_thin']
 
         # Coloana E: activitati
-        if nr_zile > 1:
-            ws.merge_cells(start_row=sr, start_column=5, end_row=er, end_column=5)
-        texte = _activitati_pentru_saptamana(angajat.id, zile, luna, an)
-        text_e = '\n• '.join(texte) if texte else '—'
-        if texte:
-            text_e = '• ' + text_e
-        e_cell = ws.cell(row=sr, column=5, value=text_e)
-        e_cell.font = S['cell_font']
-        e_cell.alignment = S['align_left']
-        e_cell.border = S['border_thin']
+        # Detalii per zi (din detalii_pe_zi) - daca exista, dezmerge E si afiseaza per zi
+        detalii_per_zi = _detalii_pe_zi_pentru_saptamana(angajat.id, zile, luna, an)
+        texte_general = _activitati_pentru_saptamana(angajat.id, zile, luna, an)
+
+        if detalii_per_zi:
+            # NU merg E - fiecare zi primeste textul propriu
+            for off, zi in enumerate(zile):
+                r = sr + off
+                txt = detalii_per_zi.get(zi, '')
+                e_cell = ws.cell(row=r, column=5, value=txt)
+                e_cell.font = S['cell_font']
+                e_cell.alignment = S['align_left']
+                e_cell.border = S['border_thin']
+            # Daca avem si activitati saptamanale fara detalii_pe_zi -> NU le adaugam
+            # (deja sunt excluse din _activitati_pentru_saptamana cand au detalii_pe_zi)
+            # Daca exista activitati zilnice extra, le adaugam la celula corespunzatoare
+            if texte_general:
+                # Le punem la prima zi disponibila daca nu sunt deja in detalii
+                pass
+        else:
+            # Comportament clasic: E merged cu lista concatenata
+            if nr_zile > 1:
+                ws.merge_cells(start_row=sr, start_column=5, end_row=er, end_column=5)
+            texte = texte_general
+            text_e = '\n• '.join(texte) if texte else '—'
+            if texte:
+                text_e = '• ' + text_e
+            e_cell = ws.cell(row=sr, column=5, value=text_e)
+            e_cell.font = S['cell_font']
+            e_cell.alignment = S['align_left']
+            e_cell.border = S['border_thin']
 
         # Calculeaza ore in saptamana din activitati zilnice
         ore_sapt = 0.0

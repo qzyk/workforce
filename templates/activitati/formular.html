@@ -215,6 +215,37 @@
             </div>
         </div>
 
+        <!-- SECTIUNEA 1.4: DETALII PE ZI (saptamanala/lunara) -->
+        <div class="act-section" id="detaliiPeZiSection" style="display:none;">
+            <h3><i class="fa-solid fa-calendar-days"></i> Detalii pe zi
+                <small style="font-weight:normal; font-size:0.78rem; color:var(--gray-500);">(activitati specifice per zi din interval)</small>
+            </h3>
+            <div style="margin-bottom:10px; font-size:0.82rem; color:var(--gray-600);">
+                <i class="fa-solid fa-info-circle"></i> Tabelul se genereaza automat pe baza datei de inceput / sfarsit. Lasa randuri necompletate daca nu vrei sa apara in raport.
+            </div>
+            <div style="overflow-x:auto;">
+                <table id="detaliiPeZiTable" style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                    <thead>
+                        <tr style="background:var(--gray-100);">
+                            <th style="padding:6px 8px; text-align:left; min-width:120px;">Ziua</th>
+                            <th style="padding:6px 8px; text-align:left; min-width:160px;">Santier / Proiect</th>
+                            <th style="padding:6px 8px; text-align:left;">Detalii activitate</th>
+                            <th style="padding:6px 8px; text-align:center; min-width:80px;">Ore</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detaliiPeZiBody"></tbody>
+                </table>
+            </div>
+            {# Pre-load detalii existente pentru editare #}
+            <script type="application/json" id="detaliiExistente">
+                {% if activitate and activitate.detalii_pe_zi_lista %}
+                {{ activitate.detalii_pe_zi | safe }}
+                {% else %}
+                []
+                {% endif %}
+            </script>
+        </div>
+
         <!-- SECTIUNEA 1.5: ECHIPA - SUPERVISOR + SUBORDONATI -->
         <div class="act-section">
             <h3><i class="fa-solid fa-people-group"></i> Echipa</h3>
@@ -501,6 +532,142 @@ function updatePreviewPerioada() {
 document.getElementById('dataInceput').addEventListener('change', updatePreviewPerioada);
 // Initial render
 updatePreviewPerioada();
+
+// ===========================================================
+// DETALII PE ZI (saptamanala / lunara)
+// ===========================================================
+var DETALII_PROIECTE = [
+    {% for p in proiecte %}
+    {id: {{ p.id }}, cod: {{ p.cod_proiect|tojson }}, nume: {{ p.nume|tojson }}},
+    {% endfor %}
+];
+var DETALII_LUNI_RO = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie',
+                       'Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'];
+var DETALII_ZILE_RO = ['Luni','Marti','Miercuri','Joi','Vineri','Sambata','Duminica'];
+
+function generateDayList() {
+    var tip = document.getElementById('tipActivitateInput').value;
+    if (tip === 'zilnica') return [];
+    var startStr = document.getElementById('dataInceput').value;
+    var endInput = document.querySelector('input[name="data_sfarsit"]');
+    var endStr = endInput ? endInput.value : '';
+    if (!startStr) return [];
+
+    var start = new Date(startStr + 'T00:00:00');
+    var end;
+    if (endStr) {
+        end = new Date(endStr + 'T00:00:00');
+    } else if (tip === 'saptamanala') {
+        // Pana la sfarsitul saptamanii ISO
+        var dow = (start.getDay() + 6) % 7; // 0=Luni
+        end = new Date(start);
+        end.setDate(start.getDate() + (4 - dow)); // Vineri
+    } else if (tip === 'lunara') {
+        end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+    }
+    if (!end || isNaN(end.getTime())) return [];
+
+    var includeSat = document.querySelector('input[name="include_sambata"]')?.checked;
+    var includeSun = document.querySelector('input[name="include_duminica"]')?.checked;
+
+    var days = [];
+    var cur = new Date(start);
+    while (cur <= end && days.length < 60) {
+        var weekday = cur.getDay();
+        var include = false;
+        if (weekday >= 1 && weekday <= 5) include = true;
+        else if (weekday === 6 && includeSat) include = true;
+        else if (weekday === 0 && includeSun) include = true;
+        if (include) days.push(new Date(cur));
+        cur.setDate(cur.getDate() + 1);
+    }
+    return days;
+}
+
+function renderDetaliiPeZi() {
+    var section = document.getElementById('detaliiPeZiSection');
+    var body = document.getElementById('detaliiPeZiBody');
+    var tip = document.getElementById('tipActivitateInput').value;
+
+    if (tip === 'zilnica') {
+        section.style.display = 'none';
+        return;
+    }
+    section.style.display = '';
+
+    var days = generateDayList();
+    if (days.length === 0) {
+        body.innerHTML = '<tr><td colspan="4" style="padding:14px; color:var(--gray-500); text-align:center;"><i class="fa-solid fa-circle-info"></i> Selecteaza data de inceput (si optional data de sfarsit) pentru a genera tabelul.</td></tr>';
+        return;
+    }
+
+    // Citeste detalii existente
+    var existing = {};
+    try {
+        var raw = document.getElementById('detaliiExistente')?.textContent || '[]';
+        var arr = JSON.parse(raw);
+        arr.forEach(function(d) { if (d.data) existing[d.data] = d; });
+    } catch (e) {}
+
+    var rows = [];
+    days.forEach(function(d) {
+        var iso = d.toISOString().slice(0, 10);
+        var weekday = (d.getDay() + 6) % 7; // 0=Luni
+        var weekend = (d.getDay() === 0 || d.getDay() === 6);
+        var label = DETALII_ZILE_RO[weekday] + ' ' + d.getDate() + ' ' + DETALII_LUNI_RO[d.getMonth()].toLowerCase();
+        var prev = existing[iso] || {};
+        var bgColor = weekend ? '#FFF3E0' : (weekday % 2 === 0 ? '#FAFAFA' : '#FFFFFF');
+        rows.push(
+            '<tr style="background:' + bgColor + ';">' +
+            '<td style="padding:5px 8px; font-weight:600;' + (weekend ? ' color:#E65100;' : '') + '">' + label + '</td>' +
+            '<td style="padding:5px 8px;">' +
+                '<input type="hidden" name="detaliu_data[]" value="' + iso + '">' +
+                '<select name="detaliu_proiect[]" class="form-select" style="font-size:0.82rem; padding:3px 6px;">' +
+                    '<option value="">--</option>' +
+                    DETALII_PROIECTE.map(function(p) {
+                        return '<option value="' + p.id + '"' + (prev.proiect_id == p.id ? ' selected' : '') + '>' + escapeHtml(p.cod) + ' - ' + escapeHtml(p.nume) + '</option>';
+                    }).join('') +
+                '</select>' +
+            '</td>' +
+            '<td style="padding:5px 8px;">' +
+                '<input type="text" name="detaliu_text[]" class="form-control" style="font-size:0.82rem; padding:4px 8px;" maxlength="500" value="' + escapeHtml(prev.text || '') + '" placeholder="ex: Pregatire planse PT, vizita santier...">' +
+            '</td>' +
+            '<td style="padding:5px 8px;">' +
+                '<input type="number" name="detaliu_ore[]" class="form-control" style="font-size:0.82rem; padding:4px 8px; text-align:center;" step="0.5" min="0" max="24" value="' + (prev.ore || '') + '" placeholder="0">' +
+            '</td>' +
+            '</tr>'
+        );
+    });
+    body.innerHTML = rows.join('');
+}
+
+function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, function(c) {
+        return {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c];
+    });
+}
+
+// Hook events ca sa regenerez tabelul
+['dataInceput'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('change', renderDetaliiPeZi);
+});
+var dataSfarsitEl = document.querySelector('input[name="data_sfarsit"]');
+if (dataSfarsitEl) dataSfarsitEl.addEventListener('change', renderDetaliiPeZi);
+['include_sambata', 'include_duminica'].forEach(function(name) {
+    var el = document.querySelector('input[name="' + name + '"]');
+    if (el) el.addEventListener('change', renderDetaliiPeZi);
+});
+
+// Hook on tip change
+var origSetTip = window.setTipActivitate;
+window.setTipActivitate = function(tip) {
+    origSetTip(tip);
+    renderDetaliiPeZi();
+};
+
+// Render initial
+renderDetaliiPeZi();
 
 // Multi-select proiecte: toggle helpers
 function toggleProiecte(select) {

@@ -243,6 +243,7 @@ def create_app(config_name='default'):
             ('proiecte_ids', 'TEXT'),
             ('include_sambata', 'BOOLEAN NOT NULL DEFAULT 0'),
             ('include_duminica', 'BOOLEAN NOT NULL DEFAULT 0'),
+            ('detalii_pe_zi', 'TEXT'),
         ]
 
         adaugate = 0
