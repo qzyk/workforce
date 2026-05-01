@@ -12,3 +12,10 @@ python-dateutil>=2.8.2
 APScheduler>=3.10.4
 WTForms>=3.1.1
 email-validator>=2.1.0
+
+# === DEV / TESTING ===
+pytest>=8.0.0
+pytest-cov>=4.1.0
+
+# === BIM / 3D / IFC ===
+ifcopenshell>=0.7.0  # parser IFC pentru import modele BIM

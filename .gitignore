@@ -8,3 +8,6 @@ __pycache__/
 *.pyc
 cookies.txt
 backups/
+.pytest_cache/
+htmlcov/
+.coverage
