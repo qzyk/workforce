@@ -13,6 +13,25 @@ db = SQLAlchemy()
 
 
 # ============================================================
+# MODEL TENANT (multi-tenant infrastructure)
+# Initial: NULL pe randuri existente (single-tenant mode default).
+# Cand multi-tenant e activat, fiecare org are tenant_id unic.
+# ============================================================
+
+class Tenant(db.Model):
+    __tablename__ = 'tenants'
+    id = db.Column(db.Integer, primary_key=True)
+    cod = db.Column(db.String(50), unique=True, nullable=False)  # ex: 'innova', 'beta-srl'
+    nume = db.Column(db.String(200), nullable=False)
+    activ = db.Column(db.Boolean, default=True, nullable=False)
+    config_json = db.Column(db.Text, nullable=True)  # setari per-tenant in JSON
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<Tenant {self.cod}>'
+
+
+# ============================================================
 # TABEL ASOCIATIV ANGAJAT-PROIECT (many-to-many)
 # ============================================================
 
@@ -41,12 +60,14 @@ class AngajatProiect(db.Model):
 class Utilizator(UserMixin, db.Model):
     __tablename__ = 'utilizatori'
     id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
     nume = db.Column(db.String(100), nullable=False)
     prenume = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(150), unique=True, nullable=False)
     parola_hash = db.Column(db.String(256), nullable=False)
     rol = db.Column(db.String(20), nullable=False, default='operator')  # admin, manager, operator
     activ = db.Column(db.Boolean, default=True)
+    limba = db.Column(db.String(5), nullable=True, default='ro')  # ro, en (i18n)
     data_creare = db.Column(db.DateTime, default=datetime.utcnow)
     ultima_conectare = db.Column(db.DateTime)
 
@@ -78,6 +99,7 @@ class Utilizator(UserMixin, db.Model):
 class Angajat(db.Model):
     __tablename__ = 'angajati'
     id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
     nume = db.Column(db.String(100), nullable=False)
     prenume = db.Column(db.String(100), nullable=False)
     cnp = db.Column(db.String(13), unique=True)
@@ -166,6 +188,7 @@ class Angajat(db.Model):
 class Proiect(db.Model):
     __tablename__ = 'proiecte'
     id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
     cod_proiect = db.Column(db.String(50), unique=True, nullable=False)
     nume = db.Column(db.String(200), nullable=False)
     descriere = db.Column(db.Text)
@@ -242,6 +265,9 @@ class Pontaj(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     angajat_id = db.Column(db.Integer, db.ForeignKey('angajati.id'), nullable=False)
     proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'), nullable=False)
+    # Linkare BIM (optional)
+    element_bim_id = db.Column(db.Integer, db.ForeignKey('bim_elemente.id'), nullable=True, index=True)
+    spatiu_id = db.Column(db.Integer, db.ForeignKey('bim_spatii.id'), nullable=True, index=True)
     data = db.Column(db.Date, nullable=False)
     ora_start = db.Column(db.String(5))   # HH:MM
     ora_sfarsit = db.Column(db.String(5))  # HH:MM
@@ -659,6 +685,10 @@ class RaportActivitate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     angajat_id = db.Column(db.Integer, db.ForeignKey('angajati.id'), nullable=False)
     proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'), nullable=False)
+    # Linkare BIM (optional)
+    element_bim_id = db.Column(db.Integer, db.ForeignKey('bim_elemente.id'), nullable=True, index=True)
+    spatiu_id = db.Column(db.Integer, db.ForeignKey('bim_spatii.id'), nullable=True, index=True)
+    zona_id = db.Column(db.Integer, db.ForeignKey('bim_zone.id'), nullable=True, index=True)
     data = db.Column(db.Date, nullable=False)  # data inceput (start_date)
 
     tip_instalatie_id = db.Column(db.Integer, db.ForeignKey('tipuri_instalatii.id'), nullable=True)
@@ -1190,3 +1220,476 @@ class DefectiuneMasina(db.Model):
 
     def __repr__(self):
         return f'<DefectiuneMasina {self.masina_id} {self.gravitate}>'
+
+
+# ============================================================
+# ============================================================
+# === MODULUL BIM (Building Information Modeling)         ===
+# === Extinde workforce cu structura ierarhica spatiala   ===
+# === si elemente fizice (walls/doors/equipment/MEP).     ===
+# ============================================================
+# Ierarhie:
+#   Santier (Site) -> Cladire (Building) -> Nivel (Storey)
+#                  \-> Zona (Zone) ----------|
+#                                            \-> Spatiu (Room) -> ElementBIM (Wall/Door/AHU/...)
+#                                                                  \-> Asset (component instalat)
+# Plus:
+#   ModelBIM (referinta IFC/Revit/extern)
+#   IssueBIM (probleme legate de element/spatiu)
+# Linkare workforce:
+#   RaportActivitate.element_bim_id, Pontaj.element_bim_id, Proiect.santier_id
+# ============================================================
+# ============================================================
+
+
+class Santier(db.Model):
+    """BIM Site - locatie geografica a unui complex de cladiri."""
+    __tablename__ = 'bim_santiere'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'), nullable=True, index=True)
+
+    cod = db.Column(db.String(50), nullable=False)  # ex: SITE-001
+    nume = db.Column(db.String(200), nullable=False)
+    descriere = db.Column(db.Text)
+
+    adresa = db.Column(db.String(300))
+    oras = db.Column(db.String(100))
+    judet = db.Column(db.String(50))
+    tara = db.Column(db.String(50), default='Romania')
+
+    # Coordonate geografice (optionale, pentru viewer harta)
+    latitudine = db.Column(db.Numeric(10, 7), nullable=True)
+    longitudine = db.Column(db.Numeric(10, 7), nullable=True)
+
+    # Optional: identificator extern (din IFC IfcSite.GlobalId, sau alt sistem)
+    extern_id = db.Column(db.String(100), nullable=True, index=True)
+
+    status = db.Column(db.String(20), default='activ')  # activ, finalizat, suspendat
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relatii
+    proiect = db.relationship('Proiect', backref=db.backref('santiere', lazy='dynamic'))
+    cladiri = db.relationship('Cladire', backref='santier', lazy='dynamic',
+                              cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'cod', name='uix_santier_tenant_cod'),
+    )
+
+    def __repr__(self):
+        return f'<Santier {self.cod}>'
+
+
+class Cladire(db.Model):
+    """BIM Building - cladire individuala in cadrul unui santier."""
+    __tablename__ = 'bim_cladiri'
+    id = db.Column(db.Integer, primary_key=True)
+    santier_id = db.Column(db.Integer, db.ForeignKey('bim_santiere.id'), nullable=False, index=True)
+
+    cod = db.Column(db.String(50), nullable=False)  # ex: BLD-A, CORP-1
+    nume = db.Column(db.String(200), nullable=False)
+    descriere = db.Column(db.Text)
+
+    tip_constructie = db.Column(db.String(50))  # rezidential, comercial, industrial, mixt, public
+    nr_niveluri = db.Column(db.Integer)
+    suprafata_totala = db.Column(db.Numeric(12, 2))  # mp
+
+    extern_id = db.Column(db.String(100), nullable=True, index=True)  # IFC GlobalId
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relatii
+    niveluri = db.relationship('Nivel', backref='cladire', lazy='dynamic',
+                               cascade='all, delete-orphan',
+                               order_by='Nivel.ordine')
+    zone = db.relationship('Zona', backref='cladire', lazy='dynamic',
+                           cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.UniqueConstraint('santier_id', 'cod', name='uix_cladire_santier_cod'),
+    )
+
+    def __repr__(self):
+        return f'<Cladire {self.cod}>'
+
+
+class Nivel(db.Model):
+    """BIM Storey/Level - nivel/etaj intr-o cladire."""
+    __tablename__ = 'bim_niveluri'
+    id = db.Column(db.Integer, primary_key=True)
+    cladire_id = db.Column(db.Integer, db.ForeignKey('bim_cladiri.id'), nullable=False, index=True)
+
+    cod = db.Column(db.String(50), nullable=False)  # ex: N00, N01, BSM, ROOF
+    nume = db.Column(db.String(100), nullable=False)  # ex: Parter, Etaj 1, Subsol
+    ordine = db.Column(db.Integer, default=0)  # pentru sortare (0 = parter, 1 = etaj 1, -1 = subsol)
+
+    elevatie_m = db.Column(db.Numeric(8, 2))  # cota fata de 0.00
+    inaltime_m = db.Column(db.Numeric(8, 2))  # inaltimea nivelului
+
+    extern_id = db.Column(db.String(100), nullable=True, index=True)  # IFC GlobalId
+
+    # Relatii
+    spatii = db.relationship('Spatiu', backref='nivel', lazy='dynamic',
+                             cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.UniqueConstraint('cladire_id', 'cod', name='uix_nivel_cladire_cod'),
+    )
+
+    def __repr__(self):
+        return f'<Nivel {self.cladire_id}/{self.cod}>'
+
+
+class Zona(db.Model):
+    """BIM Zone - grupare logica de spatii (nu neaparat geometrica)."""
+    __tablename__ = 'bim_zone'
+    id = db.Column(db.Integer, primary_key=True)
+    cladire_id = db.Column(db.Integer, db.ForeignKey('bim_cladiri.id'), nullable=False, index=True)
+    nivel_id = db.Column(db.Integer, db.ForeignKey('bim_niveluri.id'), nullable=True, index=True)
+
+    cod = db.Column(db.String(50), nullable=False)
+    nume = db.Column(db.String(200), nullable=False)
+    descriere = db.Column(db.Text)
+    tip_zona = db.Column(db.String(50))  # functional, securitate, hvac, etc.
+
+    extern_id = db.Column(db.String(100), nullable=True, index=True)
+
+    # Relatii
+    nivel = db.relationship('Nivel', backref=db.backref('zone', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('cladire_id', 'cod', name='uix_zona_cladire_cod'),
+    )
+
+    def __repr__(self):
+        return f'<Zona {self.cod}>'
+
+
+class Spatiu(db.Model):
+    """BIM Space/Room - camera/incapere individuala."""
+    __tablename__ = 'bim_spatii'
+    id = db.Column(db.Integer, primary_key=True)
+    nivel_id = db.Column(db.Integer, db.ForeignKey('bim_niveluri.id'), nullable=False, index=True)
+    zona_id = db.Column(db.Integer, db.ForeignKey('bim_zone.id'), nullable=True, index=True)
+
+    cod = db.Column(db.String(50), nullable=False)  # ex: 3.21, P.05
+    nume = db.Column(db.String(200), nullable=False)  # ex: Birou director
+    tip_spatiu = db.Column(db.String(50))  # birou, sala, hol, casa scarii, tehnic, sanitar, etc.
+
+    suprafata_mp = db.Column(db.Numeric(10, 2))
+    inaltime_m = db.Column(db.Numeric(8, 2))
+    volum_mc = db.Column(db.Numeric(12, 2))
+
+    extern_id = db.Column(db.String(100), nullable=True, index=True)  # IFC IfcSpace.GlobalId
+
+    # Relatii
+    zona = db.relationship('Zona', backref=db.backref('spatii', lazy='dynamic'))
+    elemente = db.relationship('ElementBIM', backref='spatiu', lazy='dynamic')
+
+    __table_args__ = (
+        db.UniqueConstraint('nivel_id', 'cod', name='uix_spatiu_nivel_cod'),
+    )
+
+    def __repr__(self):
+        return f'<Spatiu {self.cod}>'
+
+
+class ElementBIM(db.Model):
+    """
+    Element fizic generic (perete, usa, fereastra, echipament, conducta, etc.).
+    Tip e un cod IFC standard (IfcWall, IfcDoor, IfcUnitaryEquipment, etc.) -
+    folosim notatie EN pentru interoperabilitate, label-urile RO sunt in TIPURI.
+    """
+    __tablename__ = 'bim_elemente'
+    id = db.Column(db.Integer, primary_key=True)
+    spatiu_id = db.Column(db.Integer, db.ForeignKey('bim_spatii.id'), nullable=True, index=True)
+    nivel_id = db.Column(db.Integer, db.ForeignKey('bim_niveluri.id'), nullable=True, index=True)
+    cladire_id = db.Column(db.Integer, db.ForeignKey('bim_cladiri.id'), nullable=True, index=True)
+
+    cod = db.Column(db.String(100), nullable=False)  # ex: AHU-03, DOOR-3.21-01
+    nume = db.Column(db.String(200))
+    tip_element = db.Column(db.String(50), nullable=False, index=True)
+    # Valori standard IFC (EN): wall, door, window, slab, beam, column, stair,
+    # railing, AHU, fan, pump, valve, pipe, duct, cable_tray, light, sensor, etc.
+
+    descriere = db.Column(db.Text)
+
+    # Geometrie / dimensiuni (optional)
+    cantitate = db.Column(db.Numeric(12, 3))
+    unitate_masura = db.Column(db.String(20))  # ml, mp, mc, buc, kg
+
+    # Identificator IFC (cheie de unicitate cross-system)
+    ifc_global_id = db.Column(db.String(100), nullable=True, index=True)
+    extern_id = db.Column(db.String(100), nullable=True, index=True)
+
+    # Status executie
+    status = db.Column(db.String(30), default='proiectat')
+    # proiectat, in_executie, executat, verificat, receptionat, defect
+
+    # JSON cu proprietati custom (PSet IFC sau alte atribute)
+    proprietati_json = db.Column(db.Text, nullable=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+    data_actualizare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relatii
+    nivel = db.relationship('Nivel', backref=db.backref('elemente', lazy='dynamic'))
+    cladire = db.relationship('Cladire', backref=db.backref('elemente', lazy='dynamic'))
+    asset = db.relationship('Asset', backref='element', uselist=False,
+                            cascade='all, delete-orphan')
+
+    TIPURI = [
+        # IFC code, label_RO, categorie
+        ('wall', 'Perete', 'structural'),
+        ('door', 'Usa', 'arhitectural'),
+        ('window', 'Fereastra', 'arhitectural'),
+        ('slab', 'Placa', 'structural'),
+        ('beam', 'Grinda', 'structural'),
+        ('column', 'Stalp', 'structural'),
+        ('stair', 'Scara', 'arhitectural'),
+        ('railing', 'Balustrada', 'arhitectural'),
+        ('AHU', 'CTA - Centrala tratare aer', 'mep_hvac'),
+        ('chiller', 'Chiller', 'mep_hvac'),
+        ('fan', 'Ventilator', 'mep_hvac'),
+        ('pump', 'Pompa', 'mep_sanitare'),
+        ('valve', 'Vana / Robinet', 'mep_sanitare'),
+        ('pipe', 'Conducta', 'mep_sanitare'),
+        ('duct', 'Tubulatura', 'mep_hvac'),
+        ('cable_tray', 'Pat cabluri', 'mep_electric'),
+        ('light', 'Corp iluminat', 'mep_electric'),
+        ('outlet', 'Priza', 'mep_electric'),
+        ('switch', 'Intrerupator', 'mep_electric'),
+        ('panel', 'Tablou electric', 'mep_electric'),
+        ('sensor', 'Senzor', 'mep_automatizari'),
+        ('sprinkler', 'Sprinkler', 'mep_pci'),
+        ('extinguisher', 'Stingator', 'mep_pci'),
+        ('elevator', 'Lift', 'mep_transport'),
+        ('alte', 'Alte elemente', 'general'),
+    ]
+
+    @property
+    def tip_label(self):
+        """Returneaza eticheta in romana pentru tipul de element."""
+        for cod, label, _cat in self.TIPURI:
+            if cod == self.tip_element:
+                return label
+        return self.tip_element
+
+    @property
+    def tip_categorie(self):
+        for cod, _label, cat in self.TIPURI:
+            if cod == self.tip_element:
+                return cat
+        return 'general'
+
+    @property
+    def cale_completa(self):
+        """Returneaza calea ierarhica: Santier > Cladire > Nivel > Spatiu > Element."""
+        parts = []
+        if self.cladire and self.cladire.santier:
+            parts.append(self.cladire.santier.cod)
+        if self.cladire:
+            parts.append(self.cladire.cod)
+        if self.nivel:
+            parts.append(self.nivel.nume)
+        if self.spatiu:
+            parts.append(self.spatiu.cod)
+        parts.append(self.cod)
+        return ' / '.join(parts)
+
+    def __repr__(self):
+        return f'<ElementBIM {self.cod} ({self.tip_element})>'
+
+
+class Asset(db.Model):
+    """
+    Asset - component fizic instalat (cu serial, garantie, mentenanta).
+    Asociat 1:1 cu un ElementBIM (un AHU este si element BIM si asset).
+    """
+    __tablename__ = 'bim_assets'
+    id = db.Column(db.Integer, primary_key=True)
+    element_bim_id = db.Column(db.Integer, db.ForeignKey('bim_elemente.id'),
+                               nullable=False, unique=True, index=True)
+
+    producator = db.Column(db.String(150))
+    model = db.Column(db.String(150))
+    serial = db.Column(db.String(150), index=True)
+    cod_intern = db.Column(db.String(100))
+
+    data_punere_functiune = db.Column(db.Date)
+    data_garantie_pana = db.Column(db.Date)
+    interval_mentenanta_zile = db.Column(db.Integer)  # ex: 90, 180, 365
+
+    ultima_mentenanta = db.Column(db.Date)
+    urmatoarea_mentenanta = db.Column(db.Date)
+
+    cost_achizitie = db.Column(db.Numeric(12, 2))
+    moneda = db.Column(db.String(5), default='RON')
+
+    fisa_tehnica_path = db.Column(db.String(500))  # cale fisier upload
+    manual_path = db.Column(db.String(500))
+
+    observatii = db.Column(db.Text)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def in_garantie(self):
+        if not self.data_garantie_pana:
+            return None
+        return self.data_garantie_pana >= date.today()
+
+    @property
+    def zile_pana_mentenanta(self):
+        if not self.urmatoarea_mentenanta:
+            return None
+        return (self.urmatoarea_mentenanta - date.today()).days
+
+    def __repr__(self):
+        return f'<Asset {self.serial or self.id}>'
+
+
+class IssueBIM(db.Model):
+    """
+    Issue / Problema legata de un element BIM, spatiu sau zona.
+    Compatibil conceptual cu BCF (BIM Collaboration Format).
+    """
+    __tablename__ = 'bim_issues'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    # Locatie - cel putin unul trebuie completat
+    element_bim_id = db.Column(db.Integer, db.ForeignKey('bim_elemente.id'), nullable=True, index=True)
+    spatiu_id = db.Column(db.Integer, db.ForeignKey('bim_spatii.id'), nullable=True, index=True)
+    nivel_id = db.Column(db.Integer, db.ForeignKey('bim_niveluri.id'), nullable=True, index=True)
+    cladire_id = db.Column(db.Integer, db.ForeignKey('bim_cladiri.id'), nullable=True, index=True)
+
+    cod = db.Column(db.String(50))  # ex: ISS-001
+    titlu = db.Column(db.String(300), nullable=False)
+    descriere = db.Column(db.Text)
+
+    tip = db.Column(db.String(50), default='defect')
+    # defect, conflict_proiectare, lipsa_executie, neconformitate, observatie, sugestie
+    severitate = db.Column(db.String(20), default='medie')
+    # mica, medie, mare, critica
+
+    status = db.Column(db.String(30), default='deschis')
+    # deschis, in_lucru, rezolvat, verificat, inchis, anulat
+
+    raportat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    asignat_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_raportare = db.Column(db.Date, default=date.today)
+    data_termen = db.Column(db.Date, nullable=True)
+    data_rezolvare = db.Column(db.Date, nullable=True)
+
+    # Camp BCF compatibil - pentru export/import .bcf
+    bcf_topic_guid = db.Column(db.String(100), nullable=True, index=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+    data_actualizare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relatii
+    element = db.relationship('ElementBIM', backref=db.backref('issues', lazy='dynamic'))
+    spatiu = db.relationship('Spatiu', backref=db.backref('issues', lazy='dynamic'))
+    nivel = db.relationship('Nivel', backref=db.backref('issues', lazy='dynamic'))
+    cladire = db.relationship('Cladire', backref=db.backref('issues', lazy='dynamic'))
+    raportor = db.relationship('Utilizator', foreign_keys=[raportat_de_id],
+                               backref='bim_issues_raportate')
+    asignat = db.relationship('Utilizator', foreign_keys=[asignat_id],
+                              backref='bim_issues_asignate')
+
+    TIPURI = [
+        ('defect', 'Defect'),
+        ('conflict_proiectare', 'Conflict proiectare'),
+        ('lipsa_executie', 'Lipsa executie'),
+        ('neconformitate', 'Neconformitate'),
+        ('observatie', 'Observatie'),
+        ('sugestie', 'Sugestie'),
+    ]
+
+    SEVERITATI = [
+        ('mica', 'Mica'),
+        ('medie', 'Medie'),
+        ('mare', 'Mare'),
+        ('critica', 'Critica'),
+    ]
+
+    STATUSURI = [
+        ('deschis', 'Deschis'),
+        ('in_lucru', 'In lucru'),
+        ('rezolvat', 'Rezolvat'),
+        ('verificat', 'Verificat'),
+        ('inchis', 'Inchis'),
+        ('anulat', 'Anulat'),
+    ]
+
+    def __repr__(self):
+        return f'<IssueBIM {self.cod or self.id} - {self.titlu[:40]}>'
+
+
+class ModelBIM(db.Model):
+    """
+    Referinta catre un model BIM extern (IFC, Revit, viewer).
+    Stocam path-ul sau URL-ul; modelul propriu-zis poate fi pe disk, S3, BIM server, etc.
+    """
+    __tablename__ = 'bim_modele'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    santier_id = db.Column(db.Integer, db.ForeignKey('bim_santiere.id'), nullable=True, index=True)
+    cladire_id = db.Column(db.Integer, db.ForeignKey('bim_cladiri.id'), nullable=True, index=True)
+
+    nume = db.Column(db.String(200), nullable=False)
+    descriere = db.Column(db.Text)
+    tip = db.Column(db.String(20), default='ifc')
+    # ifc, revit, dwg, navisworks, bcf, viewer_extern
+
+    versiune = db.Column(db.String(50))  # ex: '1.0', 'rev. C'
+    autor = db.Column(db.String(150))
+    data_emitere = db.Column(db.Date)
+
+    # Stocare
+    fisier_path = db.Column(db.String(500))  # cale relativa in /uploads/
+    fisier_marime = db.Column(db.Integer)  # bytes
+    extern_url = db.Column(db.String(500))  # daca e gazduit extern (BIMx, Trimble Connect, etc.)
+
+    # Statistici (populate dupa import)
+    nr_elemente = db.Column(db.Integer, default=0)
+    nr_spatii = db.Column(db.Integer, default=0)
+    procesare_status = db.Column(db.String(20), default='nou')
+    # nou, in_procesare, procesat, eroare
+    procesare_log = db.Column(db.Text)
+
+    incarcat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_incarcare = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relatii
+    santier = db.relationship('Santier', backref=db.backref('modele', lazy='dynamic'))
+    cladire = db.relationship('Cladire', backref=db.backref('modele', lazy='dynamic'))
+    incarcat_de = db.relationship('Utilizator', backref='bim_modele_incarcate')
+
+    TIPURI = [
+        ('ifc', 'IFC (open standard)'),
+        ('revit', 'Revit (.rvt)'),
+        ('dwg', 'AutoCAD (.dwg)'),
+        ('navisworks', 'Navisworks (.nwd)'),
+        ('bcf', 'BCF (issues)'),
+        ('viewer_extern', 'Viewer extern (URL)'),
+    ]
+
+    def __repr__(self):
+        return f'<ModelBIM {self.nume} ({self.tip})>'
+
+
+# ============================================================
+# === LINKARE WORKFORCE - BIM ===
+# Adaugam coloane FK opt. pe modelele workforce ca sa pot lega
+# o activitate / un pontaj de un element BIM, spatiu sau zona.
+# Aceste coloane sunt nullable - workforce continua sa functioneze
+# si fara BIM activat.
+# ============================================================
+# NOTA: Coloanele se adauga programatic prin CLI flask migrate-bim,
+# nu prin definitii in clasele de mai sus, ca sa NU rupem migrarile
+# existente. Mapping-ul SQLAlchemy se face in app initialization.
+# ============================================================
+
+

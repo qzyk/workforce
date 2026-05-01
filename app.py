@@ -265,6 +265,62 @@ def create_app(config_name='default'):
 
         click.echo(f'[FINAL] {adaugate} coloane noi adaugate. Migrare completa.')
 
+    # --------------------------------------------------------
+    # COMANDA CLI: flask migrate-bim
+    # Creeaza tabelele BIM si adauga FK-uri intre workforce si BIM
+    # --------------------------------------------------------
+    @app.cli.command('migrate-bim')
+    def migrate_bim_command():
+        """Creeaza tabelele BIM (Santier, Cladire, ...) si linkurile FK."""
+        from sqlalchemy import inspect, text
+        # 1. Creeaza tabele lipsa (idempotent - SQLAlchemy create_all sare peste cele existente)
+        click.echo('[1/3] Creez tabele BIM lipsa...')
+        db.create_all()
+        click.echo('  OK')
+
+        # 2. Adauga coloane FK pe tabelele workforce existente, nullable
+        click.echo('[2/3] Adaug FK-uri workforce -> BIM...')
+        insp = inspect(db.engine)
+
+        link_targets = [
+            # (table, col_name, col_def)
+            # Nota: NU adaugam proiecte.santier_id pentru ca relatia e 1:N (Proiect:Santiere)
+            # iar Santier.proiect_id e suficient.
+            ('rapoarte_activitati', 'element_bim_id', 'INTEGER REFERENCES bim_elemente(id)'),
+            ('rapoarte_activitati', 'spatiu_id', 'INTEGER REFERENCES bim_spatii(id)'),
+            ('rapoarte_activitati', 'zona_id', 'INTEGER REFERENCES bim_zone(id)'),
+            ('pontaje', 'element_bim_id', 'INTEGER REFERENCES bim_elemente(id)'),
+            ('pontaje', 'spatiu_id', 'INTEGER REFERENCES bim_spatii(id)'),
+            ('utilizatori', 'tenant_id', 'INTEGER REFERENCES tenants(id)'),
+            ('utilizatori', 'limba', "VARCHAR(5) DEFAULT 'ro'"),
+            ('angajati', 'tenant_id', 'INTEGER REFERENCES tenants(id)'),
+            ('proiecte', 'tenant_id', 'INTEGER REFERENCES tenants(id)'),
+        ]
+
+        adaugate = 0
+        with db.engine.begin() as conn:
+            for table, col_name, col_def in link_targets:
+                if table not in insp.get_table_names():
+                    click.echo(f'  [SKIP] Tabel {table} nu exista.')
+                    continue
+                cols = {c['name'] for c in insp.get_columns(table)}
+                if col_name in cols:
+                    click.echo(f'  [SKIP] {table}.{col_name} exista deja.')
+                    continue
+                try:
+                    conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {col_name} {col_def}'))
+                    click.echo(f'  [OK] {table}.{col_name} adaugat.')
+                    adaugate += 1
+                except Exception as e:
+                    click.echo(f'  [EROARE] {table}.{col_name}: {e}')
+
+        # 3. Verificare finala
+        click.echo('[3/3] Verificare finala...')
+        insp2 = inspect(db.engine)
+        bim_tables = [t for t in insp2.get_table_names() if t.startswith('bim_') or t == 'tenants']
+        click.echo(f'  Tabele BIM gasite: {bim_tables}')
+        click.echo(f'[FINAL] Migrare BIM completa. {adaugate} coloane FK adaugate.')
+
     def _incarca_date_demo():
         """Incarca date demonstrative in baza de date."""
         if Utilizator.query.first():
