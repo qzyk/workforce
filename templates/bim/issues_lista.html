@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Issues BIM - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Issues</li>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-triangle-exclamation" style="color:var(--warning);"></i> Issues BIM</h2>
+</div>
+
+<div class="card-panel" style="margin-bottom:16px;">
+    <div class="card-panel-body" style="padding:14px;">
+        <form method="GET" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+            <div class="form-group" style="margin:0; min-width:160px;">
+                <label class="form-label" style="font-size:0.78rem;">Status</label>
+                <select name="status" class="form-select" style="font-size:0.85rem;">
+                    <option value="">Toate</option>
+                    {% for cod, label in STATUSURI %}
+                    <option value="{{ cod }}" {{ 'selected' if f_status == cod }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="margin:0; min-width:160px;">
+                <label class="form-label" style="font-size:0.78rem;">Severitate</label>
+                <select name="severitate" class="form-select" style="font-size:0.85rem;">
+                    <option value="">Toate</option>
+                    {% for cod, label in SEVERITATI %}
+                    <option value="{{ cod }}" {{ 'selected' if f_severitate == cod }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="margin:0; min-width:160px;">
+                <label class="form-label" style="font-size:0.78rem;">Tip</label>
+                <select name="tip" class="form-select" style="font-size:0.85rem;">
+                    <option value="">Toate</option>
+                    {% for cod, label in TIPURI %}
+                    <option value="{{ cod }}" {{ 'selected' if f_tip == cod }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary" style="font-size:0.85rem;">Filtreaza</button>
+            <a href="{{ url_for('bim.issues_lista') }}" class="btn btn-outline" style="font-size:0.85rem;">Reset</a>
+        </form>
+    </div>
+</div>
+
+<div class="card-panel">
+    <div class="card-panel-body" style="padding:0;">
+        {% if issues %}
+        <table class="data-table">
+            <thead>
+                <tr><th>Cod</th><th>Titlu</th><th>Locatie</th><th>Tip</th><th>Severitate</th><th>Status</th><th>Data</th></tr>
+            </thead>
+            <tbody>
+                {% for i in issues %}
+                <tr>
+                    <td>{{ i.cod or '#' ~ i.id }}</td>
+                    <td><strong>{{ i.titlu }}</strong></td>
+                    <td style="font-size:0.82rem; color:var(--gray-600);">
+                        {% if i.element %}
+                            <a href="{{ url_for('bim.element_detaliu', id=i.element.id) }}">{{ i.element.cod }}</a>
+                        {% elif i.spatiu %}
+                            Spatiu {{ i.spatiu.cod }}
+                        {% elif i.cladire %}
+                            Cladire {{ i.cladire.cod }}
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>{{ i.tip|replace('_', ' ')|title }}</td>
+                    <td>
+                        <span class="badge-status badge-{{ 'respins' if i.severitate == 'critica' else ('draft' if i.severitate == 'mare' else 'trimis') }}">
+                            {{ i.severitate|title }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge-status badge-{{ 'aprobat' if i.status in ['rezolvat', 'verificat', 'inchis'] else 'draft' }}">
+                            {{ i.status|replace('_', ' ')|title }}
+                        </span>
+                    </td>
+                    <td style="white-space:nowrap; font-size:0.82rem; color:var(--gray-600);">
+                        {{ i.data_creare.strftime('%d.%m.%Y') if i.data_creare else '-' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state" style="padding:40px;">
+            <i class="fa-solid fa-circle-check" style="font-size:2.5rem; color:var(--success);"></i>
+            <p style="margin-top:12px; color:var(--gray-500);">Niciun issue activ.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

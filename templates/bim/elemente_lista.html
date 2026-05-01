@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Elemente BIM - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Elemente</li>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-cubes" style="color:var(--primary);"></i> Elemente BIM</h2>
+</div>
+
+<div class="card-panel" style="margin-bottom:16px;">
+    <div class="card-panel-body" style="padding:14px;">
+        <form method="GET" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+            <div class="form-group" style="margin:0; min-width:180px;">
+                <label class="form-label" style="font-size:0.78rem;">Cladire</label>
+                <select name="cladire_id" class="form-select" style="font-size:0.85rem;">
+                    <option value="">Toate</option>
+                    {% for c in cladiri %}
+                    <option value="{{ c.id }}" {{ 'selected' if f_cladire == c.id }}>{{ c.cod }} - {{ c.nume }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="margin:0; min-width:180px;">
+                <label class="form-label" style="font-size:0.78rem;">Tip element</label>
+                <select name="tip" class="form-select" style="font-size:0.85rem;">
+                    <option value="">Toate</option>
+                    {% for cod, label, cat in tipuri %}
+                    <option value="{{ cod }}" {{ 'selected' if f_tip == cod }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="margin:0; min-width:160px;">
+                <label class="form-label" style="font-size:0.78rem;">Status</label>
+                <select name="status" class="form-select" style="font-size:0.85rem;">
+                    <option value="">Toate</option>
+                    <option value="proiectat" {{ 'selected' if f_status == 'proiectat' }}>Proiectat</option>
+                    <option value="in_executie" {{ 'selected' if f_status == 'in_executie' }}>In executie</option>
+                    <option value="executat" {{ 'selected' if f_status == 'executat' }}>Executat</option>
+                    <option value="verificat" {{ 'selected' if f_status == 'verificat' }}>Verificat</option>
+                    <option value="receptionat" {{ 'selected' if f_status == 'receptionat' }}>Receptionat</option>
+                    <option value="defect" {{ 'selected' if f_status == 'defect' }}>Defect</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary" style="font-size:0.85rem; padding:6px 14px;">
+                <i class="fa-solid fa-filter"></i> Filtreaza
+            </button>
+            <a href="{{ url_for('bim.elemente_lista') }}" class="btn btn-outline" style="font-size:0.85rem; padding:6px 14px;">Reset</a>
+        </form>
+    </div>
+</div>
+
+<div class="card-panel">
+    <div class="card-panel-body" style="padding:0;">
+        {% if elemente %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Cod</th>
+                    <th>Tip</th>
+                    <th>Nume</th>
+                    <th>Locatie</th>
+                    <th>Status</th>
+                    <th>IFC GUID</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in elemente %}
+                <tr>
+                    <td><strong><a href="{{ url_for('bim.element_detaliu', id=e.id) }}">{{ e.cod }}</a></strong></td>
+                    <td>
+                        <span style="font-size:0.78rem; padding:2px 8px; border-radius:10px; background:#E8EAF6; color:#3949AB; font-weight:600;">
+                            {{ e.tip_label }}
+                        </span>
+                    </td>
+                    <td>{{ e.nume or '-' }}</td>
+                    <td style="font-size:0.82rem; color:var(--gray-600);">{{ e.cale_completa }}</td>
+                    <td>
+                        <span class="badge-status badge-{{ 'aprobat' if e.status in ['executat','verificat','receptionat'] else ('respins' if e.status == 'defect' else 'draft') }}">
+                            {{ e.status|replace('_', ' ')|title }}
+                        </span>
+                    </td>
+                    <td style="font-size:0.7rem; color:var(--gray-500); font-family:monospace;">{{ e.ifc_global_id[:12] + '...' if e.ifc_global_id and e.ifc_global_id|length > 12 else (e.ifc_global_id or '-') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state" style="padding:40px;">
+            <i class="fa-solid fa-cubes" style="font-size:2.5rem; color:var(--gray-300);"></i>
+            <p style="margin-top:12px; color:var(--gray-500);">Niciun element BIM gasit cu filtrele curente.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

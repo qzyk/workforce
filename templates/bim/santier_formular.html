@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editeaza' if santier else 'Adauga' }} Santier - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.santiere_lista') }}">Santiere</a></li>
+<li class="breadcrumb-item active">{{ 'Editeaza' if santier else 'Nou' }}</li>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:720px; margin:0 auto;">
+    <h2 style="margin:0 0 20px 0;">
+        <i class="fa-solid fa-{{ 'pen-to-square' if santier else 'plus' }}" style="color:var(--primary);"></i>
+        {{ 'Editeaza Santier' if santier else 'Santier nou' }}
+    </h2>
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="card-panel">
+            <div class="card-panel-body" style="padding:20px;">
+                <div class="form-group">
+                    <label class="form-label">Cod * <small style="color:var(--gray-500);">(unic in proiect, ex: SITE-001, S-A)</small></label>
+                    <input type="text" name="cod" class="form-control" maxlength="50" required value="{{ santier.cod if santier else '' }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nume *</label>
+                    <input type="text" name="nume" class="form-control" maxlength="200" required value="{{ santier.nume if santier else '' }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Proiect (optional)</label>
+                    <select name="proiect_id" class="form-select">
+                        <option value="">— Niciun proiect asociat —</option>
+                        {% for p in proiecte %}
+                        <option value="{{ p.id }}" {{ 'selected' if santier and santier.proiect_id == p.id }}>
+                            {{ p.cod_proiect }} - {{ p.nume }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descriere</label>
+                    <textarea name="descriere" class="form-control" rows="3">{{ santier.descriere if santier else '' }}</textarea>
+                </div>
+                <div style="display:grid; grid-template-columns:2fr 1fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label class="form-label">Adresa</label>
+                        <input type="text" name="adresa" class="form-control" maxlength="300" value="{{ santier.adresa if santier else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Oras</label>
+                        <input type="text" name="oras" class="form-control" maxlength="100" value="{{ santier.oras if santier else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Judet</label>
+                        <input type="text" name="judet" class="form-control" maxlength="50" value="{{ santier.judet if santier else '' }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+            <a href="{{ url_for('bim.santiere_lista') }}" class="btn btn-outline">Anuleaza</a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-floppy-disk"></i> Salveaza
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

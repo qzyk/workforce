@@ -70,6 +70,7 @@ def create_app(config_name='default'):
     from routes.documente_proiecte import doc_proiecte_bp
     from routes.activitati import activitati_bp
     from routes.masini import masini_bp
+    from routes.bim import bim_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -82,6 +83,7 @@ def create_app(config_name='default'):
     app.register_blueprint(doc_proiecte_bp)
     app.register_blueprint(activitati_bp)
     app.register_blueprint(masini_bp)
+    app.register_blueprint(bim_bp)
 
     # --------------------------------------------------------
     # CONTEXT PROCESSOR - DATE GLOBALE

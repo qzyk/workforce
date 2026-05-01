@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}BIM - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">BIM</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.bim-stat-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:20px; }
+.bim-stat-card { background:white; border-radius:10px; padding:20px; box-shadow:0 1px 4px rgba(0,0,0,0.06); border-left:4px solid var(--primary); }
+.bim-stat-card h4 { margin:0 0 8px 0; font-size:0.82rem; color:var(--gray-500); text-transform:uppercase; letter-spacing:0.5px; }
+.bim-stat-value { font-size:1.8rem; font-weight:800; color:var(--gray-800); }
+.bim-tree { background:white; border-radius:10px; padding:18px; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+.bim-tree ul { list-style:none; padding-left:24px; margin:6px 0; }
+.bim-tree li { padding:4px 0; }
+.bim-tree .santier { font-weight:700; color:var(--primary); font-size:1.05rem; }
+.bim-tree .cladire { font-weight:600; color:#37474F; }
+.bim-tree .nivel { color:#546E7A; }
+.bim-tree .spatiu { color:#78909C; font-size:0.88rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2 style="margin:0;"><i class="fa-solid fa-cubes" style="color:var(--primary);"></i> BIM - Building Information Modeling</h2>
+        <div style="font-size:0.85rem; color:var(--gray-500); margin-top:4px;">
+            Santiere, cladiri, niveluri, elemente fizice si issues
+        </div>
+    </div>
+    {% if current_user.rol in ['admin', 'manager'] %}
+    <div style="display:flex; gap:8px;">
+        <a href="{{ url_for('bim.santier_nou') }}" class="btn btn-primary">
+            <i class="fa-solid fa-plus"></i> Santier nou
+        </a>
+        <a href="{{ url_for('bim.elemente_lista') }}" class="btn btn-outline">
+            <i class="fa-solid fa-list"></i> Toate elementele
+        </a>
+        <a href="{{ url_for('bim.issues_lista') }}" class="btn btn-outline">
+            <i class="fa-solid fa-triangle-exclamation"></i> Issues
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<div class="bim-stat-grid">
+    <div class="bim-stat-card">
+        <h4><i class="fa-solid fa-map-location-dot"></i> Santiere</h4>
+        <div class="bim-stat-value">{{ santiere|length }}</div>
+    </div>
+    <div class="bim-stat-card" style="border-left-color:#26A69A;">
+        <h4><i class="fa-solid fa-building"></i> Cladiri</h4>
+        <div class="bim-stat-value">{{ nr_cladiri }}</div>
+    </div>
+    <div class="bim-stat-card" style="border-left-color:#7E57C2;">
+        <h4><i class="fa-solid fa-cubes"></i> Elemente</h4>
+        <div class="bim-stat-value">{{ nr_elemente }}</div>
+    </div>
+    <div class="bim-stat-card" style="border-left-color:{{ 'var(--danger)' if nr_issues_deschise > 0 else 'var(--success)' }};">
+        <h4><i class="fa-solid fa-triangle-exclamation"></i> Issues deschise</h4>
+        <div class="bim-stat-value">{{ nr_issues_deschise }}</div>
+    </div>
+</div>
+
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-sitemap"></i> Arbore santiere</h3>
+    </div>
+    <div class="card-panel-body">
+        {% if santiere %}
+        <div class="bim-tree">
+            <ul>
+                {% for s in santiere %}
+                <li class="santier">
+                    <i class="fa-solid fa-map-location-dot"></i>
+                    <a href="{{ url_for('bim.santier_detaliu', id=s.id) }}">{{ s.cod }} - {{ s.nume }}</a>
+                    {% if s.oras %}<small style="color:var(--gray-500); font-weight:normal;"> | {{ s.oras }}</small>{% endif %}
+                    {% if s.cladiri.count() > 0 %}
+                    <ul>
+                        {% for c in s.cladiri %}
+                        <li class="cladire">
+                            <i class="fa-solid fa-building"></i> {{ c.cod }} - {{ c.nume }}
+                            {% if c.niveluri.count() > 0 %}
+                            <ul>
+                                {% for n in c.niveluri %}
+                                <li class="nivel">
+                                    <i class="fa-solid fa-layer-group"></i> {{ n.cod }} - {{ n.nume }}
+                                    {% if n.spatii.count() > 0 %}
+                                    <ul>
+                                        {% for sp in n.spatii %}
+                                        <li class="spatiu">
+                                            <i class="fa-solid fa-door-open"></i> {{ sp.cod }} {% if sp.nume %}- {{ sp.nume }}{% endif %}
+                                            <small>({{ sp.elemente.count() }} elemente)</small>
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding:40px;">
+            <i class="fa-solid fa-cubes" style="font-size:2.5rem; color:var(--gray-300);"></i>
+            <p style="margin-top:12px; color:var(--gray-500);">Niciun santier inca.</p>
+            {% if current_user.rol in ['admin', 'manager'] %}
+            <a href="{{ url_for('bim.santier_nou') }}" class="btn btn-primary" style="margin-top:8px;">
+                <i class="fa-solid fa-plus"></i> Adauga primul santier
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

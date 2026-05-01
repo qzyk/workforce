@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}{{ element.cod }} - Element BIM{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.elemente_lista') }}">Elemente</a></li>
+<li class="breadcrumb-item active">{{ element.cod }}</li>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+    <div>
+        <h2 style="margin:0;">
+            <i class="fa-solid fa-cube" style="color:var(--primary);"></i>
+            {{ element.cod }}
+            <small style="color:var(--gray-500); font-size:0.7em;">({{ element.tip_label }})</small>
+        </h2>
+        <div style="font-size:0.9rem; color:var(--gray-500); margin-top:4px;">{{ element.cale_completa }}</div>
+    </div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    <div class="card-panel">
+        <div class="card-panel-header"><h3><i class="fa-solid fa-circle-info"></i> Detalii</h3></div>
+        <div class="card-panel-body" style="padding:18px;">
+            <dl style="display:grid; grid-template-columns:140px 1fr; gap:8px 16px; margin:0; font-size:0.9rem;">
+                <dt style="color:var(--gray-500);">Cod</dt><dd>{{ element.cod }}</dd>
+                <dt style="color:var(--gray-500);">Nume</dt><dd>{{ element.nume or '-' }}</dd>
+                <dt style="color:var(--gray-500);">Tip</dt><dd>{{ element.tip_label }} <small style="color:var(--gray-500);">({{ element.tip_element }})</small></dd>
+                <dt style="color:var(--gray-500);">Categorie</dt><dd>{{ element.tip_categorie }}</dd>
+                <dt style="color:var(--gray-500);">Status</dt>
+                <dd>
+                    <span class="badge-status badge-{{ 'aprobat' if element.status in ['executat','verificat','receptionat'] else ('respins' if element.status == 'defect' else 'draft') }}">
+                        {{ element.status|replace('_', ' ')|title }}
+                    </span>
+                </dd>
+                {% if element.cantitate %}
+                <dt style="color:var(--gray-500);">Cantitate</dt>
+                <dd>{{ '%g'|format(element.cantitate|float) }} {{ element.unitate_masura or '' }}</dd>
+                {% endif %}
+                {% if element.ifc_global_id %}
+                <dt style="color:var(--gray-500);">IFC GUID</dt>
+                <dd style="font-family:monospace; font-size:0.78rem;">{{ element.ifc_global_id }}</dd>
+                {% endif %}
+                <dt style="color:var(--gray-500);">Descriere</dt><dd>{{ element.descriere or '-' }}</dd>
+            </dl>
+        </div>
+    </div>
+
+    {% if element.asset %}
+    <div class="card-panel">
+        <div class="card-panel-header"><h3><i class="fa-solid fa-box"></i> Asset</h3></div>
+        <div class="card-panel-body" style="padding:18px;">
+            <dl style="display:grid; grid-template-columns:160px 1fr; gap:8px 16px; margin:0; font-size:0.9rem;">
+                <dt style="color:var(--gray-500);">Producator</dt><dd>{{ element.asset.producator or '-' }}</dd>
+                <dt style="color:var(--gray-500);">Model</dt><dd>{{ element.asset.model or '-' }}</dd>
+                <dt style="color:var(--gray-500);">Serial</dt><dd>{{ element.asset.serial or '-' }}</dd>
+                <dt style="color:var(--gray-500);">Punere in functiune</dt>
+                <dd>{{ element.asset.data_punere_functiune.strftime('%d.%m.%Y') if element.asset.data_punere_functiune else '-' }}</dd>
+                <dt style="color:var(--gray-500);">Garantie pana la</dt>
+                <dd>
+                    {{ element.asset.data_garantie_pana.strftime('%d.%m.%Y') if element.asset.data_garantie_pana else '-' }}
+                    {% if element.asset.in_garantie is not none %}
+                    <span class="badge-status badge-{{ 'aprobat' if element.asset.in_garantie else 'respins' }}" style="margin-left:6px;">
+                        {{ 'In garantie' if element.asset.in_garantie else 'Iesita din garantie' }}
+                    </span>
+                    {% endif %}
+                </dd>
+                <dt style="color:var(--gray-500);">Mentenanta urm.</dt>
+                <dd>{{ element.asset.urmatoarea_mentenanta.strftime('%d.%m.%Y') if element.asset.urmatoarea_mentenanta else '-' }}</dd>
+            </dl>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card-panel" style="margin-top:16px;">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-clipboard-list"></i> Activitati workforce ({{ rapoarte|length }})</h3></div>
+    <div class="card-panel-body" style="padding:0;">
+        {% if rapoarte %}
+        <table class="data-table">
+            <thead><tr><th>Data</th><th>Angajat</th><th>Activitate</th><th>Status</th></tr></thead>
+            <tbody>
+                {% for r in rapoarte %}
+                <tr>
+                    <td>{{ r.data.strftime('%d.%m.%Y') }}</td>
+                    <td>{{ r.angajat.nume_complet if r.angajat else '-' }}</td>
+                    <td style="max-width:400px;">{{ r.activitate_principala[:80] }}</td>
+                    <td><span class="badge-status {{ r.status_badge_class }}">{{ r.status|title }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="padding:16px; color:var(--gray-500); text-align:center;">Nicio activitate inregistrata pentru acest element.</p>
+        {% endif %}
+    </div>
+</div>
+
+{% if issues %}
+<div class="card-panel" style="margin-top:16px;">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-triangle-exclamation"></i> Issues ({{ issues|length }})</h3></div>
+    <div class="card-panel-body" style="padding:0;">
+        <table class="data-table">
+            <thead><tr><th>Cod</th><th>Titlu</th><th>Tip</th><th>Severitate</th><th>Status</th></tr></thead>
+            <tbody>
+                {% for i in issues %}
+                <tr>
+                    <td>{{ i.cod or '#' ~ i.id }}</td>
+                    <td>{{ i.titlu }}</td>
+                    <td>{{ i.tip|replace('_', ' ')|title }}</td>
+                    <td>{{ i.severitate|title }}</td>
+                    <td>{{ i.status|title }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ santier.cod }} - Santier BIM{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.santiere_lista') }}">Santiere</a></li>
+<li class="breadcrumb-item active">{{ santier.cod }}</li>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2 style="margin:0;">
+            <i class="fa-solid fa-map-location-dot" style="color:var(--primary);"></i>
+            {{ santier.cod }} - {{ santier.nume }}
+        </h2>
+        {% if santier.adresa or santier.oras %}
+        <div style="font-size:0.9rem; color:var(--gray-500); margin-top:4px;">
+            <i class="fa-solid fa-location-dot"></i>
+            {{ santier.adresa }}{% if santier.oras %}, {{ santier.oras }}{% endif %}{% if santier.judet %}, {{ santier.judet }}{% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% if current_user.rol in ['admin', 'manager'] %}
+    <div style="display:flex; gap:8px;">
+        <a href="{{ url_for('bim.santier_editeaza', id=santier.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-pen"></i> Editeaza
+        </a>
+        <form method="POST" action="{{ url_for('bim.santier_sterge', id=santier.id) }}" style="display:inline;" onsubmit="return confirm('Stergi santierul {{ santier.cod }}? Toate cladirile asociate vor fi sterse.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline" style="color:var(--danger); border-color:var(--danger);"><i class="fa-solid fa-trash"></i></button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card-panel" style="margin-bottom:16px;">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-circle-info"></i> Informatii santier</h3></div>
+    <div class="card-panel-body" style="padding:18px;">
+        <dl style="display:grid; grid-template-columns:160px 1fr; gap:8px 16px; margin:0;">
+            <dt style="color:var(--gray-500);">Cod</dt><dd>{{ santier.cod }}</dd>
+            <dt style="color:var(--gray-500);">Nume</dt><dd>{{ santier.nume }}</dd>
+            {% if santier.proiect %}
+            <dt style="color:var(--gray-500);">Proiect asociat</dt>
+            <dd><a href="{{ url_for('proiecte.detaliu', id=santier.proiect.id) }}">{{ santier.proiect.cod_proiect }} - {{ santier.proiect.nume }}</a></dd>
+            {% endif %}
+            {% if santier.descriere %}
+            <dt style="color:var(--gray-500);">Descriere</dt><dd>{{ santier.descriere }}</dd>
+            {% endif %}
+            <dt style="color:var(--gray-500);">Status</dt>
+            <dd><span class="badge-status badge-{{ 'aprobat' if santier.status == 'activ' else 'draft' }}">{{ santier.status|title }}</span></dd>
+            <dt style="color:var(--gray-500);">Data creare</dt><dd>{{ santier.data_creare.strftime('%d.%m.%Y') if santier.data_creare else '-' }}</dd>
+        </dl>
+    </div>
+</div>
+
+<div class="card-panel">
+    <div class="card-panel-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <h3><i class="fa-solid fa-building"></i> Cladiri ({{ santier.cladiri.count() }})</h3>
+    </div>
+    <div class="card-panel-body" style="padding:0;">
+        {% set cladiri = santier.cladiri.all() %}
+        {% if cladiri %}
+        <table class="data-table">
+            <thead><tr><th>Cod</th><th>Nume</th><th>Tip</th><th>Niveluri</th><th>Suprafata</th></tr></thead>
+            <tbody>
+                {% for c in cladiri %}
+                <tr>
+                    <td><strong>{{ c.cod }}</strong></td>
+                    <td>{{ c.nume }}</td>
+                    <td>{{ c.tip_constructie or '-' }}</td>
+                    <td>{{ c.niveluri.count() }}</td>
+                    <td>{{ '%g'|format(c.suprafata_totala|float) ~ ' mp' if c.suprafata_totala else '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state" style="padding:30px;">
+            <i class="fa-solid fa-building" style="font-size:2rem; color:var(--gray-300);"></i>
+            <p style="margin-top:8px; color:var(--gray-500);">Nicio cladire inregistrata pe acest santier.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

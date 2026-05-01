@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Santiere BIM - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Santiere</li>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-map-location-dot" style="color:var(--primary);"></i> Santiere</h2>
+    {% if current_user.rol in ['admin', 'manager'] %}
+    <a href="{{ url_for('bim.santier_nou') }}" class="btn btn-primary">
+        <i class="fa-solid fa-plus"></i> Santier nou
+    </a>
+    {% endif %}
+</div>
+
+<div class="card-panel">
+    <div class="card-panel-body" style="padding:0;">
+        {% if santiere %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Cod</th>
+                    <th>Nume</th>
+                    <th>Adresa</th>
+                    <th>Proiect</th>
+                    <th>Cladiri</th>
+                    <th>Status</th>
+                    <th>Actiuni</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in santiere %}
+                <tr>
+                    <td><strong>{{ s.cod }}</strong></td>
+                    <td>{{ s.nume }}</td>
+                    <td style="font-size:0.85rem; color:var(--gray-600);">
+                        {% if s.adresa %}{{ s.adresa }}{% endif %}
+                        {% if s.oras %}, {{ s.oras }}{% endif %}
+                    </td>
+                    <td>
+                        {% if s.proiect %}
+                        <span style="color:var(--primary); font-weight:600;">{{ s.proiect.cod_proiect }}</span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>{{ s.cladiri.count() }}</td>
+                    <td>
+                        <span class="badge-status badge-{{ 'aprobat' if s.status == 'activ' else 'draft' }}">
+                            {{ s.status|title }}
+                        </span>
+                    </td>
+                    <td class="actions-cell" style="white-space:nowrap;">
+                        <a href="{{ url_for('bim.santier_detaliu', id=s.id) }}" class="btn-action btn-view"><i class="fa-solid fa-eye"></i></a>
+                        {% if current_user.rol in ['admin', 'manager'] %}
+                        <a href="{{ url_for('bim.santier_editeaza', id=s.id) }}" class="btn-action btn-edit"><i class="fa-solid fa-pen"></i></a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state" style="padding:40px;">
+            <i class="fa-solid fa-map-location-dot" style="font-size:2.5rem; color:var(--gray-300);"></i>
+            <p style="margin-top:12px; color:var(--gray-500);">Niciun santier inregistrat.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
