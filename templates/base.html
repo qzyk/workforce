@@ -186,6 +186,14 @@
                 </nav>
             </div>
             <div class="header-right">
+                <div class="header-bim-search" style="position:relative; max-width:280px; flex:1; margin:0 8px;">
+                    <input type="text" id="bimGlobalSearch" placeholder="Cauta BIM (cod element / spatiu / santier)..."
+                           style="width:100%; padding:6px 10px 6px 32px; border:1px solid var(--gray-200); border-radius:18px; font-size:0.82rem; background:var(--gray-50);"
+                           autocomplete="off">
+                    <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--gray-400); font-size:0.78rem;"></i>
+                    <div id="bimSearchResults" style="position:absolute; top:100%; left:0; right:0; background:white; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.15); margin-top:4px; max-height:380px; overflow-y:auto; z-index:1000; display:none;"></div>
+                </div>
+
                 <div class="header-clock" id="headerClock">
                     <i class="fa-regular fa-clock"></i>
                     <span id="liveClock"></span>
@@ -368,6 +376,62 @@
     {# ============================ END POPUP ============================ #}
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+    {# === BIM Global Search Autocomplete === #}
+    <script>
+    (function() {
+        var input = document.getElementById('bimGlobalSearch');
+        var results = document.getElementById('bimSearchResults');
+        if (!input || !results) return;
+
+        var debounceTimer = null;
+
+        input.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            var q = this.value.trim();
+            if (q.length < 2) {
+                results.style.display = 'none';
+                return;
+            }
+            debounceTimer = setTimeout(function() {
+                fetch('/bim/api/search?q=' + encodeURIComponent(q))
+                    .then(function(r) { return r.json(); })
+                    .then(function(items) {
+                        if (!items || items.length === 0) {
+                            results.innerHTML = '<div style="padding:10px; color:var(--gray-500); text-align:center; font-size:0.82rem;">Niciun rezultat</div>';
+                        } else {
+                            results.innerHTML = items.map(function(it) {
+                                var iconMap = {element: 'cube', spatiu: 'door-open', santier: 'map-location-dot'};
+                                var color = it.tip === 'element' ? '#3949AB' : (it.tip === 'spatiu' ? '#7E57C2' : '#1A237E');
+                                return '<a href="' + it.url + '" style="display:block; padding:8px 12px; border-bottom:1px solid var(--gray-100); text-decoration:none; color:var(--gray-800); font-size:0.85rem;">' +
+                                    '<i class="fa-solid fa-' + (iconMap[it.tip] || 'cube') + '" style="color:' + color + '; margin-right:8px;"></i>' +
+                                    '<strong>' + escapeHtml(it.label) + '</strong>' +
+                                    (it.cale ? '<br><small style="color:var(--gray-500); margin-left:24px;">' + escapeHtml(it.cale) + '</small>' : '') +
+                                    '</a>';
+                            }).join('');
+                        }
+                        results.style.display = 'block';
+                    })
+                    .catch(function() {
+                        results.style.display = 'none';
+                    });
+            }, 250);
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.header-bim-search')) {
+                results.style.display = 'none';
+            }
+        });
+
+        function escapeHtml(s) {
+            return String(s || '').replace(/[&<>"']/g, function(c) {
+                return {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c];
+            });
+        }
+    })();
+    </script>
+
     {% block extra_js %}{% endblock %}
 </body>
 </html>

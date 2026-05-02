@@ -205,11 +205,30 @@ def element_detaliu(id):
     issues = IssueBIM.query.filter_by(element_bim_id=e.id).order_by(
         IssueBIM.data_creare.desc()
     ).all()
+    # Quick navigation: alte elemente in aceeasi zona/nivel/cladire
+    quick_jump = []
+    if e.spatiu_id:
+        quick_jump = ElementBIM.query.filter(
+            ElementBIM.spatiu_id == e.spatiu_id,
+            ElementBIM.id != e.id,
+        ).limit(8).all()
+    elif e.nivel_id:
+        quick_jump = ElementBIM.query.filter(
+            ElementBIM.nivel_id == e.nivel_id,
+            ElementBIM.id != e.id,
+        ).limit(8).all()
+    elif e.cladire_id:
+        quick_jump = ElementBIM.query.filter(
+            ElementBIM.cladire_id == e.cladire_id,
+            ElementBIM.id != e.id,
+        ).limit(8).all()
+
     return render_template('bim/element_detaliu.html',
         element=e,
         rapoarte=rapoarte,
         pontaje=pontaje,
         issues=issues,
+        quick_jump=quick_jump,
     )
 
 
@@ -321,6 +340,66 @@ def api_element(id):
             IssueBIM.status.in_(['deschis', 'in_lucru'])
         ).count(),
     })
+
+
+@bim_bp.route('/api/santier/<int:santier_id>/cladiri')
+@login_required
+def api_cladiri_santier(santier_id):
+    """Cladirile dintr-un santier (pentru cascada picker)."""
+    cladiri = Cladire.query.filter_by(santier_id=santier_id).order_by(Cladire.cod).all()
+    return jsonify([{'id': c.id, 'cod': c.cod, 'nume': c.nume} for c in cladiri])
+
+
+@bim_bp.route('/api/cladire/<int:cladire_id>/niveluri')
+@login_required
+def api_niveluri_cladire(cladire_id):
+    """Niveluri dintr-o cladire."""
+    niveluri = Nivel.query.filter_by(cladire_id=cladire_id).order_by(Nivel.ordine).all()
+    return jsonify([{'id': n.id, 'cod': n.cod, 'nume': n.nume, 'ordine': n.ordine} for n in niveluri])
+
+
+@bim_bp.route('/api/nivel/<int:nivel_id>/spatii')
+@login_required
+def api_spatii_nivel(nivel_id):
+    """Spatii dintr-un nivel."""
+    spatii = Spatiu.query.filter_by(nivel_id=nivel_id).order_by(Spatiu.cod).all()
+    return jsonify([{'id': sp.id, 'cod': sp.cod, 'nume': sp.nume, 'tip_spatiu': sp.tip_spatiu} for sp in spatii])
+
+
+@bim_bp.route('/api/search')
+@login_required
+def api_search():
+    """Search global BIM (autocomplete)."""
+    q = request.args.get('q', '').strip()
+    if len(q) < 2:
+        return jsonify([])
+    like = f'%{q}%'
+    rezultat = []
+    # Elemente
+    for e in ElementBIM.query.filter(db.or_(
+        ElementBIM.cod.ilike(like), ElementBIM.nume.ilike(like)
+    )).limit(10).all():
+        rezultat.append({
+            'tip': 'element', 'id': e.id, 'cod': e.cod, 'label': e.cod + ' (' + e.tip_label + ')',
+            'cale': e.cale_completa, 'url': url_for('bim.element_detaliu', id=e.id),
+        })
+    # Spatii
+    for sp in Spatiu.query.filter(db.or_(
+        Spatiu.cod.ilike(like), Spatiu.nume.ilike(like)
+    )).limit(5).all():
+        rezultat.append({
+            'tip': 'spatiu', 'id': sp.id, 'cod': sp.cod, 'label': sp.cod + ' - ' + (sp.nume or ''),
+            'cale': '', 'url': '#',  # TODO: spatiu_detaliu
+        })
+    # Santiere
+    for s in Santier.query.filter(db.or_(
+        Santier.cod.ilike(like), Santier.nume.ilike(like)
+    )).limit(5).all():
+        rezultat.append({
+            'tip': 'santier', 'id': s.id, 'cod': s.cod, 'label': s.cod + ' - ' + s.nume,
+            'cale': '', 'url': url_for('bim.santier_detaliu', id=s.id),
+        })
+    return jsonify(rezultat)
 
 
 @bim_bp.route('/api/elemente')

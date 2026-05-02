@@ -1,0 +1,169 @@
+{#
+  Partial reusabil: BIM Context Picker cu cascade selects.
+
+  Usage:
+    {% include 'bim/_bim_context_picker.html' with context %}
+
+  Variabile asteptate:
+    - selected_santier_id, selected_cladire_id, selected_nivel_id,
+      selected_spatiu_id, selected_zona_id, selected_element_id (toate optionale)
+    - santiere (lista de obiecte Santier - daca e absenta, picker-ul ramane gol)
+    - field_prefix (default '' - prefix pentru name attributes, ex: 'bim_')
+
+  Output:
+    Form fields: bim_santier_id, bim_cladire_id, bim_nivel_id,
+                 bim_spatiu_id, bim_zona_id, bim_element_id
+#}
+{% set prefix = field_prefix | default('bim_') %}
+<div class="bim-context-picker" data-prefix="{{ prefix }}">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="form-group">
+            <label class="form-label" style="font-size:0.82rem;">
+                <i class="fa-solid fa-map-location-dot" style="color:var(--primary); margin-right:4px;"></i> Santier
+            </label>
+            <select name="{{ prefix }}santier_id" class="form-select bim-select-santier" style="font-size:0.85rem;">
+                <option value="">— Niciun santier —</option>
+                {% for s in (santiere or []) %}
+                <option value="{{ s.id }}" {{ 'selected' if selected_santier_id == s.id }}>{{ s.cod }} - {{ s.nume }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label" style="font-size:0.82rem;">
+                <i class="fa-solid fa-building" style="color:var(--primary); margin-right:4px;"></i> Cladire
+            </label>
+            <select name="{{ prefix }}cladire_id" class="form-select bim-select-cladire" style="font-size:0.85rem;" disabled>
+                <option value="">— Selecteaza santier intai —</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label" style="font-size:0.82rem;">
+                <i class="fa-solid fa-layer-group" style="color:var(--primary); margin-right:4px;"></i> Nivel
+            </label>
+            <select name="{{ prefix }}nivel_id" class="form-select bim-select-nivel" style="font-size:0.85rem;" disabled>
+                <option value="">— Selecteaza cladire intai —</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label" style="font-size:0.82rem;">
+                <i class="fa-solid fa-door-open" style="color:var(--primary); margin-right:4px;"></i> Spatiu
+            </label>
+            <select name="{{ prefix }}spatiu_id" class="form-select bim-select-spatiu" style="font-size:0.85rem;" disabled>
+                <option value="">— Selecteaza nivel intai —</option>
+            </select>
+        </div>
+        <div class="form-group" style="grid-column:1 / -1;">
+            <label class="form-label" style="font-size:0.82rem;">
+                <i class="fa-solid fa-cube" style="color:var(--primary); margin-right:4px;"></i> Element BIM (specific)
+            </label>
+            <select name="{{ prefix }}element_id" class="form-select bim-select-element" style="font-size:0.85rem;" disabled>
+                <option value="">— Niciun element specific —</option>
+            </select>
+            <small style="color:var(--gray-500); font-size:0.78rem;">Optional. Selecteaza un element fizic anume (perete, AHU, conducta...).</small>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var pickers = document.querySelectorAll('.bim-context-picker[data-prefix="{{ prefix }}"]');
+    pickers.forEach(function(picker) {
+        var prefix = picker.dataset.prefix;
+        var selSantier = picker.querySelector('.bim-select-santier');
+        var selCladire = picker.querySelector('.bim-select-cladire');
+        var selNivel = picker.querySelector('.bim-select-nivel');
+        var selSpatiu = picker.querySelector('.bim-select-spatiu');
+        var selElement = picker.querySelector('.bim-select-element');
+
+        var initial = {
+            santier: {{ selected_santier_id|default('null') }},
+            cladire: {{ selected_cladire_id|default('null') }},
+            nivel: {{ selected_nivel_id|default('null') }},
+            spatiu: {{ selected_spatiu_id|default('null') }},
+            element: {{ selected_element_id|default('null') }},
+        };
+
+        function fillSelect(sel, items, getLabel, selectedId, placeholder) {
+            sel.innerHTML = '<option value="">' + (placeholder || '— Niciunul —') + '</option>';
+            items.forEach(function(it) {
+                var opt = document.createElement('option');
+                opt.value = it.id;
+                opt.textContent = getLabel(it);
+                if (selectedId && parseInt(selectedId) === it.id) opt.selected = true;
+                sel.appendChild(opt);
+            });
+            sel.disabled = items.length === 0;
+        }
+
+        async function loadCladiri(santierId, presetCladire) {
+            if (!santierId) {
+                fillSelect(selCladire, [], function() { return ''; }, null, '— Selecteaza santier intai —');
+                fillSelect(selNivel, [], function() { return ''; }, null, '— Selecteaza cladire intai —');
+                fillSelect(selSpatiu, [], function() { return ''; }, null, '— Selecteaza nivel intai —');
+                fillSelect(selElement, [], function() { return ''; }, null, '— Niciun element —');
+                return;
+            }
+            try {
+                const r = await fetch('/bim/api/santier/' + santierId + '/cladiri');
+                const cladiri = await r.json();
+                fillSelect(selCladire, cladiri, function(c) { return c.cod + ' - ' + c.nume; }, presetCladire, '— Selecteaza cladire —');
+                if (presetCladire) {
+                    await loadNiveluri(presetCladire, initial.nivel);
+                }
+            } catch (e) { console.warn('Eroare la incarcare cladiri:', e); }
+        }
+
+        async function loadNiveluri(cladireId, presetNivel) {
+            if (!cladireId) {
+                fillSelect(selNivel, [], function() { return ''; }, null, '— Selecteaza cladire intai —');
+                return;
+            }
+            try {
+                const r = await fetch('/bim/api/cladire/' + cladireId + '/niveluri');
+                const nivels = await r.json();
+                fillSelect(selNivel, nivels, function(n) { return n.cod + ' - ' + n.nume; }, presetNivel, '— Selecteaza nivel —');
+                if (presetNivel) {
+                    await loadSpatii(presetNivel, initial.spatiu);
+                }
+            } catch (e) { console.warn('Eroare la incarcare niveluri:', e); }
+        }
+
+        async function loadSpatii(nivelId, presetSpatiu) {
+            if (!nivelId) {
+                fillSelect(selSpatiu, [], function() { return ''; }, null, '— Selecteaza nivel intai —');
+                return;
+            }
+            try {
+                const r = await fetch('/bim/api/nivel/' + nivelId + '/spatii');
+                const spatii = await r.json();
+                fillSelect(selSpatiu, spatii, function(sp) { return sp.cod + (sp.nume ? ' - ' + sp.nume : ''); }, presetSpatiu, '— Selecteaza spatiu —');
+                if (presetSpatiu) {
+                    await loadElemente(presetSpatiu, initial.element);
+                }
+            } catch (e) { console.warn('Eroare la incarcare spatii:', e); }
+        }
+
+        async function loadElemente(spatiuId, presetElement) {
+            if (!spatiuId) {
+                fillSelect(selElement, [], function() { return ''; }, null, '— Selecteaza spatiu intai —');
+                return;
+            }
+            try {
+                const r = await fetch('/bim/api/elemente?spatiu_id=' + spatiuId);
+                const elemente = await r.json();
+                fillSelect(selElement, elemente, function(e) { return e.cod + ' (' + e.tip_label + ')'; }, presetElement, '— Niciun element specific —');
+            } catch (e) { console.warn('Eroare la incarcare elemente:', e); }
+        }
+
+        selSantier.addEventListener('change', function() { loadCladiri(this.value); });
+        selCladire.addEventListener('change', function() { loadNiveluri(this.value); });
+        selNivel.addEventListener('change', function() { loadSpatii(this.value); });
+        selSpatiu.addEventListener('change', function() { loadElemente(this.value); });
+
+        // Initial load (cascada cu valorile preset)
+        if (initial.santier) {
+            loadCladiri(initial.santier, initial.cladire);
+        }
+    });
+})();
+</script>

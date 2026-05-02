@@ -8,7 +8,7 @@
 {% endblock %}
 
 {% block content %}
-<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
     <div>
         <h2 style="margin:0;">
             <i class="fa-solid fa-cube" style="color:var(--primary);"></i>
@@ -16,6 +16,21 @@
             <small style="color:var(--gray-500); font-size:0.7em;">({{ element.tip_label }})</small>
         </h2>
         <div style="font-size:0.9rem; color:var(--gray-500); margin-top:4px;">{{ element.cale_completa }}</div>
+    </div>
+    <div style="display:flex; gap:8px;">
+        {# === Vezi in 3D - daca exista model IFC pe santier === #}
+        {% set santier = element.cladire.santier if element.cladire and element.cladire.santier else none %}
+        {% if santier %}
+            {% set model_3d = santier.modele.filter_by(tip='ifc').first() %}
+            {% if model_3d and model_3d.fisier_path %}
+            <a href="{{ url_for('bim.viewer', model_id=model_3d.id) }}" class="btn btn-primary">
+                <i class="fa-solid fa-cube"></i> Vezi in 3D
+            </a>
+            {% endif %}
+        {% endif %}
+        <a href="{{ url_for('activitati.panou', element_bim_id=element.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-clipboard-list"></i> Activitati pe acest element
+        </a>
     </div>
 </div>
 
@@ -96,6 +111,25 @@
         {% endif %}
     </div>
 </div>
+
+{% if quick_jump %}
+<div class="card-panel" style="margin-top:16px;">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-arrows-turn-to-dots"></i> Navigare rapida (elemente in aceeasi locatie)</h3></div>
+    <div class="card-panel-body" style="padding:14px;">
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            {% for qj in quick_jump %}
+            <a href="{{ url_for('bim.element_detaliu', id=qj.id) }}"
+               style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border:1px solid var(--gray-200); border-radius:18px; text-decoration:none; color:var(--gray-700); font-size:0.82rem; background:white;"
+               title="{{ qj.cale_completa }}">
+                <i class="fa-solid fa-cube" style="color:var(--primary);"></i>
+                <strong>{{ qj.cod }}</strong>
+                <small style="color:var(--gray-500);">{{ qj.tip_label }}</small>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {% if issues %}
 <div class="card-panel" style="margin-top:16px;">

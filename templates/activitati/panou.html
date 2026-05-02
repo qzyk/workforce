@@ -302,6 +302,38 @@
                         <option value="respins" {{ 'selected' if f_status == 'respins' }}>Respins</option>
                     </select>
                 </div>
+                {# === FILTRE BIM === #}
+                {% if bim_santiere|length > 0 %}
+                <div class="form-group">
+                    <label class="form-label" style="color:var(--primary);"><i class="fa-solid fa-map-location-dot"></i> Santier</label>
+                    <select name="santier_id" class="form-select" style="font-size: 0.85rem;">
+                        <option value="">Toate</option>
+                        {% for s in bim_santiere %}
+                        <option value="{{ s.id }}" {{ 'selected' if f_santier == s.id }}>{{ s.cod }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                {% if bim_cladiri|length > 0 %}
+                <div class="form-group">
+                    <label class="form-label" style="color:var(--primary);"><i class="fa-solid fa-building"></i> Cladire</label>
+                    <select name="cladire_id" class="form-select" style="font-size: 0.85rem;">
+                        <option value="">Toate</option>
+                        {% for c in bim_cladiri %}
+                        <option value="{{ c.id }}" {{ 'selected' if f_cladire == c.id }}>{{ c.cod }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="color:var(--primary);"><i class="fa-solid fa-cube"></i> Tip element</label>
+                    <select name="tip_element" class="form-select" style="font-size: 0.85rem;">
+                        <option value="">Toate</option>
+                        {% for cod, label, cat in bim_tipuri_element %}
+                        <option value="{{ cod }}" {{ 'selected' if f_tip_element == cod }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
                 <div class="form-group">
                     <label class="form-label">De la</label>
                     <input type="date" name="data_start" class="form-control" value="{{ f_data_start }}" style="font-size: 0.85rem;">
@@ -370,6 +402,15 @@
                                     {{ a.proiect.cod_proiect }}
                                 </span>
                             {% else %}-{% endif %}
+                            {% if a.element_bim %}
+                            <br><small style="color:#3949AB; font-size:0.7rem;" title="{{ a.element_bim.cale_completa }}">
+                                <i class="fa-solid fa-cube"></i> {{ a.element_bim.cod }}
+                            </small>
+                            {% elif a.spatiu %}
+                            <br><small style="color:#7E57C2; font-size:0.7rem;">
+                                <i class="fa-solid fa-door-open"></i> {{ a.spatiu.cod }}
+                            </small>
+                            {% endif %}
                         </td>
                         <td>{{ a.angajat.nume_complet if a.angajat else '-' }}</td>
                         <td style="font-size: 0.82rem; color: var(--gray-600);">{{ a.perioada_text }}</td>

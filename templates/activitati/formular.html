@@ -280,6 +280,21 @@
             </div>
         </div>
 
+        <!-- SECTIUNEA 1.6: BIM CONTEXT (locatie fizica in cladire) -->
+        <div class="act-section">
+            <h3>
+                <i class="fa-solid fa-cubes"></i> Context BIM
+                <small style="font-weight:normal; font-size:0.78rem; color:var(--gray-500);">(locatia fizica - optional)</small>
+            </h3>
+            {% set selected_santier_id = activitate.element_bim.santier_id if activitate and activitate.element_bim and activitate.element_bim.cladire and activitate.element_bim.cladire.santier else (activitate.spatiu.nivel.cladire.santier_id if activitate and activitate.spatiu else none) %}
+            {% set selected_cladire_id = activitate.element_bim.cladire_id if activitate and activitate.element_bim else (activitate.spatiu.nivel.cladire_id if activitate and activitate.spatiu else none) %}
+            {% set selected_nivel_id = activitate.element_bim.nivel_id if activitate and activitate.element_bim else (activitate.spatiu.nivel_id if activitate and activitate.spatiu else none) %}
+            {% set selected_spatiu_id = activitate.spatiu_id if activitate else none %}
+            {% set selected_zona_id = activitate.zona_id if activitate else none %}
+            {% set selected_element_id = activitate.element_bim_id if activitate else none %}
+            {% include 'bim/_bim_context_picker.html' %}
+        </div>
+
         <!-- SECTIUNEA 2: ACTIVITATE PRINCIPALA -->
         <div class="act-section">
             <h3><i class="fa-solid fa-hammer"></i> Activitate</h3>

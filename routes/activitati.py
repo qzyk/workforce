@@ -19,7 +19,8 @@ from flask_login import login_required, current_user
 from models import (
     db, Angajat, Proiect, Pontaj, TipInstalatie,
     AngajatProiect, SarbatoareLegala,
-    RaportActivitate, CategorieActivitate
+    RaportActivitate, CategorieActivitate,
+    Santier, Cladire, ElementBIM, Spatiu, Zona,
 )
 
 activitati_bp = Blueprint('activitati', __name__, url_prefix='/activitati')
@@ -141,6 +142,11 @@ def panou():
     f_status_executie = request.args.get('status_executie', '')
     f_data_start = request.args.get('data_start', '')
     f_data_end = request.args.get('data_end', '')
+    # Filtre BIM
+    f_santier = request.args.get('santier_id', type=int) or None
+    f_cladire = request.args.get('cladire_id', type=int) or None
+    f_element_bim = request.args.get('element_bim_id', type=int) or None
+    f_tip_element = request.args.get('tip_element', '').strip()
 
     if current_user.rol == 'operator' and angajat_curent:
         query = query.filter_by(angajat_id=angajat_curent.id)
@@ -172,6 +178,19 @@ def panou():
         except ValueError:
             pass
 
+    # Filtre BIM (un singur JOIN cu ElementBIM ca sa evit dublarea)
+    if f_element_bim:
+        query = query.filter_by(element_bim_id=f_element_bim)
+    if f_tip_element or f_cladire or f_santier:
+        query = query.join(ElementBIM, RaportActivitate.element_bim_id == ElementBIM.id)
+        if f_tip_element:
+            query = query.filter(ElementBIM.tip_element == f_tip_element)
+        if f_cladire:
+            query = query.filter(ElementBIM.cladire_id == f_cladire)
+        if f_santier:
+            query = query.join(Cladire, ElementBIM.cladire_id == Cladire.id) \
+                         .filter(Cladire.santier_id == f_santier)
+
     activitati_recente = query.order_by(RaportActivitate.data.desc(), RaportActivitate.introdus_la.desc()).limit(50).all()
 
     # Aprobare count (pentru manageri)
@@ -183,6 +202,9 @@ def panou():
     angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
     proiecte = Proiect.query.filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
+    bim_santiere = Santier.query.order_by(Santier.cod).all()
+    bim_cladiri = Cladire.query.order_by(Cladire.cod).all()
+    bim_tipuri_element = ElementBIM.TIPURI
 
     return render_template('activitati/panou.html',
         today=today,
@@ -209,6 +231,13 @@ def panou():
         f_status_executie=f_status_executie,
         f_data_start=f_data_start,
         f_data_end=f_data_end,
+        bim_santiere=bim_santiere,
+        bim_cladiri=bim_cladiri,
+        bim_tipuri_element=bim_tipuri_element,
+        f_santier=f_santier,
+        f_cladire=f_cladire,
+        f_element_bim=f_element_bim,
+        f_tip_element=f_tip_element,
     )
 
 
@@ -235,6 +264,7 @@ def adauga():
     proiecte = Proiect.query.filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
     categorii = CategorieActivitate.query.filter_by(activa=True).order_by(CategorieActivitate.ordine).all()
+    santiere = Santier.query.order_by(Santier.cod).all()
 
     return render_template('activitati/formular.html',
         activitate=None,
@@ -245,6 +275,7 @@ def adauga():
         proiecte=proiecte,
         instalatii=instalatii,
         categorii=categorii,
+        santiere=santiere,
     )
 
 
@@ -317,6 +348,7 @@ def editeaza(id):
     proiecte = Proiect.query.filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
     categorii = CategorieActivitate.query.filter_by(activa=True).order_by(CategorieActivitate.ordine).all()
+    santiere = Santier.query.order_by(Santier.cod).all()
 
     return render_template('activitati/formular.html',
         activitate=activitate,
@@ -327,6 +359,7 @@ def editeaza(id):
         proiecte=proiecte,
         instalatii=instalatii,
         categorii=categorii,
+        santiere=santiere,
     )
 
 
@@ -377,6 +410,16 @@ def _salveaza_activitate(activitate, rapida=False):
         include_sambata = bool(request.form.get('include_sambata'))
         include_duminica = bool(request.form.get('include_duminica'))
         actiune = request.form.get('actiune', 'draft')  # draft / trimite / alta
+
+        # BIM context (toate optionale)
+        bim_element_id = request.form.get('bim_element_id', type=int) or None
+        bim_spatiu_id = request.form.get('bim_spatiu_id', type=int) or None
+        # Zona se ia din spatiu daca exista, altfel din formular
+        bim_zona_id = request.form.get('bim_zona_id', type=int) or None
+        if not bim_zona_id and bim_spatiu_id:
+            sp = Spatiu.query.get(bim_spatiu_id)
+            if sp and sp.zona_id:
+                bim_zona_id = sp.zona_id
 
         # Detalii pe zi (pentru saptamanala/lunara): liste paralele
         det_data_list = request.form.getlist('detaliu_data[]')
@@ -476,6 +519,9 @@ def _salveaza_activitate(activitate, rapida=False):
         activitate.angajat_id = angajat_id
         activitate.proiect_id = proiect_id
         activitate.proiecte_ids = proiecte_json
+        activitate.element_bim_id = bim_element_id
+        activitate.spatiu_id = bim_spatiu_id
+        activitate.zona_id = bim_zona_id
         activitate.data = data_val
         activitate.data_sfarsit = data_sfarsit_val
         activitate.tip_activitate = tip_activitate

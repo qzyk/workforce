@@ -191,6 +191,58 @@
 
     <!-- COLOANA DREAPTA: Informatii -->
     <div>
+        {# === BIM CONTEXT CARD === #}
+        {% if activitate.element_bim or activitate.spatiu or activitate.zona %}
+        <div class="act-info-card" style="border-left:3px solid var(--primary);">
+            <h4 style="display:flex; align-items:center; gap:6px;">
+                <i class="fa-solid fa-cubes"></i> Context BIM
+            </h4>
+            {% if activitate.element_bim %}
+                {% set e = activitate.element_bim %}
+                <div style="background:#E8EAF6; padding:10px 12px; border-radius:8px; margin-bottom:10px; font-size:0.85rem;">
+                    <div style="font-weight:700; color:#3949AB;">
+                        <a href="{{ url_for('bim.element_detaliu', id=e.id) }}" style="text-decoration:none; color:inherit;">
+                            <i class="fa-solid fa-cube"></i> {{ e.cod }} <small>({{ e.tip_label }})</small>
+                        </a>
+                    </div>
+                    <div style="color:var(--gray-600); font-size:0.78rem; margin-top:4px;">{{ e.cale_completa }}</div>
+                </div>
+            {% endif %}
+            {% if activitate.spatiu %}
+                {% set sp = activitate.spatiu %}
+                <div class="act-info-row">
+                    <span class="act-info-label"><i class="fa-solid fa-door-open"></i> Spatiu</span>
+                    <span class="act-info-value">{{ sp.cod }}{% if sp.nume %} - {{ sp.nume }}{% endif %}</span>
+                </div>
+                {% if sp.nivel %}
+                <div class="act-info-row">
+                    <span class="act-info-label"><i class="fa-solid fa-layer-group"></i> Nivel</span>
+                    <span class="act-info-value">{{ sp.nivel.cod }} - {{ sp.nivel.nume }}</span>
+                </div>
+                {% endif %}
+                {% if sp.nivel and sp.nivel.cladire %}
+                <div class="act-info-row">
+                    <span class="act-info-label"><i class="fa-solid fa-building"></i> Cladire</span>
+                    <span class="act-info-value"><a href="{{ url_for('bim.santier_detaliu', id=sp.nivel.cladire.santier_id) }}">{{ sp.nivel.cladire.cod }}</a></span>
+                </div>
+                {% endif %}
+            {% endif %}
+            {% if activitate.zona %}
+            <div class="act-info-row">
+                <span class="act-info-label"><i class="fa-solid fa-map"></i> Zona</span>
+                <span class="act-info-value">{{ activitate.zona.cod }} - {{ activitate.zona.nume }}</span>
+            </div>
+            {% endif %}
+            {% if activitate.element_bim %}
+            <div style="margin-top:10px;">
+                <a href="{{ url_for('activitati.panou', element_bim_id=activitate.element_bim.id) }}" class="btn btn-outline" style="font-size:0.78rem; padding:4px 10px; width:100%;">
+                    <i class="fa-solid fa-magnifying-glass"></i> Vezi alte activitati pe acest element
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
         <div class="act-info-card">
             <h4><i class="fa-solid fa-info-circle"></i> Informatii</h4>
             <div class="act-info-row">
