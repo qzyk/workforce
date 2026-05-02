@@ -85,6 +85,10 @@ def create_app(config_name='default'):
     app.register_blueprint(masini_bp)
     app.register_blueprint(bim_bp)
 
+    # Init i18n (RO/EN)
+    import i18n as _i18n
+    _i18n.init_app(app)
+
     # --------------------------------------------------------
     # CONTEXT PROCESSOR - DATE GLOBALE
     # --------------------------------------------------------

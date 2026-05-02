@@ -191,6 +191,17 @@
                     <span id="liveClock"></span>
                 </div>
 
+                <div class="header-lang" style="display:flex; gap:4px; align-items:center; padding:0 8px;">
+                    {% for lang in supported_langs %}
+                    <a href="{{ url_for('set_language', lang=lang) }}"
+                       style="padding:2px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; text-decoration:none;
+                              {% if lang == current_lang %}background:var(--primary); color:white;{% else %}color:var(--gray-500); border:1px solid var(--gray-200);{% endif %}"
+                       title="{% if lang == 'ro' %}Romana{% else %}English{% endif %}">
+                        {{ lang|upper }}
+                    </a>
+                    {% endfor %}
+                </div>
+
                 <div class="header-notifications">
                     <button class="notification-btn" id="notifBtn" title="Notificari">
                         <i class="fa-solid fa-bell"></i>
