@@ -62,6 +62,10 @@ const container = document.getElementById('viewerContainer');
 const loading = document.getElementById('viewerLoading');
 const info = document.getElementById('viewerInfo');
 
+// Citim ?highlight=<GUID> din URL pentru auto-selectare element
+const urlParams = new URLSearchParams(window.location.search);
+const highlightGuid = urlParams.get('highlight');
+
 try {
     const viewer = new IfcViewerAPI({ container, backgroundColor: 0x1a1a1a });
     viewer.IFC.setWasmPath('https://unpkg.com/web-ifc@0.0.46/');
@@ -76,6 +80,37 @@ try {
     info.innerHTML = `<strong>{{ model.nume }}</strong><br>Incarcat in ${sec}s. Click pe element pentru detalii.`;
     window.viewer = viewer;
     viewer.context.fitToFrame();
+
+    // Auto-highlight daca s-a specificat un GUID in URL
+    if (highlightGuid) {
+        try {
+            // web-ifc oferă getExpressId din GlobalId via API
+            const ifcAPI = viewer.IFC.loader.ifcManager;
+            // Caut element cu acest GlobalId in modelul incarcat
+            const allItems = await ifcAPI.getAllItemsOfType(ifcModel.modelID, 0, false); // 0 = IfcRoot
+            // Mai eficient: parcurg proprietatile fiecarui ID si verific GlobalId
+            // (in IFC.js nu exista lookup direct pe GlobalId, deci facem scan)
+            let foundExpressId = null;
+            for (const id of allItems) {
+                try {
+                    const props = await viewer.IFC.getProperties(ifcModel.modelID, id, false);
+                    if (props.GlobalId && props.GlobalId.value === highlightGuid) {
+                        foundExpressId = id;
+                        break;
+                    }
+                } catch (_) { /* skip */ }
+            }
+            if (foundExpressId !== null) {
+                await viewer.IFC.selector.pickIfcItemsByID(ifcModel.modelID, [foundExpressId], true);
+                const props = await viewer.IFC.getProperties(ifcModel.modelID, foundExpressId, true);
+                info.innerHTML = `<strong>🎯 ${props.Name?.value || 'Element'}</strong><br>GUID: <code>${highlightGuid.substring(0,16)}...</code><br><small style="color:#aaff88;">Selectat automat din workforce</small>`;
+            } else {
+                info.innerHTML += `<br><small style="color:#ffcc66;">⚠ GUID ${highlightGuid.substring(0,8)}... nu a fost gasit in model</small>`;
+            }
+        } catch (e) {
+            console.warn('Highlight failed:', e);
+        }
+    }
 
     // Click pe element -> evidentiere + info
     container.addEventListener('click', async () => {

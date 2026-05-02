@@ -531,6 +531,144 @@ def export_bcf():
 
 
 # ============================================================
+# MODELE BIM - CRUD (intern IFC + viewer extern)
+# ============================================================
+
+@bim_bp.route('/modele')
+@login_required
+def modele_lista():
+    modele = ModelBIM.query.order_by(ModelBIM.data_incarcare.desc()).all()
+    return render_template('bim/modele_lista.html', modele=modele)
+
+
+@bim_bp.route('/model/extern/nou', methods=['GET', 'POST'])
+@login_required
+@manager_or_admin
+def model_extern_nou():
+    """Adauga un model BIM gazduit extern (Trimble/Autodesk/BIMx/...)"""
+    if request.method == 'POST':
+        try:
+            extern_url = request.form.get('extern_url', '').strip()
+            if not extern_url:
+                flash('URL-ul extern e obligatoriu.', 'danger')
+                return redirect(request.url)
+            m = ModelBIM(
+                nume=request.form.get('nume', '').strip() or 'Viewer extern',
+                descriere=request.form.get('descriere', '').strip(),
+                tip='viewer_extern',
+                versiune=request.form.get('versiune', '').strip(),
+                autor=request.form.get('autor', '').strip(),
+                extern_url=extern_url,
+                santier_id=request.form.get('santier_id', type=int) or None,
+                cladire_id=request.form.get('cladire_id', type=int) or None,
+                procesare_status='extern',
+                incarcat_de_id=current_user.id,
+            )
+            db.session.add(m)
+            db.session.commit()
+            flash(f'Viewer extern "{m.nume}" inregistrat.', 'success')
+            return redirect(url_for('bim.modele_lista'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare: {e}', 'danger')
+
+    santiere = Santier.query.order_by(Santier.cod).all()
+    cladiri = Cladire.query.order_by(Cladire.cod).all()
+    return render_template('bim/model_extern_formular.html',
+        model=None, santiere=santiere, cladiri=cladiri,
+        viewere_preset=ModelBIM.VIEWERE_EXTERNE,
+    )
+
+
+@bim_bp.route('/model/<int:id>/editeaza', methods=['GET', 'POST'])
+@login_required
+@manager_or_admin
+def model_editeaza(id):
+    m = ModelBIM.query.get_or_404(id)
+    if request.method == 'POST':
+        try:
+            m.nume = request.form.get('nume', '').strip() or m.nume
+            m.descriere = request.form.get('descriere', '').strip()
+            m.versiune = request.form.get('versiune', '').strip()
+            m.autor = request.form.get('autor', '').strip()
+            if m.tip == 'viewer_extern':
+                new_url = request.form.get('extern_url', '').strip()
+                if new_url:
+                    m.extern_url = new_url
+            m.santier_id = request.form.get('santier_id', type=int) or None
+            m.cladire_id = request.form.get('cladire_id', type=int) or None
+            db.session.commit()
+            flash('Model actualizat.', 'success')
+            return redirect(url_for('bim.modele_lista'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare: {e}', 'danger')
+
+    santiere = Santier.query.order_by(Santier.cod).all()
+    cladiri = Cladire.query.order_by(Cladire.cod).all()
+    template = 'bim/model_extern_formular.html' if m.tip == 'viewer_extern' else 'bim/model_extern_formular.html'
+    return render_template(template, model=m, santiere=santiere, cladiri=cladiri,
+                           viewere_preset=ModelBIM.VIEWERE_EXTERNE)
+
+
+@bim_bp.route('/model/<int:id>/sterge', methods=['POST'])
+@login_required
+@manager_or_admin
+def model_sterge(id):
+    m = ModelBIM.query.get_or_404(id)
+    nume = m.nume
+    try:
+        db.session.delete(m)
+        db.session.commit()
+        flash(f'Model "{nume}" sters.', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la stergere: {e}', 'danger')
+    return redirect(url_for('bim.modele_lista'))
+
+
+@bim_bp.route('/api/modele-pentru-element/<int:element_id>')
+@login_required
+def api_modele_pentru_element(element_id):
+    """
+    Returneaza toate modelele BIM (intern+extern) asociate cu santierul / cladirea
+    elementului, plus URL-uri pre-substituite cu IFC GlobalId pentru highlight.
+    """
+    e = ElementBIM.query.get_or_404(element_id)
+    cladire_id = e.cladire_id
+    santier_id = e.cladire.santier_id if e.cladire else None
+    guid = e.ifc_global_id
+
+    q = ModelBIM.query
+    if santier_id and cladire_id:
+        q = q.filter(db.or_(
+            ModelBIM.santier_id == santier_id,
+            ModelBIM.cladire_id == cladire_id,
+        ))
+    elif santier_id:
+        q = q.filter_by(santier_id=santier_id)
+    elif cladire_id:
+        q = q.filter_by(cladire_id=cladire_id)
+    else:
+        q = q.filter(False)  # nu returnam nimic
+
+    rezultat = []
+    for m in q.all():
+        item = {
+            'id': m.id,
+            'nume': m.nume,
+            'tip': m.tip,
+            'tip_label': m.label_tip,
+            'is_intern': m.is_viewer_intern,
+            'is_extern': m.is_viewer_extern,
+            'url_intern': url_for('bim.viewer', model_id=m.id) + (f'?highlight={guid}' if guid else '') if m.is_viewer_intern else None,
+            'url_extern': m.get_external_url_for_guid(guid) if m.is_viewer_extern else None,
+        }
+        rezultat.append(item)
+    return jsonify(rezultat)
+
+
+# ============================================================
 # 3D VIEWER (IFC.js / web-ifc-viewer)
 # ============================================================
 

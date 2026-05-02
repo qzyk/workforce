@@ -17,22 +17,66 @@
         </h2>
         <div style="font-size:0.9rem; color:var(--gray-500); margin-top:4px;">{{ element.cale_completa }}</div>
     </div>
-    <div style="display:flex; gap:8px;">
-        {# === Vezi in 3D - daca exista model IFC pe santier === #}
-        {% set santier = element.cladire.santier if element.cladire and element.cladire.santier else none %}
-        {% if santier %}
-            {% set model_3d = santier.modele.filter_by(tip='ifc').first() %}
-            {% if model_3d and model_3d.fisier_path %}
-            <a href="{{ url_for('bim.viewer', model_id=model_3d.id) }}" class="btn btn-primary">
-                <i class="fa-solid fa-cube"></i> Vezi in 3D
-            </a>
-            {% endif %}
-        {% endif %}
+    <div style="display:flex; gap:8px; flex-wrap:wrap;" id="elementViewerButtons">
         <a href="{{ url_for('activitati.panou', element_bim_id=element.id) }}" class="btn btn-outline">
             <i class="fa-solid fa-clipboard-list"></i> Activitati pe acest element
         </a>
+        {# Butoane viewer 3D populate dinamic via JS din /bim/api/modele-pentru-element/<id> #}
+        <span id="viewerButtonsPlaceholder" style="font-size:0.85rem; color:var(--gray-500); padding:8px 12px;">
+            <i class="fa-solid fa-spinner fa-spin"></i> verific viewere disponibile...
+        </span>
     </div>
 </div>
+
+<script>
+(function() {
+    var elementId = {{ element.id }};
+    var ifcGuid = {{ element.ifc_global_id|tojson if element.ifc_global_id else 'null' }};
+    var container = document.getElementById('elementViewerButtons');
+    var placeholder = document.getElementById('viewerButtonsPlaceholder');
+
+    fetch('/bim/api/modele-pentru-element/' + elementId)
+        .then(function(r) { return r.json(); })
+        .then(function(modele) {
+            placeholder.remove();
+            if (!modele || modele.length === 0) {
+                var note = document.createElement('span');
+                note.style.cssText = 'font-size:0.85rem; color:var(--gray-500); padding:8px 12px;';
+                note.innerHTML = '<i class="fa-solid fa-circle-info"></i> Niciun model 3D inregistrat pentru acest santier.';
+                container.appendChild(note);
+                return;
+            }
+            modele.forEach(function(m) {
+                if (m.is_intern && m.url_intern) {
+                    var btn = document.createElement('a');
+                    btn.href = m.url_intern;
+                    btn.className = 'btn btn-primary';
+                    btn.innerHTML = '<i class="fa-solid fa-cube"></i> Vezi in 3D' +
+                        (modele.filter(function(x) { return x.is_intern; }).length > 1 ? ' (' + escapeHtml(m.nume) + ')' : '');
+                    container.appendChild(btn);
+                }
+                if (m.is_extern && m.url_extern) {
+                    var btn = document.createElement('a');
+                    btn.href = m.url_extern;
+                    btn.target = '_blank';
+                    btn.rel = 'noopener noreferrer';
+                    btn.className = 'btn btn-success';
+                    btn.innerHTML = '<i class="fa-solid fa-arrow-up-right-from-square"></i> ' + escapeHtml(m.nume);
+                    container.appendChild(btn);
+                }
+            });
+        })
+        .catch(function() {
+            placeholder.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> nu pot incarca viewere';
+        });
+
+    function escapeHtml(s) {
+        return String(s || '').replace(/[&<>"']/g, function(c) {
+            return {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c];
+        });
+    }
+})();
+</script>
 
 <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
     <div class="card-panel">

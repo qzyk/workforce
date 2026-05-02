@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Modele BIM - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Modele 3D</li>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-cubes-stacked" style="color:var(--primary);"></i> Modele BIM</h2>
+    {% if current_user.rol in ['admin', 'manager'] %}
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <a href="{{ url_for('bim.import_ifc_view') }}" class="btn btn-success">
+            <i class="fa-solid fa-file-import"></i> Upload IFC
+        </a>
+        <a href="{{ url_for('bim.model_extern_nou') }}" class="btn btn-primary">
+            <i class="fa-solid fa-link"></i> Adauga viewer extern
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card-panel">
+    <div class="card-panel-body" style="padding:0;">
+        {% if modele %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Nume</th>
+                    <th>Tip</th>
+                    <th>Locatie</th>
+                    <th>Versiune</th>
+                    <th>Procesat</th>
+                    <th style="text-align:right;">Actiuni</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in modele %}
+                <tr>
+                    <td>
+                        <strong>{{ m.nume }}</strong>
+                        {% if m.descriere %}
+                        <br><small style="color:var(--gray-500);">{{ m.descriere[:80] }}</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if m.tip == 'ifc' %}
+                            <span style="font-size:0.78rem; padding:3px 10px; border-radius:12px; background:#E3F2FD; color:#1565C0; font-weight:600;">
+                                <i class="fa-solid fa-file-code"></i> IFC intern
+                            </span>
+                        {% elif m.tip == 'viewer_extern' %}
+                            <span style="font-size:0.78rem; padding:3px 10px; border-radius:12px; background:#F3E5F5; color:#6A1B9A; font-weight:600;">
+                                <i class="fa-solid fa-link"></i> Viewer extern
+                            </span>
+                        {% else %}
+                            <span style="font-size:0.78rem; padding:3px 10px; border-radius:12px; background:var(--gray-100); color:var(--gray-700);">
+                                {{ m.label_tip }}
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size:0.82rem; color:var(--gray-600);">
+                        {% if m.santier %}{{ m.santier.cod }}{% endif %}
+                        {% if m.cladire %} / {{ m.cladire.cod }}{% endif %}
+                        {% if not m.santier and not m.cladire %}-{% endif %}
+                    </td>
+                    <td>{{ m.versiune or '-' }}</td>
+                    <td style="font-size:0.82rem;">
+                        {% if m.procesare_status == 'procesat' %}
+                            <span style="color:var(--success);"><i class="fa-solid fa-check"></i> {{ m.nr_elemente }} elemente</span>
+                        {% elif m.procesare_status == 'extern' %}
+                            <span style="color:#6A1B9A;"><i class="fa-solid fa-arrow-up-right-from-square"></i> URL extern</span>
+                        {% elif m.procesare_status == 'eroare' %}
+                            <span style="color:var(--danger);"><i class="fa-solid fa-circle-xmark"></i> eroare</span>
+                        {% else %}
+                            <span style="color:var(--gray-500);">{{ m.procesare_status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="actions-cell" style="white-space:nowrap; text-align:right;">
+                        {% if m.is_viewer_intern %}
+                        <a href="{{ url_for('bim.viewer', model_id=m.id) }}" class="btn-action btn-view" title="Deschide viewer 3D"><i class="fa-solid fa-cube"></i></a>
+                        {% endif %}
+                        {% if m.is_viewer_extern %}
+                        <a href="{{ m.get_external_url_for_guid() }}" target="_blank" class="btn-action btn-view" title="Deschide extern"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                        {% endif %}
+                        {% if current_user.rol in ['admin', 'manager'] %}
+                        <a href="{{ url_for('bim.model_editeaza', id=m.id) }}" class="btn-action btn-edit"><i class="fa-solid fa-pen"></i></a>
+                        <form method="POST" action="{{ url_for('bim.model_sterge', id=m.id) }}" style="display:inline;" onsubmit="return confirm('Sigur stergi modelul {{ m.nume }}?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-action" style="color:var(--danger);"><i class="fa-solid fa-trash"></i></button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state" style="padding:40px;">
+            <i class="fa-solid fa-cubes-stacked" style="font-size:2.5rem; color:var(--gray-300);"></i>
+            <p style="margin-top:12px; color:var(--gray-500);">Niciun model BIM inregistrat.</p>
+            {% if current_user.rol in ['admin', 'manager'] %}
+            <div style="margin-top:14px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+                <a href="{{ url_for('bim.import_ifc_view') }}" class="btn btn-success">
+                    <i class="fa-solid fa-file-import"></i> Upload IFC
+                </a>
+                <a href="{{ url_for('bim.model_extern_nou') }}" class="btn btn-primary">
+                    <i class="fa-solid fa-link"></i> Adauga viewer extern
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

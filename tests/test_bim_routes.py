@@ -111,6 +111,125 @@ def test_activitati_panou_accepts_bim_filters(authenticated_client):
     assert resp.status_code == 200
 
 
+def test_model_extern_url_substitution(app):
+    """ModelBIM.get_external_url_for_guid substitueaza {guid} corect."""
+    from models import ModelBIM
+    m1 = ModelBIM(nume='T1', tip='viewer_extern',
+                  extern_url='https://example.com/viewer?id=PROJ&select={guid}')
+    assert m1.get_external_url_for_guid('ABC-123') == 'https://example.com/viewer?id=PROJ&select=ABC-123'
+    assert m1.get_external_url_for_guid(None) == 'https://example.com/viewer?id=PROJ&select={guid}'
+
+    m2 = ModelBIM(nume='T2', tip='viewer_extern',
+                  extern_url='https://example.com/static-link')
+    assert m2.get_external_url_for_guid('ABC-123') == 'https://example.com/static-link'
+    assert m2.get_external_url_for_guid(None) == 'https://example.com/static-link'
+
+    m3 = ModelBIM(nume='T3', tip='ifc')
+    assert m3.get_external_url_for_guid('ABC-123') is None
+
+
+def test_model_intern_extern_flags(app):
+    from models import ModelBIM
+    m_intern = ModelBIM(nume='I', tip='ifc', fisier_path='/tmp/model.ifc')
+    assert m_intern.is_viewer_intern is True
+    assert m_intern.is_viewer_extern is False
+
+    m_extern = ModelBIM(nume='E', tip='viewer_extern', extern_url='https://x.com')
+    assert m_extern.is_viewer_intern is False
+    assert m_extern.is_viewer_extern is True
+
+    m_no_path = ModelBIM(nume='N', tip='ifc')
+    assert m_no_path.is_viewer_intern is False
+
+
+def test_modele_lista_renders(authenticated_client):
+    """Lista modele BIM se incarca."""
+    resp = authenticated_client.get('/bim/modele')
+    assert resp.status_code == 200
+
+
+def test_model_extern_form_renders(authenticated_client):
+    """Formularul de viewer extern se incarca pentru admin."""
+    resp = authenticated_client.get('/bim/model/extern/nou')
+    assert resp.status_code == 200
+    assert b'extern_url' in resp.data
+    assert b'Trimble' in resp.data  # preset-ul Trimble Connect
+
+
+def test_model_extern_create_via_post(app, authenticated_client):
+    """POST creeaza model extern in DB."""
+    from models import db, ModelBIM
+    with app.app_context():
+        ModelBIM.query.filter_by(nume='__SMOKE_EXTERN__').delete()
+        db.session.commit()
+
+    resp = authenticated_client.post('/bim/model/extern/nou', data={
+        'nume': '__SMOKE_EXTERN__',
+        'extern_url': 'https://test.example.com/viewer?select={guid}',
+    }, follow_redirects=False)
+    assert resp.status_code in (200, 302)
+
+    with app.app_context():
+        m = ModelBIM.query.filter_by(nume='__SMOKE_EXTERN__').first()
+        assert m is not None
+        assert m.tip == 'viewer_extern'
+        assert m.extern_url == 'https://test.example.com/viewer?select={guid}'
+        # Test substitutie
+        assert m.get_external_url_for_guid('TEST-GUID-456') == 'https://test.example.com/viewer?select=TEST-GUID-456'
+        db.session.delete(m)
+        db.session.commit()
+
+
+def test_api_modele_pentru_element(app, authenticated_client):
+    """API-ul returneaza modele asociate cu santierul/cladirea elementului."""
+    from models import db, Santier, Cladire, ElementBIM, ModelBIM
+    with app.app_context():
+        Santier.query.filter_by(cod='UX-VIEW').delete()
+        ModelBIM.query.filter_by(nume='__VIEW_TEST__').delete()
+        db.session.commit()
+
+        s = Santier(cod='UX-VIEW', nume='V')
+        db.session.add(s); db.session.commit()
+        c = Cladire(santier_id=s.id, cod='C', nume='C')
+        db.session.add(c); db.session.commit()
+        e = ElementBIM(cladire_id=c.id, cod='E1', tip_element='wall',
+                       ifc_global_id='TEST-GUID-789')
+        db.session.add(e); db.session.commit()
+
+        # Adaug 2 modele asociate cu santierul
+        m_intern = ModelBIM(nume='__VIEW_TEST__intern', tip='ifc',
+                            fisier_path='uploads/ifc/test.ifc',
+                            santier_id=s.id)
+        m_extern = ModelBIM(nume='__VIEW_TEST__extern', tip='viewer_extern',
+                            extern_url='https://ext.example.com/v?g={guid}',
+                            santier_id=s.id)
+        db.session.add(m_intern); db.session.add(m_extern)
+        db.session.commit()
+        eid = e.id
+
+    resp = authenticated_client.get(f'/bim/api/modele-pentru-element/{eid}')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert isinstance(data, list)
+    assert len(data) >= 2
+    # Verific ca url-urile sunt populate corect
+    intern_items = [it for it in data if it['is_intern']]
+    extern_items = [it for it in data if it['is_extern']]
+    assert len(intern_items) >= 1
+    assert len(extern_items) >= 1
+    # Intern URL trebuie sa contina ?highlight=GUID
+    assert 'highlight=TEST-GUID-789' in intern_items[0]['url_intern']
+    # Extern URL trebuie sa aiba {guid} substituit
+    assert intern_items[0]['url_intern'] is not None
+    assert 'TEST-GUID-789' in extern_items[0]['url_extern']
+
+    # Cleanup
+    with app.app_context():
+        ModelBIM.query.filter(ModelBIM.nume.like('__VIEW_TEST__%')).delete()
+        Santier.query.filter_by(cod='UX-VIEW').delete()
+        db.session.commit()
+
+
 def test_bim_santier_nou_form_admin(authenticated_client):
     """Admin poate accesa formularul de șantier nou."""
     resp = authenticated_client.get('/bim/santier/nou')

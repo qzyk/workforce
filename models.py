@@ -1668,13 +1668,50 @@ class ModelBIM(db.Model):
     incarcat_de = db.relationship('Utilizator', backref='bim_modele_incarcate')
 
     TIPURI = [
-        ('ifc', 'IFC (open standard)'),
+        ('ifc', 'IFC (open standard, viewer intern)'),
         ('revit', 'Revit (.rvt)'),
         ('dwg', 'AutoCAD (.dwg)'),
         ('navisworks', 'Navisworks (.nwd)'),
         ('bcf', 'BCF (issues)'),
         ('viewer_extern', 'Viewer extern (URL)'),
     ]
+
+    # Template-uri preset pentru viewere externe populare
+    VIEWERE_EXTERNE = [
+        ('Trimble Connect', 'https://web.connect.trimble.com/projects/PROJECT_ID/viewer?select={guid}'),
+        ('Autodesk Viewer',  'https://viewer.autodesk.com/?urn=URN&select={guid}'),
+        ('BIMx (Graphisoft)', 'https://bimx.graphisoft.com/m/MODEL_ID#guid={guid}'),
+        ('BIMcollab',         'https://example.bimcollab.com/issue/{guid}'),
+        ('Generic (custom)',  ''),
+    ]
+
+    @property
+    def label_tip(self):
+        for cod, label in self.TIPURI:
+            if cod == self.tip:
+                return label
+        return self.tip
+
+    @property
+    def is_viewer_intern(self):
+        """True daca modelul e IFC procesabil cu viewer-ul nostru intern."""
+        return self.tip == 'ifc' and bool(self.fisier_path)
+
+    @property
+    def is_viewer_extern(self):
+        """True daca modelul are URL extern."""
+        return bool(self.extern_url)
+
+    def get_external_url_for_guid(self, guid=None):
+        """
+        Returneaza URL-ul extern cu placeholder-ul {guid} substituit.
+        Daca template-ul nu are {guid}, returneaza URL-ul ca atare.
+        """
+        if not self.extern_url:
+            return None
+        if guid and '{guid}' in self.extern_url:
+            return self.extern_url.replace('{guid}', guid)
+        return self.extern_url
 
     def __repr__(self):
         return f'<ModelBIM {self.nume} ({self.tip})>'

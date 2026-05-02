@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editeaza' if model else 'Adauga' }} viewer extern - BIM{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.modele_lista') }}">Modele</a></li>
+<li class="breadcrumb-item active">{{ 'Editeaza' if model else 'Viewer extern' }}</li>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:760px; margin:0 auto;">
+    <h2 style="margin:0 0 20px 0;">
+        <i class="fa-solid fa-link" style="color:var(--primary);"></i>
+        {{ 'Editeaza viewer extern' if model else 'Adauga viewer extern' }}
+    </h2>
+
+    <div class="card-panel" style="margin-bottom:20px; background:#F1F8E9;">
+        <div class="card-panel-body" style="padding:14px;">
+            <strong><i class="fa-solid fa-circle-info"></i> Cum functioneaza:</strong>
+            <p style="font-size:0.88rem; color:var(--gray-700); margin:6px 0 0 0;">
+                Inregistreaza un URL catre un viewer 3D extern (Trimble Connect, Autodesk Viewer, BIMx, BIMcollab etc.).
+                Cand un utilizator deschide un element BIM legat de acest model, butonul "Vezi in 3D" va deschide URL-ul direct
+                in noul tab. Daca URL-ul contine placeholder-ul <code>{guid}</code>, acesta va fi inlocuit automat cu IFC GlobalId
+                al elementului — astfel viewer-ul extern va selecta corect elementul.
+            </p>
+        </div>
+    </div>
+
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="card-panel">
+            <div class="card-panel-body" style="padding:20px;">
+                <div class="form-group">
+                    <label class="form-label">Preset</label>
+                    <select id="presetSelect" class="form-select" onchange="applyPreset(this.value)">
+                        <option value="">— Custom (URL propriu) —</option>
+                        {% for nume, template_url in viewere_preset %}
+                        <option value="{{ template_url }}" data-nume="{{ nume }}">{{ nume }}</option>
+                        {% endfor %}
+                    </select>
+                    <small style="color:var(--gray-500);">Selectare rapida pentru viewere populare. Apoi modifici URL-ul cu ID-urile reale ale proiectului tau.</small>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Nume *</label>
+                    <input type="text" name="nume" id="numeInput" class="form-control" maxlength="200" required
+                           value="{{ model.nume if model else '' }}"
+                           placeholder="ex: Trimble Connect - CPU Urlati">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">URL viewer extern *</label>
+                    <input type="url" name="extern_url" id="urlInput" class="form-control" maxlength="500" required
+                           value="{{ model.extern_url if model else '' }}"
+                           placeholder="https://web.connect.trimble.com/projects/123/viewer?select={guid}">
+                    <small style="color:var(--gray-500);">
+                        Foloseste <code>{guid}</code> ca placeholder pentru IFC GlobalId al elementului.
+                        Va fi inlocuit automat cand utilizatorul deschide elementul.
+                    </small>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label class="form-label">Santier asociat</label>
+                        <select name="santier_id" class="form-select">
+                            <option value="">— Niciun santier —</option>
+                            {% for s in santiere %}
+                            <option value="{{ s.id }}" {{ 'selected' if model and model.santier_id == s.id }}>{{ s.cod }} - {{ s.nume }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Cladire asociata</label>
+                        <select name="cladire_id" class="form-select">
+                            <option value="">— Niciuna —</option>
+                            {% for c in cladiri %}
+                            <option value="{{ c.id }}" {{ 'selected' if model and model.cladire_id == c.id }}>{{ c.cod }} - {{ c.nume }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label class="form-label">Versiune</label>
+                        <input type="text" name="versiune" class="form-control" maxlength="50"
+                               value="{{ model.versiune if model else '' }}"
+                               placeholder="ex: Rev. C, v2.1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Autor / Companie</label>
+                        <input type="text" name="autor" class="form-control" maxlength="150"
+                               value="{{ model.autor if model else '' }}">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Descriere</label>
+                    <textarea name="descriere" class="form-control" rows="2">{{ model.descriere if model else '' }}</textarea>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+            <a href="{{ url_for('bim.modele_lista') }}" class="btn btn-outline">Anuleaza</a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-floppy-disk"></i> Salveaza
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+function applyPreset(template) {
+    if (!template) return;
+    var presetSelect = document.getElementById('presetSelect');
+    var selected = presetSelect.options[presetSelect.selectedIndex];
+    var nume = selected.dataset.nume || '';
+    var urlInput = document.getElementById('urlInput');
+    var numeInput = document.getElementById('numeInput');
+    if (template) urlInput.value = template;
+    if (nume && !numeInput.value) numeInput.value = nume;
+}
+</script>
+{% endblock %}
