@@ -117,6 +117,9 @@
                         <li><a href="{{ url_for('bim.elemente_lista') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-cubes" style="margin-right:6px; font-size:0.75rem;"></i> Elemente</a></li>
                         <li><a href="{{ url_for('bim.modele_lista') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-cubes-stacked" style="margin-right:6px; font-size:0.75rem;"></i> Modele 3D</a></li>
                         <li><a href="{{ url_for('bim.issues_lista') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:6px; font-size:0.75rem;"></i> Issues</a></li>
+                        {% if current_user.rol in ['admin', 'manager'] %}
+                        <li><a href="{{ url_for('bim.quality_report') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-shield-halved" style="margin-right:6px; font-size:0.75rem;"></i> Data Quality</a></li>
+                        {% endif %}
                     </ul>
                     {% endif %}
                 </li>

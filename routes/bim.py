@@ -29,8 +29,10 @@ from werkzeug.utils import secure_filename
 from models import (
     db, Santier, Cladire, Nivel, Zona, Spatiu, ElementBIM, Asset,
     IssueBIM, ModelBIM, Proiect, RaportActivitate, Pontaj,
+    ExternalMapping,
 )
 from services import ifc_import as ifc_service
+from services import bim_quality
 
 bim_bp = Blueprint('bim', __name__, url_prefix='/bim')
 
@@ -694,3 +696,116 @@ def viewer_file(model_id):
     if not os.path.exists(abs_path):
         abort(404)
     return send_file(abs_path, mimetype='application/octet-stream')
+
+
+# ============================================================
+# DATA QUALITY & VALIDATION REPORTS
+# ============================================================
+
+@bim_bp.route('/quality')
+@login_required
+@manager_or_admin
+def quality_report():
+    """Pagina de rapoarte de calitate BIM."""
+    raport = bim_quality.run_all_reports(
+        db, RaportActivitate, ElementBIM, Spatiu, ExternalMapping,
+        Santier, Cladire, Nivel, Zona, Asset, IssueBIM, ModelBIM,
+    )
+    return render_template('bim/quality_report.html', raport=raport)
+
+
+@bim_bp.route('/api/quality')
+@login_required
+@manager_or_admin
+def api_quality():
+    """JSON pentru CI/dashboard - rapoarte de calitate."""
+    raport = bim_quality.run_all_reports(
+        db, RaportActivitate, ElementBIM, Spatiu, ExternalMapping,
+        Santier, Cladire, Nivel, Zona, Asset, IssueBIM, ModelBIM,
+    )
+    return jsonify(raport)
+
+
+# ============================================================
+# EXTERNAL MAPPING - CRUD + lookup invers
+# ============================================================
+
+@bim_bp.route('/api/external-mapping', methods=['GET', 'POST'])
+@login_required
+def api_external_mapping():
+    """GET: lookup invers (?source_system=ifc&extern_id=GUID).
+       POST: adauga/actualizeaza mapping."""
+    if request.method == 'GET':
+        ss = request.args.get('source_system', '').strip()
+        eid = request.args.get('extern_id', '').strip()
+        if not ss or not eid:
+            return jsonify({'error': 'source_system + extern_id required'}), 400
+        mappings = ExternalMapping.query.filter_by(source_system=ss, extern_id=eid).all()
+        return jsonify([{
+            'id': m.id, 'entity_type': m.entity_type, 'entity_id': m.entity_id,
+            'source_system': m.source_system, 'extern_id': m.extern_id,
+            'last_synced_at': m.last_synced_at.isoformat() if m.last_synced_at else None,
+        } for m in mappings])
+
+    # POST - admin/manager only
+    if current_user.rol not in ('admin', 'manager'):
+        return jsonify({'error': 'forbidden'}), 403
+
+    data = request.get_json(silent=True) or request.form.to_dict()
+    et = data.get('entity_type', '').strip()
+    eid = data.get('entity_id')
+    ss = data.get('source_system', '').strip()
+    extid = data.get('extern_id', '').strip()
+    if not et or not eid or not ss or not extid:
+        return jsonify({'error': 'entity_type, entity_id, source_system, extern_id required'}), 400
+
+    try:
+        m = ExternalMapping.add_or_update(
+            entity_type=et, entity_id=int(eid),
+            source_system=ss, extern_id=extid,
+            metadata=data.get('metadata'),
+        )
+        db.session.commit()
+        return jsonify({'id': m.id, 'created_or_updated': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@bim_bp.route('/api/elemente/catalog')
+@login_required
+def api_elemente_catalog():
+    """
+    Export catalog elemente pentru integrare BI/dashboard externe.
+    Returneaza JSON cu toate elementele + identificatori cross-system.
+    """
+    elemente = ElementBIM.query.limit(2000).all()
+    rezultat = []
+    for e in elemente:
+        # Lookup mapping-uri externe pentru acest element
+        mappings = ExternalMapping.query.filter_by(
+            entity_type='element_bim', entity_id=e.id
+        ).all()
+        rezultat.append({
+            'id': e.id,
+            'cod': e.cod,
+            'nume': e.nume,
+            'tip_element': e.tip_element,
+            'tip_label': e.tip_label,
+            'status': e.status,
+            'cale_completa': e.cale_completa,
+            'ifc_global_id': e.ifc_global_id,
+            'extern_id': e.extern_id,
+            'source_system': e.source_system,
+            'cladire_id': e.cladire_id,
+            'spatiu_id': e.spatiu_id,
+            'last_synced_at': e.last_synced_at.isoformat() if e.last_synced_at else None,
+            'external_mappings': [{
+                'source_system': m.source_system,
+                'extern_id': m.extern_id,
+            } for m in mappings],
+        })
+    return jsonify({
+        'total': len(rezultat),
+        'elements': rezultat,
+    })

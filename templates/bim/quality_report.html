@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}BIM Data Quality - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Data Quality</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.quality-stat-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:20px; }
+.quality-stat-card { background:white; border-radius:10px; padding:16px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+.quality-stat-value { font-size:2rem; font-weight:800; line-height:1.1; }
+.quality-stat-label { font-size:0.78rem; color:var(--gray-500); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px; }
+.severity-critical { color:var(--danger); }
+.severity-warn { color:var(--warning); }
+.severity-info { color:var(--gray-500); }
+.severity-ok { color:var(--success); }
+.quality-row { padding:10px 14px; border-bottom:1px solid var(--gray-100); display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.quality-row:hover { background:var(--gray-50); }
+.quality-tip-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.3px; }
+.tip-mare { background:#FFEBEE; color:var(--danger); }
+.tip-medie { background:#FFF3E0; color:var(--warning); }
+.tip-mica { background:var(--gray-100); color:var(--gray-700); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2 style="margin:0;"><i class="fa-solid fa-shield-halved" style="color:var(--primary);"></i> BIM Data Quality</h2>
+        <div style="font-size:0.85rem; color:var(--gray-500); margin-top:4px;">
+            Validare cross-entity, identificatori externi, mapping-uri orfane
+        </div>
+    </div>
+    <a href="{{ url_for('bim.api_quality') }}" target="_blank" class="btn btn-outline">
+        <i class="fa-solid fa-code"></i> JSON
+    </a>
+</div>
+
+<div class="quality-stat-grid">
+    <div class="quality-stat-card" style="border-left:4px solid var(--gray-300);">
+        <div class="quality-stat-value">{{ raport.total }}</div>
+        <div class="quality-stat-label">Total probleme</div>
+    </div>
+    <div class="quality-stat-card" style="border-left:4px solid var(--danger);">
+        <div class="quality-stat-value severity-critical">{{ raport.by_severitate.mare }}</div>
+        <div class="quality-stat-label">Severitate mare</div>
+    </div>
+    <div class="quality-stat-card" style="border-left:4px solid var(--warning);">
+        <div class="quality-stat-value severity-warn">{{ raport.by_severitate.medie }}</div>
+        <div class="quality-stat-label">Severitate medie</div>
+    </div>
+    <div class="quality-stat-card" style="border-left:4px solid var(--gray-400);">
+        <div class="quality-stat-value severity-info">{{ raport.by_severitate.mica }}</div>
+        <div class="quality-stat-label">Severitate mica</div>
+    </div>
+</div>
+
+{% if raport.total == 0 %}
+<div class="card-panel">
+    <div class="card-panel-body" style="padding:40px; text-align:center;">
+        <i class="fa-solid fa-circle-check" style="font-size:3rem; color:var(--success);"></i>
+        <h3 style="margin-top:12px; color:var(--success);">Toate verificarile trec!</h3>
+        <p style="color:var(--gray-500);">Datele BIM sunt curate si consistente.</p>
+    </div>
+</div>
+{% else %}
+
+<div class="card-panel" style="margin-bottom:16px;">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-chart-bar"></i> Distribuire pe tip</h3></div>
+    <div class="card-panel-body" style="padding:14px;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            {% for tip, count in raport.by_tip.items() %}
+            <span style="padding:6px 12px; background:var(--gray-100); border-radius:18px; font-size:0.85rem;">
+                <strong>{{ count }}</strong> &middot; {{ tip|replace('_', ' ') }}
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="card-panel">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-list-check"></i> Probleme detectate</h3></div>
+    <div class="card-panel-body" style="padding:0;">
+        {% for it in raport.entries %}
+        <div class="quality-row">
+            <div style="flex:1;">
+                <span class="quality-tip-badge tip-{{ it.severitate }}">{{ it.severitate }}</span>
+                <strong style="margin-left:8px;">{{ it.tip|replace('_', ' ')|title }}</strong>
+                <div style="font-size:0.85rem; color:var(--gray-700); margin-top:4px;">{{ it.mesaj }}</div>
+            </div>
+            {% if it.link_url and it.link_url != '#' %}
+            <a href="{{ it.link_url }}" class="btn btn-outline" style="font-size:0.78rem; padding:4px 10px;">
+                <i class="fa-solid fa-arrow-right"></i> Vezi
+            </a>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

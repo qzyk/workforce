@@ -1262,8 +1262,12 @@ class Santier(db.Model):
     latitudine = db.Column(db.Numeric(10, 7), nullable=True)
     longitudine = db.Column(db.Numeric(10, 7), nullable=True)
 
-    # Optional: identificator extern (din IFC IfcSite.GlobalId, sau alt sistem)
+    # Identificator extern (IFC IfcSite.GlobalId, Revit ElementId, etc.)
     extern_id = db.Column(db.String(100), nullable=True, index=True)
+    source_system = db.Column(db.String(30), nullable=True)
+    # ifc, revit, bcf, trimble, autodesk, manual
+
+    last_synced_at = db.Column(db.DateTime, nullable=True)  # ultima sincronizare cu sistem extern
 
     status = db.Column(db.String(20), default='activ')  # activ, finalizat, suspendat
     data_creare = db.Column(db.DateTime, default=datetime.utcnow)
@@ -1275,6 +1279,8 @@ class Santier(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint('tenant_id', 'cod', name='uix_santier_tenant_cod'),
+        # extern_id unic per sursa - permite acelasi GUID din 2 sisteme diferite
+        db.Index('uix_santier_source_extern', 'source_system', 'extern_id', unique=False),
     )
 
     def __repr__(self):
@@ -1296,6 +1302,8 @@ class Cladire(db.Model):
     suprafata_totala = db.Column(db.Numeric(12, 2))  # mp
 
     extern_id = db.Column(db.String(100), nullable=True, index=True)  # IFC GlobalId
+    source_system = db.Column(db.String(30), nullable=True)
+    last_synced_at = db.Column(db.DateTime, nullable=True)
 
     data_creare = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -1328,6 +1336,8 @@ class Nivel(db.Model):
     inaltime_m = db.Column(db.Numeric(8, 2))  # inaltimea nivelului
 
     extern_id = db.Column(db.String(100), nullable=True, index=True)  # IFC GlobalId
+    source_system = db.Column(db.String(30), nullable=True)
+    last_synced_at = db.Column(db.DateTime, nullable=True)
 
     # Relatii
     spatii = db.relationship('Spatiu', backref='nivel', lazy='dynamic',
@@ -1354,6 +1364,8 @@ class Zona(db.Model):
     tip_zona = db.Column(db.String(50))  # functional, securitate, hvac, etc.
 
     extern_id = db.Column(db.String(100), nullable=True, index=True)
+    source_system = db.Column(db.String(30), nullable=True)
+    last_synced_at = db.Column(db.DateTime, nullable=True)
 
     # Relatii
     nivel = db.relationship('Nivel', backref=db.backref('zone', lazy='dynamic'))
@@ -1382,6 +1394,8 @@ class Spatiu(db.Model):
     volum_mc = db.Column(db.Numeric(12, 2))
 
     extern_id = db.Column(db.String(100), nullable=True, index=True)  # IFC IfcSpace.GlobalId
+    source_system = db.Column(db.String(30), nullable=True)
+    last_synced_at = db.Column(db.DateTime, nullable=True)
 
     # Relatii
     zona = db.relationship('Zona', backref=db.backref('spatii', lazy='dynamic'))
@@ -1422,6 +1436,10 @@ class ElementBIM(db.Model):
     # Identificator IFC (cheie de unicitate cross-system)
     ifc_global_id = db.Column(db.String(100), nullable=True, index=True)
     extern_id = db.Column(db.String(100), nullable=True, index=True)
+    source_system = db.Column(db.String(30), nullable=True)
+    # Linkul catre modelul BIM din care a venit elementul (pentru re-import selectiv)
+    model_bim_id = db.Column(db.Integer, db.ForeignKey('bim_modele.id'), nullable=True, index=True)
+    last_synced_at = db.Column(db.DateTime, nullable=True)
 
     # Status executie
     status = db.Column(db.String(30), default='proiectat')
@@ -1498,6 +1516,25 @@ class ElementBIM(db.Model):
         parts.append(self.cod)
         return ' / '.join(parts)
 
+    @property
+    def validation_warnings(self):
+        """
+        Returneaza lista de avertismente de calitate:
+        - spatiu si nivel din cladiri diferite
+        - nivel si cladire mismatch
+        - lipsa IFC GlobalId pentru elemente importate via IFC
+        """
+        warnings = []
+        if self.spatiu and self.nivel and self.spatiu.nivel_id != self.nivel.id:
+            warnings.append('Spatiu si nivel din locatii diferite')
+        if self.spatiu and self.spatiu.nivel and self.cladire and self.spatiu.nivel.cladire_id != self.cladire.id:
+            warnings.append('Spatiu si cladire mismatch')
+        if self.nivel and self.cladire and self.nivel.cladire_id != self.cladire.id:
+            warnings.append('Nivel si cladire mismatch')
+        if self.source_system == 'ifc' and not self.ifc_global_id:
+            warnings.append('Element importat din IFC fara GlobalId')
+        return warnings
+
     def __repr__(self):
         return f'<ElementBIM {self.cod} ({self.tip_element})>'
 
@@ -1529,6 +1566,10 @@ class Asset(db.Model):
 
     fisa_tehnica_path = db.Column(db.String(500))  # cale fisier upload
     manual_path = db.Column(db.String(500))
+
+    # Identificator extern (CMMS, asset management system)
+    extern_id = db.Column(db.String(100), nullable=True, index=True)
+    source_system = db.Column(db.String(30), nullable=True)
 
     observatii = db.Column(db.Text)
     data_creare = db.Column(db.DateTime, default=datetime.utcnow)
@@ -1584,6 +1625,8 @@ class IssueBIM(db.Model):
 
     # Camp BCF compatibil - pentru export/import .bcf
     bcf_topic_guid = db.Column(db.String(100), nullable=True, index=True)
+    extern_id = db.Column(db.String(100), nullable=True, index=True)  # ID in alt issue tracker
+    source_system = db.Column(db.String(30), nullable=True)
 
     data_creare = db.Column(db.DateTime, default=datetime.utcnow)
     data_actualizare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1655,6 +1698,9 @@ class ModelBIM(db.Model):
     # Statistici (populate dupa import)
     nr_elemente = db.Column(db.Integer, default=0)
     nr_spatii = db.Column(db.Integer, default=0)
+    extern_id = db.Column(db.String(100), nullable=True, index=True)
+    source_system = db.Column(db.String(30), nullable=True)
+    last_synced_at = db.Column(db.DateTime, nullable=True)
     procesare_status = db.Column(db.String(20), default='nou')
     # nou, in_procesare, procesat, eroare
     procesare_log = db.Column(db.Text)
@@ -1728,5 +1774,127 @@ class ModelBIM(db.Model):
 # nu prin definitii in clasele de mai sus, ca sa NU rupem migrarile
 # existente. Mapping-ul SQLAlchemy se face in app initialization.
 # ============================================================
+
+
+# ============================================================
+# === EXTERNAL MAPPING - mapping cross-system polymorphic ===
+# Permite ca aceeasi entitate BIM sa aiba identificatori
+# in mai multe sisteme externe simultan:
+#   ElementBIM #42 ->
+#     IFC GUID (sursa: model X.ifc)
+#     Revit ElementId (sursa: model Y.rvt)
+#     Trimble Connect Object ID
+#     CMMS asset code
+# ============================================================
+
+class ExternalMapping(db.Model):
+    __tablename__ = 'bim_external_mappings'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    # Tip + ID al entitatii interne (pattern polymorphic, NU FK strict ca sa
+    # mergem peste mai multe tabele)
+    entity_type = db.Column(db.String(30), nullable=False, index=True)
+    # 'santier', 'cladire', 'nivel', 'zona', 'spatiu', 'element_bim', 'asset', 'issue_bim', 'model_bim'
+    entity_id = db.Column(db.Integer, nullable=False, index=True)
+
+    # Sistem extern + identificator
+    source_system = db.Column(db.String(30), nullable=False, index=True)
+    # 'ifc', 'revit', 'bcf', 'trimble_connect', 'autodesk_bim360', 'bimx', 'graphisoft',
+    # 'navisworks', 'solibri', 'bimcollab', 'plannerly', 'cmms_<name>', 'manual'
+    extern_id = db.Column(db.String(200), nullable=False, index=True)
+
+    # Referinta opt. catre modelul BIM din care s-a importat (daca e relevant)
+    model_bim_id = db.Column(db.Integer, db.ForeignKey('bim_modele.id'), nullable=True, index=True)
+
+    # Metadata extra (URL, label, source file, etc.) - JSON pentru flexibilitate
+    metadata_json = db.Column(db.Text, nullable=True)
+
+    last_synced_at = db.Column(db.DateTime, nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relatii
+    model_bim = db.relationship('ModelBIM', backref=db.backref('mappings', lazy='dynamic'))
+
+    __table_args__ = (
+        # Unicitate: aceeasi entitate nu poate avea 2 mapping-uri identice in acelasi sistem
+        db.UniqueConstraint('entity_type', 'entity_id', 'source_system', 'extern_id',
+                            name='uix_extmap_unique'),
+        # Index pentru lookup rapid: cauta entitatea X dupa GUID Y
+        db.Index('ix_extmap_lookup', 'source_system', 'extern_id'),
+        db.Index('ix_extmap_entity', 'entity_type', 'entity_id'),
+    )
+
+    ENTITY_TYPES = [
+        ('santier', 'Santier'),
+        ('cladire', 'Cladire'),
+        ('nivel', 'Nivel'),
+        ('zona', 'Zona'),
+        ('spatiu', 'Spatiu'),
+        ('element_bim', 'ElementBIM'),
+        ('asset', 'Asset'),
+        ('issue_bim', 'IssueBIM'),
+        ('model_bim', 'ModelBIM'),
+    ]
+
+    SOURCE_SYSTEMS = [
+        ('ifc', 'IFC (open standard)'),
+        ('revit', 'Autodesk Revit'),
+        ('bcf', 'BCF (issues)'),
+        ('trimble_connect', 'Trimble Connect'),
+        ('autodesk_bim360', 'Autodesk BIM 360 / ACC'),
+        ('bimx', 'Graphisoft BIMx'),
+        ('archicad', 'Graphisoft ArchiCAD'),
+        ('navisworks', 'Autodesk Navisworks'),
+        ('solibri', 'Solibri Model Checker'),
+        ('bimcollab', 'BIMcollab'),
+        ('plannerly', 'Plannerly'),
+        ('cmms', 'CMMS (asset management)'),
+        ('manual', 'Manual'),
+        ('other', 'Alt sistem'),
+    ]
+
+    @classmethod
+    def find_entity(cls, source_system, extern_id):
+        """
+        Lookup invers: gaseste entitatea interna care corespunde unui ID extern.
+        Returneaza tuple (entity_type, entity_id) sau (None, None).
+        """
+        m = cls.query.filter_by(source_system=source_system, extern_id=extern_id).first()
+        if m:
+            return (m.entity_type, m.entity_id)
+        return (None, None)
+
+    @classmethod
+    def add_or_update(cls, entity_type, entity_id, source_system, extern_id,
+                      model_bim_id=None, metadata=None, tenant_id=None):
+        """Helper idempotent pentru a stoca mapping (UPSERT)."""
+        existing = cls.query.filter_by(
+            entity_type=entity_type, entity_id=entity_id,
+            source_system=source_system, extern_id=extern_id,
+        ).first()
+        if existing:
+            existing.last_synced_at = datetime.utcnow()
+            if model_bim_id:
+                existing.model_bim_id = model_bim_id
+            if metadata is not None:
+                import json as _json
+                existing.metadata_json = _json.dumps(metadata, ensure_ascii=False) if isinstance(metadata, dict) else str(metadata)
+            return existing
+        m = cls(
+            tenant_id=tenant_id,
+            entity_type=entity_type, entity_id=entity_id,
+            source_system=source_system, extern_id=extern_id,
+            model_bim_id=model_bim_id,
+            last_synced_at=datetime.utcnow(),
+        )
+        if metadata is not None:
+            import json as _json
+            m.metadata_json = _json.dumps(metadata, ensure_ascii=False) if isinstance(metadata, dict) else str(metadata)
+        db.session.add(m)
+        return m
+
+    def __repr__(self):
+        return f'<ExternalMapping {self.entity_type}:{self.entity_id} -> {self.source_system}:{self.extern_id[:20]}>'
 
 

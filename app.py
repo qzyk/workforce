@@ -301,6 +301,28 @@ def create_app(config_name='default'):
             ('utilizatori', 'limba', "VARCHAR(5) DEFAULT 'ro'"),
             ('angajati', 'tenant_id', 'INTEGER REFERENCES tenants(id)'),
             ('proiecte', 'tenant_id', 'INTEGER REFERENCES tenants(id)'),
+
+            # === Data integration columns (consistent extern_id + source_system) ===
+            ('bim_santiere', 'source_system', 'VARCHAR(30)'),
+            ('bim_santiere', 'last_synced_at', 'DATETIME'),
+            ('bim_cladiri', 'source_system', 'VARCHAR(30)'),
+            ('bim_cladiri', 'last_synced_at', 'DATETIME'),
+            ('bim_niveluri', 'source_system', 'VARCHAR(30)'),
+            ('bim_niveluri', 'last_synced_at', 'DATETIME'),
+            ('bim_zone', 'source_system', 'VARCHAR(30)'),
+            ('bim_zone', 'last_synced_at', 'DATETIME'),
+            ('bim_spatii', 'source_system', 'VARCHAR(30)'),
+            ('bim_spatii', 'last_synced_at', 'DATETIME'),
+            ('bim_elemente', 'source_system', 'VARCHAR(30)'),
+            ('bim_elemente', 'model_bim_id', 'INTEGER REFERENCES bim_modele(id)'),
+            ('bim_elemente', 'last_synced_at', 'DATETIME'),
+            ('bim_assets', 'extern_id', 'VARCHAR(100)'),
+            ('bim_assets', 'source_system', 'VARCHAR(30)'),
+            ('bim_issues', 'extern_id', 'VARCHAR(100)'),
+            ('bim_issues', 'source_system', 'VARCHAR(30)'),
+            ('bim_modele', 'extern_id', 'VARCHAR(100)'),
+            ('bim_modele', 'source_system', 'VARCHAR(30)'),
+            ('bim_modele', 'last_synced_at', 'DATETIME'),
         ]
 
         adaugate = 0
@@ -326,6 +348,43 @@ def create_app(config_name='default'):
         bim_tables = [t for t in insp2.get_table_names() if t.startswith('bim_') or t == 'tenants']
         click.echo(f'  Tabele BIM gasite: {bim_tables}')
         click.echo(f'[FINAL] Migrare BIM completa. {adaugate} coloane FK adaugate.')
+
+    # --------------------------------------------------------
+    # COMANDA CLI: flask validate-bim
+    # Raport de calitate a datelor BIM (pentru CI/cron job)
+    # --------------------------------------------------------
+    @app.cli.command('validate-bim')
+    @click.option('--exit-code', default=False, is_flag=True,
+                  help='Iese cu cod 1 daca exista probleme de severitate mare')
+    def validate_bim_command(exit_code):
+        """Ruleaza rapoarte de calitate BIM si afiseaza sumarul."""
+        from services import bim_quality
+        from models import (
+            RaportActivitate, ElementBIM, Spatiu, ExternalMapping,
+            Santier, Cladire, Nivel, Zona, Asset, IssueBIM, ModelBIM,
+        )
+        raport = bim_quality.run_all_reports(
+            db, RaportActivitate, ElementBIM, Spatiu, ExternalMapping,
+            Santier, Cladire, Nivel, Zona, Asset, IssueBIM, ModelBIM,
+        )
+        click.echo(f'\n=== BIM Data Quality Report ===')
+        click.echo(f'Total probleme: {raport["total"]}')
+        click.echo(f'  Severitate mare:  {raport["by_severitate"].get("mare", 0)}')
+        click.echo(f'  Severitate medie: {raport["by_severitate"].get("medie", 0)}')
+        click.echo(f'  Severitate mica:  {raport["by_severitate"].get("mica", 0)}')
+        click.echo(f'\nDistribuire pe tip:')
+        for tip, cnt in sorted(raport['by_tip'].items()):
+            click.echo(f'  {tip:32} {cnt}')
+        if raport['by_severitate'].get('mare', 0) > 0:
+            click.echo('\n[!] Probleme severe gasite. Rezolva-le inainte de productie.')
+            for it in raport['entries']:
+                if it['severitate'] == 'mare':
+                    click.echo(f'  - [{it["tip"]}] {it["mesaj"]}')
+            if exit_code:
+                import sys
+                sys.exit(1)
+        else:
+            click.echo('\n[OK] Datele sunt curate.')
 
     def _incarca_date_demo():
         """Incarca date demonstrative in baza de date."""
