@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Viewer 3D - {{ model.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Viewer: {{ model.nume }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.viewer-container { width:100%; height:calc(100vh - 220px); min-height:480px; background:#1a1a1a; border-radius:10px; position:relative; overflow:hidden; }
+.viewer-container canvas { display:block; outline:none; }
+.viewer-info { position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.6); color:white; padding:8px 14px; border-radius:6px; font-size:0.85rem; z-index:10; }
+.viewer-info code { background:rgba(255,255,255,0.15); padding:2px 6px; border-radius:3px; font-size:0.78rem; }
+.viewer-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:12px; color:white; z-index:5; }
+.viewer-toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2 style="margin:0;"><i class="fa-solid fa-cube" style="color:var(--primary);"></i> {{ model.nume }}</h2>
+        <div style="font-size:0.85rem; color:var(--gray-500); margin-top:4px;">
+            {{ model.tip|upper }} | {{ model.nr_elemente }} elemente | {{ '%.1f' | format(model.fisier_marime / 1024 / 1024) }} MB
+        </div>
+    </div>
+    <div class="viewer-toolbar">
+        <button class="btn btn-outline" onclick="if(window.viewer){window.viewer.context.fitToFrame()}"><i class="fa-solid fa-expand"></i> Fit</button>
+    </div>
+</div>
+
+<div class="viewer-container" id="viewerContainer">
+    <div class="viewer-info" id="viewerInfo">
+        <strong>{{ model.nume }}</strong><br>
+        Click pe element pentru detalii. Drag pentru rotire.
+    </div>
+    <div class="viewer-loading" id="viewerLoading">
+        <i class="fa-solid fa-spinner fa-spin" style="font-size:3rem;"></i>
+        <span>Se incarca modelul IFC...</span>
+        <small style="color:#aaa; max-width:380px; text-align:center;">
+            Prima incarcare poate dura 10-60 secunde in functie de marimea modelului.
+        </small>
+    </div>
+</div>
+
+<div style="margin-top:16px; padding:14px; background:#FFF8E1; border-left:3px solid var(--warning); border-radius:6px; font-size:0.88rem;">
+    <i class="fa-solid fa-info-circle"></i>
+    <strong>Notă:</strong> Viewer-ul 3D foloseste <code>web-ifc-viewer</code> (Open Source).
+    Modelul IFC este servit din contul tau (nu se urca pe servicii externe).
+    Pentru fisiere mari (&gt;100MB) recomandam preprocesare offline.
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+// Folosim CDN-ul pentru web-ifc-viewer (modul mic, ~150KB).
+// Daca clientul nu are internet, viewer-ul nu va incarca, dar pagina ramane functionala.
+import { IfcViewerAPI } from 'https://unpkg.com/web-ifc-viewer@1.0.218/dist/index.js';
+
+const container = document.getElementById('viewerContainer');
+const loading = document.getElementById('viewerLoading');
+const info = document.getElementById('viewerInfo');
+
+try {
+    const viewer = new IfcViewerAPI({ container, backgroundColor: 0x1a1a1a });
+    viewer.IFC.setWasmPath('https://unpkg.com/web-ifc@0.0.46/');
+    viewer.axes.setAxes();
+    viewer.grid.setGrid();
+
+    const url = "{{ url_for('bim.viewer_file', model_id=model.id) }}";
+    const t0 = performance.now();
+    const ifcModel = await viewer.IFC.loadIfcUrl(url);
+    const sec = ((performance.now() - t0) / 1000).toFixed(1);
+    loading.style.display = 'none';
+    info.innerHTML = `<strong>{{ model.nume }}</strong><br>Incarcat in ${sec}s. Click pe element pentru detalii.`;
+    window.viewer = viewer;
+    viewer.context.fitToFrame();
+
+    // Click pe element -> evidentiere + info
+    container.addEventListener('click', async () => {
+        const result = await viewer.IFC.selector.pickIfcItem();
+        if (!result) return;
+        const props = await viewer.IFC.getProperties(result.modelID, result.id, true);
+        const guid = props.GlobalId?.value || '';
+        const name = props.Name?.value || '(fara nume)';
+        info.innerHTML = `<strong>${name}</strong><br>GUID: <code>${guid.substring(0, 16)}...</code>`;
+    });
+} catch (err) {
+    loading.innerHTML = `<i class="fa-solid fa-circle-xmark" style="font-size:2.5rem; color:#ff6b6b;"></i><br>` +
+        `<strong>Viewer 3D indisponibil</strong><br>` +
+        `<small style="color:#aaa;">${err.message || 'Eroare la incarcare. Verifica conexiunea internet.'}</small>`;
+}
+</script>
+{% endblock %}

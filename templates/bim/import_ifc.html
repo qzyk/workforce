@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Import IFC - BIM{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Import IFC</li>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:760px; margin:0 auto;">
+    <h2 style="margin:0 0 20px 0;"><i class="fa-solid fa-file-import" style="color:var(--primary);"></i> Import model IFC</h2>
+
+    {% if not ifcopenshell_disponibil %}
+    <div class="act-warning" style="background:#FFF3E0; border-left:3px solid var(--warning); padding:14px;">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <strong>ifcopenshell nu este instalat.</strong><br>
+        Pentru a activa importul IFC, instaleaza pachetul:
+        <code style="display:block; background:white; padding:6px; margin-top:6px; border-radius:4px; font-size:0.85rem;">
+            pip install ifcopenshell
+        </code>
+        Apoi reincarca aplicatia. Importurile pot fi facute si in mod <code>dry_run</code> pentru a testa parsarea fara salvare in DB.
+    </div>
+    {% endif %}
+
+    <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="card-panel">
+            <div class="card-panel-body" style="padding:20px;">
+                <div class="form-group">
+                    <label class="form-label">Fisier IFC *</label>
+                    <input type="file" name="ifc_file" accept=".ifc" required class="form-control">
+                    <small style="color:var(--gray-500);">Format suportat: IFC2x3, IFC4. Marime maxima: 50MB.</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Santier destinatie (optional)</label>
+                    <select name="santier_id" class="form-select">
+                        <option value="">— Creeaza santier nou din IfcSite —</option>
+                        {% for s in santiere %}
+                        <option value="{{ s.id }}">{{ s.cod }} - {{ s.nume }}</option>
+                        {% endfor %}
+                    </select>
+                    <small style="color:var(--gray-500);">Daca nu e selectat, se creeaza un santier nou pe baza IfcSite din fisier.</small>
+                </div>
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                        <input type="checkbox" name="dry_run" value="1" style="width:18px; height:18px;">
+                        <span>Doar verifica (dry-run, nu salveaza in DB)</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+            <a href="{{ url_for('bim.dashboard') }}" class="btn btn-outline">Anuleaza</a>
+            <button type="submit" class="btn btn-primary" {% if not ifcopenshell_disponibil %}disabled title="ifcopenshell lipseste"{% endif %}>
+                <i class="fa-solid fa-upload"></i> Import
+            </button>
+        </div>
+    </form>
+
+    {% if rezultat %}
+    <div class="card-panel" style="margin-top:20px;">
+        <div class="card-panel-header">
+            <h3>
+                {% if rezultat.status == 'ok' %}
+                <i class="fa-solid fa-circle-check" style="color:var(--success);"></i> Import finalizat
+                {% else %}
+                <i class="fa-solid fa-circle-xmark" style="color:var(--danger);"></i> Eroare
+                {% endif %}
+            </h3>
+        </div>
+        <div class="card-panel-body" style="padding:18px;">
+            <p>{{ rezultat.mesaj }}</p>
+            {% if rezultat.statistici %}
+            <h4 style="margin-top:16px;">Statistici</h4>
+            <ul>
+                {% for k, v in rezultat.statistici.items() %}
+                <li><strong>{{ k|replace('_', ' ')|title }}:</strong> {{ v }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% if rezultat.errors %}
+            <h4 style="color:var(--danger); margin-top:16px;">Avertismente / Erori</h4>
+            <ul>
+                {% for err in rezultat.errors %}
+                <li style="font-size:0.85rem;">{{ err }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

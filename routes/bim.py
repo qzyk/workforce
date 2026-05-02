@@ -14,19 +14,23 @@ Rutele expun:
 """
 
 import json
+import os
 from datetime import datetime, date
 from functools import wraps
+from io import BytesIO
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
-    flash, jsonify, abort
+    flash, jsonify, abort, send_file, current_app
 )
 from flask_login import login_required, current_user
+from werkzeug.utils import secure_filename
 
 from models import (
     db, Santier, Cladire, Nivel, Zona, Spatiu, ElementBIM, Asset,
     IssueBIM, ModelBIM, Proiect, RaportActivitate, Pontaj,
 )
+from services import ifc_import as ifc_service
 
 bim_bp = Blueprint('bim', __name__, url_prefix='/bim')
 
@@ -354,3 +358,122 @@ def api_elemente():
         'tip_label': e.tip_label,
         'cale_completa': e.cale_completa,
     } for e in elemente])
+
+
+# ============================================================
+# IFC IMPORT / EXPORT
+# ============================================================
+
+@bim_bp.route('/import/ifc', methods=['GET', 'POST'])
+@login_required
+@manager_or_admin
+def import_ifc_view():
+    """Pagina de import IFC + procesare upload."""
+    rezultat = None
+    if request.method == 'POST':
+        file = request.files.get('ifc_file')
+        if not file or not file.filename:
+            flash('Selectati un fisier IFC.', 'danger')
+            return redirect(request.url)
+        if not file.filename.lower().endswith('.ifc'):
+            flash('Doar fisiere .ifc sunt acceptate.', 'danger')
+            return redirect(request.url)
+
+        # Salvez fisierul temporar
+        upload_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'ifc')
+        os.makedirs(upload_dir, exist_ok=True)
+        safe_name = secure_filename(file.filename)
+        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        path = os.path.join(upload_dir, f'{timestamp}_{safe_name}')
+        file.save(path)
+
+        santier_id = request.form.get('santier_id', type=int) or None
+        dry_run = bool(request.form.get('dry_run'))
+
+        rezultat = ifc_service.import_ifc(path, santier_id=santier_id, dry_run=dry_run)
+
+        # Inregistrez modelul in tabela bim_modele (chiar daca dry_run)
+        try:
+            stats = rezultat.get('statistici', {})
+            m = ModelBIM(
+                santier_id=rezultat.get('santier_id') or santier_id,
+                nume=safe_name,
+                tip='ifc',
+                fisier_path=os.path.relpath(path, current_app.root_path),
+                fisier_marime=os.path.getsize(path),
+                nr_elemente=stats.get('elemente_create', 0),
+                nr_spatii=stats.get('spatii_create', 0),
+                procesare_status='procesat' if rezultat['status'] == 'ok' else 'eroare',
+                procesare_log=rezultat.get('mesaj', ''),
+                incarcat_de_id=current_user.id,
+            )
+            db.session.add(m)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            rezultat['errors'].append(f'log model: {e}')
+
+        if rezultat['status'] == 'ok':
+            flash(rezultat['mesaj'], 'success')
+        else:
+            flash(rezultat['mesaj'], 'danger')
+
+    santiere = Santier.query.order_by(Santier.cod).all()
+    return render_template('bim/import_ifc.html',
+        santiere=santiere,
+        rezultat=rezultat,
+        ifcopenshell_disponibil=ifc_service.is_available(),
+    )
+
+
+@bim_bp.route('/export/bcf')
+@login_required
+def export_bcf():
+    """Export BCF cu toate issues (sau filtrate)."""
+    f_status = request.args.get('status', '').strip()
+    q = IssueBIM.query
+    if f_status:
+        q = q.filter_by(status=f_status)
+    else:
+        q = q.filter(IssueBIM.status.in_(['deschis', 'in_lucru']))
+    issues = q.all()
+    if not issues:
+        flash('Nu exista issues de exportat.', 'warning')
+        return redirect(url_for('bim.issues_lista'))
+
+    bcf_zip = ifc_service.export_bcf(issues)
+    filename = f'bim_issues_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.bcf'
+    return send_file(
+        bcf_zip,
+        mimetype='application/octet-stream',
+        as_attachment=True,
+        download_name=filename,
+    )
+
+
+# ============================================================
+# 3D VIEWER (IFC.js / web-ifc-viewer)
+# ============================================================
+
+@bim_bp.route('/viewer/<int:model_id>')
+@login_required
+def viewer(model_id):
+    """Pagina viewer 3D pentru un ModelBIM IFC."""
+    model = ModelBIM.query.get_or_404(model_id)
+    if model.tip != 'ifc' or not model.fisier_path:
+        flash('Viewer-ul 3D suporta doar fisiere IFC incarcate.', 'warning')
+        return redirect(url_for('bim.dashboard'))
+    return render_template('bim/viewer.html', model=model)
+
+
+@bim_bp.route('/viewer/<int:model_id>/file')
+@login_required
+def viewer_file(model_id):
+    """Trimite fisierul IFC pentru viewer."""
+    model = ModelBIM.query.get_or_404(model_id)
+    if not model.fisier_path:
+        abort(404)
+    abs_path = os.path.join(current_app.root_path, model.fisier_path)
+    if not os.path.exists(abs_path):
+        abort(404)
+    return send_file(abs_path, mimetype='application/octet-stream')
