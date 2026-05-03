@@ -1,0 +1,33 @@
+[run]
+source = .
+omit =
+    tests/*
+    venv/*
+    .venv/*
+    .pytest_cache/*
+    htmlcov*/*
+    __pycache__/*
+    */__pycache__/*
+    */*.pyc
+    backups/*
+    exports/*
+    static/*
+    uploads/*
+    database/*
+    docs/*
+    install.bat
+    install.sh
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    raise ImportError
+    except ImportError
+show_missing = False
+skip_empty = True
+
+[html]
+directory = htmlcov

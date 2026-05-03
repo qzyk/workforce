@@ -292,6 +292,11 @@ class Pontaj(db.Model):
 
     aprobator = db.relationship('Utilizator', foreign_keys=[aprobat_de], backref='pontaje_aprobate')
     operator = db.relationship('Utilizator', foreign_keys=[introdus_de], backref='pontaje_introduse')
+    # Relatii BIM (link optional spre element/spatiu)
+    element_bim = db.relationship('ElementBIM', foreign_keys=[element_bim_id],
+                                  backref=db.backref('pontaje', lazy='dynamic'))
+    spatiu = db.relationship('Spatiu', foreign_keys=[spatiu_id],
+                             backref=db.backref('pontaje', lazy='dynamic'))
 
     TIPURI_ZI = [
         ('lucratoare', 'Lucratoare'),
@@ -757,6 +762,13 @@ class RaportActivitate(db.Model):
     categorie_activitate = db.relationship('CategorieActivitate', backref=db.backref('rapoarte', lazy='dynamic'))
     aprobat_de = db.relationship('Utilizator', foreign_keys=[aprobat_de_id],
                                   backref='activitati_aprobate')
+    # Relatii BIM (link spre context spatial)
+    element_bim = db.relationship('ElementBIM', foreign_keys=[element_bim_id],
+                                  backref=db.backref('rapoarte_workforce', lazy='dynamic'))
+    spatiu = db.relationship('Spatiu', foreign_keys=[spatiu_id],
+                             backref=db.backref('rapoarte_workforce', lazy='dynamic'))
+    zona = db.relationship('Zona', foreign_keys=[zona_id],
+                           backref=db.backref('rapoarte_workforce', lazy='dynamic'))
 
     STATUSURI = [
         ('draft', 'Draft'),

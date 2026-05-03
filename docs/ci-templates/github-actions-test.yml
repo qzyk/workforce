@@ -1,0 +1,96 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, 'feat/**', 'fix/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit-and-integration:
+    name: Unit + Integration tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install fara ifcopenshell (greu pe CI - testele cu IFC sar gracefully)
+          pip install Flask Flask-SQLAlchemy Flask-Login Flask-WTF Werkzeug SQLAlchemy
+          pip install openpyxl reportlab pandas Pillow python-dateutil APScheduler WTForms email-validator
+          pip install pytest pytest-cov
+
+      - name: Run pytest with coverage
+        run: |
+          pytest tests/ --cov --cov-report=term --cov-report=xml --cov-report=html
+
+      - name: Upload coverage HTML artifact
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: htmlcov/
+          retention-days: 14
+
+      - name: Upload coverage XML for Codecov
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 7
+
+  validate-bim-cli:
+    name: Validate BIM CLI (zero errors)
+    runs-on: ubuntu-latest
+    needs: unit-and-integration
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install Flask Flask-SQLAlchemy Flask-Login Flask-WTF Werkzeug SQLAlchemy openpyxl reportlab pandas Pillow python-dateutil APScheduler WTForms email-validator
+      - name: Init DB + run validate-bim
+        run: |
+          export FLASK_APP=app.py
+          export DATABASE_URL=sqlite:///$(mktemp).db
+          export SECRET_KEY=ci-test-key
+          flask migrate-bim
+          flask validate-bim --exit-code
+
+  e2e:
+    name: E2E (Playwright) - opt-in
+    runs-on: ubuntu-latest
+    if: contains(github.event.head_commit.message, '[e2e]') || github.event_name == 'pull_request'
+    needs: unit-and-integration
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install Flask Flask-SQLAlchemy Flask-Login Flask-WTF Werkzeug SQLAlchemy openpyxl reportlab pandas Pillow python-dateutil APScheduler WTForms email-validator
+          pip install pytest pytest-playwright
+          playwright install --with-deps chromium
+      - name: Run E2E
+        env:
+          PLAYWRIGHT_E2E: '1'
+        run: |
+          pytest tests/e2e/ -v
