@@ -105,7 +105,21 @@ Sterge automat dupa fiecare test:
 
 ## CI (GitHub Actions)
 
-`.github/workflows/test.yml`:
+Template-ul de workflow se afla in `docs/ci-templates/github-actions-test.yml`.
+
+**Instalare** (necesita scope `workflow` pe Personal Access Token):
+
+```bash
+mkdir -p .github/workflows
+cp docs/ci-templates/github-actions-test.yml .github/workflows/test.yml
+git add .github/workflows/test.yml
+git commit -m "Add GitHub Actions test workflow"
+git push  # PAT cu scope workflow
+```
+
+Sau direct prin UI: GitHub repo → Actions → New workflow → paste continutul fisierului.
+
+Workflow-ul are 3 job-uri:
 
 1. **`unit-and-integration`** — Python 3.11 + 3.12 matrix, ruleaza la fiecare push
 2. **`validate-bim-cli`** — verifica `flask migrate-bim` + `flask validate-bim --exit-code`
