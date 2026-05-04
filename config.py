@@ -14,9 +14,31 @@ class Config:
     WTF_CSRF_ENABLED = True
 
     # Baza de date
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
+    # Suporta:
+    # - SQLite (default): sqlite:///<path>/workforce.db
+    # - PostgreSQL: postgresql://user:pass@host:port/dbname
+    # - PostgreSQL (legacy): postgres://... (auto-converted la postgresql://)
+    _db_url = os.environ.get('DATABASE_URL') or \
         'sqlite:///' + os.path.join(basedir, 'database', 'workforce.db')
+    # Heroku/PA-style postgres:// -> postgresql:// (SQLAlchemy 2.x)
+    if _db_url.startswith('postgres://'):
+        _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
+    SQLALCHEMY_DATABASE_URI = _db_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Engine options - pool tuning pentru Postgres in productie
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_pre_ping': True,    # detecteaza conexiuni stale
+        'pool_recycle': 280,      # recicleaza la 280s (sub limita PA de 300s)
+    } if _db_url.startswith('postgresql://') else {}
+
+    @staticmethod
+    def is_postgres():
+        return Config.SQLALCHEMY_DATABASE_URI.startswith('postgresql://')
+
+    @staticmethod
+    def is_sqlite():
+        return Config.SQLALCHEMY_DATABASE_URI.startswith('sqlite:///')
 
     # Upload fisiere
     UPLOAD_FOLDER = os.path.join(basedir, 'uploads')
@@ -37,6 +59,10 @@ class Config:
 
     # Sesiune
     PERMANENT_SESSION_LIFETIME = 28800  # 8 ore in secunde
+
+    # Multi-tenant: 'off' | 'optional' | 'strict'
+    MULTI_TENANT_MODE = os.environ.get('MULTI_TENANT_MODE', 'off')
+    TENANT_FROM_SUBDOMAIN = os.environ.get('TENANT_FROM_SUBDOMAIN', 'false').lower() == 'true'
 
 
 class DevelopmentConfig(Config):

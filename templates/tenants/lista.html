@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Tenants - INNOVA WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Tenants</li>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2 style="margin:0;"><i class="fa-solid fa-building-user" style="color:var(--primary);"></i> Tenant Management</h2>
+        <div style="font-size:0.85rem; color:var(--gray-500); margin-top:4px;">
+            Mod multi-tenant: <strong>{{ mode }}</strong>
+        </div>
+    </div>
+    <a href="{{ url_for('tenants.nou') }}" class="btn btn-primary">
+        <i class="fa-solid fa-plus"></i> Tenant nou
+    </a>
+</div>
+
+{% if mode == 'off' %}
+<div class="card-panel" style="background:#FFF8E1; border-left:4px solid var(--warning); margin-bottom:16px;">
+    <div class="card-panel-body" style="padding:14px;">
+        <strong><i class="fa-solid fa-circle-info"></i> Multi-tenant e dezactivat.</strong>
+        <p style="margin:6px 0 0 0; font-size:0.88rem;">
+            Pentru a activa filtrarea automata pe tenant, seteaza <code>MULTI_TENANT_MODE=strict</code> in env vars
+            si reload aplicatia. <code>optional</code> permite asignare fara filter strict.
+        </p>
+    </div>
+</div>
+{% endif %}
+
+<div class="card-panel">
+    <div class="card-panel-body" style="padding:0;">
+        {% if tenants %}
+        <table class="data-table">
+            <thead>
+                <tr><th>Cod</th><th>Nume</th><th>Activ</th><th>Useri</th><th>Angajati</th><th>Proiecte</th><th>Actiuni</th></tr>
+            </thead>
+            <tbody>
+                {% for t in tenants %}
+                <tr>
+                    <td><code>{{ t.cod }}</code></td>
+                    <td><strong>{{ t.nume }}</strong></td>
+                    <td>
+                        {% if t.activ %}
+                        <span class="badge-status badge-aprobat">Activ</span>
+                        {% else %}
+                        <span class="badge-status badge-respins">Inactiv</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ stats[t.id].utilizatori }}</td>
+                    <td>{{ stats[t.id].angajati }}</td>
+                    <td>{{ stats[t.id].proiecte }}</td>
+                    <td class="actions-cell" style="white-space:nowrap;">
+                        <a href="{{ url_for('tenants.utilizatori', id=t.id) }}" class="btn-action btn-view" title="Utilizatori"><i class="fa-solid fa-users"></i></a>
+                        <a href="{{ url_for('tenants.editeaza', id=t.id) }}" class="btn-action btn-edit"><i class="fa-solid fa-pen"></i></a>
+                        <form method="POST" action="{{ url_for('tenants.sterge', id=t.id) }}" style="display:inline;" onsubmit="return confirm('Sigur stergi tenant {{ t.cod }}?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-action" style="color:var(--danger);"><i class="fa-solid fa-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state" style="padding:40px;">
+            <i class="fa-solid fa-building-user" style="font-size:2.5rem; color:var(--gray-300);"></i>
+            <p style="margin-top:12px; color:var(--gray-500);">Niciun tenant inregistrat.</p>
+            <a href="{{ url_for('tenants.nou') }}" class="btn btn-primary" style="margin-top:8px;">
+                <i class="fa-solid fa-plus"></i> Adauga primul tenant
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if untenanted.utilizatori or untenanted.angajati or untenanted.proiecte %}
+<div class="card-panel" style="margin-top:16px;">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-circle-question"></i> Date fara tenant</h3></div>
+    <div class="card-panel-body" style="padding:14px; font-size:0.88rem;">
+        Aceste date nu apartin niciunui tenant (tenant_id=NULL):
+        <ul style="margin:8px 0 0 0;">
+            <li><strong>{{ untenanted.utilizatori }}</strong> utilizatori</li>
+            <li><strong>{{ untenanted.angajati }}</strong> angajati</li>
+            <li><strong>{{ untenanted.proiecte }}</strong> proiecte</li>
+        </ul>
+        <small style="color:var(--gray-500); display:block; margin-top:6px;">
+            In MODE=off ele apar in toate query-urile. In MODE=strict, doar super-admin-ul (admin fara tenant) le poate vedea.
+        </small>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

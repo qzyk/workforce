@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editeaza' if tenant else 'Adauga' }} Tenant{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('tenants.lista') }}">Tenants</a></li>
+<li class="breadcrumb-item active">{{ 'Editeaza' if tenant else 'Nou' }}</li>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:680px; margin:0 auto;">
+    <h2 style="margin:0 0 20px 0;">
+        <i class="fa-solid fa-building-user" style="color:var(--primary);"></i>
+        {{ 'Editeaza Tenant' if tenant else 'Tenant nou' }}
+    </h2>
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="card-panel">
+            <div class="card-panel-body" style="padding:20px;">
+                <div class="form-group">
+                    <label class="form-label">Cod * <small style="color:var(--gray-500);">(unic, lowercase, ex: innova, beta-srl)</small></label>
+                    <input type="text" name="cod" class="form-control" maxlength="50" required pattern="[a-z0-9-]+"
+                           value="{{ tenant.cod if tenant else '' }}"
+                           {{ 'readonly' if tenant }}>
+                    {% if tenant %}<small style="color:var(--gray-500);">Codul nu se poate modifica dupa creare.</small>{% endif %}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nume *</label>
+                    <input type="text" name="nume" class="form-control" maxlength="200" required
+                           value="{{ tenant.nume if tenant else '' }}">
+                </div>
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                        <input type="checkbox" name="activ" value="1" {{ 'checked' if not tenant or tenant.activ }}>
+                        <span>Activ</span>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Config JSON <small style="color:var(--gray-500);">(optional, ex: setari per-tenant)</small></label>
+                    <textarea name="config_json" class="form-control" rows="4" placeholder='{"firma_nume": "...", "moneda": "RON"}'>{{ tenant.config_json if tenant else '' }}</textarea>
+                </div>
+            </div>
+        </div>
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+            <a href="{{ url_for('tenants.lista') }}" class="btn btn-outline">Anuleaza</a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-floppy-disk"></i> Salveaza
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

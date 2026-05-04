@@ -71,6 +71,7 @@ def create_app(config_name='default'):
     from routes.activitati import activitati_bp
     from routes.masini import masini_bp
     from routes.bim import bim_bp
+    from routes.tenants import tenants_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -84,10 +85,15 @@ def create_app(config_name='default'):
     app.register_blueprint(activitati_bp)
     app.register_blueprint(masini_bp)
     app.register_blueprint(bim_bp)
+    app.register_blueprint(tenants_bp)
 
     # Init i18n (RO/EN)
     import i18n as _i18n
     _i18n.init_app(app)
+
+    # Init multi-tenant infrastructure
+    import tenant as _tenant
+    _tenant.init_app(app)
 
     # --------------------------------------------------------
     # CONTEXT PROCESSOR - DATE GLOBALE
@@ -385,6 +391,31 @@ def create_app(config_name='default'):
                 sys.exit(1)
         else:
             click.echo('\n[OK] Datele sunt curate.')
+
+    # --------------------------------------------------------
+    # COMANDA CLI: flask migrate-to-postgres
+    # Migreaza datele din SQLite in PostgreSQL
+    # --------------------------------------------------------
+    @app.cli.command('migrate-to-postgres')
+    @click.option('--pg-url', default=None, envvar='PG_URL',
+                  help='URL PostgreSQL target (postgresql://user:pass@host/db)')
+    @click.option('--sqlite-path', default=None,
+                  help='Path catre fisierul SQLite sursa (default: ./database/workforce.db)')
+    @click.option('--dry-run', is_flag=True, help='Doar verifica, nu insereaza')
+    def migrate_to_postgres_command(pg_url, sqlite_path, dry_run):
+        """Migreaza datele din SQLite in PostgreSQL."""
+        from scripts.migrate_sqlite_to_postgres import migrate, print_summary
+        if not sqlite_path:
+            sqlite_path = os.path.join(app.root_path, 'database', 'workforce.db')
+        if not pg_url or not pg_url.startswith('postgresql://'):
+            click.echo('EROARE: --pg-url sau env PG_URL trebuie sa fie postgresql://...')
+            return
+        click.echo(f'SQLite source: {sqlite_path}')
+        click.echo(f'Postgres target: {pg_url[:30]}...')
+        click.echo(f'Dry run: {dry_run}')
+        stats = migrate(sqlite_path, pg_url, dry_run=dry_run, verbose=True)
+        click.echo('\n')
+        print_summary(stats)
 
     def _incarca_date_demo():
         """Incarca date demonstrative in baza de date."""

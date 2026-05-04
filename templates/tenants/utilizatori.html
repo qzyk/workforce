@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Utilizatori in {{ tenant.cod }} - Tenants{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('tenants.lista') }}">Tenants</a></li>
+<li class="breadcrumb-item active">{{ tenant.cod }} - Utilizatori</li>
+{% endblock %}
+
+{% block content %}
+<h2 style="margin:0 0 20px 0;">
+    <i class="fa-solid fa-users" style="color:var(--primary);"></i>
+    Utilizatori in tenant <strong>{{ tenant.cod }}</strong>
+</h2>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    <div class="card-panel">
+        <div class="card-panel-header"><h3><i class="fa-solid fa-check"></i> Atribuiti ({{ utilizatori_in|length }})</h3></div>
+        <div class="card-panel-body" style="padding:0;">
+            {% if utilizatori_in %}
+            <table class="data-table">
+                <thead><tr><th>Nume</th><th>Email</th><th>Rol</th><th></th></tr></thead>
+                <tbody>
+                    {% for u in utilizatori_in %}
+                    <tr>
+                        <td>{{ u.nume }} {{ u.prenume }}</td>
+                        <td style="font-size:0.82rem;">{{ u.email }}</td>
+                        <td>{{ u.rol }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('tenants.dezatribuie_utilizator', tenant_id=tenant.id, user_id=u.id) }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-outline" style="font-size:0.78rem; padding:3px 8px;" title="Scoate din tenant">
+                                    <i class="fa-solid fa-arrow-right"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="padding:20px; text-align:center; color:var(--gray-500);">Niciun utilizator atribuit.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card-panel">
+        <div class="card-panel-header"><h3><i class="fa-solid fa-circle-question"></i> Disponibili (fara tenant)</h3></div>
+        <div class="card-panel-body" style="padding:0;">
+            {% if utilizatori_libere %}
+            <table class="data-table">
+                <thead><tr><th></th><th>Nume</th><th>Email</th><th>Rol</th></tr></thead>
+                <tbody>
+                    {% for u in utilizatori_libere %}
+                    <tr>
+                        <td>
+                            <form method="POST" action="{{ url_for('tenants.atribuie_utilizator', tenant_id=tenant.id, user_id=u.id) }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-primary" style="font-size:0.78rem; padding:3px 8px;" title="Adauga la tenant">
+                                    <i class="fa-solid fa-arrow-left"></i>
+                                </button>
+                            </form>
+                        </td>
+                        <td>{{ u.nume }} {{ u.prenume }}</td>
+                        <td style="font-size:0.82rem;">{{ u.email }}</td>
+                        <td>{{ u.rol }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="padding:20px; text-align:center; color:var(--gray-500);">Niciun utilizator liber.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
