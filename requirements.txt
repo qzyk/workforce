@@ -22,5 +22,5 @@ pytest-playwright>=0.4.4  # E2E browser tests (rulare optionala)
 ifcopenshell>=0.7.0  # parser IFC pentru import modele BIM
 
 # === DATABASE DRIVERS ===
-# SQLite e built-in. Pentru PostgreSQL pe productie:
-psycopg2-binary>=2.9.9  # driver PostgreSQL (binary, no compile needed)
+# SQLite e built-in. Pentru MySQL pe productie (PythonAnywhere standard):
+PyMySQL>=1.1.0  # driver MySQL pur Python, no compile needed

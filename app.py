@@ -393,27 +393,31 @@ def create_app(config_name='default'):
             click.echo('\n[OK] Datele sunt curate.')
 
     # --------------------------------------------------------
-    # COMANDA CLI: flask migrate-to-postgres
-    # Migreaza datele din SQLite in PostgreSQL
+    # COMANDA CLI: flask migrate-to-mysql
+    # Migreaza datele din SQLite in MySQL (recomandat pentru PythonAnywhere)
     # --------------------------------------------------------
-    @app.cli.command('migrate-to-postgres')
-    @click.option('--pg-url', default=None, envvar='PG_URL',
-                  help='URL PostgreSQL target (postgresql://user:pass@host/db)')
+    @app.cli.command('migrate-to-mysql')
+    @click.option('--mysql-url', default=None, envvar='MYSQL_URL',
+                  help='URL MySQL target (mysql+pymysql://user:pass@host/db)')
     @click.option('--sqlite-path', default=None,
                   help='Path catre fisierul SQLite sursa (default: ./database/workforce.db)')
     @click.option('--dry-run', is_flag=True, help='Doar verifica, nu insereaza')
-    def migrate_to_postgres_command(pg_url, sqlite_path, dry_run):
-        """Migreaza datele din SQLite in PostgreSQL."""
-        from scripts.migrate_sqlite_to_postgres import migrate, print_summary
+    def migrate_to_mysql_command(mysql_url, sqlite_path, dry_run):
+        """Migreaza datele din SQLite in MySQL."""
+        from scripts.migrate_sqlite_to_mysql import migrate, print_summary
         if not sqlite_path:
             sqlite_path = os.path.join(app.root_path, 'database', 'workforce.db')
-        if not pg_url or not pg_url.startswith('postgresql://'):
-            click.echo('EROARE: --pg-url sau env PG_URL trebuie sa fie postgresql://...')
+        if not mysql_url or 'mysql' not in mysql_url:
+            click.echo('EROARE: --mysql-url sau env MYSQL_URL trebuie sa contina "mysql"')
+            click.echo('       (ex: mysql+pymysql://user:pass@host/dbname)')
             return
+        # Auto-add pymysql driver if not specified
+        if mysql_url.startswith('mysql://') and not mysql_url.startswith('mysql+'):
+            mysql_url = mysql_url.replace('mysql://', 'mysql+pymysql://', 1)
         click.echo(f'SQLite source: {sqlite_path}')
-        click.echo(f'Postgres target: {pg_url[:30]}...')
+        click.echo(f'MySQL target: {mysql_url[:40]}...')
         click.echo(f'Dry run: {dry_run}')
-        stats = migrate(sqlite_path, pg_url, dry_run=dry_run, verbose=True)
+        stats = migrate(sqlite_path, mysql_url, dry_run=dry_run, verbose=True)
         click.echo('\n')
         print_summary(stats)
 

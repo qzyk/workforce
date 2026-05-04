@@ -16,25 +16,26 @@ class Config:
     # Baza de date
     # Suporta:
     # - SQLite (default): sqlite:///<path>/workforce.db
-    # - PostgreSQL: postgresql://user:pass@host:port/dbname
-    # - PostgreSQL (legacy): postgres://... (auto-converted la postgresql://)
+    # - MySQL: mysql+pymysql://user:pass@host/dbname
+    # - MySQL (legacy short): mysql://... (auto-converted la mysql+pymysql://)
     _db_url = os.environ.get('DATABASE_URL') or \
         'sqlite:///' + os.path.join(basedir, 'database', 'workforce.db')
-    # Heroku/PA-style postgres:// -> postgresql:// (SQLAlchemy 2.x)
-    if _db_url.startswith('postgres://'):
-        _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
+    # Auto-prefer pymysql daca user-ul a scris doar mysql:// (ex: PythonAnywhere docs)
+    if _db_url.startswith('mysql://') and not _db_url.startswith('mysql+'):
+        _db_url = _db_url.replace('mysql://', 'mysql+pymysql://', 1)
     SQLALCHEMY_DATABASE_URI = _db_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # Engine options - pool tuning pentru Postgres in productie
+    # Engine options - pool tuning pentru MySQL pe PythonAnywhere
+    # (PA inchide conexiuni MySQL idle dupa ~5 min)
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,    # detecteaza conexiuni stale
         'pool_recycle': 280,      # recicleaza la 280s (sub limita PA de 300s)
-    } if _db_url.startswith('postgresql://') else {}
+    } if 'mysql' in _db_url else {}
 
     @staticmethod
-    def is_postgres():
-        return Config.SQLALCHEMY_DATABASE_URI.startswith('postgresql://')
+    def is_mysql():
+        return 'mysql' in Config.SQLALCHEMY_DATABASE_URI
 
     @staticmethod
     def is_sqlite():
