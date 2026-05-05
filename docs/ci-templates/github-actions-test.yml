@@ -7,55 +7,97 @@ on:
     branches: [main]
 
 jobs:
-  unit-and-integration:
-    name: Unit + Integration tests (Python ${{ matrix.python-version }})
+  unit-and-integration-sqlite:
+    name: SQLite tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ['3.11', '3.12']
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # Install fara ifcopenshell (greu pe CI - testele cu IFC sar gracefully)
           pip install Flask Flask-SQLAlchemy Flask-Login Flask-WTF Werkzeug SQLAlchemy
           pip install openpyxl reportlab pandas Pillow python-dateutil APScheduler WTForms email-validator
           pip install pytest pytest-cov
-
-      - name: Run pytest with coverage
+      - name: Run pytest (SQLite, ignore E2E)
         run: |
-          pytest tests/ --cov --cov-report=term --cov-report=xml --cov-report=html
-
+          pytest tests/ --ignore=tests/e2e --cov --cov-report=term --cov-report=xml --cov-report=html
       - name: Upload coverage HTML artifact
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-html
+          name: coverage-html-sqlite
           path: htmlcov/
           retention-days: 14
 
-      - name: Upload coverage XML for Codecov
-        if: matrix.python-version == '3.12'
-        uses: actions/upload-artifact@v4
+  unit-and-integration-mysql:
+    name: MySQL tests (Python 3.12)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: workforce_test
+          MYSQL_USER: workforce
+          MYSQL_PASSWORD: workforce_pass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uworkforce -pworkforce_pass"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          name: coverage-xml
-          path: coverage.xml
-          retention-days: 7
+          python-version: '3.12'
+          cache: 'pip'
+      - name: Install dependencies (with PyMySQL)
+        run: |
+          python -m pip install --upgrade pip
+          pip install Flask Flask-SQLAlchemy Flask-Login Flask-WTF Werkzeug SQLAlchemy
+          pip install openpyxl reportlab pandas Pillow python-dateutil APScheduler WTForms email-validator
+          pip install pytest pytest-cov PyMySQL
+      - name: Wait for MySQL ready
+        run: |
+          for i in {1..30}; do
+            if mysqladmin ping -h 127.0.0.1 -P 3306 -uworkforce -pworkforce_pass --silent; then
+              echo "MySQL ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "MySQL did not become ready"; exit 1
+      - name: Configure MySQL collation utf8mb4
+        run: |
+          mysql -h 127.0.0.1 -uworkforce -pworkforce_pass workforce_test \
+            -e "ALTER DATABASE workforce_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+      - name: Run MySQL-specific tests
+        env:
+          MYSQL_TEST_URL: mysql+pymysql://workforce:workforce_pass@127.0.0.1:3306/workforce_test
+          DATABASE_URL: mysql+pymysql://workforce:workforce_pass@127.0.0.1:3306/workforce_test
+          SECRET_KEY: ci-mysql-test
+        run: |
+          pytest tests/integration/test_mysql_compatibility.py \
+                 tests/integration/test_mysql_query_semantics.py \
+                 tests/integration/test_mysql_migration_script.py \
+                 tests/integration/test_mysql_existing_suite_runner.py \
+                 -v --tb=short
 
   validate-bim-cli:
-    name: Validate BIM CLI (zero errors)
+    name: Validate BIM CLI
     runs-on: ubuntu-latest
-    needs: unit-and-integration
+    needs: unit-and-integration-sqlite
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -77,7 +119,7 @@ jobs:
     name: E2E (Playwright) - opt-in
     runs-on: ubuntu-latest
     if: contains(github.event.head_commit.message, '[e2e]') || github.event_name == 'pull_request'
-    needs: unit-and-integration
+    needs: unit-and-integration-sqlite
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -93,4 +135,4 @@ jobs:
         env:
           PLAYWRIGHT_E2E: '1'
         run: |
-          pytest tests/e2e/ -v
+          pytest tests/e2e/test_critical_journeys.py -v

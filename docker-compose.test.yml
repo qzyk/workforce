@@ -1,0 +1,51 @@
+version: '3.8'
+
+# MySQL test container pentru rulare locala a testelor MySQL.
+#
+# Folosire:
+#   docker compose -f docker-compose.test.yml up -d
+#   export MYSQL_TEST_URL='mysql+pymysql://workforce:workforce_pass@127.0.0.1:3307/workforce_test'
+#   pytest tests/integration/test_mysql_compatibility.py -v
+#   docker compose -f docker-compose.test.yml down -v   # cleanup
+#
+# Atentie: containerul foloseste port 3307 (nu 3306) ca sa nu intre in conflict
+# cu instalari locale de MySQL.
+
+services:
+  mysql_test:
+    image: mysql:8.0
+    container_name: workforce_mysql_test
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: workforce_test
+      MYSQL_USER: workforce
+      MYSQL_PASSWORD: workforce_pass
+      # utf8mb4 default - aceeasi configuratie ca PA
+      MYSQL_INITDB_SKIP_TZINFO: 'yes'
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+00:00
+      - --sql-mode=ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+    ports:
+      - '3307:3306'
+    volumes:
+      - mysql_test_data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD
+        - mysqladmin
+        - ping
+        - -h
+        - localhost
+        - -u
+        - workforce
+        - -pworkforce_pass
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  mysql_test_data:
