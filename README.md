@@ -141,8 +141,8 @@ Evolutia platformei catre BIM/Digital Twin se face in 8 faze incrementale, fieca
 
 | Faza | Tema | Status |
 |------|------|--------|
-| 1 | Foundation: Alembic + audit log + feature flags + CI | **In curs (acest PR)** |
-| 2 | 3D Viewer xeokit + IFC->XKT pipeline + APS adapter | Planificat |
+| 1 | Foundation: Alembic + audit log + feature flags + CI | **Live** |
+| 2 | 3D Viewer xeokit-sdk + APS adapter (stub) | **In curs (acest PR)** |
 | 3 | Model versioning + Federation (CDE workflow) | Planificat |
 | 4 | Clash detection + Rule engine | Planificat |
 | 5 | 4D/5D - Schedule + Cost | Planificat |
@@ -152,6 +152,30 @@ Evolutia platformei catre BIM/Digital Twin se face in 8 faze incrementale, fieca
 
 Feature-urile noi se activeaza prin `feature_flags` (default OFF).
 Vezi catalogul flag-urilor in `services/feature_flags.py:KNOWN_FLAGS`.
+
+### Viewer 3D BIM (Faza 2)
+
+Aplicatia suporta 3 viewere pentru modelele IFC, in ordinea prioritatii:
+
+1. **Autodesk APS Viewer** (cel mai bun pentru clienti enterprise)
+   - Activare: `APS_CLIENT_ID` + `APS_CLIENT_SECRET` env vars + flag `bim-aps-adapter` ON
+   - Modelul trebuie sa aiba URN APS in `extern_id` (source_system='autodesk') sau in tabela `bim_external_mappings`
+   - Redirect la `viewer.autodesk.com` cu URN
+
+2. **xeokit-sdk** (open source, recomandat pentru self-hosted)
+   - Activare: flag `bim-viewer-3d` ON
+   - Foloseste xeokit-sdk + WebIFCLoaderPlugin (CDN jsDelivr)
+   - Performanta net superioara fata de viewer-ul legacy pe modele &gt;50MB
+
+3. **web-ifc-viewer** (legacy, default)
+   - Activ daca niciun flag de mai sus nu e setat
+   - Forteaza override cu `?legacy=1` in URL
+
+Activeaza viewer-ul nou prin Python REPL sau scripts/init_seed:
+```python
+from services.feature_flags import set_flag
+set_flag('bim-viewer-3d', True)  # global, pentru toti tenant-ii
+```
 
 ## Securitate
 

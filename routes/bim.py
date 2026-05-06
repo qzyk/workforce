@@ -34,6 +34,8 @@ from models import (
 from services import ifc_import as ifc_service
 from services import bim_quality
 from services import audit as audit_svc
+from services import feature_flags
+from services import aps_viewer
 
 bim_bp = Blueprint('bim', __name__, url_prefix='/bim')
 
@@ -501,6 +503,12 @@ def import_ifc_view():
                 incarcat_de_id=current_user.id,
             )
             db.session.add(m)
+            db.session.flush()
+            audit_svc.log_create('model_bim', m.id, new_values={
+                'nume': m.nume, 'tip': m.tip, 'fisier_marime': m.fisier_marime,
+                'nr_elemente': m.nr_elemente, 'procesare_status': m.procesare_status,
+                'santier_id': m.santier_id,
+            })
             db.session.commit()
         except Exception as e:
             db.session.rollback()
@@ -689,11 +697,35 @@ def api_modele_pentru_element(element_id):
 @bim_bp.route('/viewer/<int:model_id>')
 @login_required
 def viewer(model_id):
-    """Pagina viewer 3D pentru un ModelBIM IFC."""
+    """
+    Pagina viewer 3D pentru un ModelBIM IFC.
+
+    Routing prioritar (Faza 2 BIM):
+    1. APS configurat + URN APS pentru model -> redirect la Forge Viewer
+    2. Feature flag 'bim-viewer-3d' ON -> viewer_xeokit.html (xeokit-sdk)
+    3. Default -> viewer.html (web-ifc-viewer, legacy)
+
+    Quick override: ?legacy=1 forteaza viewer-ul vechi.
+    """
     model = ModelBIM.query.get_or_404(model_id)
     if model.tip != 'ifc' or not model.fisier_path:
         flash('Viewer-ul 3D suporta doar fisiere IFC incarcate.', 'warning')
         return redirect(url_for('bim.dashboard'))
+
+    # Override manual pentru a folosi viewer-ul legacy
+    force_legacy = request.args.get('legacy') == '1'
+
+    if not force_legacy:
+        # Prioritate 1: APS Viewer daca e configurat si modelul are URN
+        aps_url = aps_viewer.get_viewer_url(model)
+        if aps_url:
+            return redirect(aps_url)
+
+        # Prioritate 2: xeokit-sdk daca flag-ul e activ
+        if feature_flags.is_enabled('bim-viewer-3d'):
+            return render_template('bim/viewer_xeokit.html', model=model)
+
+    # Fallback: viewer-ul existent (web-ifc-viewer)
     return render_template('bim/viewer.html', model=model)
 
 

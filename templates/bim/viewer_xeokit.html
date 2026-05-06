@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}Viewer 3D (xeokit) - {{ model.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.modele_lista') }}">Modele</a></li>
+<li class="breadcrumb-item active">Viewer xeokit: {{ model.nume }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.xv-container { width:100%; height:calc(100vh - 220px); min-height:520px; background:#1a1a1a; border-radius:10px; position:relative; overflow:hidden; }
+.xv-container canvas { display:block; outline:none; width:100%; height:100%; }
+.xv-info { position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.65); color:#fff; padding:10px 14px; border-radius:6px; font-size:0.85rem; z-index:10; max-width:360px; }
+.xv-info code { background:rgba(255,255,255,0.15); padding:2px 6px; border-radius:3px; font-size:0.78rem; }
+.xv-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; color:#fff; z-index:5; }
+.xv-toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.xv-btn { padding:6px 12px; background:#fff; border:1px solid var(--gray-300); border-radius:6px; cursor:pointer; font-size:0.85rem; }
+.xv-btn:hover { background:var(--gray-100); }
+.xv-progress { width:280px; height:4px; background:rgba(255,255,255,0.15); border-radius:2px; overflow:hidden; margin-top:4px; }
+.xv-progress-bar { height:100%; background:var(--primary); width:0%; transition:width 0.2s; }
+.xv-error { background:rgba(255,90,90,0.15); border:1px solid #ff5a5a; color:#fff; padding:14px 18px; border-radius:8px; max-width:420px; }
+.xv-badge { display:inline-block; padding:2px 8px; background:rgba(76,175,80,0.25); color:#a5d6a7; border-radius:10px; font-size:0.7rem; margin-left:6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2 style="margin:0;">
+            <i class="fa-solid fa-cube" style="color:var(--primary);"></i> {{ model.nume }}
+            <span class="xv-badge">xeokit-sdk</span>
+        </h2>
+        <div style="font-size:0.85rem; color:var(--gray-500); margin-top:4px;">
+            {{ model.tip|upper }} | {{ model.nr_elemente or 0 }} elemente
+            {% if model.fisier_marime %} | {{ '%.1f'|format(model.fisier_marime / 1024 / 1024) }} MB{% endif %}
+        </div>
+    </div>
+    <div class="xv-toolbar">
+        <button class="xv-btn" id="xvFitBtn"><i class="fa-solid fa-expand"></i> Fit</button>
+        <button class="xv-btn" id="xvIsoBtn"><i class="fa-solid fa-cube"></i> Iso</button>
+        <button class="xv-btn" id="xvOrthoBtn"><i class="fa-solid fa-square"></i> Ortho/Persp</button>
+        <a href="{{ url_for('bim.viewer', model_id=model.id) }}?legacy=1" class="xv-btn" title="Viewer vechi (web-ifc)">Legacy viewer</a>
+    </div>
+</div>
+
+<div class="xv-container" id="xvContainer">
+    <canvas id="xvCanvas"></canvas>
+    <div class="xv-info" id="xvInfo">
+        <strong>{{ model.nume }}</strong><br>
+        <small>Click pe element pentru detalii. Drag = rotire, scroll = zoom.</small>
+    </div>
+    <div class="xv-loading" id="xvLoading">
+        <i class="fa-solid fa-spinner fa-spin" style="font-size:2.5rem;"></i>
+        <span id="xvLoadingText">Initializez xeokit-sdk...</span>
+        <div class="xv-progress"><div class="xv-progress-bar" id="xvProgressBar"></div></div>
+        <small style="color:#aaa; max-width:400px; text-align:center;">
+            Prima incarcare poate dura 5-30 secunde. xeokit-sdk si web-ifc se downloadeaza din CDN.
+        </small>
+    </div>
+</div>
+
+<div style="margin-top:16px; padding:14px; background:#E3F2FD; border-left:3px solid var(--primary); border-radius:6px; font-size:0.88rem;">
+    <i class="fa-solid fa-circle-info"></i>
+    <strong>Faza 2 BIM:</strong> Acest viewer foloseste <code>xeokit-sdk</code> (open source, MIT) - viewer-ul nativ pentru
+    BIM web in 2025-2026. Performanta net superioara fata de viewer-ul vechi pentru modele &gt;50MB.
+    Dezactiveaza prin feature flag <code>bim-viewer-3d</code> pentru a reveni la viewer-ul legacy.
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+// xeokit-sdk via ES Modules CDN (jsDelivr).
+// Incarcare on-demand, nu blocheaza pagina daca nu e disponibil.
+const CDN = 'https://cdn.jsdelivr.net/npm/@xeokit/xeokit-sdk@2.6.78/dist/xeokit-sdk.es.min.js';
+const WEB_IFC_WASM_DIR = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.50/';
+
+const container = document.getElementById('xvContainer');
+const canvas = document.getElementById('xvCanvas');
+const loading = document.getElementById('xvLoading');
+const loadingText = document.getElementById('xvLoadingText');
+const progressBar = document.getElementById('xvProgressBar');
+const info = document.getElementById('xvInfo');
+
+const urlParams = new URLSearchParams(window.location.search);
+const highlightGuid = urlParams.get('highlight');
+
+function setProgress(pct, text) {
+    progressBar.style.width = pct + '%';
+    if (text) loadingText.textContent = text;
+}
+
+function showError(msg, detail) {
+    loading.innerHTML = `<div class="xv-error">
+        <i class="fa-solid fa-circle-xmark"></i> <strong>${msg}</strong><br>
+        <small>${detail || ''}</small>
+        <div style="margin-top:10px;"><a href="?legacy=1" style="color:#ffeb3b;">Incearca viewer-ul legacy &raquo;</a></div>
+    </div>`;
+}
+
+(async () => {
+    let Viewer, WebIFCLoaderPlugin, AmbientLight, DirLight;
+    try {
+        setProgress(10, 'Incarc xeokit-sdk...');
+        const xeokit = await import(CDN);
+        ({ Viewer, WebIFCLoaderPlugin, AmbientLight, DirLight } = xeokit);
+        if (!Viewer || !WebIFCLoaderPlugin) {
+            throw new Error('xeokit-sdk: modulele necesare nu au fost gasite in bundle');
+        }
+    } catch (err) {
+        console.error('xeokit load failed', err);
+        showError('Nu pot incarca xeokit-sdk', err.message || 'Verifica conexiunea internet.');
+        return;
+    }
+
+    setProgress(30, 'Initializez scena 3D...');
+    let viewer;
+    try {
+        viewer = new Viewer({
+            canvasId: 'xvCanvas',
+            transparent: false,
+            dtxEnabled: true,
+        });
+        viewer.scene.canvas.backgroundColor = [0.10, 0.10, 0.10, 1.0];
+        // Lumini de baza pentru vizibilitate corecta
+        if (AmbientLight) new AmbientLight(viewer.scene, { color: [0.5, 0.5, 0.5], intensity: 1.0 });
+        if (DirLight) new DirLight(viewer.scene, { dir: [0.5, -0.7, -0.5], color: [1, 1, 1], intensity: 1.0 });
+    } catch (err) {
+        showError('Initializare xeokit a esuat', err.message);
+        return;
+    }
+    window.xvViewer = viewer;
+
+    setProgress(50, 'Incarc loader IFC (web-ifc)...');
+    let ifcLoader;
+    try {
+        ifcLoader = new WebIFCLoaderPlugin(viewer, { wasmPath: WEB_IFC_WASM_DIR });
+    } catch (err) {
+        showError('Initializare WebIFCLoader a esuat', err.message);
+        return;
+    }
+
+    setProgress(60, 'Descarc modelul IFC...');
+    const ifcUrl = "{{ url_for('bim.viewer_file', model_id=model.id) }}";
+    let modelHandle;
+    try {
+        modelHandle = ifcLoader.load({
+            id: 'modelBim_{{ model.id }}',
+            src: ifcUrl,
+            edges: true,
+        });
+        await new Promise((resolve, reject) => {
+            modelHandle.on('loaded', resolve);
+            modelHandle.on('error', reject);
+        });
+    } catch (err) {
+        showError('Modelul IFC nu a putut fi incarcat', err.message || 'Verifica daca fisierul exista pe server.');
+        return;
+    }
+
+    setProgress(95, 'Pregatire vizualizare...');
+    viewer.cameraFlight.flyTo(modelHandle);
+    loading.style.display = 'none';
+    info.innerHTML = `<strong>{{ model.nume }}</strong><br><small style="color:#9ce69c;">Incarcat. Click pe element pentru detalii.</small>`;
+
+    // Toolbar
+    document.getElementById('xvFitBtn').addEventListener('click', () => {
+        viewer.cameraFlight.flyTo(modelHandle);
+    });
+    document.getElementById('xvIsoBtn').addEventListener('click', () => {
+        viewer.cameraFlight.flyTo({ eye: [10, 10, 10], look: [0, 0, 0], up: [0, 1, 0] });
+    });
+    document.getElementById('xvOrthoBtn').addEventListener('click', () => {
+        viewer.camera.projection = (viewer.camera.projection === 'ortho') ? 'perspective' : 'ortho';
+    });
+
+    // Picking + info
+    viewer.scene.input.on('mouseclicked', (coords) => {
+        const hit = viewer.scene.pick({ canvasPos: coords });
+        if (!hit || !hit.entity) return;
+        const entity = hit.entity;
+        const meta = viewer.metaScene.metaObjects[entity.id];
+        const guid = (meta && meta.originalSystemId) || entity.id;
+        const name = (meta && meta.name) || '(fara nume)';
+        const tip = (meta && meta.type) || '';
+        info.innerHTML = `<strong>${name}</strong>${tip ? ' <small>(' + tip + ')</small>' : ''}<br>
+            GUID: <code>${(guid + '').substring(0, 24)}...</code>`;
+    });
+
+    // Auto-highlight daca highlight=GUID e in URL
+    if (highlightGuid && viewer.metaScene) {
+        try {
+            const metaIds = Object.values(viewer.metaScene.metaObjects)
+                .filter(m => m.originalSystemId === highlightGuid)
+                .map(m => m.id);
+            if (metaIds.length) {
+                viewer.scene.setObjectsHighlighted(metaIds, true);
+                viewer.cameraFlight.flyTo({ aabb: viewer.scene.getAABB(metaIds) });
+                info.innerHTML += `<br><small style="color:#aaff88;">Element selectat din workforce</small>`;
+            } else {
+                info.innerHTML += `<br><small style="color:#ffcc66;">GUID ${highlightGuid.substring(0,8)}... nu a fost gasit</small>`;
+            }
+        } catch (e) {
+            console.warn('highlight failed', e);
+        }
+    }
+})();
+</script>
+{% endblock %}
