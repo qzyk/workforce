@@ -42,7 +42,7 @@
             <dt style="color:var(--gray-500);">Nume</dt><dd>{{ santier.nume }}</dd>
             {% if santier.proiect %}
             <dt style="color:var(--gray-500);">Proiect asociat</dt>
-            <dd><a href="{{ url_for('proiecte.detaliu', id=santier.proiect.id) }}">{{ santier.proiect.cod_proiect }} - {{ santier.proiect.nume }}</a></dd>
+            <dd><a href="{{ url_for('proiecte.detalii', id=santier.proiect.id) }}">{{ santier.proiect.cod_proiect }} - {{ santier.proiect.nume }}</a></dd>
             {% endif %}
             {% if santier.descriere %}
             <dt style="color:var(--gray-500);">Descriere</dt><dd>{{ santier.descriere }}</dd>
