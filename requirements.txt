@@ -24,3 +24,8 @@ ifcopenshell>=0.7.0  # parser IFC pentru import modele BIM
 # === DATABASE DRIVERS ===
 # SQLite e built-in. Pentru MySQL pe productie (PythonAnywhere standard):
 PyMySQL>=1.1.0  # driver MySQL pur Python, no compile needed
+
+# === DB MIGRATIONS ===
+# Alembic (Faza 1 BIM foundation): migratii versionate, backward-compatible.
+# Pentru DB-uri existente: ruleaza 'alembic stamp head' o singura data.
+alembic>=1.13.0

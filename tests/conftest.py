@@ -60,13 +60,14 @@ def cleanup_test_data(app):
     yield
     from models import (
         db, Santier, Cladire, Nivel, Zona, Spatiu, ElementBIM, Asset,
-        IssueBIM, ModelBIM, ExternalMapping, RaportActivitate, Tenant
+        IssueBIM, ModelBIM, ExternalMapping, RaportActivitate, Tenant,
+        AuditLog, FeatureFlag,
     )
     with app.app_context():
         try:
             # WIPE total tabele BIM (le recreem la nevoie in fixture-uri specifice)
-            for cls in (ExternalMapping, Asset, IssueBIM, ElementBIM, Spatiu,
-                        Zona, Nivel, Cladire, Santier, ModelBIM):
+            for cls in (AuditLog, FeatureFlag, ExternalMapping, Asset, IssueBIM,
+                        ElementBIM, Spatiu, Zona, Nivel, Cladire, Santier, ModelBIM):
                 for obj in cls.query.all():
                     db.session.delete(obj)
             # Curat activitatile + tenant-urile de test

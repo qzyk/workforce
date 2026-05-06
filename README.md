@@ -31,11 +31,47 @@ pip install reportlab
 # 5. Initializare baza de date cu date demo
 flask init-db --demo
 
-# 6. Pornire server
+# 6. (DB existent) Marcheaza schema ca aliniata la baseline-ul Alembic
+#    NU ruleaza acest pas pe DB-uri noi.
+alembic stamp head
+
+# 7. Pornire server
 python app.py
 ```
 
 Serverul porneste la `http://localhost:5000`
+
+## Migratii Alembic
+
+Schema bazei de date este versionata cu Alembic incepand din Faza 1 BIM foundation.
+
+### Pe DB-uri NOI (CI, dev proaspat)
+```bash
+alembic upgrade head    # creeaza schema completa (echivalent cu db.create_all())
+```
+
+### Pe DB-uri EXISTENTE (productie, dev care exista deja)
+**Important: nu rula `alembic upgrade head` pe un DB cu date - schema e deja la zi.**
+```bash
+# 1. Backup intai (script furnizat)
+./scripts/backup_before_alembic.sh
+
+# 2. Marcheaza DB-ul ca fiind la baseline (nu modifica datele)
+alembic stamp head
+
+# 3. De-aici inainte, fiecare migratie noua se aplica cu:
+alembic upgrade head
+```
+
+### Generare migratie noua dupa modificari de modele
+```bash
+alembic revision --autogenerate -m "descriere_scurta"
+# Verifica fisierul generat in migrations/versions/, apoi:
+alembic upgrade head
+```
+
+Testul `tests/integration/test_alembic_baseline.py` verifica automat ca schema
+produsa de Alembic e identica cu `db.create_all()` din models.py.
 
 ## Conturi Demo
 
@@ -98,6 +134,24 @@ Serverul porneste la `http://localhost:5000`
 - Backup & Restore (DB + uploads in ZIP)
 - Jurnal activitate (log actiuni cu cautare)
 - Setari generale (ore lucru, salariu minim, alerte)
+
+## Roadmap BIM / Digital Twin
+
+Evolutia platformei catre BIM/Digital Twin se face in 8 faze incrementale, fiecare un PR safe.
+
+| Faza | Tema | Status |
+|------|------|--------|
+| 1 | Foundation: Alembic + audit log + feature flags + CI | **In curs (acest PR)** |
+| 2 | 3D Viewer xeokit + IFC->XKT pipeline + APS adapter | Planificat |
+| 3 | Model versioning + Federation (CDE workflow) | Planificat |
+| 4 | Clash detection + Rule engine | Planificat |
+| 5 | 4D/5D - Schedule + Cost | Planificat |
+| 6 | Digital Twin / IoT layer (sensori, time-series) | Planificat |
+| 7 | Real-time collab via SSE + Kanban issue board | Planificat |
+| 8 | Governance, COBie, BCF complet, RBAC fin | Planificat |
+
+Feature-urile noi se activeaza prin `feature_flags` (default OFF).
+Vezi catalogul flag-urilor in `services/feature_flags.py:KNOWN_FLAGS`.
 
 ## Securitate
 

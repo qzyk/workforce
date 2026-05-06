@@ -33,6 +33,7 @@ from models import (
 )
 from services import ifc_import as ifc_service
 from services import bim_quality
+from services import audit as audit_svc
 
 bim_bp = Blueprint('bim', __name__, url_prefix='/bim')
 
@@ -112,6 +113,10 @@ def santier_nou():
                 flash('Codul si numele sunt obligatorii.', 'danger')
                 return redirect(request.url)
             db.session.add(s)
+            db.session.flush()  # populate s.id pentru audit
+            audit_svc.log_create('santier', s.id, new_values={
+                'cod': s.cod, 'nume': s.nume, 'oras': s.oras, 'judet': s.judet,
+            })
             db.session.commit()
             flash(f'Santier "{s.nume}" creat.', 'success')
             return redirect(url_for('bim.santier_detaliu', id=s.id))
@@ -130,6 +135,8 @@ def santier_editeaza(id):
     s = Santier.query.get_or_404(id)
     if request.method == 'POST':
         try:
+            audit_fields = ['cod', 'nume', 'descriere', 'adresa', 'oras', 'judet', 'proiect_id']
+            before = audit_svc.snapshot(s, audit_fields)
             s.cod = request.form.get('cod', '').strip()
             s.nume = request.form.get('nume', '').strip()
             s.descriere = request.form.get('descriere', '').strip()
@@ -137,6 +144,7 @@ def santier_editeaza(id):
             s.oras = request.form.get('oras', '').strip()
             s.judet = request.form.get('judet', '').strip()
             s.proiect_id = request.form.get('proiect_id', type=int) or None
+            audit_svc.log_update('santier', s.id, before, audit_svc.snapshot(s, audit_fields))
             db.session.commit()
             flash(f'Santier "{s.nume}" actualizat.', 'success')
             return redirect(url_for('bim.santier_detaliu', id=s.id))
@@ -154,9 +162,13 @@ def santier_editeaza(id):
 def santier_sterge(id):
     s = Santier.query.get_or_404(id)
     try:
+        audit_svc.log_delete('santier', s.id, old_values={
+            'cod': s.cod, 'nume': s.nume, 'oras': s.oras, 'judet': s.judet,
+        })
+        nume_sters = s.nume
         db.session.delete(s)
         db.session.commit()
-        flash(f'Santier "{s.nume}" sters.', 'info')
+        flash(f'Santier "{nume_sters}" sters.', 'info')
     except Exception as e:
         db.session.rollback()
         flash(f'Eroare la stergere: {e}', 'danger')

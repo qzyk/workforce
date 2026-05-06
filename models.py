@@ -1910,3 +1910,80 @@ class ExternalMapping(db.Model):
         return f'<ExternalMapping {self.entity_type}:{self.entity_id} -> {self.source_system}:{self.extern_id[:20]}>'
 
 
+# ============================================================
+# AUDIT LOG (Faza 1 BIM foundation)
+# Inregistreaza modificari pe entitatile BIM principale (start mic).
+# Permite raportare "cine a modificat ce, cand" - precondititie pentru
+# CDE workflow (status approval / change tracking) din Faza 3.
+# ============================================================
+
+class AuditLog(db.Model):
+    __tablename__ = 'audit_log'
+    id = db.Column(db.Integer, primary_key=True)
+
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True, index=True)
+
+    # Tinta actiunii
+    entity_type = db.Column(db.String(50), nullable=False, index=True)  # 'element_bim', 'issue_bim', etc.
+    entity_id = db.Column(db.Integer, nullable=True, index=True)
+
+    # Tipul actiunii: create | update | delete | login | import | sync | other
+    action = db.Column(db.String(30), nullable=False, index=True)
+
+    # Diff (JSON serializat). Pentru update: doar campurile modificate.
+    old_values_json = db.Column(db.Text, nullable=True)
+    new_values_json = db.Column(db.Text, nullable=True)
+
+    # Context optional (ex: IP, user-agent, request_id)
+    context_json = db.Column(db.Text, nullable=True)
+
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    user = db.relationship('Utilizator', foreign_keys=[user_id])
+    tenant = db.relationship('Tenant', foreign_keys=[tenant_id])
+
+    __table_args__ = (
+        db.Index('ix_audit_entity', 'entity_type', 'entity_id'),
+        db.Index('ix_audit_tenant_ts', 'tenant_id', 'timestamp'),
+    )
+
+    def __repr__(self):
+        return f'<AuditLog {self.action} {self.entity_type}:{self.entity_id} by user {self.user_id}>'
+
+
+# ============================================================
+# FEATURE FLAGS (Faza 1 BIM foundation)
+# Permite activarea progresiva a feature-urilor noi (Fazele 2-8) per
+# tenant sau global, fara redeploy. Default off pentru orice flag nou.
+# ============================================================
+
+class FeatureFlag(db.Model):
+    __tablename__ = 'feature_flags'
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Cheia flag-ului (kebab-case, prefixat cu modulul)
+    # ex: 'bim-viewer-3d', 'bim-clash-detection', 'bim-iot-sensors'
+    key = db.Column(db.String(80), nullable=False, index=True)
+
+    # Scope: NULL = global; altfel se aplica per tenant
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    enabled = db.Column(db.Boolean, default=False, nullable=False)
+    descriere = db.Column(db.String(300), nullable=True)
+    config_json = db.Column(db.Text, nullable=True)  # parametri optionali per flag
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+    data_modificare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    tenant = db.relationship('Tenant', foreign_keys=[tenant_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('key', 'tenant_id', name='uix_feature_flag_key_tenant'),
+    )
+
+    def __repr__(self):
+        scope = f'tenant={self.tenant_id}' if self.tenant_id else 'global'
+        return f'<FeatureFlag {self.key} {scope} enabled={self.enabled}>'
+
+

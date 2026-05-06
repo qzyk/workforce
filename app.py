@@ -95,6 +95,10 @@ def create_app(config_name='default'):
     import tenant as _tenant
     _tenant.init_app(app)
 
+    # Init feature flags (helper Jinja: feature_enabled('key'))
+    from services import feature_flags as _ff
+    _ff.init_app(app)
+
     # --------------------------------------------------------
     # CONTEXT PROCESSOR - DATE GLOBALE
     # --------------------------------------------------------
