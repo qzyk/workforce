@@ -21,6 +21,16 @@
         <a href="{{ url_for('activitati.panou', element_bim_id=element.id) }}" class="btn btn-outline">
             <i class="fa-solid fa-clipboard-list"></i> Activitati pe acest element
         </a>
+        {% if feature_enabled('bim-4d-schedule') %}
+        <a href="{{ url_for('bim.element_schedule_form', element_id=element.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-calendar-days"></i> Schedule 4D
+        </a>
+        {% endif %}
+        {% if feature_enabled('bim-5d-cost') %}
+        <a href="{{ url_for('bim.element_cost_form', element_id=element.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-money-bill"></i> Cost 5D
+        </a>
+        {% endif %}
         {# Butoane viewer 3D populate dinamic via JS din /bim/api/modele-pentru-element/<id> #}
         <span id="viewerButtonsPlaceholder" style="font-size:0.85rem; color:var(--gray-500); padding:8px 12px;">
             <i class="fa-solid fa-spinner fa-spin"></i> verific viewere disponibile...

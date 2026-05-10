@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Schedule 4D - {{ element.cod }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.elemente_lista') }}">Elemente</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.element_detaliu', id=element.id) }}">{{ element.cod }}</a></li>
+<li class="breadcrumb-item active">Schedule 4D</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.status-planificat { background:#e3f2fd; color:#0d47a1; padding:2px 10px; border-radius:10px; font-size:0.78rem; }
+.status-in_curs    { background:#fff3cd; color:#856404; padding:2px 10px; border-radius:10px; font-size:0.78rem; }
+.status-finalizat  { background:#d4edda; color:#155724; padding:2px 10px; border-radius:10px; font-size:0.78rem; }
+.status-amanat     { background:#f8d7da; color:#721c24; padding:2px 10px; border-radius:10px; font-size:0.78rem; }
+.status-anulat     { background:#e2e3e5; color:#383d41; padding:2px 10px; border-radius:10px; font-size:0.78rem; }
+.progress-bar { width:100%; height:18px; background:#eee; border-radius:9px; overflow:hidden; }
+.progress-fill { height:100%; background:linear-gradient(90deg, #4CAF50, #2196F3); transition: width 0.3s; }
+.intarziat { color:#dc3545; font-weight:600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2><i class="fa-solid fa-calendar-days" style="color:var(--primary);"></i> Schedule 4D - {{ element.cod }}</h2>
+<div style="font-size:0.9rem; color:var(--gray-500); margin-bottom:16px;">
+    {{ element.tip_label }} | <a href="{{ url_for('bim.element_detaliu', id=element.id) }}">Detalii element</a>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+    <div class="card-panel">
+        <div class="card-panel-header"><h3><i class="fa-solid fa-plus"></i> Adauga schedule entry</h3></div>
+        <div class="card-panel-body" style="padding:18px;">
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group">
+                    <label>Faza <span style="color:var(--danger);">*</span></label>
+                    <select name="faza" required>
+                        <option value="">- alege faza -</option>
+                        {% for f in faze_tipice %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Disciplina (optional)</label>
+                    <select name="disciplina">
+                        <option value="">-</option>
+                        <option value="ARH">ARH</option><option value="STR">STR</option>
+                        <option value="MEP">MEP</option><option value="ELE">ELE</option>
+                        <option value="HVAC">HVAC</option><option value="SAN">SAN</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Data start planificat <span style="color:var(--danger);">*</span></label>
+                    <input type="date" name="data_start_plan" required value="{{ today.strftime('%Y-%m-%d') }}" />
+                </div>
+                <div class="form-group">
+                    <label>Data sfarsit planificat <span style="color:var(--danger);">*</span></label>
+                    <input type="date" name="data_sfarsit_plan" required />
+                </div>
+                <div class="form-group">
+                    <label>Descriere</label>
+                    <textarea name="descriere" rows="2"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Adauga</button>
+            </form>
+        </div>
+    </div>
+
+    <div>
+        <h3 style="margin:0 0 12px 0;">Schedule entries existente ({{ schedules|length }})</h3>
+        {% if schedules %}
+        {% for s in schedules %}
+        <div class="card-panel" style="margin-bottom:12px;">
+            <div class="card-panel-body" style="padding:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <strong>{{ s.faza }}</strong>{% if s.disciplina %} <code>{{ s.disciplina }}</code>{% endif %}
+                    <span class="status-{{ s.status }}">{{ s.status }}</span>
+                </div>
+                <div style="font-size:0.85rem; color:var(--gray-500);">
+                    {{ s.data_start_plan.strftime('%d.%m.%Y') }} → {{ s.data_sfarsit_plan.strftime('%d.%m.%Y') }}
+                    ({{ s.durata_zile_plan }} zile)
+                    {% if s.este_intarziat %} <span class="intarziat"><i class="fa-solid fa-warning"></i> INTARZIAT</span>{% endif %}
+                </div>
+                {% if s.descriere %}<div style="font-size:0.85rem; margin-top:6px;">{{ s.descriere }}</div>{% endif %}
+
+                <div style="margin-top:10px;">
+                    <div class="progress-bar"><div class="progress-fill" style="width:{{ s.progres_pct }}%;"></div></div>
+                    <div style="font-size:0.78rem; margin-top:4px; color:var(--gray-500);">Progres: {{ s.progres_pct }}%</div>
+                </div>
+
+                <form method="POST" action="{{ url_for('bim.schedule_update_progress', schedule_id=s.id) }}"
+                      style="display:flex; gap:6px; margin-top:8px; align-items:center;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="number" name="progres_pct" min="0" max="100" value="{{ s.progres_pct }}"
+                           style="width:80px; padding:4px;" />
+                    <button type="submit" class="btn btn-outline" style="font-size:0.82rem; padding:4px 10px;">Update</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty-state" style="padding:24px; text-align:center; background:white; border-radius:8px;">
+            <p style="color:var(--gray-500);">Niciun schedule entry inca.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

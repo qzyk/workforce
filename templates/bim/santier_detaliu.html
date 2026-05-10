@@ -22,10 +22,20 @@
         {% endif %}
     </div>
     {% if current_user.rol in ['admin', 'manager'] %}
-    <div style="display:flex; gap:8px;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
         {% if feature_enabled('bim-federation') %}
         <a href="{{ url_for('bim.viewer_federat', santier_id=santier.id) }}" class="btn btn-primary" title="Vezi toate modelele 'published' overlap in 3D">
             <i class="fa-solid fa-layer-group"></i> Viewer federat
+        </a>
+        {% endif %}
+        {% if feature_enabled('bim-4d-schedule') %}
+        <a href="{{ url_for('bim.santier_4d_timeline', santier_id=santier.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-timeline"></i> Timeline 4D
+        </a>
+        {% endif %}
+        {% if feature_enabled('bim-5d-cost') %}
+        <a href="{{ url_for('bim.santier_5d_dashboard', santier_id=santier.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-chart-pie"></i> Cost 5D
         </a>
         {% endif %}
         <a href="{{ url_for('bim.santier_editeaza', id=santier.id) }}" class="btn btn-outline">

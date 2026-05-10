@@ -2308,3 +2308,180 @@ class ClashResult(db.Model):
         return f'<ClashResult run={self.run_id} {self.element_a_id}<->{self.element_b_id} {self.tip}>'
 
 
+# ============================================================
+# 4D SCHEDULE (Faza 5 BIM Digital Twin)
+# Link element BIM <-> task cu interval planificat (4D = time).
+# Vizualizare construction sequencing + progres.
+# ============================================================
+
+class BIMTaskSchedule(db.Model):
+    """
+    Schedule entry pentru un element BIM. Reprezinta planificarea
+    constructiei elementului (cand se construieste, cand e gata).
+    Pentru un element pot exista mai multe entries (excavatie, fundatie,
+    structura, finisaje), folosind 'faza' pentru a le diferentia.
+    """
+    __tablename__ = 'bim_task_schedules'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    element_bim_id = db.Column(db.Integer, db.ForeignKey('bim_elemente.id'),
+                                nullable=False, index=True)
+
+    # Faza constructiei (decoupling de RaportActivitate.activitate_principala)
+    faza = db.Column(db.String(50), nullable=False)
+    # ex: 'excavatie', 'fundatie', 'structura', 'finisaje', 'mep', 'finisaje_finale'
+
+    # Disciplina (pentru filtrare in timeline)
+    disciplina = db.Column(db.String(20), nullable=True, index=True)
+
+    descriere = db.Column(db.Text, nullable=True)
+
+    # Planificat
+    data_start_plan = db.Column(db.Date, nullable=False, index=True)
+    data_sfarsit_plan = db.Column(db.Date, nullable=False, index=True)
+
+    # Real (populate pe parcurs cu actuals din pontaje sau manual)
+    data_start_real = db.Column(db.Date, nullable=True)
+    data_sfarsit_real = db.Column(db.Date, nullable=True)
+
+    # Progres % (0..100)
+    progres_pct = db.Column(db.Integer, default=0, nullable=False)
+
+    # Status: 'planificat' | 'in_curs' | 'finalizat' | 'amanat' | 'anulat'
+    status = db.Column(db.String(20), default='planificat', nullable=False, index=True)
+
+    # FK opt. catre raport activitate (pentru link cu pontajele)
+    raport_activitate_id = db.Column(db.Integer,
+                                      db.ForeignKey('rapoarte_activitati.id'),
+                                      nullable=True, index=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+    data_modificare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    element = db.relationship('ElementBIM', foreign_keys=[element_bim_id],
+                              backref=db.backref('task_schedules', lazy='dynamic'))
+    raport = db.relationship('RaportActivitate', foreign_keys=[raport_activitate_id])
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    STATUSURI = [
+        ('planificat', 'Planificat'),
+        ('in_curs', 'In curs'),
+        ('finalizat', 'Finalizat'),
+        ('amanat', 'Amanat'),
+        ('anulat', 'Anulat'),
+    ]
+
+    FAZE_TIPICE = [
+        'excavatie', 'fundatie', 'structura', 'inchideri',
+        'mep_grobschnitt', 'mep_final',
+        'finisaje_brute', 'finisaje_fine', 'punere_in_functiune',
+    ]
+
+    __table_args__ = (
+        db.Index('ix_schedule_element_faza', 'element_bim_id', 'faza'),
+        db.Index('ix_schedule_dates', 'data_start_plan', 'data_sfarsit_plan'),
+    )
+
+    @property
+    def durata_zile_plan(self) -> int:
+        if self.data_start_plan and self.data_sfarsit_plan:
+            return (self.data_sfarsit_plan - self.data_start_plan).days
+        return 0
+
+    @property
+    def este_intarziat(self) -> bool:
+        if self.status == 'finalizat' or not self.data_sfarsit_plan:
+            return False
+        return date.today() > self.data_sfarsit_plan and self.progres_pct < 100
+
+    def is_visible_at(self, data: 'date') -> bool:
+        """True daca elementul e (partial sau total) construit la data data."""
+        if not self.data_start_plan:
+            return False
+        return data >= self.data_start_plan
+
+    def __repr__(self):
+        return f'<BIMTaskSchedule {self.element_bim_id} {self.faza} [{self.status}]>'
+
+
+# ============================================================
+# 5D COST (Faza 5)
+# Cost per element BIM (cantitate * pret unitar). Agregare pe
+# disciplina, faza, cladire, santier. Comparatie cu manopera
+# reala din Pontaj.
+# ============================================================
+
+class BIMCostItem(db.Model):
+    """
+    Un item de cost asociat unui element BIM. Permite breakdown
+    detaliat (material/manopera/echipament/transport).
+    """
+    __tablename__ = 'bim_cost_items'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    element_bim_id = db.Column(db.Integer, db.ForeignKey('bim_elemente.id'),
+                                nullable=False, index=True)
+
+    # Categorie cost: 'material' | 'manopera' | 'echipament' | 'transport' | 'utilitati' | 'altul'
+    categorie = db.Column(db.String(30), default='material', nullable=False, index=True)
+
+    # Faza la care apare costul (pentru integrare cu BIMTaskSchedule)
+    faza = db.Column(db.String(50), nullable=True, index=True)
+
+    descriere = db.Column(db.String(300), nullable=False)
+    unitate = db.Column(db.String(20), nullable=False, default='buc')
+    # buc, m, m2, m3, kg, ml, ora, etc.
+
+    cantitate = db.Column(db.Numeric(12, 3), default=1, nullable=False)
+    pret_unitar = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    # Valuta: implicit RON; per tenant config in viitor
+    valuta = db.Column(db.String(3), default='RON', nullable=False)
+
+    # Tip cost: 'planificat' (din deviz) sau 'real' (din facturi/pontaje)
+    tip = db.Column(db.String(20), default='planificat', nullable=False, index=True)
+
+    referinta_extern = db.Column(db.String(100), nullable=True)
+    # ex: cod articol din SAP, cod ofertă, etc.
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+    data_modificare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    element = db.relationship('ElementBIM', foreign_keys=[element_bim_id],
+                              backref=db.backref('cost_items', lazy='dynamic'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    CATEGORII = [
+        ('material', 'Material'),
+        ('manopera', 'Manopera'),
+        ('echipament', 'Echipament'),
+        ('transport', 'Transport'),
+        ('utilitati', 'Utilitati'),
+        ('altul', 'Altul'),
+    ]
+    TIPURI = [
+        ('planificat', 'Planificat (deviz)'),
+        ('real', 'Real (facturat/realizat)'),
+    ]
+    UNITATI = ['buc', 'm', 'm2', 'm3', 'kg', 'ml', 'ora', 't', 'set']
+
+    __table_args__ = (
+        db.Index('ix_cost_element_categorie', 'element_bim_id', 'categorie'),
+    )
+
+    @property
+    def total(self):
+        """Cantitate * pret_unitar."""
+        try:
+            return float(self.cantitate or 0) * float(self.pret_unitar or 0)
+        except (ValueError, TypeError):
+            return 0.0
+
+    def __repr__(self):
+        return (f'<BIMCostItem {self.element_bim_id} {self.categorie}'
+                f' {self.cantitate}{self.unitate}*{self.pret_unitar}={self.total}>')
+
+

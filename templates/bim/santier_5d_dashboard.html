@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Cost 5D - {{ santier.cod }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.santiere_lista') }}">Santiere</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.santier_detaliu', id=santier.id) }}">{{ santier.cod }}</a></li>
+<li class="breadcrumb-item active">Cost 5D</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.cost-card { background:white; padding:20px; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+.cost-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f0f0f0; font-size:0.9rem; }
+.cost-row:last-child { border-bottom:none; }
+.delta-positive { color:#dc3545; font-weight:700; }
+.delta-negative { color:#28a745; font-weight:700; }
+.delta-zero     { color:var(--gray-500); }
+.bar-h { height:18px; background:#eee; border-radius:9px; overflow:hidden; margin-top:4px; }
+.bar-fill { height:100%; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-chart-pie" style="color:var(--success);"></i> Dashboard Cost 5D - {{ santier.cod }}</h2>
+    <a href="{{ url_for('bim.santier_detaliu', id=santier.id) }}" class="btn btn-outline">← Inapoi</a>
+</div>
+
+{# Header KPI: planificat / real / delta #}
+<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin-bottom:20px;">
+    <div class="cost-card" style="border-left:4px solid var(--primary);">
+        <h4 style="margin:0; font-size:0.78rem; color:var(--gray-500); text-transform:uppercase;">Cost planificat</h4>
+        <div style="font-size:1.8rem; font-weight:800;">{{ '%.2f'|format(delta.planificat) }} RON</div>
+    </div>
+    <div class="cost-card" style="border-left:4px solid var(--success);">
+        <h4 style="margin:0; font-size:0.78rem; color:var(--gray-500); text-transform:uppercase;">Cost real</h4>
+        <div style="font-size:1.8rem; font-weight:800;">{{ '%.2f'|format(delta.real) }} RON</div>
+    </div>
+    <div class="cost-card" style="border-left:4px solid {% if delta.delta > 0 %}var(--danger){% else %}var(--success){% endif %};">
+        <h4 style="margin:0; font-size:0.78rem; color:var(--gray-500); text-transform:uppercase;">Delta (real vs plan)</h4>
+        <div style="font-size:1.8rem; font-weight:800;"
+             class="{% if delta.delta > 0 %}delta-positive{% elif delta.delta < 0 %}delta-negative{% else %}delta-zero{% endif %}">
+            {{ '+' if delta.delta > 0 else '' }}{{ '%.2f'|format(delta.delta) }} RON
+        </div>
+        <small>{{ '+' if delta.delta_pct > 0 else '' }}{{ delta.delta_pct }}%</small>
+    </div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+    <div class="cost-card">
+        <h3 style="margin:0 0 12px 0;"><i class="fa-solid fa-tags"></i> Cost planificat per categorie</h3>
+        {% if breakdown_plan.by_categorie %}
+            {% set max_val = breakdown_plan.by_categorie.values()|max %}
+            {% for cat, val in breakdown_plan.by_categorie.items()|sort(attribute='1', reverse=true) %}
+            <div style="margin-bottom:8px;">
+                <div class="cost-row">
+                    <span><strong>{{ cat }}</strong></span>
+                    <strong>{{ '%.2f'|format(val) }} RON</strong>
+                </div>
+                <div class="bar-h">
+                    <div class="bar-fill" style="width:{{ (val/max_val*100) if max_val > 0 else 0 }}%; background:var(--primary);"></div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+        <p style="color:var(--gray-500);">Niciun cost planificat.</p>
+        {% endif %}
+    </div>
+
+    <div class="cost-card">
+        <h3 style="margin:0 0 12px 0;"><i class="fa-solid fa-building"></i> Cost planificat per cladire</h3>
+        {% if breakdown_plan.by_cladire %}
+            {% for cladire_name, val in breakdown_plan.by_cladire.items()|sort(attribute='1', reverse=true) %}
+            <div class="cost-row">
+                <span>{{ cladire_name }}</span>
+                <strong>{{ '%.2f'|format(val) }} RON</strong>
+            </div>
+            {% endfor %}
+        {% else %}
+        <p style="color:var(--gray-500);">Niciun cost asociat cladirilor.</p>
+        {% endif %}
+    </div>
+
+    <div class="cost-card" style="grid-column: span 2;">
+        <h3 style="margin:0 0 12px 0;"><i class="fa-solid fa-cubes"></i> Cost planificat per tip element</h3>
+        {% if breakdown_plan.by_tip_element %}
+        <table class="data-table">
+            <thead><tr><th>Tip element</th><th>Cost total</th><th>% din total</th></tr></thead>
+            <tbody>
+                {% for tip, val in breakdown_plan.by_tip_element.items()|sort(attribute='1', reverse=true) %}
+                <tr>
+                    <td><code>{{ tip }}</code></td>
+                    <td>{{ '%.2f'|format(val) }}</td>
+                    <td>{{ '%.1f'|format(val/breakdown_plan.total*100 if breakdown_plan.total > 0 else 0) }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color:var(--gray-500);">-</p>
+        {% endif %}
+    </div>
+</div>
+
+<div style="margin-top:14px; padding:12px; background:#E3F2FD; border-left:3px solid var(--primary); border-radius:6px; font-size:0.88rem;">
+    <i class="fa-solid fa-info-circle"></i>
+    Costurile sunt agregate din <code>BIMCostItem</code>. Costul real apare cand inregistrezi items cu <code>tip='real'</code>
+    (din facturi sau pontaje). Vezi pagina elementului pentru a adauga cost items.
+</div>
+{% endblock %}

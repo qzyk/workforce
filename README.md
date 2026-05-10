@@ -144,7 +144,8 @@ Evolutia platformei catre BIM/Digital Twin se face in 8 faze incrementale, fieca
 | 1 | Foundation: Alembic + audit log + feature flags + CI | **Live** |
 | 2 | 3D Viewer xeokit-sdk + APS adapter (stub) | **Live** |
 | 3 | Model versioning + Federation (CDE workflow) | **Live (branch)** |
-| 4 | Clash detection + Rule engine | **In curs (acest PR)** |
+| 4 | Clash detection + Rule engine | **Live (branch)** |
+| 5 | 4D/5D - Schedule + Cost | **In curs (acest PR)** |
 | 5 | 4D/5D - Schedule + Cost | Planificat |
 | 6 | Digital Twin / IoT layer (sensori, time-series) | Planificat |
 | 7 | Real-time collab via SSE + Kanban issue board | Planificat |
@@ -254,6 +255,38 @@ set_flag('bim-clash-detection', True)
 - `/bim/api/clash/<id>` — JSON pentru integrari externe
 
 Toate rularile se loaheaza in `audit_log` (`run_rules`, `run_clash_detection`).
+
+### 4D Schedule + 5D Cost (Faza 5)
+
+**4D Schedule**: link element BIM ↔ task cu interval planificat. Vizualizare timeline
+Gantt + filtru "ce e construit la data X" pentru construction sequencing.
+
+Tabel: `bim_task_schedules` (1 element → N intrari pe faze: excavatie, fundatie,
+structura, finisaje, MEP, etc.). Status: `planificat → in_curs → finalizat | amanat`.
+Auto-update progres (0..100%) cu auto-tranzitie status.
+
+**5D Cost**: cost per element BIM (cantitate * pret_unitar) cu categorii:
+material / manopera / echipament / transport / utilitati / altul. Tip:
+`planificat` (deviz) sau `real` (facturat). Agregare per disciplina, cladire,
+tip element. Comparatie planificat vs real (delta + delta_pct).
+
+**Activare**:
+```python
+from services.feature_flags import set_flag
+set_flag('bim-4d-schedule', True)
+set_flag('bim-5d-cost', True)
+```
+
+**Pagini noi**:
+- `/bim/element/<id>/schedule` — adauga schedule entries pentru un element
+- `/bim/element/<id>/cost` — adauga cost items + breakdown pe categorii
+- `/bim/santier/<id>/4d-timeline` — Gantt chart cu progres per task
+- `/bim/santier/<id>/5d-dashboard` — KPI plan vs real + breakdown
+- `/bim/api/santier/<id>/visible-at?data=YYYY-MM-DD` — JSON: ce elemente sunt
+  vizibile la o data (pentru construction sequencing in 3D viewer)
+- `/bim/api/element/<id>/cost` — JSON: total + breakdown categorii
+
+Toate operatiile (creare schedule, update progres, creare cost) se loaheaza in `audit_log`.
 
 ## Securitate
 

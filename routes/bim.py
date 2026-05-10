@@ -28,6 +28,7 @@ from werkzeug.utils import secure_filename
 
 from models import (
     BIMModelVersion, BIMRule, RuleViolation, ClashRun, ClashResult,
+    BIMTaskSchedule, BIMCostItem,
     db, Santier, Cladire, Nivel, Zona, Spatiu, ElementBIM, Asset,
     IssueBIM, ModelBIM, Proiect, RaportActivitate, Pontaj,
     ExternalMapping,
@@ -38,6 +39,8 @@ from services import audit as audit_svc
 from services import bim_workflow
 from services import bim_rules as rules_svc
 from services import clash_detection as clash_svc
+from services import bim_4d as fourd_svc
+from services import bim_5d as fived_svc
 from services import feature_flags as ff_svc
 from services import feature_flags
 from services import aps_viewer
@@ -1244,4 +1247,202 @@ def api_clash(run_id):
             'mesaj': r.mesaj,
             'detalii': json.loads(r.detalii_json) if r.detalii_json else {},
         } for r in rezultate],
+    })
+
+
+# ============================================================
+# 4D SCHEDULE (Faza 5)
+# Activare: feature flag 'bim-4d-schedule' (default OFF).
+# ============================================================
+
+def _ensure_4d_enabled():
+    if not ff_svc.is_enabled('bim-4d-schedule'):
+        flash('4D Schedule nu e activat pentru acest tenant.', 'info')
+        return redirect(url_for('bim.dashboard'))
+    return None
+
+
+@bim_bp.route('/element/<int:element_id>/schedule', methods=['GET', 'POST'])
+@login_required
+@manager_or_admin
+def element_schedule_form(element_id):
+    """Adauga sau editeaza schedule entries pentru un element."""
+    redir = _ensure_4d_enabled()
+    if redir:
+        return redir
+    element = ElementBIM.query.get_or_404(element_id)
+    schedules = (BIMTaskSchedule.query
+                 .filter_by(element_bim_id=element_id)
+                 .order_by(BIMTaskSchedule.data_start_plan)
+                 .all())
+
+    if request.method == 'POST':
+        try:
+            faza = request.form.get('faza', '').strip().lower()
+            data_start = datetime.strptime(request.form.get('data_start_plan'), '%Y-%m-%d').date()
+            data_sfarsit = datetime.strptime(request.form.get('data_sfarsit_plan'), '%Y-%m-%d').date()
+            disciplina = request.form.get('disciplina', '').strip().upper() or None
+            descriere = request.form.get('descriere', '').strip() or None
+            sched = fourd_svc.create_schedule(
+                element_bim_id=element_id, faza=faza,
+                data_start_plan=data_start, data_sfarsit_plan=data_sfarsit,
+                disciplina=disciplina, descriere=descriere,
+                user=current_user,
+            )
+            flash(f'Schedule "{sched.faza}" creat pentru elementul {element.cod}.', 'success')
+            return redirect(url_for('bim.element_schedule_form', element_id=element_id))
+        except ValueError as e:
+            flash(str(e), 'danger')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare la creare schedule: {e}', 'danger')
+
+    return render_template('bim/element_schedule.html',
+                           element=element, schedules=schedules,
+                           faze_tipice=BIMTaskSchedule.FAZE_TIPICE,
+                           statusuri=BIMTaskSchedule.STATUSURI)
+
+
+@bim_bp.route('/schedule/<int:schedule_id>/progres', methods=['POST'])
+@login_required
+@manager_or_admin
+def schedule_update_progress(schedule_id):
+    """Actualizeaza progresul (0..100) pentru un schedule entry."""
+    redir = _ensure_4d_enabled()
+    if redir:
+        return redir
+    sched = BIMTaskSchedule.query.get_or_404(schedule_id)
+    try:
+        progres = int(request.form.get('progres_pct', 0))
+        status = request.form.get('status', '').strip() or None
+        fourd_svc.update_progress(sched, progres, status=status, user=current_user)
+        flash(f'Progres actualizat la {progres}%.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare: {e}', 'danger')
+    return redirect(url_for('bim.element_schedule_form', element_id=sched.element_bim_id))
+
+
+@bim_bp.route('/santier/<int:santier_id>/4d-timeline')
+@login_required
+def santier_4d_timeline(santier_id):
+    """Timeline Gantt-style pentru toate schedule-urile unui santier."""
+    redir = _ensure_4d_enabled()
+    if redir:
+        return redir
+    santier = Santier.query.get_or_404(santier_id)
+    timeline = fourd_svc.get_timeline_for_santier(santier_id)
+    progress = fourd_svc.compute_santier_progress(santier_id)
+    return render_template('bim/santier_4d_timeline.html',
+                           santier=santier, timeline=timeline,
+                           progress=progress)
+
+
+@bim_bp.route('/api/santier/<int:santier_id>/visible-at')
+@login_required
+def api_visible_at(santier_id):
+    """JSON: ID-urile elementelor vizibile la o anumita data (4D viewer)."""
+    if not ff_svc.is_enabled('bim-4d-schedule'):
+        return jsonify({'enabled': False, 'visible_element_ids': []}), 200
+    data_str = request.args.get('data')
+    try:
+        data = datetime.strptime(data_str, '%Y-%m-%d').date() if data_str else date.today()
+    except (ValueError, TypeError):
+        return jsonify({'error': 'data invalida (folositi YYYY-MM-DD)'}), 400
+    visible = fourd_svc.get_visible_elements_at_date(santier_id, data)
+    return jsonify({
+        'enabled': True,
+        'data': data.isoformat(),
+        'count': len(visible),
+        'visible_element_ids': visible,
+    })
+
+
+# ============================================================
+# 5D COST (Faza 5)
+# Activare: feature flag 'bim-5d-cost' (default OFF).
+# ============================================================
+
+def _ensure_5d_enabled():
+    if not ff_svc.is_enabled('bim-5d-cost'):
+        flash('5D Cost nu e activat pentru acest tenant.', 'info')
+        return redirect(url_for('bim.dashboard'))
+    return None
+
+
+@bim_bp.route('/element/<int:element_id>/cost', methods=['GET', 'POST'])
+@login_required
+@manager_or_admin
+def element_cost_form(element_id):
+    """Adauga sau editeaza cost items pentru un element."""
+    redir = _ensure_5d_enabled()
+    if redir:
+        return redir
+    element = ElementBIM.query.get_or_404(element_id)
+    items = (BIMCostItem.query
+             .filter_by(element_bim_id=element_id)
+             .order_by(BIMCostItem.categorie, BIMCostItem.id)
+             .all())
+
+    if request.method == 'POST':
+        try:
+            from decimal import Decimal
+            cantitate = Decimal(request.form.get('cantitate', '0'))
+            pret_unitar = Decimal(request.form.get('pret_unitar', '0'))
+            item = fived_svc.create_cost_item(
+                element_bim_id=element_id,
+                descriere=request.form.get('descriere', '').strip(),
+                cantitate=float(cantitate),
+                pret_unitar=float(pret_unitar),
+                categorie=request.form.get('categorie', 'material'),
+                unitate=request.form.get('unitate', 'buc'),
+                faza=request.form.get('faza', '').strip() or None,
+                tip=request.form.get('tip', 'planificat'),
+                referinta_extern=request.form.get('referinta_extern', '').strip(),
+                user=current_user,
+            )
+            flash(f'Item cost adaugat: {item.descriere} ({item.total:.2f} {item.valuta}).', 'success')
+            return redirect(url_for('bim.element_cost_form', element_id=element_id))
+        except ValueError as e:
+            flash(str(e), 'danger')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare: {e}', 'danger')
+
+    breakdown = fived_svc.cost_total_element(element_id)
+    return render_template('bim/element_cost.html',
+                           element=element, items=items,
+                           breakdown=breakdown,
+                           categorii=BIMCostItem.CATEGORII,
+                           tipuri=BIMCostItem.TIPURI,
+                           unitati=BIMCostItem.UNITATI)
+
+
+@bim_bp.route('/santier/<int:santier_id>/5d-dashboard')
+@login_required
+def santier_5d_dashboard(santier_id):
+    """Dashboard cost cu breakdown per disciplina/cladire/tip element + plan vs real."""
+    redir = _ensure_5d_enabled()
+    if redir:
+        return redir
+    santier = Santier.query.get_or_404(santier_id)
+    breakdown_plan = fived_svc.cost_breakdown_santier(santier_id, tip='planificat')
+    breakdown_real = fived_svc.cost_breakdown_santier(santier_id, tip='real')
+    delta = fived_svc.cost_planificat_vs_real(santier_id)
+    return render_template('bim/santier_5d_dashboard.html',
+                           santier=santier,
+                           breakdown_plan=breakdown_plan,
+                           breakdown_real=breakdown_real,
+                           delta=delta)
+
+
+@bim_bp.route('/api/element/<int:element_id>/cost')
+@login_required
+def api_element_cost(element_id):
+    """JSON: breakdown cost per element pe categorii."""
+    if not ff_svc.is_enabled('bim-5d-cost'):
+        return jsonify({'enabled': False, 'total': 0}), 200
+    return jsonify({
+        'enabled': True,
+        **fived_svc.cost_total_element(element_id),
     })
