@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Versiuni model - {{ model.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.modele_lista') }}">Modele</a></li>
+<li class="breadcrumb-item active">Versiuni: {{ model.nume }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.status-badge { display:inline-block; padding:3px 10px; border-radius:10px; font-size:0.78rem; font-weight:600; text-transform:uppercase; }
+.s-wip       { background:#fff3cd; color:#856404; }
+.s-shared    { background:#cce5ff; color:#004085; }
+.s-published { background:#d4edda; color:#155724; }
+.s-rejected  { background:#f8d7da; color:#721c24; }
+.s-archived  { background:#e2e3e5; color:#383d41; }
+.workflow-actions { display:flex; gap:6px; flex-wrap:wrap; }
+.workflow-actions form { display:inline; }
+.workflow-actions button { font-size:0.78rem; padding:4px 10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2 style="margin:0;"><i class="fa-solid fa-code-branch" style="color:var(--primary);"></i> Versiuni: {{ model.nume }}</h2>
+        <div style="font-size:0.85rem; color:var(--gray-500); margin-top:4px;">
+            {{ model.tip|upper }} | {{ versiuni|length }} versiuni inregistrate
+        </div>
+    </div>
+    <a href="{{ url_for('bim.model_versiune_noua', model_id=model.id) }}" class="btn btn-primary">
+        <i class="fa-solid fa-plus"></i> Versiune noua
+    </a>
+</div>
+
+{% if versiuni %}
+<div class="card-panel">
+    <div class="card-panel-body" style="padding:0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Versiune</th>
+                    <th>Disciplina</th>
+                    <th>Status</th>
+                    <th>Creat</th>
+                    <th>Publicat</th>
+                    <th>Workflow CDE</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in versiuni %}
+                <tr>
+                    <td>
+                        <strong>{{ v.versiune }}</strong>
+                        {% if v.descriere %}
+                        <div style="font-size:0.8rem; color:var(--gray-500); margin-top:2px;">{{ v.descriere|truncate(80) }}</div>
+                        {% endif %}
+                    </td>
+                    <td>{{ v.disciplina or '-' }}</td>
+                    <td><span class="status-badge s-{{ v.status }}">{{ v.label_status }}</span></td>
+                    <td>
+                        {{ v.data_creare.strftime('%d.%m.%Y') if v.data_creare else '-' }}
+                        {% if v.creat_de %}<br><small style="color:var(--gray-500);">{{ v.creat_de.nume }} {{ v.creat_de.prenume }}</small>{% endif %}
+                    </td>
+                    <td>
+                        {% if v.data_publicare %}
+                            {{ v.data_publicare.strftime('%d.%m.%Y') }}
+                            {% if v.aprobat_de %}<br><small style="color:var(--gray-500);">{{ v.aprobat_de.nume }}</small>{% endif %}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="workflow-actions">
+                            {% if v.status == 'wip' %}
+                                <form method="POST" action="{{ url_for('bim.model_version_transition', version_id=v.id) }}" onsubmit="return confirm('Partajezi versiunea {{ v.versiune }} (shared)?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="status" value="shared">
+                                    <button type="submit" class="btn btn-outline">→ Shared</button>
+                                </form>
+                            {% elif v.status == 'shared' %}
+                                {% if current_user.rol in ['admin', 'manager'] %}
+                                <form method="POST" action="{{ url_for('bim.model_version_transition', version_id=v.id) }}" onsubmit="return confirm('Publici versiunea {{ v.versiune }} (published, oficial)?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="status" value="published">
+                                    <button type="submit" class="btn btn-success" style="background:var(--success); color:white;">→ Publish</button>
+                                </form>
+                                <form method="POST" action="{{ url_for('bim.model_version_transition', version_id=v.id) }}" onsubmit="return confirm('Respingi versiunea {{ v.versiune }}?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="status" value="rejected">
+                                    <button type="submit" class="btn btn-outline" style="color:var(--danger); border-color:var(--danger);">→ Reject</button>
+                                </form>
+                                {% endif %}
+                                <form method="POST" action="{{ url_for('bim.model_version_transition', version_id=v.id) }}" onsubmit="return confirm('Retragi versiunea inapoi in WIP?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="status" value="wip">
+                                    <button type="submit" class="btn btn-outline">← WIP</button>
+                                </form>
+                            {% elif v.status == 'published' and current_user.rol in ['admin', 'manager'] %}
+                                <form method="POST" action="{{ url_for('bim.model_version_transition', version_id=v.id) }}" onsubmit="return confirm('Arhivezi versiunea publicata?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="status" value="archived">
+                                    <button type="submit" class="btn btn-outline">→ Arhiveaza</button>
+                                </form>
+                            {% elif v.status == 'rejected' and current_user.rol in ['admin', 'manager'] %}
+                                <form method="POST" action="{{ url_for('bim.model_version_transition', version_id=v.id) }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="status" value="wip">
+                                    <button type="submit" class="btn btn-outline">→ Reia (WIP)</button>
+                                </form>
+                            {% elif v.status == 'archived' %}
+                                <span style="color:var(--gray-500); font-size:0.85rem;">terminal</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="empty-state" style="padding:40px; text-align:center; background:white; border-radius:10px;">
+    <i class="fa-solid fa-code-branch" style="font-size:2.5rem; color:var(--gray-300);"></i>
+    <p style="margin-top:12px; color:var(--gray-500);">Modelul nu are inca versiuni inregistrate.</p>
+    <a href="{{ url_for('bim.model_versiune_noua', model_id=model.id) }}" class="btn btn-primary" style="margin-top:8px;">
+        <i class="fa-solid fa-plus"></i> Creeaza prima versiune
+    </a>
+</div>
+{% endif %}
+
+<div style="margin-top:16px; padding:14px; background:#E3F2FD; border-left:3px solid var(--primary); border-radius:6px; font-size:0.88rem;">
+    <strong>Workflow CDE (ISO 19650 simplificat):</strong>
+    <code>WIP</code> → <code>SHARED</code> → <code>PUBLISHED</code> | <code>REJECTED</code> → <code>WIP</code> | toate → <code>ARCHIVED</code>
+</div>
+{% endblock %}

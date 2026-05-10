@@ -27,6 +27,7 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
 from models import (
+    BIMModelVersion,
     db, Santier, Cladire, Nivel, Zona, Spatiu, ElementBIM, Asset,
     IssueBIM, ModelBIM, Proiect, RaportActivitate, Pontaj,
     ExternalMapping,
@@ -34,6 +35,8 @@ from models import (
 from services import ifc_import as ifc_service
 from services import bim_quality
 from services import audit as audit_svc
+from services import bim_workflow
+from services import feature_flags as ff_svc
 from services import feature_flags
 from services import aps_viewer
 
@@ -853,3 +856,182 @@ def api_elemente_catalog():
         'total': len(rezultat),
         'elements': rezultat,
     })
+
+
+# ============================================================
+# CDE WORKFLOW + VERSIONING (Faza 3)
+# Activate prin feature flag 'bim-model-versioning' (default OFF).
+# Cand flag-ul e OFF rutele raman accesibile dar UI-ul nu le link-uieste.
+# ============================================================
+
+def _ensure_versioning_enabled():
+    """Helper: redirect la dashboard daca flag-ul e off."""
+    if not ff_svc.is_enabled('bim-model-versioning'):
+        flash('Feature-ul versioning nu e activat pentru acest tenant.', 'info')
+        return redirect(url_for('bim.dashboard'))
+    return None
+
+
+@bim_bp.route('/model/<int:model_id>/versiuni')
+@login_required
+def model_versiuni(model_id):
+    """Lista versiunilor unui ModelBIM (workflow CDE)."""
+    redir = _ensure_versioning_enabled()
+    if redir:
+        return redir
+    model = ModelBIM.query.get_or_404(model_id)
+    versiuni = (BIMModelVersion.query
+                .filter_by(model_id=model_id)
+                .order_by(BIMModelVersion.data_creare.desc())
+                .all())
+    return render_template('bim/model_versiuni.html', model=model, versiuni=versiuni,
+                           statusuri=BIMModelVersion.STATUSURI)
+
+
+@bim_bp.route('/model/<int:model_id>/versiune-noua', methods=['GET', 'POST'])
+@login_required
+def model_versiune_noua(model_id):
+    """Creeaza o versiune noua pentru model (status='wip' initial)."""
+    redir = _ensure_versioning_enabled()
+    if redir:
+        return redir
+    model = ModelBIM.query.get_or_404(model_id)
+
+    if request.method == 'POST':
+        try:
+            v = bim_workflow.create_new_version(
+                model=model,
+                versiune=request.form.get('versiune', '').strip(),
+                user=current_user,
+                disciplina=request.form.get('disciplina', '').strip(),
+                descriere=request.form.get('descriere', '').strip(),
+                # fisier_path / extern_url: optional in formular MVP
+                extern_url=request.form.get('extern_url', '').strip() or None,
+            )
+            flash(f'Versiunea "{v.versiune}" creata in stare WIP.', 'success')
+            return redirect(url_for('bim.model_versiuni', model_id=model.id))
+        except bim_workflow.WorkflowError as e:
+            flash(str(e), 'danger')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare la creare versiune: {e}', 'danger')
+
+    return render_template('bim/model_versiune_formular.html', model=model)
+
+
+@bim_bp.route('/model-version/<int:version_id>/transition', methods=['POST'])
+@login_required
+def model_version_transition(version_id):
+    """
+    Aplica o tranzitie de status (wip->shared, shared->published, etc.).
+    Necesita CSRF + autorizare (vezi bim_workflow.can_user_transition).
+    """
+    redir = _ensure_versioning_enabled()
+    if redir:
+        return redir
+
+    v = BIMModelVersion.query.get_or_404(version_id)
+    new_status = request.form.get('status', '').strip().lower()
+    comentariu = request.form.get('comentariu', '').strip() or None
+
+    try:
+        bim_workflow.transition(v, new_status, current_user, comentariu=comentariu)
+        flash(f'Versiunea "{v.versiune}" -> {v.label_status}.', 'success')
+    except bim_workflow.WorkflowError as e:
+        flash(str(e), 'danger')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la tranzitie: {e}', 'danger')
+
+    return redirect(url_for('bim.model_versiuni', model_id=v.model_id))
+
+
+@bim_bp.route('/api/model/<int:model_id>/versiuni')
+@login_required
+def api_model_versiuni(model_id):
+    """JSON: versiunile unui model (toate sau filtrate)."""
+    if not ff_svc.is_enabled('bim-model-versioning'):
+        return jsonify({'enabled': False, 'versions': []}), 200
+
+    status_filter = request.args.get('status')
+    q = BIMModelVersion.query.filter_by(model_id=model_id)
+    if status_filter:
+        q = q.filter_by(status=status_filter)
+    versiuni = q.order_by(BIMModelVersion.data_creare.desc()).all()
+    return jsonify({
+        'enabled': True,
+        'count': len(versiuni),
+        'versions': [{
+            'id': v.id,
+            'versiune': v.versiune,
+            'disciplina': v.disciplina,
+            'status': v.status,
+            'label_status': v.label_status,
+            'data_creare': v.data_creare.isoformat() if v.data_creare else None,
+            'data_publicare': v.data_publicare.isoformat() if v.data_publicare else None,
+            'creat_de_id': v.creat_de_id,
+            'is_official': v.is_official,
+            'descriere': v.descriere,
+        } for v in versiuni],
+    })
+
+
+# ============================================================
+# FEDERATION (Faza 3) - viewer multi-model pe santier
+# Activate prin feature flag 'bim-federation' (default OFF).
+# ============================================================
+
+@bim_bp.route('/santier/<int:santier_id>/viewer-federat')
+@login_required
+def viewer_federat(santier_id):
+    """Viewer federat: toate modelele 'published' ale santierului overlap."""
+    if not ff_svc.is_enabled('bim-federation'):
+        flash('Federation nu e activat pentru acest tenant.', 'info')
+        return redirect(url_for('bim.santier_detaliu', id=santier_id))
+
+    santier = Santier.query.get_or_404(santier_id)
+    versiuni = bim_workflow.get_published_versions_for_santier(santier_id)
+
+    if not versiuni:
+        flash('Niciun model publicat (published) pentru acest santier inca.', 'warning')
+        return redirect(url_for('bim.santier_detaliu', id=santier.id))
+
+    # Construim lista de URL-uri pentru viewer client-side
+    modele_data = []
+    for v in versiuni:
+        # Preferam fisierul versiunii daca exista, altfel cel al modelului
+        if v.fisier_path:
+            ifc_url = url_for('bim.api_model_version_file', version_id=v.id)
+        elif v.model.fisier_path:
+            ifc_url = url_for('bim.viewer_file', model_id=v.model_id)
+        else:
+            continue
+        modele_data.append({
+            'version_id': v.id,
+            'model_id': v.model_id,
+            'nume': v.model.nume,
+            'versiune': v.versiune,
+            'disciplina': v.disciplina or 'GEN',
+            'ifc_url': ifc_url,
+        })
+
+    return render_template('bim/viewer_federat.html',
+                           santier=santier, modele=modele_data,
+                           versiuni=versiuni)
+
+
+@bim_bp.route('/api/model-version/<int:version_id>/file')
+@login_required
+def api_model_version_file(version_id):
+    """Trimite fisierul IFC al unei versiuni specifice (pentru viewer federat)."""
+    v = BIMModelVersion.query.get_or_404(version_id)
+    # Numai versiunile partajate sau publicate sunt servite (sau de catre creator)
+    if v.status not in ('shared', 'published') and v.creat_de_id != current_user.id:
+        if current_user.rol not in ('admin', 'manager'):
+            abort(403)
+    if not v.fisier_path:
+        abort(404)
+    abs_path = os.path.join(current_app.root_path, v.fisier_path)
+    if not os.path.exists(abs_path):
+        abort(404)
+    return send_file(abs_path, mimetype='application/octet-stream')

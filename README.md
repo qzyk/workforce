@@ -142,8 +142,8 @@ Evolutia platformei catre BIM/Digital Twin se face in 8 faze incrementale, fieca
 | Faza | Tema | Status |
 |------|------|--------|
 | 1 | Foundation: Alembic + audit log + feature flags + CI | **Live** |
-| 2 | 3D Viewer xeokit-sdk + APS adapter (stub) | **In curs (acest PR)** |
-| 3 | Model versioning + Federation (CDE workflow) | Planificat |
+| 2 | 3D Viewer xeokit-sdk + APS adapter (stub) | **Live** |
+| 3 | Model versioning + Federation (CDE workflow) | **In curs (acest PR)** |
 | 4 | Clash detection + Rule engine | Planificat |
 | 5 | 4D/5D - Schedule + Cost | Planificat |
 | 6 | Digital Twin / IoT layer (sensori, time-series) | Planificat |
@@ -176,6 +176,38 @@ Activeaza viewer-ul nou prin Python REPL sau scripts/init_seed:
 from services.feature_flags import set_flag
 set_flag('bim-viewer-3d', True)  # global, pentru toti tenant-ii
 ```
+
+### CDE Workflow + Federation (Faza 3)
+
+Inspirat din **ISO 19650** (Common Data Environment). Fiecare model BIM
+poate avea N versiuni cu workflow de status:
+
+```
+WIP → SHARED → PUBLISHED → ARCHIVED
+              ↘ REJECTED → WIP
+```
+
+- **WIP** (Work In Progress): in dezvoltare, vizibil doar pentru autor
+- **SHARED**: partajat pentru coordonare cu alte discipline
+- **PUBLISHED**: aprobat oficial (folosibil pentru executie). Doar admin/manager poate publica.
+- **REJECTED**: respins (cu comentariu obligatoriu in flow tipic). Poate fi reluat in WIP.
+- **ARCHIVED**: terminal (versiune veche pastrata pentru istoric)
+
+**Federation** = viewer xeokit care incarca simultan toate versiunile `published` ale unui santier (multi-disciplina, filtrabil prin pillule per disciplina: ARH/STR/MEP/ELE/HVAC/SAN/GEN).
+
+**Activare** (default OFF):
+```python
+from services.feature_flags import set_flag
+set_flag('bim-model-versioning', True)  # Activeaza versionare + workflow CDE
+set_flag('bim-federation', True)         # Activeaza viewer federat pe santier
+```
+
+**Pagini noi** (vizibile dupa activare flag):
+- `/bim/model/<id>/versiuni` — lista versiuni cu butoane de tranzitie
+- `/bim/model/<id>/versiune-noua` — formular creare versiune
+- `/bim/santier/<id>/viewer-federat` — viewer multi-model overlap (necesita versiuni `published`)
+
+Toate tranzitiile de status se loaheaza in `audit_log` (entity_type=`bim_model_version`).
 
 ## Securitate
 

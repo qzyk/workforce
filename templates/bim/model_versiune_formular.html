@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Versiune noua - {{ model.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.modele_lista') }}">Modele</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.model_versiuni', model_id=model.id) }}">{{ model.nume }}</a></li>
+<li class="breadcrumb-item active">Versiune noua</li>
+{% endblock %}
+
+{% block content %}
+<h2><i class="fa-solid fa-plus"></i> Versiune noua pentru "{{ model.nume }}"</h2>
+
+<form method="POST" class="card-panel" style="max-width:680px; margin-top:16px;">
+    <div class="card-panel-body" style="padding:24px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-group">
+            <label>Eticheta versiune <span style="color:var(--danger);">*</span></label>
+            <input type="text" name="versiune" required maxlength="50"
+                   placeholder="ex: v1.0, rev. C, 2026-05-06_AS_BUILT" />
+            <small style="color:var(--gray-500);">Trebuie sa fie unica pentru acest model.</small>
+        </div>
+
+        <div class="form-group">
+            <label>Disciplina (optional)</label>
+            <select name="disciplina">
+                <option value="">- alege -</option>
+                <option value="ARH">ARH (Arhitectura)</option>
+                <option value="STR">STR (Structura)</option>
+                <option value="MEP">MEP (Mecanic-Electric-Sanitar)</option>
+                <option value="ELE">ELE (Electric)</option>
+                <option value="HVAC">HVAC (Climatizare)</option>
+                <option value="SAN">SAN (Sanitar)</option>
+                <option value="GEN">GEN (General/Coordonare)</option>
+            </select>
+            <small style="color:var(--gray-500);">Util pentru filtrare in viewer-ul federat.</small>
+        </div>
+
+        <div class="form-group">
+            <label>Descriere (optional)</label>
+            <textarea name="descriere" rows="3" maxlength="1000"
+                      placeholder="Modificari fata de versiunea anterioara..."></textarea>
+        </div>
+
+        <div class="form-group">
+            <label>URL extern (optional)</label>
+            <input type="url" name="extern_url" maxlength="500"
+                   placeholder="https://... (Trimble Connect / Autodesk Viewer / etc.)" />
+            <small style="color:var(--gray-500);">Daca versiunea e gazduita extern.</small>
+        </div>
+
+        <div style="background:#FFF8E1; border-left:3px solid var(--warning); padding:10px; border-radius:5px; font-size:0.88rem; margin:16px 0;">
+            <i class="fa-solid fa-info-circle"></i>
+            Versiunea va fi creata cu status <strong>WIP</strong> (work-in-progress). Pentru a o partaja sau publica, vei folosi butoanele de tranzitie din lista de versiuni.
+        </div>
+
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <a href="{{ url_for('bim.model_versiuni', model_id=model.id) }}" class="btn btn-outline">Anuleaza</a>
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Creeaza versiune</button>
+        </div>
+    </div>
+</form>
+{% endblock %}

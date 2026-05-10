@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Viewer federat - {{ santier.cod }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.santiere_lista') }}">Santiere</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.santier_detaliu', id=santier.id) }}">{{ santier.cod }}</a></li>
+<li class="breadcrumb-item active">Viewer federat</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.fed-viewer-container { width:100%; height:calc(100vh - 240px); min-height:500px; background:#1a1a1a; border-radius:10px; position:relative; overflow:hidden; }
+.fed-viewer-container canvas { display:block; outline:none; }
+.fed-info { position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.7); color:white; padding:8px 14px; border-radius:6px; font-size:0.85rem; z-index:10; max-width:340px; }
+.fed-info code { background:rgba(255,255,255,0.15); padding:2px 6px; border-radius:3px; }
+.fed-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:12px; color:white; z-index:5; }
+.disciplina-list { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.disciplina-pill { background:white; border:1px solid var(--gray-300); padding:5px 12px; border-radius:14px; font-size:0.85rem; cursor:pointer; user-select:none; }
+.disciplina-pill.active { background:var(--primary); color:white; border-color:var(--primary); }
+.disciplina-pill input[type="checkbox"] { margin-right:5px; vertical-align:middle; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2 style="margin:0;">
+            <i class="fa-solid fa-layer-group" style="color:var(--primary);"></i>
+            Viewer federat: {{ santier.cod }}
+        </h2>
+        <div style="font-size:0.85rem; color:var(--gray-500); margin-top:4px;">
+            {{ modele|length }} versiuni publicate, {{ versiuni|map(attribute='disciplina')|reject('none')|unique|list|length }} discipline
+        </div>
+    </div>
+    <a href="{{ url_for('bim.santier_detaliu', id=santier.id) }}" class="btn btn-outline">
+        <i class="fa-solid fa-arrow-left"></i> Inapoi la santier
+    </a>
+</div>
+
+<div class="disciplina-list">
+    <strong style="font-size:0.9rem; align-self:center; margin-right:8px;">Discipline:</strong>
+    {% set unique_disc = modele|map(attribute='disciplina')|unique|list %}
+    {% for d in unique_disc %}
+    <label class="disciplina-pill active" data-disciplina="{{ d }}">
+        <input type="checkbox" checked data-disc-toggle="{{ d }}"> {{ d }}
+        ({{ modele|selectattr('disciplina', 'equalto', d)|list|length }})
+    </label>
+    {% endfor %}
+</div>
+
+<div class="fed-viewer-container" id="fedViewerContainer">
+    <div class="fed-info" id="fedInfo">
+        <strong>Federation viewer (xeokit-sdk)</strong><br>
+        Se incarca {{ modele|length }} model{{ 'e' if modele|length != 1 else '' }}...
+    </div>
+    <div class="fed-loading" id="fedLoading">
+        <i class="fa-solid fa-spinner fa-spin" style="font-size:3rem;"></i>
+        <span>Federate {{ modele|length }} modele IFC...</span>
+    </div>
+</div>
+
+<div style="margin-top:14px; padding:12px; background:#E8F5E9; border-left:3px solid var(--success); border-radius:6px; font-size:0.88rem;">
+    <i class="fa-solid fa-circle-info"></i>
+    <strong>Federation:</strong> doar versiunile cu status <code>published</code> sunt incarcate. Activeaza/dezactiveaza disciplinele cu pillule de mai sus.
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+// Viewer federat xeokit-sdk via ES modules
+import { Viewer, WebIFCLoaderPlugin } from "https://cdn.jsdelivr.net/npm/@xeokit/xeokit-sdk/+esm";
+import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc/+esm";
+
+const container = document.getElementById('fedViewerContainer');
+const loading = document.getElementById('fedLoading');
+const info = document.getElementById('fedInfo');
+
+const MODELE = {{ modele|tojson }};
+
+// Culori per disciplina (simple, predictibile)
+const DISC_COLORS = {
+    'ARH':  [0.8, 0.7, 0.5],
+    'STR':  [0.6, 0.6, 0.7],
+    'MEP':  [0.5, 0.7, 0.9],
+    'ELE':  [1.0, 0.9, 0.4],
+    'HVAC': [0.4, 0.8, 0.8],
+    'SAN':  [0.4, 0.6, 1.0],
+    'GEN':  [0.7, 0.7, 0.7],
+};
+
+try {
+    // Init canvas pentru xeokit
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    container.appendChild(canvas);
+
+    const viewer = new Viewer({ canvasElement: canvas, transparent: false });
+    viewer.scene.canvas.backgroundColor = [0.1, 0.1, 0.1];
+
+    const ifcAPI = new WebIFC.IfcAPI();
+    ifcAPI.SetWasmPath("https://cdn.jsdelivr.net/npm/web-ifc/");
+    await ifcAPI.Init();
+
+    const loader = new WebIFCLoaderPlugin(viewer, { WebIFC, IfcAPI: ifcAPI });
+
+    let loadedCount = 0;
+    const t0 = performance.now();
+    const loadedModels = [];
+
+    for (const m of MODELE) {
+        try {
+            const sceneModel = await loader.load({
+                id: `version_${m.version_id}`,
+                src: m.ifc_url,
+                excludeUnclassifiedObjects: false,
+            });
+            loadedCount++;
+            loadedModels.push({ id: `version_${m.version_id}`, disciplina: m.disciplina, sceneModel });
+
+            // Aplic culoare per disciplina (uniform pe model)
+            const color = DISC_COLORS[m.disciplina] || DISC_COLORS['GEN'];
+            // xeokit aplica culoarea via setObjectsColorize cand iterezi entitatile
+
+            info.innerHTML = `<strong>Federation viewer</strong><br>
+                Incarcat: ${loadedCount}/${MODELE.length} modele<br>
+                <small>Ultimul: <code>${m.disciplina}</code> ${m.nume} (${m.versiune})</small>`;
+        } catch (e) {
+            console.warn(`Esuat la incarcare ${m.nume}:`, e);
+        }
+    }
+
+    const sec = ((performance.now() - t0) / 1000).toFixed(1);
+    loading.style.display = 'none';
+    info.innerHTML = `<strong>Federation viewer xeokit-sdk</strong><br>
+        ${loadedCount}/${MODELE.length} modele incarcate in ${sec}s.<br>
+        <small>Click pe pillule pentru a filtra disciplinele.</small>`;
+
+    viewer.cameraFlight.flyTo({ aabb: viewer.scene.aabb, duration: 0.5 });
+
+    // Filter pe disciplina via pillule
+    document.querySelectorAll('[data-disc-toggle]').forEach(cb => {
+        cb.addEventListener('change', (ev) => {
+            const disc = ev.target.dataset.discToggle;
+            const visible = ev.target.checked;
+            for (const lm of loadedModels) {
+                if (lm.disciplina === disc) {
+                    viewer.scene.setObjectsVisible(lm.sceneModel.objectIds, visible);
+                }
+            }
+            ev.target.parentElement.classList.toggle('active', visible);
+        });
+    });
+
+    window.fedViewer = viewer;
+} catch (err) {
+    loading.innerHTML = `<i class="fa-solid fa-circle-xmark" style="font-size:2.5rem; color:#ff6b6b;"></i><br>
+        <strong>Federation viewer indisponibil</strong><br>
+        <small style="color:#aaa;">${err.message || 'Eroare la incarcare modelelor.'}</small>`;
+    console.error(err);
+}
+</script>
+{% endblock %}

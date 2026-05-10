@@ -80,6 +80,9 @@
                         {% if m.is_viewer_intern %}
                         <a href="{{ url_for('bim.viewer', model_id=m.id) }}" class="btn-action btn-view" title="Deschide viewer 3D"><i class="fa-solid fa-cube"></i></a>
                         {% endif %}
+                        {% if feature_enabled('bim-model-versioning') %}
+                        <a href="{{ url_for('bim.model_versiuni', model_id=m.id) }}" class="btn-action" title="Versiuni model (CDE)"><i class="fa-solid fa-code-branch" style="color:var(--primary);"></i></a>
+                        {% endif %}
                         {% if m.is_viewer_extern %}
                         <a href="{{ m.get_external_url_for_guid() }}" target="_blank" class="btn-action btn-view" title="Deschide extern"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
                         {% endif %}

@@ -1987,3 +1987,120 @@ class FeatureFlag(db.Model):
         return f'<FeatureFlag {self.key} {scope} enabled={self.enabled}>'
 
 
+# ============================================================
+# CDE WORKFLOW + VERSIONING (Faza 3 BIM Digital Twin)
+# Inspirat din ISO 19650 (Common Data Environment).
+# 1 ModelBIM (logic) -> N BIMModelVersion (fisiere fizice cu istoric).
+# ============================================================
+
+class BIMModelVersion(db.Model):
+    """
+    O versiune a unui model BIM. Suporta workflow CDE:
+        wip -> shared -> published -> archived
+        oricand: -> rejected
+    """
+    __tablename__ = 'bim_model_versions'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    model_id = db.Column(db.Integer, db.ForeignKey('bim_modele.id'), nullable=False, index=True)
+
+    # Eticheta versiunii (ex: 'v1.0', 'rev. C', '2026-05-06_AS_BUILT')
+    versiune = db.Column(db.String(50), nullable=False)
+
+    # Disciplina (ARH, STR, MEP, ELE, ...) - util pentru federation pe disciplina
+    disciplina = db.Column(db.String(20), nullable=True, index=True)
+
+    descriere = db.Column(db.Text, nullable=True)
+
+    # Status CDE workflow ISO 19650
+    # wip       - work in progress (in dezvoltare, nu se vede pentru altii)
+    # shared    - partajat (vizibil pentru disciplinele coordonate)
+    # published - publicat (oficial, folosit pentru executie)
+    # rejected  - respins (nu trece la published)
+    # archived  - arhivat (versiune veche, pastrata istoric)
+    status = db.Column(db.String(20), default='wip', nullable=False, index=True)
+
+    # Stocare
+    fisier_path = db.Column(db.String(500), nullable=True)  # cale relativa
+    fisier_marime = db.Column(db.Integer, nullable=True)
+    fisier_hash = db.Column(db.String(64), nullable=True)  # SHA-256 pentru verificare integritate
+
+    # Externe
+    extern_url = db.Column(db.String(500), nullable=True)
+    extern_id = db.Column(db.String(100), nullable=True, index=True)
+    source_system = db.Column(db.String(30), nullable=True)
+
+    # Audit/workflow timestamps
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    data_share = db.Column(db.DateTime, nullable=True)
+    data_publicare = db.Column(db.DateTime, nullable=True)
+    data_respingere = db.Column(db.DateTime, nullable=True)
+    data_arhivare = db.Column(db.DateTime, nullable=True)
+
+    # Cine a uploadat / aprobat
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True, index=True)
+    aprobat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True, index=True)
+
+    # Comentariu opțional la respingere
+    comentariu_aprobare = db.Column(db.Text, nullable=True)
+
+    # Relatii
+    model = db.relationship('ModelBIM', backref=db.backref('versiuni', lazy='dynamic',
+                                                            cascade='all, delete-orphan',
+                                                            order_by='BIMModelVersion.data_creare.desc()'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+    aprobat_de = db.relationship('Utilizator', foreign_keys=[aprobat_de_id])
+
+    STATUSURI = [
+        ('wip', 'Work in Progress'),
+        ('shared', 'Partajat (Shared)'),
+        ('published', 'Publicat'),
+        ('rejected', 'Respins'),
+        ('archived', 'Arhivat'),
+    ]
+
+    # Tranzitii valide (status_curent -> set status posibili)
+    # Conform ISO 19650 simplificat
+    TRANZITII_VALIDE = {
+        'wip':       {'shared', 'archived'},
+        'shared':    {'published', 'rejected', 'wip', 'archived'},
+        'published': {'archived'},
+        'rejected':  {'wip', 'archived'},
+        'archived':  set(),  # terminal
+    }
+
+    __table_args__ = (
+        db.UniqueConstraint('model_id', 'versiune', name='uix_model_version_label'),
+        db.Index('ix_model_version_status', 'model_id', 'status'),
+    )
+
+    @property
+    def label_status(self):
+        for cod, label in self.STATUSURI:
+            if cod == self.status:
+                return label
+        return self.status
+
+    @property
+    def is_terminal(self):
+        return self.status == 'archived'
+
+    @property
+    def is_visible_to_others(self):
+        """True daca versiunea e vizibila pentru alti utilizatori (in afara autorului)."""
+        return self.status in ('shared', 'published')
+
+    @property
+    def is_official(self):
+        """True daca versiunea e considerata oficiala (folosibila in executie)."""
+        return self.status == 'published'
+
+    def can_transition_to(self, new_status: str) -> bool:
+        """Verifica daca tranzitia status_curent -> new_status e permisa."""
+        return new_status in self.TRANZITII_VALIDE.get(self.status, set())
+
+    def __repr__(self):
+        return f'<BIMModelVersion {self.versiune} of model {self.model_id} [{self.status}]>'
+
+

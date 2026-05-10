@@ -23,6 +23,11 @@
     </div>
     {% if current_user.rol in ['admin', 'manager'] %}
     <div style="display:flex; gap:8px;">
+        {% if feature_enabled('bim-federation') %}
+        <a href="{{ url_for('bim.viewer_federat', santier_id=santier.id) }}" class="btn btn-primary" title="Vezi toate modelele 'published' overlap in 3D">
+            <i class="fa-solid fa-layer-group"></i> Viewer federat
+        </a>
+        {% endif %}
         <a href="{{ url_for('bim.santier_editeaza', id=santier.id) }}" class="btn btn-outline">
             <i class="fa-solid fa-pen"></i> Editeaza
         </a>
