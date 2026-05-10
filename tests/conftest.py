@@ -62,12 +62,14 @@ def cleanup_test_data(app):
         db, Santier, Cladire, Nivel, Zona, Spatiu, ElementBIM, Asset,
         IssueBIM, ModelBIM, ExternalMapping, RaportActivitate, Tenant,
         AuditLog, FeatureFlag, BIMModelVersion,
+        BIMRule, RuleViolation, ClashRun, ClashResult,
     )
     with app.app_context():
         try:
             # WIPE total tabele BIM (le recreem la nevoie in fixture-uri specifice)
-            for cls in (AuditLog, FeatureFlag, BIMModelVersion, ExternalMapping,
-                        Asset, IssueBIM,
+            for cls in (AuditLog, FeatureFlag, BIMModelVersion,
+                        ClashResult, ClashRun, RuleViolation, BIMRule,
+                        ExternalMapping, Asset, IssueBIM,
                         ElementBIM, Spatiu, Zona, Nivel, Cladire, Santier, ModelBIM):
                 for obj in cls.query.all():
                     db.session.delete(obj)

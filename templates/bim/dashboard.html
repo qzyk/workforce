@@ -49,6 +49,16 @@
         <a href="{{ url_for('bim.issues_lista') }}" class="btn btn-outline">
             <i class="fa-solid fa-triangle-exclamation"></i> Issues
         </a>
+        {% if feature_enabled('bim-rule-engine') %}
+        <a href="{{ url_for('bim.rules_lista') }}" class="btn btn-outline">
+            <i class="fa-solid fa-shield-halved"></i> Reguli
+        </a>
+        {% endif %}
+        {% if feature_enabled('bim-clash-detection') %}
+        <a href="{{ url_for('bim.clash_lista') }}" class="btn btn-outline">
+            <i class="fa-solid fa-bolt"></i> Clash detection
+        </a>
+        {% endif %}
     </div>
     {% endif %}
 </div>

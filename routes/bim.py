@@ -27,7 +27,7 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
 from models import (
-    BIMModelVersion,
+    BIMModelVersion, BIMRule, RuleViolation, ClashRun, ClashResult,
     db, Santier, Cladire, Nivel, Zona, Spatiu, ElementBIM, Asset,
     IssueBIM, ModelBIM, Proiect, RaportActivitate, Pontaj,
     ExternalMapping,
@@ -36,6 +36,8 @@ from services import ifc_import as ifc_service
 from services import bim_quality
 from services import audit as audit_svc
 from services import bim_workflow
+from services import bim_rules as rules_svc
+from services import clash_detection as clash_svc
 from services import feature_flags as ff_svc
 from services import feature_flags
 from services import aps_viewer
@@ -1035,3 +1037,211 @@ def api_model_version_file(version_id):
     if not os.path.exists(abs_path):
         abort(404)
     return send_file(abs_path, mimetype='application/octet-stream')
+
+
+# ============================================================
+# RULE ENGINE (Faza 4)
+# ============================================================
+
+def _ensure_rules_enabled():
+    if not ff_svc.is_enabled('bim-rule-engine'):
+        flash('Rule engine nu e activat pentru acest tenant.', 'info')
+        return redirect(url_for('bim.dashboard'))
+    return None
+
+
+@bim_bp.route('/rules')
+@login_required
+def rules_lista():
+    redir = _ensure_rules_enabled()
+    if redir:
+        return redir
+    rules = BIMRule.query.order_by(BIMRule.cod).all()
+    counts = {}
+    for r in rules:
+        counts[r.id] = RuleViolation.query.filter_by(rule_id=r.id, status='noua').count()
+    return render_template('bim/rules_lista.html', rules=rules, counts=counts,
+                           categorii=BIMRule.CATEGORII, tipuri=BIMRule.TIPURI)
+
+
+@bim_bp.route('/rule/nou', methods=['GET', 'POST'])
+@login_required
+@manager_or_admin
+def rule_nou():
+    redir = _ensure_rules_enabled()
+    if redir:
+        return redir
+    if request.method == 'POST':
+        try:
+            definition = json.loads(request.form.get('definitie_json', '{}'))
+        except (ValueError, TypeError):
+            flash('JSON invalid in definitie.', 'danger')
+            return redirect(request.url)
+        try:
+            rule = rules_svc.create_rule(
+                cod=request.form.get('cod', '').strip(),
+                nume=request.form.get('nume', '').strip(),
+                tip=request.form.get('tip', 'required_properties'),
+                definition=definition,
+                descriere=request.form.get('descriere', '').strip(),
+                categorie=request.form.get('categorie', 'best_practice'),
+                severitate=request.form.get('severitate', 'medie'),
+                user=current_user,
+            )
+            flash(f'Regula "{rule.cod}" creata.', 'success')
+            return redirect(url_for('bim.rules_lista'))
+        except ValueError as e:
+            flash(str(e), 'danger')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare la creare: {e}', 'danger')
+    return render_template('bim/rule_formular.html',
+                           categorii=BIMRule.CATEGORII, tipuri=BIMRule.TIPURI,
+                           severitati=BIMRule.SEVERITATI)
+
+
+@bim_bp.route('/rules/run', methods=['POST'])
+@login_required
+@manager_or_admin
+def rules_run():
+    redir = _ensure_rules_enabled()
+    if redir:
+        return redir
+    santier_id = request.form.get('santier_id', type=int)
+    scope = {'santier_id': santier_id} if santier_id else None
+    try:
+        result = rules_svc.run_rules(scope=scope, user=current_user)
+        flash(
+            f'Rulare finalizata: {result["total_rules"]} reguli, '
+            f'{result["total_violations"]} violari ({result["duration_ms"]}ms).',
+            'success' if result['total_violations'] == 0 else 'warning',
+        )
+    except Exception as e:
+        flash(f'Eroare la rulare reguli: {e}', 'danger')
+    return redirect(url_for('bim.violations_lista'))
+
+
+@bim_bp.route('/violations')
+@login_required
+def violations_lista():
+    redir = _ensure_rules_enabled()
+    if redir:
+        return redir
+    status = request.args.get('status', 'noua')
+    q = RuleViolation.query
+    if status:
+        q = q.filter_by(status=status)
+    violations = q.order_by(RuleViolation.data_detectie.desc()).limit(500).all()
+    return render_template('bim/violations_lista.html',
+                           violations=violations, status_filter=status)
+
+
+@bim_bp.route('/violation/<int:violation_id>/promote', methods=['POST'])
+@login_required
+@manager_or_admin
+def violation_promote(violation_id):
+    v = RuleViolation.query.get_or_404(violation_id)
+    try:
+        issue_id = rules_svc.violation_to_issue(v, current_user)
+        flash(f'Violare promovata in issue #{issue_id}.', 'success')
+    except PermissionError as e:
+        flash(str(e), 'danger')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la promovare: {e}', 'danger')
+    return redirect(url_for('bim.violations_lista'))
+
+
+# ============================================================
+# CLASH DETECTION (Faza 4)
+# ============================================================
+
+def _ensure_clash_enabled():
+    if not ff_svc.is_enabled('bim-clash-detection'):
+        flash('Clash detection nu e activat pentru acest tenant.', 'info')
+        return redirect(url_for('bim.dashboard'))
+    return None
+
+
+@bim_bp.route('/clash')
+@login_required
+def clash_lista():
+    redir = _ensure_clash_enabled()
+    if redir:
+        return redir
+    runs = ClashRun.query.order_by(ClashRun.data_rulare.desc()).limit(50).all()
+    santiere = Santier.query.order_by(Santier.cod).all()
+    return render_template('bim/clash_lista.html', runs=runs, santiere=santiere)
+
+
+@bim_bp.route('/clash/run', methods=['POST'])
+@login_required
+@manager_or_admin
+def clash_run():
+    redir = _ensure_clash_enabled()
+    if redir:
+        return redir
+    santier_id = request.form.get('santier_id', type=int)
+    model_id = request.form.get('model_id', type=int)
+    tip = request.form.get('tip', 'mixed')
+    if not santier_id and not model_id:
+        flash('Trebuie ales santier sau model.', 'danger')
+        return redirect(url_for('bim.clash_lista'))
+    try:
+        result = clash_svc.run_clash_detection(
+            santier_id=santier_id, model_id=model_id, tip=tip, user=current_user,
+        )
+        flash(
+            f'Clash detection: {result["total_clashes"]} clash-uri ({result["duration_ms"]}ms).',
+            'success' if result['total_clashes'] == 0 else 'warning',
+        )
+        return redirect(url_for('bim.clash_detaliu', run_id=result['run_id']))
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la detectia clash: {e}', 'danger')
+    return redirect(url_for('bim.clash_lista'))
+
+
+@bim_bp.route('/clash/<int:run_id>')
+@login_required
+def clash_detaliu(run_id):
+    redir = _ensure_clash_enabled()
+    if redir:
+        return redir
+    run = ClashRun.query.get_or_404(run_id)
+    severity_filter = request.args.get('severitate')
+    q = ClashResult.query.filter_by(run_id=run_id)
+    if severity_filter:
+        q = q.filter_by(severitate=severity_filter)
+    rezultate = q.order_by(ClashResult.severitate.desc(), ClashResult.id).limit(500).all()
+    return render_template('bim/clash_detaliu.html', run=run, rezultate=rezultate,
+                           severity_filter=severity_filter)
+
+
+@bim_bp.route('/api/clash/<int:run_id>')
+@login_required
+def api_clash(run_id):
+    if not ff_svc.is_enabled('bim-clash-detection'):
+        return jsonify({'enabled': False, 'results': []}), 200
+    run = ClashRun.query.get_or_404(run_id)
+    rezultate = ClashResult.query.filter_by(run_id=run_id).all()
+    return jsonify({
+        'enabled': True,
+        'run_id': run.id,
+        'tip': run.tip,
+        'total_clash_uri': run.nr_clash_uri,
+        'by_severity': {
+            'critica': run.nr_critica, 'mare': run.nr_mare,
+            'medie': run.nr_medie, 'mica': run.nr_mica,
+        },
+        'results': [{
+            'id': r.id,
+            'element_a_id': r.element_a_id,
+            'element_b_id': r.element_b_id,
+            'tip': r.tip,
+            'severitate': r.severitate,
+            'status': r.status,
+            'mesaj': r.mesaj,
+            'detalii': json.loads(r.detalii_json) if r.detalii_json else {},
+        } for r in rezultate],
+    })

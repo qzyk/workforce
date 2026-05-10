@@ -2104,3 +2104,207 @@ class BIMModelVersion(db.Model):
         return f'<BIMModelVersion {self.versiune} of model {self.model_id} [{self.status}]>'
 
 
+# ============================================================
+# RULE ENGINE (Faza 4 BIM Digital Twin)
+# Reguli declarative pentru model checking (analog Solibri/BIM Collab).
+# DSL JSON simplu: selector + constraint. Engine genereaza RuleViolation.
+# ============================================================
+
+class BIMRule(db.Model):
+    """
+    O regula declarativa de model checking. Stocata ca JSON pentru
+    flexibilitate, dar cu cod si nume strict typed pentru UI.
+
+    Exemplu definitie_json:
+        {
+          "selector": {"tip_element": "wall"},
+          "constraint": {"required_properties": ["fire_rating"]}
+        }
+    """
+    __tablename__ = 'bim_rules'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    cod = db.Column(db.String(50), nullable=False, index=True)  # ex: 'RULE-001-WALL-FIRE'
+    nume = db.Column(db.String(200), nullable=False)
+    descriere = db.Column(db.Text, nullable=True)
+
+    # 'mandatory' / 'best_practice' / 'naming' / 'safety' / 'mep' / 'arh' / 'str'
+    categorie = db.Column(db.String(30), default='best_practice', nullable=False, index=True)
+    severitate = db.Column(db.String(20), default='medie', nullable=False)
+    # mica | medie | mare | critica (mapping cu IssueBIM)
+
+    # Tipul regulii (controleaza ce evaluator se foloseste)
+    # 'required_properties' | 'forbidden_in_zone' | 'naming_convention' | 'min_clearance'
+    tip = db.Column(db.String(30), default='required_properties', nullable=False)
+
+    # Definitia full a regulii in JSON (selector + constraint)
+    definitie_json = db.Column(db.Text, nullable=False)
+
+    activa = db.Column(db.Boolean, default=True, nullable=False, index=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+    data_modificare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    SEVERITATI = [('mica', 'Mica'), ('medie', 'Medie'), ('mare', 'Mare'), ('critica', 'Critica')]
+    CATEGORII = [
+        ('mandatory', 'Obligatoriu'),
+        ('best_practice', 'Best practice'),
+        ('naming', 'Conventie denumire'),
+        ('safety', 'Siguranta'),
+        ('arh', 'Arhitectura'),
+        ('str', 'Structura'),
+        ('mep', 'MEP'),
+    ]
+    TIPURI = [
+        ('required_properties', 'Proprietati obligatorii'),
+        ('naming_convention', 'Conventie denumire (regex)'),
+        ('forbidden_in_zone', 'Element interzis in zona'),
+        ('min_clearance', 'Distanta minima'),
+    ]
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'cod', name='uix_rule_tenant_cod'),
+    )
+
+    def get_definition(self):
+        """Parseaza definitie_json -> dict."""
+        import json
+        try:
+            return json.loads(self.definitie_json or '{}')
+        except (ValueError, TypeError):
+            return {}
+
+    def __repr__(self):
+        return f'<BIMRule {self.cod} {self.tip}>'
+
+
+class RuleViolation(db.Model):
+    """
+    O violare a unei reguli, detectata la rularea engine-ului.
+    Poate fi convertita in IssueBIM daca admin/manager confirma.
+    """
+    __tablename__ = 'bim_rule_violations'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    rule_id = db.Column(db.Integer, db.ForeignKey('bim_rules.id'), nullable=False, index=True)
+    element_bim_id = db.Column(db.Integer, db.ForeignKey('bim_elemente.id'), nullable=True, index=True)
+    spatiu_id = db.Column(db.Integer, db.ForeignKey('bim_spatii.id'), nullable=True, index=True)
+
+    # Run-ul care a produs violarea (pentru a putea filtra ultima rulare)
+    run_id = db.Column(db.String(36), nullable=True, index=True)
+
+    # 'noua' | 'confirmata' | 'rezolvata' | 'falsa'
+    status = db.Column(db.String(20), default='noua', nullable=False, index=True)
+
+    mesaj = db.Column(db.String(500), nullable=False)
+    detalii_json = db.Column(db.Text, nullable=True)
+
+    issue_id = db.Column(db.Integer, db.ForeignKey('bim_issues.id'), nullable=True)
+    # FK populat cand violarea e convertita in IssueBIM oficial
+
+    data_detectie = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    rule = db.relationship('BIMRule', foreign_keys=[rule_id], backref=db.backref('violari', lazy='dynamic'))
+    element_bim = db.relationship('ElementBIM', foreign_keys=[element_bim_id])
+    spatiu = db.relationship('Spatiu', foreign_keys=[spatiu_id])
+    issue = db.relationship('IssueBIM', foreign_keys=[issue_id])
+
+    __table_args__ = (
+        db.Index('ix_violation_rule_status', 'rule_id', 'status'),
+    )
+
+    def __repr__(self):
+        return f'<RuleViolation rule={self.rule_id} elem={self.element_bim_id} status={self.status}>'
+
+
+# ============================================================
+# CLASH DETECTION (Faza 4)
+# ClashRun = o sesiune de detectie. ClashResult = un clash concret
+# intre 2 elemente. Pe modele fara geometrie completa, fallback la
+# logic checks (GUID duplicat, suprasaturare spatii, etc.).
+# ============================================================
+
+class ClashRun(db.Model):
+    """O sesiune de detectie clash-uri pe un model/santier."""
+    __tablename__ = 'bim_clash_runs'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    # Scope: model individual sau santier
+    model_id = db.Column(db.Integer, db.ForeignKey('bim_modele.id'), nullable=True, index=True)
+    santier_id = db.Column(db.Integer, db.ForeignKey('bim_santiere.id'), nullable=True, index=True)
+
+    # Tipul detectiei: 'geometric' (AABB) | 'logic' (GUID/spatiu/props) | 'mixed'
+    tip = db.Column(db.String(20), default='mixed', nullable=False)
+
+    # Statistici rezultate (populate la finalul rularii)
+    nr_clash_uri = db.Column(db.Integer, default=0)
+    nr_critica = db.Column(db.Integer, default=0)
+    nr_mare = db.Column(db.Integer, default=0)
+    nr_medie = db.Column(db.Integer, default=0)
+    nr_mica = db.Column(db.Integer, default=0)
+
+    # Status: 'rulare' | 'finalizat' | 'eroare'
+    status = db.Column(db.String(20), default='finalizat', nullable=False)
+
+    durata_ms = db.Column(db.Integer, nullable=True)
+    log = db.Column(db.Text, nullable=True)
+
+    data_rulare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    rulat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    rulat_de = db.relationship('Utilizator', foreign_keys=[rulat_de_id])
+    model = db.relationship('ModelBIM', foreign_keys=[model_id])
+    santier = db.relationship('Santier', foreign_keys=[santier_id])
+
+    def __repr__(self):
+        return f'<ClashRun {self.id} tip={self.tip} clash-uri={self.nr_clash_uri}>'
+
+
+class ClashResult(db.Model):
+    """Un clash concret intre 2 elemente."""
+    __tablename__ = 'bim_clash_results'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    run_id = db.Column(db.Integer, db.ForeignKey('bim_clash_runs.id'), nullable=False, index=True)
+
+    element_a_id = db.Column(db.Integer, db.ForeignKey('bim_elemente.id'), nullable=False, index=True)
+    element_b_id = db.Column(db.Integer, db.ForeignKey('bim_elemente.id'), nullable=False, index=True)
+
+    # 'hard' (intersectie reala) | 'soft' (sub clearance) | 'duplicate' (GUID dublu)
+    tip = db.Column(db.String(20), default='hard', nullable=False, index=True)
+    severitate = db.Column(db.String(20), default='medie', nullable=False, index=True)
+
+    # 'noua' | 'rezolvata' | 'ignorata' | 'falsa'
+    status = db.Column(db.String(20), default='noua', nullable=False, index=True)
+
+    mesaj = db.Column(db.String(500), nullable=False)
+    detalii_json = db.Column(db.Text, nullable=True)
+    # ex: {"overlap_volume": 0.04, "axes": ["x", "z"]}
+
+    # Daca a fost convertit in IssueBIM
+    issue_id = db.Column(db.Integer, db.ForeignKey('bim_issues.id'), nullable=True)
+
+    data_detectie = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    run = db.relationship('ClashRun', foreign_keys=[run_id], backref=db.backref('rezultate', lazy='dynamic',
+                                                                                 cascade='all, delete-orphan'))
+    element_a = db.relationship('ElementBIM', foreign_keys=[element_a_id])
+    element_b = db.relationship('ElementBIM', foreign_keys=[element_b_id])
+    issue = db.relationship('IssueBIM', foreign_keys=[issue_id])
+
+    __table_args__ = (
+        db.Index('ix_clash_run_severity', 'run_id', 'severitate'),
+        db.Index('ix_clash_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f'<ClashResult run={self.run_id} {self.element_a_id}<->{self.element_b_id} {self.tip}>'
+
+

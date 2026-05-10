@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Reguli BIM (Model Checking){% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Reguli</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.sev-mica    { background:#e2e3e5; color:#383d41; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-medie   { background:#fff3cd; color:#856404; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-mare    { background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-critica { background:#dc3545; color:white; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-shield-halved" style="color:var(--primary);"></i> Reguli model checking</h2>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% if current_user.rol in ['admin', 'manager'] %}
+        <form method="POST" action="{{ url_for('bim.rules_run') }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-play"></i> Ruleaza toate</button>
+        </form>
+        <a href="{{ url_for('bim.rule_nou') }}" class="btn btn-success"><i class="fa-solid fa-plus"></i> Regula noua</a>
+        {% endif %}
+        <a href="{{ url_for('bim.violations_lista') }}" class="btn btn-outline"><i class="fa-solid fa-triangle-exclamation"></i> Violari curente</a>
+    </div>
+</div>
+
+{% if rules %}
+<div class="card-panel">
+    <div class="card-panel-body" style="padding:0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Cod</th>
+                    <th>Nume</th>
+                    <th>Tip</th>
+                    <th>Categorie</th>
+                    <th>Severitate</th>
+                    <th>Activa</th>
+                    <th>Violari curente</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rules %}
+                <tr>
+                    <td><strong>{{ r.cod }}</strong></td>
+                    <td>{{ r.nume }}{% if r.descriere %}<div style="font-size:0.8rem; color:var(--gray-500);">{{ r.descriere|truncate(80) }}</div>{% endif %}</td>
+                    <td><code style="font-size:0.78rem;">{{ r.tip }}</code></td>
+                    <td>{{ r.categorie }}</td>
+                    <td><span class="sev-{{ r.severitate }}">{{ r.severitate }}</span></td>
+                    <td>{% if r.activa %}<i class="fa-solid fa-check" style="color:var(--success);"></i>{% else %}<i class="fa-solid fa-xmark" style="color:var(--gray-500);"></i>{% endif %}</td>
+                    <td>
+                        {% set count = counts.get(r.id, 0) %}
+                        {% if count > 0 %}
+                        <a href="{{ url_for('bim.violations_lista', status='noua') }}" style="color:var(--danger); font-weight:600;">{{ count }}</a>
+                        {% else %}
+                        <span style="color:var(--gray-500);">0</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="empty-state" style="padding:40px; text-align:center; background:white; border-radius:10px;">
+    <i class="fa-solid fa-shield-halved" style="font-size:2.5rem; color:var(--gray-300);"></i>
+    <p style="margin-top:12px; color:var(--gray-500);">Nicio regula configurata.</p>
+    {% if current_user.rol in ['admin', 'manager'] %}
+    <a href="{{ url_for('bim.rule_nou') }}" class="btn btn-primary" style="margin-top:8px;">
+        <i class="fa-solid fa-plus"></i> Creeaza prima regula
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

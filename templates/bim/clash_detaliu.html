@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Clash run #{{ run.id }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.clash_lista') }}">Clash detection</a></li>
+<li class="breadcrumb-item active">Run #{{ run.id }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.sev-mica    { background:#e2e3e5; color:#383d41; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-medie   { background:#fff3cd; color:#856404; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-mare    { background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-critica { background:#dc3545; color:white; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.tip-pill    { padding:2px 8px; border-radius:10px; font-size:0.78rem; background:#e3f2fd; color:#0d47a1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2 style="margin:0;"><i class="fa-solid fa-bolt" style="color:var(--warning);"></i> Clash run #{{ run.id }}</h2>
+        <div style="font-size:0.85rem; color:var(--gray-500); margin-top:4px;">
+            {{ run.data_rulare.strftime('%d.%m.%Y %H:%M') }} | tip: <code>{{ run.tip }}</code> | durata: {{ run.durata_ms }}ms |
+            {% if run.santier %}santier: <strong>{{ run.santier.cod }}</strong>{% elif run.model %}model: {{ run.model.nume }}{% endif %}
+        </div>
+    </div>
+    <a href="{{ url_for('bim.clash_lista') }}" class="btn btn-outline">← Toate rularile</a>
+</div>
+
+<div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+    <strong style="align-self:center; margin-right:8px;">Severitati:</strong>
+    <a href="?" class="btn btn-outline">Toate ({{ run.nr_clash_uri }})</a>
+    <a href="?severitate=critica" class="btn btn-outline" style="border-color:#dc3545;">Critice ({{ run.nr_critica }})</a>
+    <a href="?severitate=mare" class="btn btn-outline" style="border-color:#721c24;">Mari ({{ run.nr_mare }})</a>
+    <a href="?severitate=medie" class="btn btn-outline">Medii ({{ run.nr_medie }})</a>
+    <a href="?severitate=mica" class="btn btn-outline">Mici ({{ run.nr_mica }})</a>
+</div>
+
+{% if rezultate %}
+<div class="card-panel">
+    <div class="card-panel-body" style="padding:0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Tip</th>
+                    <th>Sev.</th>
+                    <th>Element A</th>
+                    <th>Element B</th>
+                    <th>Mesaj</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rezultate %}
+                <tr>
+                    <td><span class="tip-pill">{{ r.tip }}</span></td>
+                    <td><span class="sev-{{ r.severitate }}">{{ r.severitate }}</span></td>
+                    <td>{% if r.element_a %}<a href="{{ url_for('bim.element_detaliu', id=r.element_a_id) }}">{{ r.element_a.cod }}</a>{% else %}#{{ r.element_a_id }}{% endif %}</td>
+                    <td>{% if r.element_b %}<a href="{{ url_for('bim.element_detaliu', id=r.element_b_id) }}">{{ r.element_b.cod }}</a>{% else %}#{{ r.element_b_id }}{% endif %}</td>
+                    <td style="font-size:0.88rem;">{{ r.mesaj }}</td>
+                    <td><span style="font-size:0.82rem;">{{ r.status }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="empty-state" style="padding:30px; text-align:center; background:white; border-radius:10px;">
+    <i class="fa-solid fa-circle-check" style="font-size:2rem; color:var(--success);"></i>
+    <p style="margin-top:8px; color:var(--gray-500);">Niciun clash cu filtrul aplicat.</p>
+</div>
+{% endif %}
+{% endblock %}

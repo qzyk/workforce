@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Regula noua - Model checking{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.rules_lista') }}">Reguli</a></li>
+<li class="breadcrumb-item active">Regula noua</li>
+{% endblock %}
+
+{% block content %}
+<h2><i class="fa-solid fa-shield-halved"></i> Regula noua</h2>
+
+<form method="POST" class="card-panel" style="max-width:780px; margin-top:16px;">
+    <div class="card-panel-body" style="padding:24px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-group">
+            <label>Cod <span style="color:var(--danger);">*</span></label>
+            <input type="text" name="cod" required maxlength="50" placeholder="ex: RULE-001-WALL-FIRE" />
+        </div>
+
+        <div class="form-group">
+            <label>Nume <span style="color:var(--danger);">*</span></label>
+            <input type="text" name="nume" required maxlength="200" placeholder="Pereti rezistenta foc obligatorie" />
+        </div>
+
+        <div class="form-group">
+            <label>Descriere</label>
+            <textarea name="descriere" rows="2"></textarea>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;">
+            <div class="form-group">
+                <label>Tip <span style="color:var(--danger);">*</span></label>
+                <select name="tip" id="tipRegula" required>
+                    {% for cod, label in tipuri %}
+                    <option value="{{ cod }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Categorie</label>
+                <select name="categorie">
+                    {% for cod, label in categorii %}
+                    <option value="{{ cod }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Severitate</label>
+                <select name="severitate">
+                    {% for cod, label in severitati %}
+                    <option value="{{ cod }}" {% if cod == 'medie' %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Definitie JSON <span style="color:var(--danger);">*</span></label>
+            <textarea name="definitie_json" id="definitieJson" rows="10" required
+                style="font-family:monospace; font-size:0.85rem;"></textarea>
+            <small style="color:var(--gray-500);" id="defHelp">Selecteaza tipul mai sus pentru a vedea exemple.</small>
+        </div>
+
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <a href="{{ url_for('bim.rules_lista') }}" class="btn btn-outline">Anuleaza</a>
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Creeaza regula</button>
+        </div>
+    </div>
+</form>
+
+<script>
+const EXAMPLES = {
+    'required_properties': {
+        selector: { tip_element: "wall" },
+        constraint: { required_properties: ["fire_rating", "thickness"] }
+    },
+    'naming_convention': {
+        selector: { tip_element: "door" },
+        constraint: { name_regex: "^USA-\\d{3}$" }
+    },
+    'forbidden_in_zone': {
+        selector: { tip_element: "panel" },
+        constraint: { zone_categories_forbidden: ["wet", "outdoor"] }
+    },
+    'min_clearance': {
+        selector: { tip_element: "duct" },
+        constraint: { min_distance_to: "wall", value_m: 0.10 }
+    }
+};
+const sel = document.getElementById('tipRegula');
+const ta = document.getElementById('definitieJson');
+function applyExample() {
+    const ex = EXAMPLES[sel.value];
+    if (ex && !ta.value.trim()) {
+        ta.value = JSON.stringify(ex, null, 2);
+    }
+}
+sel.addEventListener('change', () => { ta.value = JSON.stringify(EXAMPLES[sel.value] || {}, null, 2); });
+applyExample();
+</script>
+{% endblock %}

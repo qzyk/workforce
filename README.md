@@ -143,8 +143,8 @@ Evolutia platformei catre BIM/Digital Twin se face in 8 faze incrementale, fieca
 |------|------|--------|
 | 1 | Foundation: Alembic + audit log + feature flags + CI | **Live** |
 | 2 | 3D Viewer xeokit-sdk + APS adapter (stub) | **Live** |
-| 3 | Model versioning + Federation (CDE workflow) | **In curs (acest PR)** |
-| 4 | Clash detection + Rule engine | Planificat |
+| 3 | Model versioning + Federation (CDE workflow) | **Live (branch)** |
+| 4 | Clash detection + Rule engine | **In curs (acest PR)** |
 | 5 | 4D/5D - Schedule + Cost | Planificat |
 | 6 | Digital Twin / IoT layer (sensori, time-series) | Planificat |
 | 7 | Real-time collab via SSE + Kanban issue board | Planificat |
@@ -208,6 +208,52 @@ set_flag('bim-federation', True)         # Activeaza viewer federat pe santier
 - `/bim/santier/<id>/viewer-federat` — viewer multi-model overlap (necesita versiuni `published`)
 
 Toate tranzitiile de status se loaheaza in `audit_log` (entity_type=`bim_model_version`).
+
+### Rule Engine + Clash Detection (Faza 4)
+
+**Rule Engine**: model checking declarativ. Reguli scrise in JSON cu pattern selector + constraint:
+
+```json
+{
+  "selector": {"tip_element": "wall"},
+  "constraint": {"required_properties": ["fire_rating", "thickness"]}
+}
+```
+
+Tipuri suportate (toate ruleaza prin `services/bim_rules.py`):
+- `required_properties` — element trebuie sa aiba toate proprietatile listate
+- `naming_convention` — numele trebuie sa respecte un regex
+- `forbidden_in_zone` — element interzis in zone cu anumite categorii (zona.tip_zona)
+- `min_clearance` — distanta minima fata de alt tip element (placeholder, geometric)
+
+Engine-ul ruleaza toate regulile active si genereaza **RuleViolation**-uri. Admin/manager poate
+**promova** o violare in **IssueBIM** oficial (cu tip='neconformitate').
+
+**Clash Detection**: detectie automata de coliziuni (`services/clash_detection.py`):
+- **geometric** — AABB intersection (intersectie de bounding boxes; necesita `proprietati_json.bbox`)
+- **logic** — fara geometrie:
+  - GUID IFC duplicat (federation conflict)
+  - Spatii supraincarcate (>20 elemente per spatiu)
+- **mixed** — ambele (default)
+
+Severitate auto: critic/mare/medie/mica in functie de volumul overlap-ului.
+
+**Activare**:
+```python
+from services.feature_flags import set_flag
+set_flag('bim-rule-engine', True)
+set_flag('bim-clash-detection', True)
+```
+
+**Pagini noi**:
+- `/bim/rules` — lista reguli + buton "Ruleaza toate"
+- `/bim/rule/nou` — formular creare regula (cu exemple JSON per tip)
+- `/bim/violations` — violari curente, cu buton "Promoveaza in issue"
+- `/bim/clash` — istoric rulari clash detection
+- `/bim/clash/<id>` — detalii rulare (lista clash-uri, filtru severitate)
+- `/bim/api/clash/<id>` — JSON pentru integrari externe
+
+Toate rularile se loaheaza in `audit_log` (`run_rules`, `run_clash_detection`).
 
 ## Securitate
 

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Violari reguli BIM{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.rules_lista') }}">Reguli</a></li>
+<li class="breadcrumb-item active">Violari</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.sev-mica    { background:#e2e3e5; color:#383d41; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-medie   { background:#fff3cd; color:#856404; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-mare    { background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-critica { background:#dc3545; color:white; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.status-noua        { color:var(--danger); font-weight:600; }
+.status-confirmata  { color:var(--warning); font-weight:600; }
+.status-rezolvata   { color:var(--success); font-weight:600; }
+.status-falsa       { color:var(--gray-500); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-triangle-exclamation" style="color:var(--warning);"></i> Violari reguli</h2>
+    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <a href="?status=noua" class="btn btn-outline {% if status_filter == 'noua' %}active{% endif %}">Noi</a>
+        <a href="?status=confirmata" class="btn btn-outline {% if status_filter == 'confirmata' %}active{% endif %}">Confirmate</a>
+        <a href="?status=rezolvata" class="btn btn-outline {% if status_filter == 'rezolvata' %}active{% endif %}">Rezolvate</a>
+        <a href="?status=falsa" class="btn btn-outline {% if status_filter == 'falsa' %}active{% endif %}">False</a>
+    </div>
+</div>
+
+{% if violations %}
+<div class="card-panel">
+    <div class="card-panel-body" style="padding:0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Detectat</th>
+                    <th>Regula</th>
+                    <th>Sev.</th>
+                    <th>Mesaj</th>
+                    <th>Element</th>
+                    <th>Status</th>
+                    <th>Actiuni</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in violations %}
+                <tr>
+                    <td style="font-size:0.82rem;">{{ v.data_detectie.strftime('%d.%m %H:%M') if v.data_detectie else '-' }}</td>
+                    <td><strong>{{ v.rule.cod if v.rule else '-' }}</strong></td>
+                    <td><span class="sev-{{ v.rule.severitate if v.rule else 'medie' }}">{{ v.rule.severitate if v.rule else '-' }}</span></td>
+                    <td>{{ v.mesaj }}</td>
+                    <td>
+                        {% if v.element_bim %}
+                        <a href="{{ url_for('bim.element_detaliu', id=v.element_bim_id) }}">{{ v.element_bim.cod }}</a>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td><span class="status-{{ v.status }}">{{ v.status }}</span></td>
+                    <td>
+                        {% if v.status == 'noua' and current_user.rol in ['admin', 'manager'] %}
+                        <form method="POST" action="{{ url_for('bim.violation_promote', violation_id=v.id) }}" style="display:inline;" onsubmit="return confirm('Promovezi in IssueBIM oficial?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-outline" style="font-size:0.78rem; padding:3px 10px;"><i class="fa-solid fa-arrow-up-right-from-square"></i> Promoveaza</button>
+                        </form>
+                        {% elif v.issue_id %}
+                        <span style="font-size:0.8rem; color:var(--success);"><i class="fa-solid fa-check"></i> Issue #{{ v.issue_id }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="empty-state" style="padding:40px; text-align:center; background:white; border-radius:10px;">
+    <i class="fa-solid fa-circle-check" style="font-size:2.5rem; color:var(--success);"></i>
+    <p style="margin-top:12px; color:var(--gray-500);">Nicio violare cu status "{{ status_filter }}".</p>
+</div>
+{% endif %}
+{% endblock %}

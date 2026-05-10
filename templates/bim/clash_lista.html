@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Clash detection - rulari{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Clash detection</li>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-bolt" style="color:var(--warning);"></i> Clash detection</h2>
+    {% if current_user.rol in ['admin', 'manager'] %}
+    <form method="POST" action="{{ url_for('bim.clash_run') }}" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;" onsubmit="return confirm('Lansezi rulare clash detection?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="santier_id" required style="padding:6px;">
+            <option value="">- alege santier -</option>
+            {% for s in santiere %}
+            <option value="{{ s.id }}">{{ s.cod }} - {{ s.nume }}</option>
+            {% endfor %}
+        </select>
+        <select name="tip" style="padding:6px;">
+            <option value="mixed">Mixt (geometric + logic)</option>
+            <option value="geometric">Doar geometric (AABB)</option>
+            <option value="logic">Doar logic (GUID, spatii)</option>
+        </select>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-play"></i> Lanseaza</button>
+    </form>
+    {% endif %}
+</div>
+
+{% if runs %}
+<div class="card-panel">
+    <div class="card-panel-body" style="padding:0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Scope</th>
+                    <th>Tip</th>
+                    <th>Total</th>
+                    <th>Critice</th>
+                    <th>Mari</th>
+                    <th>Medii</th>
+                    <th>Mici</th>
+                    <th>Durata</th>
+                    <th>Detalii</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in runs %}
+                <tr>
+                    <td style="font-size:0.82rem;">{{ r.data_rulare.strftime('%d.%m.%Y %H:%M') if r.data_rulare else '-' }}</td>
+                    <td>{% if r.santier %}<strong>{{ r.santier.cod }}</strong>{% elif r.model %}{{ r.model.nume }}{% else %}-{% endif %}</td>
+                    <td><code>{{ r.tip }}</code></td>
+                    <td><strong>{{ r.nr_clash_uri }}</strong></td>
+                    <td>{% if r.nr_critica %}<span style="color:#dc3545; font-weight:600;">{{ r.nr_critica }}</span>{% else %}0{% endif %}</td>
+                    <td>{% if r.nr_mare %}<span style="color:#721c24;">{{ r.nr_mare }}</span>{% else %}0{% endif %}</td>
+                    <td>{{ r.nr_medie }}</td>
+                    <td>{{ r.nr_mica }}</td>
+                    <td style="font-size:0.82rem;">{{ r.durata_ms }}ms</td>
+                    <td><a href="{{ url_for('bim.clash_detaliu', run_id=r.id) }}" class="btn btn-outline" style="font-size:0.78rem; padding:3px 10px;">Vezi</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="empty-state" style="padding:40px; text-align:center; background:white; border-radius:10px;">
+    <i class="fa-solid fa-bolt" style="font-size:2.5rem; color:var(--gray-300);"></i>
+    <p style="margin-top:12px; color:var(--gray-500);">Nicio rulare de clash detection inca.</p>
+</div>
+{% endif %}
+
+<div style="margin-top:14px; padding:12px; background:#FFF8E1; border-left:3px solid var(--warning); border-radius:6px; font-size:0.88rem;">
+    <i class="fa-solid fa-circle-info"></i>
+    Detectia geometrica (AABB) ruleaza doar pe elemente cu bbox in <code>proprietati_json</code>.
+    Detectia logica (GUID duplicat, supraincarcare spatii) functioneaza intotdeauna.
+</div>
+{% endblock %}
