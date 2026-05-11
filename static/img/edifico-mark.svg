@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EDIFICO — Mark singular (litera "E" cu cadru decorativ)
+  Folosit pentru sidebar collapsed, button-uri compacte, watermark.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="EDIFICO mark">
+  <title>EDIFICO</title>
+  <defs>
+    <linearGradient id="goldGradMark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#E0BB6E"/>
+      <stop offset="50%"  stop-color="#C9A961"/>
+      <stop offset="100%" stop-color="#A8893D"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Cadru patrat fin gold (subtle bezel) -->
+  <rect x="10" y="10" width="180" height="180" rx="8" ry="8"
+        fill="none" stroke="#C9A961" stroke-width="1.5"/>
+  <!-- Inner accent rect (decorative) -->
+  <rect x="18" y="18" width="164" height="164" rx="4" ry="4"
+        fill="none" stroke="#C9A961" stroke-width="0.5" opacity="0.5"/>
+
+  <!-- Litera "E" centrata -->
+  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central"
+        font-family="'Cinzel', 'Trajan Pro', 'Times New Roman', serif"
+        font-size="150" font-weight="600" fill="url(#goldGradMark)" dy="0.05em">E</text>
+</svg>

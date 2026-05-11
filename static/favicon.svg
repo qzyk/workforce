@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EDIFICO favicon - SVG 64x64 cu fundal navy + E auriu.
+  Browsere moderne suporta SVG favicon nativ.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="goldFav" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"  stop-color="#E0BB6E"/>
+      <stop offset="100%" stop-color="#C9A961"/>
+    </linearGradient>
+  </defs>
+  <!-- Background navy obsidian -->
+  <rect width="64" height="64" rx="10" fill="#0B1426"/>
+  <!-- Gold accent border -->
+  <rect x="4" y="4" width="56" height="56" rx="7" fill="none" stroke="#C9A961" stroke-width="1.2"/>
+  <!-- Litera "E" -->
+  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central"
+        font-family="'Cinzel', 'Trajan Pro', 'Times New Roman', serif"
+        font-size="46" font-weight="600" fill="url(#goldFav)" dy="0.08em">E</text>
+</svg>

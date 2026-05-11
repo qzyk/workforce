@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EDIFICO — Logo orizontal complet (mark + wordmark + tagline)
+  Folosit in header / login / footer. Foloseste currentColor pentru wordmark
+  ca sa se adapteze la background (dark sau light).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 200" role="img" aria-label="EDIFICO logo">
+  <title>EDIFICO — One platform, all your sites</title>
+  <defs>
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#E0BB6E"/>
+      <stop offset="50%"  stop-color="#C9A961"/>
+      <stop offset="100%" stop-color="#B89651"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Mark "E" - Cinzel serif, fill gold gradient -->
+  <text x="20" y="160" font-family="'Cinzel', 'Trajan Pro', 'Times New Roman', serif"
+        font-size="200" font-weight="600" fill="url(#goldGradient)" letter-spacing="0">E</text>
+
+  <!-- Decorative vertical divider rule (gold thin line) -->
+  <line x1="170" y1="38" x2="170" y2="168" stroke="#C9A961" stroke-width="1.2"
+        stroke-linecap="round"/>
+
+  <!-- Subtle gold accent dot at top of divider -->
+  <circle cx="170" cy="32" r="3" fill="#C9A961"/>
+  <circle cx="170" cy="174" r="3" fill="#C9A961"/>
+
+  <!-- Wordmark "EDIFICO" -->
+  <text x="200" y="118" font-family="'Cinzel', 'Trajan Pro', 'Times New Roman', serif"
+        font-size="78" font-weight="500" fill="currentColor" letter-spacing="9">EDIFICO</text>
+
+  <!-- Decorative horizontal hairline under wordmark -->
+  <line x1="200" y1="135" x2="745" y2="135" stroke="#C9A961" stroke-width="0.7" opacity="0.6"/>
+
+  <!-- Tagline -->
+  <text x="200" y="166" font-family="'Inter', sans-serif" font-size="14"
+        font-weight="500" fill="#C9A961" letter-spacing="5.5">ONE PLATFORM, ALL YOUR SITES</text>
+</svg>

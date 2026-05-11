@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Autentificare - EDIFICO WORKFORCE{% endblock %}
+{% block title %}Autentificare — Edifico{% endblock %}
 
 {% block public_content %}
 <div class="login-page">
@@ -10,11 +10,9 @@
         <div class="login-card">
             <!-- Logo Header -->
             <div class="login-header">
-                <div class="login-icon">
-                    <i class="fa-solid fa-helmet-safety"></i>
-                </div>
-                <h1 class="login-title">Workforce Manager</h1>
-                <p class="login-subtitle">Managementul fortei de munca in constructii</p>
+                <img src="{{ url_for('static', filename='img/edifico-logo-stacked.svg') }}"
+                     alt="Edifico" class="login-brand"
+                     style="color: var(--edifico-obsidian);">
             </div>
 
             <!-- Flash Messages -->
@@ -96,7 +94,7 @@
         </div>
 
         <div class="login-footer-text">
-            &copy; {{ today.year if today is defined else '2024' }} EDIFICO WORKFORCE
+            &copy; {{ today.year if today is defined else '2026' }} Edifico — One platform, all your sites
         </div>
     </div>
 </div>

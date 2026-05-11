@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EDIFICO — Logo stivuit (vertical, splash/login splash)
+  Mark deasupra, wordmark dedesubt, tagline jos.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 460" role="img" aria-label="EDIFICO">
+  <title>EDIFICO — One platform, all your sites</title>
+  <defs>
+    <linearGradient id="goldGradStacked" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#E0BB6E"/>
+      <stop offset="50%"  stop-color="#C9A961"/>
+      <stop offset="100%" stop-color="#A8893D"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Cadru patrat mark -->
+  <g transform="translate(140, 30)">
+    <rect x="0" y="0" width="120" height="120" rx="6" ry="6"
+          fill="none" stroke="#C9A961" stroke-width="1.5"/>
+    <rect x="6" y="6" width="108" height="108" rx="3" ry="3"
+          fill="none" stroke="#C9A961" stroke-width="0.5" opacity="0.5"/>
+    <text x="60" y="60" text-anchor="middle" dominant-baseline="central"
+          font-family="'Cinzel', 'Trajan Pro', 'Times New Roman', serif"
+          font-size="92" font-weight="600" fill="url(#goldGradStacked)" dy="0.05em">E</text>
+  </g>
+
+  <!-- Decorative ornament under mark - 3 dots -->
+  <g transform="translate(200, 180)" fill="#C9A961">
+    <circle cx="-12" cy="0" r="2.5"/>
+    <circle cx="0"   cy="0" r="3.5"/>
+    <circle cx="12"  cy="0" r="2.5"/>
+  </g>
+
+  <!-- Wordmark "EDIFICO" -->
+  <text x="50%" y="270" text-anchor="middle"
+        font-family="'Cinzel', 'Trajan Pro', 'Times New Roman', serif"
+        font-size="58" font-weight="500" fill="currentColor" letter-spacing="10">EDIFICO</text>
+
+  <!-- Hairline under wordmark -->
+  <line x1="80" y1="295" x2="320" y2="295" stroke="#C9A961" stroke-width="0.7" opacity="0.7"/>
+
+  <!-- Tagline 2 linii (split) -->
+  <text x="50%" y="330" text-anchor="middle" font-family="'Inter', sans-serif"
+        font-size="13" font-weight="500" fill="#C9A961" letter-spacing="6">ONE PLATFORM</text>
+  <text x="50%" y="355" text-anchor="middle" font-family="'Inter', sans-serif"
+        font-size="13" font-weight="500" fill="#C9A961" letter-spacing="6">ALL YOUR SITES</text>
+
+  <!-- Bottom ornament: arched decorative line (like Roman arch) -->
+  <path d="M 130 410 Q 200 380 270 410" fill="none" stroke="#C9A961" stroke-width="1.2"/>
+  <circle cx="200" cy="395" r="2.5" fill="#C9A961"/>
+</svg>

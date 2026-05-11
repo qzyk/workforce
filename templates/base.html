@@ -3,13 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="EDIFICO WORKFORCE - Sistem de Management al Fortei de Munca in Constructii">
-    <title>{% block title %}EDIFICO WORKFORCE{% endblock %}</title>
+    <meta name="description" content="Edifico — One platform, all your sites. BIM / Digital Twin pentru forta de munca in constructii.">
+    <title>{% block title %}Edifico{% endblock %}</title>
 
-    <!-- Google Fonts: Inter -->
+    <!-- Favicons -->
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='favicon.svg') }}">
+    <meta name="theme-color" content="#0B1426">
+
+    <!-- Google Fonts: Inter (UI) + Cinzel (brand serif latin imperial) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Cinzel:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Font Awesome 6 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -29,11 +34,14 @@
     <!-- ============================================ -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <div class="sidebar-logo">
-                <i class="fa-solid fa-helmet-safety"></i>
-                <span>EDIFICO</span>
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/edifico-mark.svg') }}"
+                     alt="Edifico" class="sidebar-mark">
+                <div class="sidebar-brand-text">
+                    <span class="sidebar-brand-name">EDIFICO</span>
+                    <span class="sidebar-brand-tagline">One platform, all your sites</span>
+                </div>
             </div>
-            <small class="sidebar-subtitle">Workforce Manager</small>
         </div>
 
         <div class="sidebar-user">
