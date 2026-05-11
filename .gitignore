@@ -11,3 +11,8 @@ backups/
 .pytest_cache/
 htmlcov/
 .coverage
+
+# PowerPoint lock files
+~$*.pptx
+~$*.docx
+~$*.xlsx
