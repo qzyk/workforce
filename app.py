@@ -99,6 +99,13 @@ def create_app(config_name='default'):
     from services import feature_flags as _ff
     _ff.init_app(app)
 
+    # Exempt CSRF pentru endpoint-ul IoT ingest (token-auth, fara cookie session)
+    # Faza 6: gateway-uri IoT trimit POST cu X-Sensor-Token, nu pot semna CSRF.
+    try:
+        csrf.exempt(app.view_functions['bim.api_sensors_ingest'])
+    except KeyError:
+        pass  # Ruta inca neinregistrata (test setup vechi)
+
     # --------------------------------------------------------
     # CONTEXT PROCESSOR - DATE GLOBALE
     # --------------------------------------------------------

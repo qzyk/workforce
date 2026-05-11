@@ -2485,3 +2485,204 @@ class BIMCostItem(db.Model):
                 f' {self.cantitate}{self.unitate}*{self.pret_unitar}={self.total}>')
 
 
+# ============================================================
+# DIGITAL TWIN / IoT (Faza 6 BIM Digital Twin)
+# Sensori live, time-series readings, alerte automate.
+# ============================================================
+
+class Senzor(db.Model):
+    """
+    Definirea unui senzor IoT atasat unui element BIM sau spatiu.
+    Senzorul are un token unic (api_key) folosit pentru ingest.
+    """
+    __tablename__ = 'bim_senzori'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    # Locatia: cel putin unul trebuie completat (element / spatiu / cladire)
+    element_bim_id = db.Column(db.Integer, db.ForeignKey('bim_elemente.id'),
+                                nullable=True, index=True)
+    spatiu_id = db.Column(db.Integer, db.ForeignKey('bim_spatii.id'),
+                           nullable=True, index=True)
+    cladire_id = db.Column(db.Integer, db.ForeignKey('bim_cladiri.id'),
+                            nullable=True, index=True)
+
+    # Identificare
+    cod = db.Column(db.String(80), nullable=False, index=True)  # ex: TEMP-A-101
+    nume = db.Column(db.String(200), nullable=False)
+
+    # Tipul si unitatea masurate
+    # 'temperatura' | 'umiditate' | 'co2' | 'energie' | 'vibratie' |
+    # 'ocupare' | 'presiune' | 'debit' | 'altul'
+    tip = db.Column(db.String(30), nullable=False, index=True)
+    unitate = db.Column(db.String(20), nullable=False, default='-')
+    # ex: '°C', '%', 'ppm', 'kWh', 'm/s²', 'persoane', 'bar', 'l/min'
+
+    # Threshold-uri pentru auto-alert (NULL = inactiv)
+    threshold_min = db.Column(db.Numeric(15, 4), nullable=True)
+    threshold_max = db.Column(db.Numeric(15, 4), nullable=True)
+
+    # Token auth pentru ingest (generat la creare; rotabil)
+    api_key = db.Column(db.String(64), nullable=False, unique=True, index=True)
+
+    # Activ / sterso logic
+    activ = db.Column(db.Boolean, default=True, nullable=False, index=True)
+
+    descriere = db.Column(db.Text, nullable=True)
+    producator = db.Column(db.String(100), nullable=True)
+    model_hardware = db.Column(db.String(100), nullable=True)
+    serial = db.Column(db.String(100), nullable=True)
+
+    # Ultima citire cache (pentru afisare rapida fara JOIN)
+    ultima_valoare = db.Column(db.Numeric(15, 4), nullable=True)
+    ultima_citire_at = db.Column(db.DateTime, nullable=True, index=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    data_modificare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    element_bim = db.relationship('ElementBIM', foreign_keys=[element_bim_id],
+                                   backref=db.backref('senzori', lazy='dynamic'))
+    spatiu = db.relationship('Spatiu', foreign_keys=[spatiu_id],
+                             backref=db.backref('senzori', lazy='dynamic'))
+    cladire = db.relationship('Cladire', foreign_keys=[cladire_id],
+                              backref=db.backref('senzori', lazy='dynamic'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    TIPURI = [
+        ('temperatura', 'Temperatura'),
+        ('umiditate', 'Umiditate'),
+        ('co2', 'CO2'),
+        ('energie', 'Energie'),
+        ('vibratie', 'Vibratie'),
+        ('ocupare', 'Ocupare'),
+        ('presiune', 'Presiune'),
+        ('debit', 'Debit'),
+        ('altul', 'Altul'),
+    ]
+
+    UNITATI_DEFAULT = {
+        'temperatura': '°C',
+        'umiditate': '%',
+        'co2': 'ppm',
+        'energie': 'kWh',
+        'vibratie': 'm/s²',
+        'ocupare': 'persoane',
+        'presiune': 'bar',
+        'debit': 'l/min',
+    }
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'cod', name='uix_senzor_tenant_cod'),
+        db.Index('ix_senzor_tip_activ', 'tip', 'activ'),
+    )
+
+    @property
+    def is_alarming(self) -> bool:
+        """True daca ultima valoare e in afara threshold-urilor."""
+        if self.ultima_valoare is None:
+            return False
+        try:
+            v = float(self.ultima_valoare)
+            if self.threshold_min is not None and v < float(self.threshold_min):
+                return True
+            if self.threshold_max is not None and v > float(self.threshold_max):
+                return True
+        except (ValueError, TypeError):
+            pass
+        return False
+
+    @property
+    def label_tip(self):
+        for cod, label in self.TIPURI:
+            if cod == self.tip:
+                return label
+        return self.tip
+
+    def __repr__(self):
+        return f'<Senzor {self.cod} ({self.tip}) elem={self.element_bim_id}>'
+
+
+class SensorReading(db.Model):
+    """
+    Citire individuala de la un senzor. Append-only (insert frecvent,
+    update niciodata). Indexat pe (senzor_id, ts DESC) pentru query
+    rapid de "ultimele N citiri" si range queries.
+
+    Pe MySQL pe PythonAnywhere: scaleaza pana la cateva milioane de
+    randuri fara probleme. Cleanup retentiv via CLI sau cron daca e
+    nevoie de retentie limitata.
+    """
+    __tablename__ = 'bim_sensor_readings'
+    # Integer e suficient pentru >2 mld randuri si auto-increment functioneaza
+    # cross-dialect (BigInteger pe SQLite nu auto-increment-eaza).
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    senzor_id = db.Column(db.Integer, db.ForeignKey('bim_senzori.id'),
+                           nullable=False, index=True)
+
+    ts = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    valoare = db.Column(db.Numeric(15, 4), nullable=False)
+    # Calitate citire: 'ok' | 'estimat' | 'eroare' | 'maintenance'
+    calitate = db.Column(db.String(20), default='ok', nullable=False)
+    # Metadata raw (json) - util pentru debugging
+    meta_json = db.Column(db.Text, nullable=True)
+
+    senzor = db.relationship('Senzor', foreign_keys=[senzor_id],
+                             backref=db.backref('readings', lazy='dynamic'))
+
+    __table_args__ = (
+        db.Index('ix_reading_senzor_ts', 'senzor_id', 'ts'),
+    )
+
+    def __repr__(self):
+        return f'<SensorReading senzor={self.senzor_id} {self.ts.isoformat() if self.ts else ""} val={self.valoare}>'
+
+
+class SensorAlert(db.Model):
+    """
+    Alerta generata automat cand o citire iese din threshold.
+    Status workflow: 'noua' -> 'confirmata' / 'falsa' -> 'rezolvata'.
+    """
+    __tablename__ = 'bim_sensor_alerts'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    senzor_id = db.Column(db.Integer, db.ForeignKey('bim_senzori.id'),
+                           nullable=False, index=True)
+
+    # Tipul alertei
+    # 'sub_min' | 'peste_max' | 'offline' | 'eroare_calitate'
+    tip = db.Column(db.String(20), nullable=False)
+    severitate = db.Column(db.String(20), default='medie', nullable=False, index=True)
+
+    valoare = db.Column(db.Numeric(15, 4), nullable=True)
+    threshold_violat = db.Column(db.Numeric(15, 4), nullable=True)
+
+    mesaj = db.Column(db.String(500), nullable=False)
+
+    # Status: 'noua' | 'confirmata' | 'falsa' | 'rezolvata'
+    status = db.Column(db.String(20), default='noua', nullable=False, index=True)
+
+    # Promovare la IssueBIM oficial (opt)
+    issue_id = db.Column(db.Integer, db.ForeignKey('bim_issues.id'), nullable=True)
+
+    data_alerta = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    data_confirmare = db.Column(db.DateTime, nullable=True)
+    data_rezolvare = db.Column(db.DateTime, nullable=True)
+    confirmat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    senzor = db.relationship('Senzor', foreign_keys=[senzor_id],
+                             backref=db.backref('alerte', lazy='dynamic'))
+    issue = db.relationship('IssueBIM', foreign_keys=[issue_id])
+    confirmat_de = db.relationship('Utilizator', foreign_keys=[confirmat_de_id])
+
+    __table_args__ = (
+        db.Index('ix_alert_senzor_status', 'senzor_id', 'status'),
+    )
+
+    def __repr__(self):
+        return f'<SensorAlert senzor={self.senzor_id} {self.tip} {self.status}>'
+
+

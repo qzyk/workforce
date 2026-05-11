@@ -31,6 +31,11 @@
             <i class="fa-solid fa-money-bill"></i> Cost 5D
         </a>
         {% endif %}
+        {% if feature_enabled('bim-iot-sensors') %}
+        <a href="{{ url_for('bim.sensor_nou', element_bim_id=element.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-broadcast-tower"></i> Adauga senzor
+        </a>
+        {% endif %}
         {# Butoane viewer 3D populate dinamic via JS din /bim/api/modele-pentru-element/<id> #}
         <span id="viewerButtonsPlaceholder" style="font-size:0.85rem; color:var(--gray-500); padding:8px 12px;">
             <i class="fa-solid fa-spinner fa-spin"></i> verific viewere disponibile...

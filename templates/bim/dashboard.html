@@ -59,6 +59,14 @@
             <i class="fa-solid fa-bolt"></i> Clash detection
         </a>
         {% endif %}
+        {% if feature_enabled('bim-iot-sensors') %}
+        <a href="{{ url_for('bim.sensors_lista') }}" class="btn btn-outline">
+            <i class="fa-solid fa-broadcast-tower"></i> Senzori IoT
+        </a>
+        <a href="{{ url_for('bim.alerts_lista') }}" class="btn btn-outline" style="color:var(--warning);">
+            <i class="fa-solid fa-triangle-exclamation"></i> Alerte
+        </a>
+        {% endif %}
     </div>
     {% endif %}
 </div>

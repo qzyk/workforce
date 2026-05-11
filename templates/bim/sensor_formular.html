@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Senzor nou{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.sensors_lista') }}">Senzori</a></li>
+<li class="breadcrumb-item active">Senzor nou</li>
+{% endblock %}
+
+{% block content %}
+<h2><i class="fa-solid fa-broadcast-tower"></i> Senzor nou</h2>
+
+<form method="POST" class="card-panel" style="max-width:780px; margin-top:16px;">
+    <div class="card-panel-body" style="padding:24px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div class="form-group">
+                <label>Cod <span style="color:var(--danger);">*</span></label>
+                <input type="text" name="cod" required maxlength="80" placeholder="ex: TEMP-A-101" />
+            </div>
+            <div class="form-group">
+                <label>Nume <span style="color:var(--danger);">*</span></label>
+                <input type="text" name="nume" required maxlength="200" placeholder="ex: Temperatura sala server" />
+            </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;">
+            <div class="form-group">
+                <label>Tip <span style="color:var(--danger);">*</span></label>
+                <select name="tip" id="tipSenzor" required>
+                    <option value="">- alege -</option>
+                    {% for cod, label in tipuri %}<option value="{{ cod }}">{{ label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Unitate (auto din tip)</label>
+                <input type="text" name="unitate" id="unitateInput" placeholder="auto" />
+            </div>
+            <div class="form-group">
+                <label>Serial / producator (opt)</label>
+                <input type="text" name="serial" maxlength="100" placeholder="ex: BME280-001" />
+            </div>
+        </div>
+
+        <h4 style="margin-top:14px;">Locatie (cel putin unul)</h4>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;">
+            <div class="form-group">
+                <label>Element BIM (id)</label>
+                <input type="number" name="element_bim_id" value="{{ element_bim_id or '' }}" />
+            </div>
+            <div class="form-group">
+                <label>Spatiu (id)</label>
+                <input type="number" name="spatiu_id" value="{{ spatiu_id or '' }}" />
+            </div>
+            <div class="form-group">
+                <label>Cladire (id)</label>
+                <input type="number" name="cladire_id" value="{{ cladire_id or '' }}" />
+            </div>
+        </div>
+
+        <h4 style="margin-top:14px;">Threshold pentru auto-alert</h4>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div class="form-group">
+                <label>Min (alert daca valoarea &lt; min)</label>
+                <input type="number" name="threshold_min" step="0.01" placeholder="lasati gol = inactiv" />
+            </div>
+            <div class="form-group">
+                <label>Max (alert daca valoarea &gt; max)</label>
+                <input type="number" name="threshold_max" step="0.01" placeholder="lasati gol = inactiv" />
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Descriere (opt)</label>
+            <textarea name="descriere" rows="2"></textarea>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div class="form-group">
+                <label>Producator</label>
+                <input type="text" name="producator" maxlength="100" />
+            </div>
+            <div class="form-group">
+                <label>Model hardware</label>
+                <input type="text" name="model_hardware" maxlength="100" />
+            </div>
+        </div>
+
+        <div style="background:#E3F2FD; border-left:3px solid var(--primary); padding:10px; margin:14px 0; font-size:0.88rem; border-radius:5px;">
+            <i class="fa-solid fa-key"></i>
+            La salvare se va genera automat un <strong>API token</strong> (64 caractere hex).
+            Tokenul va fi afisat O SINGURA DATA dupa creare. Pastreaza-l in siguranta.
+        </div>
+
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <a href="{{ url_for('bim.sensors_lista') }}" class="btn btn-outline">Anuleaza</a>
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Creeaza senzor</button>
+        </div>
+    </div>
+</form>
+
+<script>
+// Auto-completeaza unitatea cand schimbi tipul
+const UNITATI = {{ unitati_default|tojson }};
+const tipSel = document.getElementById('tipSenzor');
+const unitInput = document.getElementById('unitateInput');
+tipSel.addEventListener('change', () => {
+    if (!unitInput.value && UNITATI[tipSel.value]) {
+        unitInput.value = UNITATI[tipSel.value];
+    }
+});
+</script>
+{% endblock %}

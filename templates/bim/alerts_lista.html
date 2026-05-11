@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Alerte IoT{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.sensors_lista') }}">Senzori</a></li>
+<li class="breadcrumb-item active">Alerte</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.sev-mica    { background:#e2e3e5; color:#383d41; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-medie   { background:#fff3cd; color:#856404; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-mare    { background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-critica { background:#dc3545; color:white; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.status-noua        { color:var(--danger); font-weight:600; }
+.status-confirmata  { color:var(--warning); font-weight:600; }
+.status-rezolvata   { color:var(--success); font-weight:600; }
+.status-falsa       { color:var(--gray-500); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-triangle-exclamation" style="color:var(--warning);"></i> Alerte senzori IoT</h2>
+    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <a href="?status=noua" class="btn btn-outline {% if status_filter == 'noua' %}active{% endif %}">Noi</a>
+        <a href="?status=confirmata" class="btn btn-outline {% if status_filter == 'confirmata' %}active{% endif %}">Confirmate</a>
+        <a href="?status=rezolvata" class="btn btn-outline {% if status_filter == 'rezolvata' %}active{% endif %}">Rezolvate</a>
+        <a href="?status=falsa" class="btn btn-outline {% if status_filter == 'falsa' %}active{% endif %}">False</a>
+    </div>
+</div>
+
+{% if alerts %}
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Data</th>
+            <th>Senzor</th>
+            <th>Tip</th>
+            <th>Sev.</th>
+            <th>Valoare</th>
+            <th>Threshold</th>
+            <th>Mesaj</th>
+            <th>Status</th>
+            <th>Actiuni</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in alerts %}
+        <tr>
+            <td style="font-size:0.82rem;">{{ a.data_alerta.strftime('%d.%m %H:%M') }}</td>
+            <td>{% if a.senzor %}<a href="{{ url_for('bim.sensor_detaliu', sensor_id=a.senzor_id) }}">{{ a.senzor.cod }}</a>{% else %}#{{ a.senzor_id }}{% endif %}</td>
+            <td><code>{{ a.tip }}</code></td>
+            <td><span class="sev-{{ a.severitate }}">{{ a.severitate }}</span></td>
+            <td>{{ '%g'|format(a.valoare|float) if a.valoare is not none else '-' }}</td>
+            <td>{{ '%g'|format(a.threshold_violat|float) if a.threshold_violat is not none else '-' }}</td>
+            <td style="font-size:0.88rem;">{{ a.mesaj|truncate(80) }}</td>
+            <td><span class="status-{{ a.status }}">{{ a.status }}</span></td>
+            <td>
+                {% if current_user.rol in ['admin', 'manager'] and a.status not in ['rezolvata', 'falsa'] %}
+                <form method="POST" action="{{ url_for('bim.alert_transition', alert_id=a.id) }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {% if a.status == 'noua' %}
+                    <button type="submit" name="status" value="confirmata" class="btn btn-outline" style="font-size:0.75rem; padding:3px 8px;">Confirma</button>
+                    <button type="submit" name="status" value="falsa" class="btn btn-outline" style="font-size:0.75rem; padding:3px 8px; color:var(--gray-500);">Falsa</button>
+                    {% endif %}
+                    <button type="submit" name="status" value="rezolvata" class="btn btn-outline" style="font-size:0.75rem; padding:3px 8px; color:var(--success);">Rezolva</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state" style="padding:40px; text-align:center; background:white; border-radius:10px;">
+    <i class="fa-solid fa-circle-check" style="font-size:2.5rem; color:var(--success);"></i>
+    <p style="margin-top:12px; color:var(--gray-500);">Nicio alerta cu status "{{ status_filter }}".</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -64,11 +64,13 @@ def cleanup_test_data(app):
         AuditLog, FeatureFlag, BIMModelVersion,
         BIMRule, RuleViolation, ClashRun, ClashResult,
         BIMTaskSchedule, BIMCostItem,
+        Senzor, SensorReading, SensorAlert,
     )
     with app.app_context():
         try:
             # WIPE total tabele BIM (le recreem la nevoie in fixture-uri specifice)
             for cls in (AuditLog, FeatureFlag, BIMModelVersion,
+                        SensorAlert, SensorReading, Senzor,
                         ClashResult, ClashRun, RuleViolation, BIMRule,
                         BIMCostItem, BIMTaskSchedule,
                         ExternalMapping, Asset, IssueBIM,

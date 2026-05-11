@@ -145,7 +145,8 @@ Evolutia platformei catre BIM/Digital Twin se face in 8 faze incrementale, fieca
 | 2 | 3D Viewer xeokit-sdk + APS adapter (stub) | **Live** |
 | 3 | Model versioning + Federation (CDE workflow) | **Live (branch)** |
 | 4 | Clash detection + Rule engine | **Live (branch)** |
-| 5 | 4D/5D - Schedule + Cost | **In curs (acest PR)** |
+| 5 | 4D/5D - Schedule + Cost | **Live (branch)** |
+| 6 | Digital Twin / IoT layer (sensori, time-series) | **In curs (acest PR)** |
 | 5 | 4D/5D - Schedule + Cost | Planificat |
 | 6 | Digital Twin / IoT layer (sensori, time-series) | Planificat |
 | 7 | Real-time collab via SSE + Kanban issue board | Planificat |
@@ -287,6 +288,48 @@ set_flag('bim-5d-cost', True)
 - `/bim/api/element/<id>/cost` — JSON: total + breakdown categorii
 
 Toate operatiile (creare schedule, update progres, creare cost) se loaheaza in `audit_log`.
+
+### Digital Twin / IoT (Faza 6)
+
+**Senzori IoT** atasati la elemente BIM / spatii / cladiri. Time-series append-only
+cu indexare optimizata `(senzor_id, ts)`. Threshold-uri configurabile cu auto-alert
+la depasire.
+
+**Tipuri suportate** (toate cu unitate default automata):
+- `temperatura` (°C), `umiditate` (%), `co2` (ppm), `energie` (kWh),
+- `vibratie` (m/s²), `ocupare` (persoane), `presiune` (bar), `debit` (l/min),
+- `altul` (unitate custom).
+
+**Ingest API** (token-based, fara cookie session):
+```bash
+curl -X POST https://your-app/bim/api/sensors/ingest \
+  -H "X-Sensor-Token: <api_key_64_hex>" \
+  -H "Content-Type: application/json" \
+  -d '{"valoare": 23.5, "ts": "2026-05-10T12:34:56", "calitate": "ok"}'
+```
+
+Response: `{reading_id, ts, alert_created, alert_id, threshold_violated}`.
+
+**Workflow alerte**: `noua → confirmata / falsa → rezolvata`. Severitate auto
+(medie/mare/critica) in functie de distanta fata de threshold. Detectie inteligenta
+de duplicate (un singur alert deschis per tip violation pe senzor).
+
+**Activare**:
+```python
+from services.feature_flags import set_flag
+set_flag('bim-iot-sensors', True)
+```
+
+**Pagini noi**:
+- `/bim/sensors` — grid senzori cu valoare live + status (alarming/stale/normal)
+- `/bim/sensor/nou` — formular creare (token API key auto-generat)
+- `/bim/sensor/<id>` — detaliu cu chart Chart.js (raw / 1h / 1d agregare)
+- `/bim/alerts` — lista alerte cu workflow buttons
+- `/bim/api/sensors/ingest` — endpoint POST pentru gateway-uri (no auth session)
+- `/bim/api/element/<id>/state` — JSON current state (toti senzorii pe element)
+- `/bim/api/sensor/<id>/history?agg=raw|1h|1d&from=&to=` — time-series JSON
+
+Toate alertele si tranzitiile se loaheaza in `audit_log`.
 
 ## Securitate
 

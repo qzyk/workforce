@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Senzori IoT BIM{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Senzori IoT</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.sensor-card { background:white; padding:14px; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.05);
+               border-left:4px solid var(--gray-300); }
+.sensor-card.alarming { border-left-color:var(--danger); }
+.sensor-card.normal { border-left-color:var(--success); }
+.sensor-card.stale { border-left-color:var(--warning); }
+.sensor-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
+.value-big { font-size:1.8rem; font-weight:800; }
+.value-unit { font-size:0.9rem; color:var(--gray-500); margin-left:4px; }
+.tip-pill { display:inline-block; padding:2px 8px; border-radius:8px; font-size:0.78rem;
+            background:#e3f2fd; color:#0d47a1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-broadcast-tower" style="color:var(--primary);"></i> Senzori IoT</h2>
+    <div style="display:flex; gap:8px;">
+        {% if current_user.rol in ['admin', 'manager'] %}
+        <a href="{{ url_for('bim.sensor_nou') }}" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Senzor nou</a>
+        {% endif %}
+        <a href="{{ url_for('bim.alerts_lista') }}" class="btn btn-outline"><i class="fa-solid fa-triangle-exclamation"></i> Alerte</a>
+    </div>
+</div>
+
+{% if senzori %}
+<div class="sensor-grid">
+    {% for s in senzori %}
+    {% set is_stale = s.ultima_citire_at and (now - s.ultima_citire_at).total_seconds() > 3600 %}
+    <div class="sensor-card {% if s.is_alarming %}alarming{% elif is_stale %}stale{% elif s.ultima_valoare is not none %}normal{% endif %}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <a href="{{ url_for('bim.sensor_detaliu', sensor_id=s.id) }}" style="text-decoration:none;">
+                <strong>{{ s.cod }}</strong>
+            </a>
+            <span class="tip-pill">{{ s.label_tip }}</span>
+        </div>
+        <div style="font-size:0.85rem; color:var(--gray-500); margin:4px 0 8px 0;">{{ s.nume }}</div>
+
+        <div>
+            <span class="value-big">
+                {% if s.ultima_valoare is not none %}{{ '%g'|format(s.ultima_valoare|float) }}{% else %}-{% endif %}
+            </span>
+            <span class="value-unit">{{ s.unitate }}</span>
+            {% if s.is_alarming %}
+            <i class="fa-solid fa-triangle-exclamation" style="color:var(--danger);" title="In afara threshold"></i>
+            {% endif %}
+        </div>
+
+        <div style="font-size:0.78rem; color:var(--gray-500); margin-top:6px;">
+            {% if s.ultima_citire_at %}
+                Ultima citire: {{ s.ultima_citire_at.strftime('%d.%m.%Y %H:%M') }}
+                {% if is_stale %} <span style="color:var(--warning);">(stale)</span>{% endif %}
+            {% else %}
+                <em>Nicio citire inca</em>
+            {% endif %}
+        </div>
+
+        {% if s.threshold_min is not none or s.threshold_max is not none %}
+        <div style="font-size:0.78rem; color:var(--gray-500); margin-top:4px;">
+            Threshold:
+            {% if s.threshold_min is not none %}min={{ '%g'|format(s.threshold_min|float) }}{% endif %}
+            {% if s.threshold_max is not none %} max={{ '%g'|format(s.threshold_max|float) }}{% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state" style="padding:40px; text-align:center; background:white; border-radius:10px;">
+    <i class="fa-solid fa-broadcast-tower" style="font-size:2.5rem; color:var(--gray-300);"></i>
+    <p style="margin-top:12px; color:var(--gray-500);">Niciun senzor inregistrat.</p>
+    {% if current_user.rol in ['admin', 'manager'] %}
+    <a href="{{ url_for('bim.sensor_nou') }}" class="btn btn-primary" style="margin-top:8px;">
+        <i class="fa-solid fa-plus"></i> Adauga primul senzor
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+
+<div style="margin-top:16px; padding:14px; background:#FFF8E1; border-left:3px solid var(--warning); border-radius:6px; font-size:0.88rem;">
+    <i class="fa-solid fa-circle-info"></i>
+    <strong>Pentru ingest date</strong>: gateway-urile IoT trimit POST la <code>/bim/api/sensors/ingest</code>
+    cu header <code>X-Sensor-Token: &lt;api_key&gt;</code> si body JSON
+    <code>{"valoare": 23.5, "ts": "2026-05-10T12:34:56", "calitate": "ok"}</code>.
+    Token-ul se vede o singura data la crearea senzorului.
+</div>
+{% endblock %}

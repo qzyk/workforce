@@ -29,6 +29,7 @@ from werkzeug.utils import secure_filename
 from models import (
     BIMModelVersion, BIMRule, RuleViolation, ClashRun, ClashResult,
     BIMTaskSchedule, BIMCostItem,
+    Senzor, SensorReading, SensorAlert,
     db, Santier, Cladire, Nivel, Zona, Spatiu, ElementBIM, Asset,
     IssueBIM, ModelBIM, Proiect, RaportActivitate, Pontaj,
     ExternalMapping,
@@ -41,6 +42,8 @@ from services import bim_rules as rules_svc
 from services import clash_detection as clash_svc
 from services import bim_4d as fourd_svc
 from services import bim_5d as fived_svc
+from services import iot_ingest as iot_ingest_svc
+from services import iot_query as iot_query_svc
 from services import feature_flags as ff_svc
 from services import feature_flags
 from services import aps_viewer
@@ -1446,3 +1449,241 @@ def api_element_cost(element_id):
         'enabled': True,
         **fived_svc.cost_total_element(element_id),
     })
+
+
+# ============================================================
+# IoT / DIGITAL TWIN (Faza 6)
+# Activare: feature flag 'bim-iot-sensors' (default OFF).
+# Ingest API foloseste token auth (X-Sensor-Token); restul rutelor
+# - sesiune normala Flask-Login.
+# ============================================================
+
+def _ensure_iot_enabled():
+    if not ff_svc.is_enabled('bim-iot-sensors'):
+        flash('IoT/Digital Twin nu e activat pentru acest tenant.', 'info')
+        return redirect(url_for('bim.dashboard'))
+    return None
+
+
+# ---------- INGEST API (token auth, CSRF exempt) ----------
+
+@bim_bp.route('/api/sensors/ingest', methods=['POST'])
+def api_sensors_ingest():
+    """
+    Ingest endpoint pentru gateway-uri IoT. Token auth.
+    Body JSON: { "valoare": 23.5, "ts": "2026-05-10T12:34:56Z" (opt),
+                  "calitate": "ok" (opt), "meta": {...} (opt) }
+    Header: X-Sensor-Token: <api_key 64 hex chars>
+
+    Nu necesita login. Nu necesita CSRF (e API).
+    """
+    if not ff_svc.is_enabled('bim-iot-sensors'):
+        return jsonify({'error': 'feature disabled'}), 403
+
+    token = request.headers.get('X-Sensor-Token', '').strip()
+    if not token:
+        return jsonify({'error': 'X-Sensor-Token header lipseste'}), 401
+
+    senzor = iot_ingest_svc.authenticate_token(token)
+    if not senzor:
+        return jsonify({'error': 'token invalid sau senzor inactiv'}), 401
+
+    data = request.get_json(silent=True) or {}
+    if 'valoare' not in data:
+        return jsonify({'error': 'campul valoare e obligatoriu'}), 400
+
+    try:
+        valoare = float(data['valoare'])
+    except (ValueError, TypeError):
+        return jsonify({'error': 'valoare trebuie sa fie numerica'}), 400
+
+    ts = None
+    if data.get('ts'):
+        try:
+            ts_str = str(data['ts']).rstrip('Z')
+            ts = datetime.fromisoformat(ts_str)
+        except (ValueError, TypeError):
+            return jsonify({'error': 'ts invalid; folositi ISO 8601'}), 400
+
+    try:
+        result = iot_ingest_svc.ingest_reading(
+            senzor, valoare,
+            ts=ts,
+            calitate=data.get('calitate', 'ok'),
+            meta=data.get('meta'),
+        )
+        return jsonify(result), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'ingest failed: {e}'}), 500
+
+
+# Exempt CSRF pentru ruta de ingest (API token-based, fara cookie session)
+try:
+    from flask_wtf.csrf import CSRFProtect  # type: ignore
+    from flask import current_app as _ca
+    # Vom inregistra exemption-ul in app.py / sau prin context dupa import
+except ImportError:
+    pass
+
+
+# ---------- SENZOR CRUD (sesiune) ----------
+
+@bim_bp.route('/sensors')
+@login_required
+def sensors_lista():
+    """Lista globala senzori."""
+    redir = _ensure_iot_enabled()
+    if redir:
+        return redir
+    senzori = Senzor.query.order_by(Senzor.cod).all()
+    return render_template('bim/sensors_lista.html',
+                           senzori=senzori, tipuri=Senzor.TIPURI)
+
+
+@bim_bp.route('/sensor/nou', methods=['GET', 'POST'])
+@login_required
+@manager_or_admin
+def sensor_nou():
+    """Creeaza un senzor nou cu API key auto-generat."""
+    redir = _ensure_iot_enabled()
+    if redir:
+        return redir
+
+    element_id = request.args.get('element_bim_id', type=int)
+    spatiu_id = request.args.get('spatiu_id', type=int)
+    cladire_id = request.args.get('cladire_id', type=int)
+
+    if request.method == 'POST':
+        try:
+            def _opt_float(v):
+                v = (v or '').strip()
+                return float(v) if v else None
+
+            senzor = iot_ingest_svc.create_senzor(
+                cod=request.form.get('cod', '').strip(),
+                nume=request.form.get('nume', '').strip(),
+                tip=request.form.get('tip', '').strip(),
+                unitate=request.form.get('unitate', '').strip() or None,
+                element_bim_id=request.form.get('element_bim_id', type=int),
+                spatiu_id=request.form.get('spatiu_id', type=int),
+                cladire_id=request.form.get('cladire_id', type=int),
+                threshold_min=_opt_float(request.form.get('threshold_min')),
+                threshold_max=_opt_float(request.form.get('threshold_max')),
+                descriere=request.form.get('descriere', ''),
+                producator=request.form.get('producator', ''),
+                model_hardware=request.form.get('model_hardware', ''),
+                serial=request.form.get('serial', ''),
+                user=current_user,
+            )
+            flash(f'Senzor "{senzor.cod}" creat. API key (afisat o singura data): {senzor.api_key}', 'success')
+            return redirect(url_for('bim.sensor_detaliu', sensor_id=senzor.id))
+        except ValueError as e:
+            flash(str(e), 'danger')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare la creare senzor: {e}', 'danger')
+
+    return render_template('bim/sensor_formular.html',
+                           tipuri=Senzor.TIPURI,
+                           unitati_default=Senzor.UNITATI_DEFAULT,
+                           element_bim_id=element_id,
+                           spatiu_id=spatiu_id,
+                           cladire_id=cladire_id)
+
+
+@bim_bp.route('/sensor/<int:sensor_id>')
+@login_required
+def sensor_detaliu(sensor_id):
+    """Detaliu senzor cu istoric + chart."""
+    redir = _ensure_iot_enabled()
+    if redir:
+        return redir
+    senzor = Senzor.query.get_or_404(sensor_id)
+    agg = request.args.get('agg', '1h')  # default agg pe oră
+    history = iot_query_svc.get_history(sensor_id, agg=agg)
+    alerts = (SensorAlert.query.filter_by(senzor_id=sensor_id)
+              .order_by(SensorAlert.data_alerta.desc()).limit(50).all())
+    return render_template('bim/sensor_detaliu.html',
+                           senzor=senzor, history=history,
+                           alerts=alerts, agg=agg)
+
+
+@bim_bp.route('/sensor/<int:sensor_id>/rotate-key', methods=['POST'])
+@login_required
+@manager_or_admin
+def sensor_rotate_key(sensor_id):
+    senzor = Senzor.query.get_or_404(sensor_id)
+    try:
+        new_key = iot_ingest_svc.rotate_api_key(senzor)
+        flash(f'Token rotat. Noul API key (afisat o singura data): {new_key}', 'warning')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la rotatie token: {e}', 'danger')
+    return redirect(url_for('bim.sensor_detaliu', sensor_id=sensor_id))
+
+
+# ---------- ALERTS ----------
+
+@bim_bp.route('/alerts')
+@login_required
+def alerts_lista():
+    """Alerte deschise + recent rezolvate."""
+    redir = _ensure_iot_enabled()
+    if redir:
+        return redir
+    status = request.args.get('status', 'noua')
+    q = SensorAlert.query
+    if status:
+        q = q.filter_by(status=status)
+    alerts = q.order_by(SensorAlert.data_alerta.desc()).limit(500).all()
+    return render_template('bim/alerts_lista.html',
+                           alerts=alerts, status_filter=status)
+
+
+@bim_bp.route('/alert/<int:alert_id>/transition', methods=['POST'])
+@login_required
+@manager_or_admin
+def alert_transition(alert_id):
+    alert = SensorAlert.query.get_or_404(alert_id)
+    new_status = request.form.get('status', '').strip()
+    try:
+        iot_ingest_svc.transition_alert(alert, new_status, current_user)
+        flash(f'Alerta -> {new_status}', 'success')
+    except ValueError as e:
+        flash(str(e), 'danger')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare: {e}', 'danger')
+    return redirect(url_for('bim.alerts_lista'))
+
+
+# ---------- API QUERY ----------
+
+@bim_bp.route('/api/element/<int:element_id>/state')
+@login_required
+def api_element_state(element_id):
+    """JSON cu current state al senzorilor atasati la element."""
+    if not ff_svc.is_enabled('bim-iot-sensors'):
+        return jsonify({'enabled': False, 'sensors': []}), 200
+    return jsonify({'enabled': True,
+                    **iot_query_svc.get_current_state_element(element_id)})
+
+
+@bim_bp.route('/api/sensor/<int:sensor_id>/history')
+@login_required
+def api_sensor_history(sensor_id):
+    """JSON cu istoricul time-series (raw / 1h / 1d)."""
+    if not ff_svc.is_enabled('bim-iot-sensors'):
+        return jsonify({'enabled': False, 'data': []}), 200
+    agg = request.args.get('agg', '1h')
+    from_str = request.args.get('from')
+    to_str = request.args.get('to')
+    try:
+        from_ts = datetime.fromisoformat(from_str.rstrip('Z')) if from_str else None
+        to_ts = datetime.fromisoformat(to_str.rstrip('Z')) if to_str else None
+        return jsonify({'enabled': True,
+                        **iot_query_svc.get_history(sensor_id,
+                                                     from_ts=from_ts, to_ts=to_ts, agg=agg)})
+    except (ValueError, TypeError) as e:
+        return jsonify({'error': f'parametri invalizi: {e}'}), 400

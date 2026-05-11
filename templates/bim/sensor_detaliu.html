@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}{{ senzor.cod }} - Senzor IoT{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.sensors_lista') }}">Senzori</a></li>
+<li class="breadcrumb-item active">{{ senzor.cod }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.sev-mica    { background:#e2e3e5; color:#383d41; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-medie   { background:#fff3cd; color:#856404; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-mare    { background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-critica { background:#dc3545; color:white; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.chart-container { background:white; padding:18px; border-radius:10px; height:360px; }
+.kpi-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:20px; }
+.kpi-card { background:white; padding:14px; border-radius:8px; }
+.kpi-card h4 { margin:0 0 6px 0; font-size:0.78rem; color:var(--gray-500); text-transform:uppercase; }
+.kpi-card .val { font-size:1.5rem; font-weight:700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2 style="margin:0;">
+            <i class="fa-solid fa-broadcast-tower" style="color:var(--primary);"></i>
+            {{ senzor.cod }} - {{ senzor.nume }}
+        </h2>
+        <div style="font-size:0.85rem; color:var(--gray-500); margin-top:4px;">
+            {{ senzor.label_tip }} | unitate: <code>{{ senzor.unitate }}</code> |
+            {% if senzor.element_bim %}element: <a href="{{ url_for('bim.element_detaliu', id=senzor.element_bim_id) }}">{{ senzor.element_bim.cod }}</a>{% endif %}
+            {% if senzor.spatiu %}spatiu: #{{ senzor.spatiu_id }}{% endif %}
+        </div>
+    </div>
+    {% if current_user.rol in ['admin', 'manager'] %}
+    <form method="POST" action="{{ url_for('bim.sensor_rotate_key', sensor_id=senzor.id) }}"
+          onsubmit="return confirm('Rotezi API token-ul? Vechiul token va fi invalidat IMEDIAT.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-outline" style="color:var(--warning); border-color:var(--warning);">
+            <i class="fa-solid fa-key"></i> Roteste token
+        </button>
+    </form>
+    {% endif %}
+</div>
+
+<div class="kpi-grid">
+    <div class="kpi-card" style="border-left:4px solid {% if senzor.is_alarming %}var(--danger){% else %}var(--success){% endif %};">
+        <h4>Ultima valoare</h4>
+        <div class="val">
+            {% if senzor.ultima_valoare is not none %}{{ '%g'|format(senzor.ultima_valoare|float) }} {{ senzor.unitate }}{% else %}-{% endif %}
+        </div>
+        <small style="color:var(--gray-500);">
+            {% if senzor.ultima_citire_at %}{{ senzor.ultima_citire_at.strftime('%d.%m.%Y %H:%M') }}{% else %}fara citire{% endif %}
+        </small>
+    </div>
+    {% if senzor.threshold_min is not none %}
+    <div class="kpi-card" style="border-left:4px solid var(--primary);">
+        <h4>Threshold min</h4>
+        <div class="val">{{ '%g'|format(senzor.threshold_min|float) }} {{ senzor.unitate }}</div>
+    </div>
+    {% endif %}
+    {% if senzor.threshold_max is not none %}
+    <div class="kpi-card" style="border-left:4px solid var(--primary);">
+        <h4>Threshold max</h4>
+        <div class="val">{{ '%g'|format(senzor.threshold_max|float) }} {{ senzor.unitate }}</div>
+    </div>
+    {% endif %}
+    <div class="kpi-card">
+        <h4>Citiri istoric ({{ agg }})</h4>
+        <div class="val">{{ history.count }}</div>
+    </div>
+    <div class="kpi-card" style="border-left:4px solid {% if alerts|selectattr('status', 'equalto', 'noua')|list|length > 0 %}var(--danger){% else %}var(--gray-300){% endif %};">
+        <h4>Alerte deschise</h4>
+        <div class="val">{{ alerts|selectattr('status', 'equalto', 'noua')|list|length }}</div>
+    </div>
+</div>
+
+<div style="display:flex; gap:6px; margin-bottom:10px;">
+    <strong style="align-self:center;">Agregare:</strong>
+    <a href="?agg=raw" class="btn btn-outline {% if agg == 'raw' %}active{% endif %}">Raw</a>
+    <a href="?agg=1h" class="btn btn-outline {% if agg == '1h' %}active{% endif %}">1h</a>
+    <a href="?agg=1d" class="btn btn-outline {% if agg == '1d' %}active{% endif %}">1d</a>
+</div>
+
+<div class="chart-container">
+    <canvas id="historyChart"></canvas>
+</div>
+
+<h3 style="margin-top:24px;"><i class="fa-solid fa-triangle-exclamation"></i> Istoric alerte ({{ alerts|length }})</h3>
+{% if alerts %}
+<table class="data-table">
+    <thead><tr><th>Data</th><th>Tip</th><th>Sev.</th><th>Valoare</th><th>Threshold</th><th>Status</th><th>Mesaj</th></tr></thead>
+    <tbody>
+        {% for a in alerts %}
+        <tr>
+            <td style="font-size:0.82rem;">{{ a.data_alerta.strftime('%d.%m %H:%M') }}</td>
+            <td><code>{{ a.tip }}</code></td>
+            <td><span class="sev-{{ a.severitate }}">{{ a.severitate }}</span></td>
+            <td>{{ '%g'|format(a.valoare|float) if a.valoare is not none else '-' }}</td>
+            <td>{{ '%g'|format(a.threshold_violat|float) if a.threshold_violat is not none else '-' }}</td>
+            <td>{{ a.status }}</td>
+            <td style="font-size:0.88rem;">{{ a.mesaj|truncate(80) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p style="color:var(--gray-500);">Nicio alerta inregistrata pentru acest senzor.</p>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const HISTORY = {{ history|tojson }};
+const senzorCod = {{ senzor.cod|tojson }};
+const unitate = {{ senzor.unitate|tojson }};
+
+const ctx = document.getElementById('historyChart').getContext('2d');
+const isAgg = HISTORY.agg !== 'raw';
+
+const labels = HISTORY.data.map(d => d.ts);
+let datasets;
+if (isAgg) {
+    datasets = [
+        { label: 'Min',  data: HISTORY.data.map(d => d.min),  borderColor: '#90CAF9', tension: 0.2, fill: false },
+        { label: 'Avg',  data: HISTORY.data.map(d => d.avg),  borderColor: '#1976D2', tension: 0.2, fill: false, borderWidth: 2 },
+        { label: 'Max',  data: HISTORY.data.map(d => d.max),  borderColor: '#EF5350', tension: 0.2, fill: false },
+    ];
+} else {
+    datasets = [
+        { label: senzorCod, data: HISTORY.data.map(d => d.valoare),
+          borderColor: '#1976D2', tension: 0.1, pointRadius: 1 },
+    ];
+}
+
+{% if senzor.threshold_min is not none %}
+datasets.push({
+    label: 'Min threshold', data: labels.map(() => {{ senzor.threshold_min|float }}),
+    borderColor: '#FFC107', borderDash: [5, 5], pointRadius: 0, fill: false,
+});
+{% endif %}
+{% if senzor.threshold_max is not none %}
+datasets.push({
+    label: 'Max threshold', data: labels.map(() => {{ senzor.threshold_max|float }}),
+    borderColor: '#F44336', borderDash: [5, 5], pointRadius: 0, fill: false,
+});
+{% endif %}
+
+new Chart(ctx, {
+    type: 'line',
+    data: { labels: labels, datasets: datasets },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: { title: { display: true, text: unitate } },
+            x: { ticks: { maxRotation: 60, autoSkip: true, maxTicksLimit: 16 } },
+        },
+        plugins: {
+            legend: { position: 'top' },
+            title: { display: true, text: `Istoric ${senzorCod} (${HISTORY.agg})` },
+        }
+    }
+});
+</script>
+{% endblock %}
