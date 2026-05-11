@@ -9,7 +9,7 @@ Setup pentru activare:
     Variabile de mediu (sau in WSGI config pe PythonAnywhere):
       APS_CLIENT_ID=<your_client_id>
       APS_CLIENT_SECRET=<your_client_secret>
-      APS_BUCKET_KEY=<bucket_name_unique>   # optional, default = innova-bim-bucket
+      APS_BUCKET_KEY=<bucket_name_unique>   # optional, default = edifico-bim-bucket
 
 API:
     is_configured() -> bool        # avem credentiale + flag activ
@@ -43,7 +43,7 @@ def _client_secret() -> Optional[str]:
 
 
 def _bucket_key() -> str:
-    return os.environ.get('APS_BUCKET_KEY', 'innova-bim-bucket')
+    return os.environ.get('APS_BUCKET_KEY', 'edifico-bim-bucket')
 
 
 def has_credentials() -> bool:

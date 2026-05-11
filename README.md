@@ -1,4 +1,4 @@
-# INNOVA WORKFORCE v2.0
+# EDIFICO WORKFORCE v2.0
 
 Sistem de Management al Fortei de Munca in Constructii
 
@@ -77,9 +77,9 @@ produsa de Alembic e identica cu `db.create_all()` din models.py.
 
 | Rol       | Email                | Parola      |
 |-----------|----------------------|-------------|
-| Admin     | admin@innova.ro      | admin123    |
-| Manager   | manager@innova.ro    | manager123  |
-| Operator  | operator@innova.ro   | op123       |
+| Admin     | admin@edifico.ro      | admin123    |
+| Manager   | manager@edifico.ro    | manager123  |
+| Operator  | operator@edifico.ro   | op123       |
 
 ## Module
 

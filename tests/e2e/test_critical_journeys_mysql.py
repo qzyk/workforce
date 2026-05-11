@@ -133,13 +133,13 @@ def test_e2e_my_creeaza_activitate(mysql_e2e_server, page):
     assert page.locator('text=E2E_MY_TEST_ACT').count() > 0
 
 
-def test_e2e_my_export_innova_modal(mysql_e2e_server, page):
-    """3. Modal Export INNOVA pe MySQL."""
+def test_e2e_my_export_edifico_modal(mysql_e2e_server, page):
+    """3. Modal Export EDIFICO pe MySQL."""
     _login_admin_my(page, mysql_e2e_server)
     page.goto(f'{mysql_e2e_server}/activitati/')
 
-    page.click('button:has-text("Export INNOVA")')
-    modal = page.locator('#exportInnovaModal')
+    page.click('button:has-text("Export EDIFICO")')
+    modal = page.locator('#exportEdificoModal')
     assert modal.is_visible()
 
 

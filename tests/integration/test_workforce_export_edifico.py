@@ -1,5 +1,5 @@
 """
-Tests pentru exportul INNOVA xlsx - structura exacta + filtre + multi-angajat.
+Tests pentru exportul EDIFICO xlsx - structura exacta + filtre + multi-angajat.
 """
 
 from datetime import date
@@ -65,12 +65,12 @@ def setup_export_data(app, admin_user):
         db.session.commit()
 
 
-class TestExportInnovaStructure:
+class TestExportEdificoStructure:
     """Verifica ca exportul produce un xlsx valid cu structura corecta."""
 
     def test_export_returns_xlsx(self, authenticated_client, setup_export_data):
         resp = authenticated_client.get(
-            f'/activitati/raport/innova?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
+            f'/activitati/raport/edifico?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
         )
         assert resp.status_code == 200
         # Magic bytes ZIP (xlsx e ZIP)
@@ -82,7 +82,7 @@ class TestExportInnovaStructure:
     def test_export_has_employee_sheet(self, authenticated_client, setup_export_data):
         from openpyxl import load_workbook
         resp = authenticated_client.get(
-            f'/activitati/raport/innova?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
+            f'/activitati/raport/edifico?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
         )
         wb = load_workbook(BytesIO(resp.data))
         # Numele angajatului e ExportTest Inginer (sau Inginer ExportTest in ordinea make_angajat)
@@ -94,7 +94,7 @@ class TestExportInnovaStructure:
         """B3 contine titlul cu luna + an."""
         from openpyxl import load_workbook
         resp = authenticated_client.get(
-            f'/activitati/raport/innova?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
+            f'/activitati/raport/edifico?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
         )
         wb = load_workbook(BytesIO(resp.data))
         ws = wb.worksheets[0]
@@ -107,7 +107,7 @@ class TestExportInnovaStructure:
         """Sheet name == numele complet al angajatului."""
         from openpyxl import load_workbook
         resp = authenticated_client.get(
-            f'/activitati/raport/innova?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
+            f'/activitati/raport/edifico?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
         )
         wb = load_workbook(BytesIO(resp.data))
         sheet_name = wb.sheetnames[0]
@@ -118,7 +118,7 @@ class TestExportInnovaStructure:
         """Cele 5 activitati EXP_* trebuie sa apara in xlsx."""
         from openpyxl import load_workbook
         resp = authenticated_client.get(
-            f'/activitati/raport/innova?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
+            f'/activitati/raport/edifico?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
         )
         wb = load_workbook(BytesIO(resp.data))
         ws = wb.worksheets[0]
@@ -135,7 +135,7 @@ class TestExportInnovaStructure:
         """Numele lunii apare in xlsx (B7 are 'OCTOMBRIE 2025' sau B3 are 'octombrie')."""
         from openpyxl import load_workbook
         resp = authenticated_client.get(
-            f'/activitati/raport/innova?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
+            f'/activitati/raport/edifico?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
         )
         wb = load_workbook(BytesIO(resp.data))
         ws = wb.worksheets[0]
@@ -154,7 +154,7 @@ class TestExportInnovaStructure:
         """Header tabel: Luna / Saptamana / Data / Activitati."""
         from openpyxl import load_workbook
         resp = authenticated_client.get(
-            f'/activitati/raport/innova?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
+            f'/activitati/raport/edifico?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}'
         )
         wb = load_workbook(BytesIO(resp.data))
         ws = wb.worksheets[0]
@@ -170,26 +170,26 @@ class TestExportInnovaStructure:
         assert 'Activitati' in all_text or 'Activități' in all_text
 
 
-class TestExportInnovaMultiEmployee:
+class TestExportEdificoMultiEmployee:
     """Multi-angajat: lista nu filtrata, lista cu 2-3 angajati selectati."""
 
     def test_export_fara_angajat_id_returneaza_toti_cu_activitati(
             self, authenticated_client, setup_export_data):
         from openpyxl import load_workbook
-        resp = authenticated_client.get('/activitati/raport/innova?luna=2025-10')
+        resp = authenticated_client.get('/activitati/raport/edifico?luna=2025-10')
         assert resp.status_code == 200
         wb = load_workbook(BytesIO(resp.data))
         # Cel putin un sheet (angajatul cu activitatile noastre)
         assert len(wb.sheetnames) >= 1
 
 
-class TestExportInnovaFiltre:
+class TestExportEdificoFiltre:
     """Filtre pe export: ?tip=zilnica/saptamanala/lunara."""
 
     def test_export_filtru_tip_zilnica(self, authenticated_client, setup_export_data):
         from openpyxl import load_workbook
         resp = authenticated_client.get(
-            f'/activitati/raport/innova?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}&tip=zilnica'
+            f'/activitati/raport/edifico?luna=2025-10&angajat_id={setup_export_data["angajat_id"]}&tip=zilnica'
         )
         assert resp.status_code == 200
         wb = load_workbook(BytesIO(resp.data))
@@ -197,22 +197,22 @@ class TestExportInnovaFiltre:
         assert len(wb.sheetnames) == 1
 
 
-class TestExportInnovaParameters:
+class TestExportEdificoParameters:
     """Validare parametri."""
 
     def test_luna_invalida_redirect(self, authenticated_client):
-        resp = authenticated_client.get('/activitati/raport/innova?luna=invalid',
+        resp = authenticated_client.get('/activitati/raport/edifico?luna=invalid',
                                          follow_redirects=False)
         assert resp.status_code in (302, 400)
 
     def test_luna_default_e_curenta(self, authenticated_client):
         # Fara ?luna -> luna curenta
-        resp = authenticated_client.get('/activitati/raport/innova')
+        resp = authenticated_client.get('/activitati/raport/edifico')
         # Ori 200 cu xlsx, ori redirect cu warning
         assert resp.status_code in (200, 302)
 
 
-class TestExportInnovaAlteFormate:
+class TestExportEdificoAlteFormate:
     """Celelalte exporturi (saptamanal, lunar, anual) raman functional."""
 
     def test_export_saptamanal(self, authenticated_client):

@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Configurare aplicatie
+EDIFICO WORKFORCE - Configurare aplicatie
 """
 
 import os
@@ -10,7 +10,7 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
     # Securitate
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'innova-workforce-dev-key-2024-do-not-use-in-production'
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'edifico-workforce-dev-key-2024-do-not-use-in-production'
     WTF_CSRF_ENABLED = True
 
     # Baza de date

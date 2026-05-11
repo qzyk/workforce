@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Generator Rapoarte Excel
+EDIFICO WORKFORCE - Generator Rapoarte Excel
 Toate rapoartele Excel cu openpyxl: foaie prezenta, stat plata, situatie proiect, centralizator ore.
 """
 
@@ -120,7 +120,7 @@ def generate_foaie_prezenta(proiect_id, luna, an, include_supl=True, app=None):
     # === HEADER ===
     row = 1
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=nr_zile + 5)
-    cell = ws.cell(row=row, column=1, value='INNOVA WORKFORCE SRL')
+    cell = ws.cell(row=row, column=1, value='EDIFICO WORKFORCE SRL')
     cell.font = Font(bold=True, size=16, name='Arial', color='1A237E')
     cell.alignment = CENTER
 
@@ -273,7 +273,7 @@ def generate_stat_plata(proiect_id, luna, an, include_bonusuri=False):
 
     # Header
     ws.merge_cells('A1:M1')
-    ws.cell(row=1, column=1, value='INNOVA WORKFORCE SRL').font = Font(bold=True, size=14, name='Arial', color='1A237E')
+    ws.cell(row=1, column=1, value='EDIFICO WORKFORCE SRL').font = Font(bold=True, size=14, name='Arial', color='1A237E')
     ws['A1'].alignment = CENTER
 
     ws.merge_cells('A2:M2')

@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Generator Rapoarte PDF
+EDIFICO WORKFORCE - Generator Rapoarte PDF
 Rapoarte PDF cu ReportLab: foaie prezenta, stat plata, pontaj individual.
 Fallback: daca ReportLab nu e instalat, genereaza Excel in loc.
 """
@@ -104,7 +104,7 @@ def generate_pdf_foaie_prezenta(proiect_id, luna, an):
     elements = []
 
     # Header
-    elements.append(Paragraph('INNOVA WORKFORCE SRL', styles['TitleCustom']))
+    elements.append(Paragraph('EDIFICO WORKFORCE SRL', styles['TitleCustom']))
     elements.append(Paragraph('FOAIE COLECTIVA DE PREZENTA', styles['SubtitleCustom']))
     elements.append(Paragraph(
         f'Proiect: {proiect.cod_proiect} - {proiect.nume} | Locatie: {proiect.locatie or "-"} | '
@@ -216,7 +216,7 @@ def generate_pdf_stat_plata(proiect_id, luna, an):
     styles = _get_styles()
     elements = []
 
-    elements.append(Paragraph('INNOVA WORKFORCE SRL', styles['TitleCustom']))
+    elements.append(Paragraph('EDIFICO WORKFORCE SRL', styles['TitleCustom']))
     elements.append(Paragraph(f'STAT DE PLATA - {month_names[luna]} {an}', styles['SubtitleCustom']))
     elements.append(Spacer(1, 6*mm))
 
@@ -330,7 +330,7 @@ def generate_pdf_pontaj_individual(angajat_id, data_start, data_sfarsit):
     styles = _get_styles()
     elements = []
 
-    elements.append(Paragraph('INNOVA WORKFORCE SRL', styles['TitleCustom']))
+    elements.append(Paragraph('EDIFICO WORKFORCE SRL', styles['TitleCustom']))
     elements.append(Paragraph('FISA PONTAJ INDIVIDUAL', styles['SubtitleCustom']))
     elements.append(Spacer(1, 4*mm))
 

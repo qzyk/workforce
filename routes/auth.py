@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Rute autentificare
+EDIFICO WORKFORCE - Rute autentificare
 Login, logout, profil, schimbare parola
 Cu rate limiting, role_required decorator, remember me
 """

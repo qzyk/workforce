@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Modul Rapoarte (Complet)
+EDIFICO WORKFORCE - Modul Rapoarte (Complet)
 Generare rapoarte Excel/PDF: foaie prezenta, stat plata, situatie proiect, centralizator,
 documente, pontaj individual, prezenta zilnica, SSM.
 """

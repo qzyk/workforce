@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Modele SQLAlchemy
+EDIFICO WORKFORCE - Modele SQLAlchemy
 Toate modelele bazei de date pentru managementul fortei de munca in constructii.
 """
 
@@ -21,7 +21,7 @@ db = SQLAlchemy()
 class Tenant(db.Model):
     __tablename__ = 'tenants'
     id = db.Column(db.Integer, primary_key=True)
-    cod = db.Column(db.String(50), unique=True, nullable=False)  # ex: 'innova', 'beta-srl'
+    cod = db.Column(db.String(50), unique=True, nullable=False)  # ex: 'edifico', 'beta-srl'
     nume = db.Column(db.String(200), nullable=False)
     activ = db.Column(db.Boolean, default=True, nullable=False)
     config_json = db.Column(db.Text, nullable=True)  # setari per-tenant in JSON

@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Dashboard principal
+EDIFICO WORKFORCE - Dashboard principal
 Calculeaza statistici complete pentru panoul de control
 """
 

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Rapoarte de Activitate - INNOVA WORKFORCE{% endblock %}
+{% block title %}Rapoarte de Activitate - EDIFICO WORKFORCE{% endblock %}
 
 {% block breadcrumb %}
 <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
@@ -47,8 +47,8 @@
         <a href="{{ url_for('activitati.calendar_view') }}" class="btn btn-outline">
             <i class="fa-solid fa-calendar-days"></i> Calendar
         </a>
-        <button type="button" class="btn btn-success" onclick="openExportInnovaModal()">
-            <i class="fa-solid fa-file-excel"></i> Export INNOVA
+        <button type="button" class="btn btn-success" onclick="openExportEdificoModal()">
+            <i class="fa-solid fa-file-excel"></i> Export EDIFICO
         </button>
         <div class="dropdown" style="position: relative; display: inline-block;">
             <button class="btn btn-outline" onclick="document.getElementById('exportMenu').classList.toggle('show')" type="button">
@@ -69,14 +69,14 @@
     </div>
 </div>
 
-<!-- MODAL EXPORT INNOVA -->
-<div id="exportInnovaModal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center;">
+<!-- MODAL EXPORT EDIFICO -->
+<div id="exportEdificoModal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center;">
     <div class="modal-box" style="background:white; border-radius:12px; padding:24px; max-width:520px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px; padding-bottom:12px; border-bottom:2px solid var(--gray-100);">
             <i class="fa-solid fa-file-excel" style="color:var(--success); font-size:1.4rem;"></i>
-            <h3 style="margin:0; font-size:1.1rem;">Generare Raport INNOVA</h3>
+            <h3 style="margin:0; font-size:1.1rem;">Generare Raport EDIFICO</h3>
         </div>
-        <form method="GET" action="{{ url_for('activitati.export_innova') }}" id="exportInnovaForm">
+        <form method="GET" action="{{ url_for('activitati.export_edifico') }}" id="exportEdificoForm">
             <input type="hidden" name="luna_start" id="exportLunaStartHidden" value="{{ today.strftime('%Y-%m') }}">
             <input type="hidden" name="luna_end" id="exportLunaEndHidden" value="{{ today.strftime('%Y-%m') }}">
             {% set luni_ro = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'] %}
@@ -145,7 +145,7 @@
                 </select>
             </div>
             <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
-                <button type="button" onclick="closeExportInnovaModal()" class="btn btn-outline">
+                <button type="button" onclick="closeExportEdificoModal()" class="btn btn-outline">
                     Anuleaza
                 </button>
                 <button type="submit" class="btn btn-success">
@@ -469,12 +469,12 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// Modal Export INNOVA
-function openExportInnovaModal() {
-    document.getElementById('exportInnovaModal').style.display = 'flex';
+// Modal Export EDIFICO
+function openExportEdificoModal() {
+    document.getElementById('exportEdificoModal').style.display = 'flex';
 }
-function closeExportInnovaModal() {
-    document.getElementById('exportInnovaModal').style.display = 'none';
+function closeExportEdificoModal() {
+    document.getElementById('exportEdificoModal').style.display = 'none';
 }
 function selectAllAngajati(select) {
     var sel = document.getElementById('exportAngajatiSelect');
@@ -493,17 +493,17 @@ function syncLunaHidden() {
     var el = document.getElementById(id);
     if (el) el.addEventListener('change', syncLunaHidden);
 });
-document.getElementById('exportInnovaForm').addEventListener('submit', syncLunaHidden);
+document.getElementById('exportEdificoForm').addEventListener('submit', syncLunaHidden);
 // Inchidere modal pe click fundal sau tasta Escape
-document.getElementById('exportInnovaModal').addEventListener('click', function(e) {
-    if (e.target === this) closeExportInnovaModal();
+document.getElementById('exportEdificoModal').addEventListener('click', function(e) {
+    if (e.target === this) closeExportEdificoModal();
 });
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') closeExportInnovaModal();
+    if (e.key === 'Escape') closeExportEdificoModal();
 });
 // Dupa submit, inchide modalul (descarcarea continua in fundal)
-document.getElementById('exportInnovaForm').addEventListener('submit', function() {
-    setTimeout(closeExportInnovaModal, 600);
+document.getElementById('exportEdificoForm').addEventListener('submit', function() {
+    setTimeout(closeExportEdificoModal, 600);
 });
 </script>
 {% endblock %}

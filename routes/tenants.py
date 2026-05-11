@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Modul Tenant Management
+EDIFICO WORKFORCE - Modul Tenant Management
 Blueprint: /admin/tenants
 
 Permite super-admin sa CRUD tenants si sa atribuie utilizatorii la tenants.

@@ -1,5 +1,5 @@
 """
-Alembic environment pentru INNOVA WORKFORCE.
+Alembic environment pentru EDIFICO WORKFORCE.
 
 - URL-ul DB se preia automat din config.Config.SQLALCHEMY_DATABASE_URI
   (care respecta DATABASE_URL env var). Nu trebuie editat manual in alembic.ini.

@@ -1,6 +1,6 @@
 @echo off
 echo ============================================================
-echo   INNOVA WORKFORCE - Instalare automata
+echo   EDIFICO WORKFORCE - Instalare automata
 echo   Sistem de Management al Fortei de Munca in Constructii
 echo ============================================================
 echo.
@@ -53,9 +53,9 @@ echo     2. Rulati: python app.py
 echo     3. Deschideti: http://localhost:5000
 echo.
 echo   Conturi demo:
-echo     Admin:    admin@innova.ro / admin123
-echo     Manager:  manager@innova.ro / manager123
-echo     Operator: operator@innova.ro / op123
+echo     Admin:    admin@edifico.ro / admin123
+echo     Manager:  manager@edifico.ro / manager123
+echo     Operator: operator@edifico.ro / op123
 echo ============================================================
 echo.
 pause

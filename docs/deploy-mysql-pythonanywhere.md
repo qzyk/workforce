@@ -208,10 +208,10 @@ PA inchide conexiuni MySQL idle dupa ~5 min. `pool_recycle` previne eroarea
    ```
 4. Login ca super-admin → vei vedea **Tenants** in sidebar (sub Setari)
 5. Creezi tenants:
-   - cod `innova` → "Innova Construct SRL"
+   - cod `edifico` → "Edifico Construct SRL"
    - cod `acme` → alt client (daca aplicabil)
 6. Atribui utilizatori existenti:
-   - Tab "Utilizatori in `innova`" → click "Adauga la tenant" pentru fiecare user
+   - Tab "Utilizatori in `edifico`" → click "Adauga la tenant" pentru fiecare user
 7. Toate datele existente raman cu `tenant_id=NULL` pana le mutati explicit
 
 ## Probleme cunoscute

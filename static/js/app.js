@@ -1,5 +1,5 @@
 /**
- * INNOVA WORKFORCE - JavaScript principal
+ * EDIFICO WORKFORCE - JavaScript principal
  * Sistem de Management al Fortei de Munca in Constructii
  */
 
@@ -207,5 +207,5 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    console.log('INNOVA WORKFORCE - Aplicatie incarcata cu succes.');
+    console.log('EDIFICO WORKFORCE - Aplicatie incarcata cu succes.');
 });

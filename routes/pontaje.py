@@ -805,7 +805,7 @@ def export_lunar():
     title_cell.alignment = Alignment(horizontal='center')
 
     ws1.merge_cells(start_row=2, start_column=1, end_row=2, end_column=days_in_month + 5)
-    ws1.cell(row=2, column=1, value='INNOVA WORKFORCE - Management Forta de Munca in Constructii').font = Font(size=10, color='666666')
+    ws1.cell(row=2, column=1, value='EDIFICO WORKFORCE - Management Forta de Munca in Constructii').font = Font(size=10, color='666666')
     ws1.cell(row=2, column=1).alignment = Alignment(horizontal='center')
 
     # Headers row 4

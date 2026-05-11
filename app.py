@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Aplicatie principala Flask
+EDIFICO WORKFORCE - Aplicatie principala Flask
 Sistem de Management al Fortei de Munca in Constructii
 """
 
@@ -440,9 +440,9 @@ def create_app(config_name='default'):
 
         # === UTILIZATORI ===
         users_data = [
-            ('Popescu', 'Adrian', 'admin@innova.ro', 'admin123', 'admin'),
-            ('Ionescu', 'Maria', 'manager@innova.ro', 'manager123', 'manager'),
-            ('Popa', 'Gheorghe', 'operator@innova.ro', 'op123', 'operator'),
+            ('Popescu', 'Adrian', 'admin@edifico.ro', 'admin123', 'admin'),
+            ('Ionescu', 'Maria', 'manager@edifico.ro', 'manager123', 'manager'),
+            ('Popa', 'Gheorghe', 'operator@edifico.ro', 'op123', 'operator'),
         ]
         users = []
         for nume, prenume, email, parola, rol in users_data:
@@ -477,7 +477,7 @@ def create_app(config_name='default'):
              salariu, spec, data_n, data_a) in angajati_data:
             a = Angajat(
                 nume=nume, prenume=prenume, cnp=cnp, telefon=tel,
-                email=f'{prenume.lower()}.{nume.lower()}@innova.ro',
+                email=f'{prenume.lower()}.{nume.lower()}@edifico.ro',
                 functie=functie, tip_contract=tip_contract,
                 salariu_baza=salariu, specializari=spec,
                 data_nasterii=data_n, data_angajare=data_a,
@@ -905,8 +905,8 @@ app = create_app('default')
 
 if __name__ == '__main__':
     print("\n" + "=" * 55)
-    print("  INNOVA WORKFORCE v2.0 - Management Forta de Munca")
+    print("  EDIFICO WORKFORCE v2.0 - Management Forta de Munca")
     print("  Server: http://localhost:5001")
-    print("  Cont admin: admin@innova.ro / admin123")
+    print("  Cont admin: admin@edifico.ro / admin123")
     print("=" * 55 + "\n")
     app.run(debug=True, host='0.0.0.0', port=5001)

@@ -87,14 +87,14 @@ class TestSuiteOnMySQL:
                 f'STDOUT:\n{result.stdout[-3000:]}'
             )
 
-    def test_export_innova_on_mysql(self):
+    def test_export_edifico_on_mysql(self):
         mysql_url = os.environ.get('MYSQL_TEST_URL')
         result = _run_pytest_with_mysql(
-            ['tests/integration/test_workforce_export_innova.py'], mysql_url
+            ['tests/integration/test_workforce_export_edifico.py'], mysql_url
         )
         if result.returncode != 0:
             pytest.fail(
-                f'Export INNOVA tests FAIL on MySQL.\n'
+                f'Export EDIFICO tests FAIL on MySQL.\n'
                 f'STDOUT:\n{result.stdout[-3000:]}'
             )
 

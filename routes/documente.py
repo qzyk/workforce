@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Modul Documente (Complet)
+EDIFICO WORKFORCE - Modul Documente (Complet)
 Gestionarea documentelor angajatilor: upload, expirare, alerte, export Excel.
 """
 

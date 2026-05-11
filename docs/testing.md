@@ -37,7 +37,7 @@ tests/
 ├── integration/              # 110+ teste integration (Flask test client)
 │   ├── test_smoke.py               # rute principale, redirect-uri auth
 │   ├── test_workforce_activitati.py # CRUD activitate + workflow draft->aprobat
-│   ├── test_workforce_export_innova.py # export xlsx structura
+│   ├── test_workforce_export_edifico.py # export xlsx structura
 │   ├── test_bim_routes.py          # rute /bim/* + IFC + BCF + viewer
 │   ├── test_bim_workforce_link.py  # linkare workforce <-> BIM
 │   ├── test_bim_data_quality.py    # ExternalMapping + quality reports

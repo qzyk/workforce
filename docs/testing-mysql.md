@@ -53,7 +53,7 @@ pytest tests/ --ignore=tests/e2e -v
 | `tests/integration/test_mysql_query_semantics.py` | P2 | 8 | Case sensitivity, ILIKE, GROUP BY strict, ORDER BY, LIMIT, NULL in IN |
 | `tests/integration/test_mysql_migration_script.py` | P1 | 4 | E2E migration SQLite -> MySQL cu 50+ randuri sample |
 | `tests/integration/test_mysql_existing_suite_runner.py` | dual-mode | 8 | Re-ruleaza cele 190 teste existente pe MySQL via subprocess |
-| `tests/e2e/test_critical_journeys_mysql.py` | E2E | 5 | Login + CRUD + Export INNOVA + BIM dashboard pe MySQL real |
+| `tests/e2e/test_critical_journeys_mysql.py` | E2E | 5 | Login + CRUD + Export EDIFICO + BIM dashboard pe MySQL real |
 
 **Total**: ~36 teste noi specifice MySQL (skip default fara `MYSQL_TEST_URL`)
 

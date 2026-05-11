@@ -1,5 +1,5 @@
 /**
- * INNOVA WORKFORCE v2.0 - JavaScript Principal
+ * EDIFICO WORKFORCE v2.0 - JavaScript Principal
  * Sidebar, notificari, modal stergere, clock live, toast, auto-refresh
  */
 
@@ -289,7 +289,7 @@
     // ============================================================
     // INIT LOG
     // ============================================================
-    console.log('%cINNOVA WORKFORCE v2.0', 'color: #1a237e; font-size: 14px; font-weight: bold;');
+    console.log('%cEDIFICO WORKFORCE v2.0', 'color: #1a237e; font-size: 14px; font-weight: bold;');
     console.log('%cSistem de Management al Fortei de Munca in Constructii', 'color: #757575; font-size: 11px;');
 
 })();

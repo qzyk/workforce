@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Rute Setari Administrative
+EDIFICO WORKFORCE - Rute Setari Administrative
 Firma, Utilizatori CRUD, Sarbatori, Backup, Jurnal activitate, Setari generale
 """
 
@@ -63,12 +63,12 @@ def _get_config_path():
 def _load_config():
     path = _get_config_path()
     defaults = {
-        'firma_nume': 'INNOVA CONSTRUCT SRL',
+        'firma_nume': 'EDIFICO CONSTRUCT SRL',
         'firma_cui': 'RO12345678',
         'firma_reg_com': 'J40/1234/2020',
         'firma_adresa': 'Bucuresti, Sector 1, Str. Constructorilor nr. 10',
         'firma_telefon': '+40 21 123 4567',
-        'firma_email': 'office@innova-construct.ro',
+        'firma_email': 'office@edifico-construct.ro',
         'firma_banca': 'Banca Transilvania',
         'firma_iban': 'RO49BTRL00000000000000',
         'firma_reprezentant': 'Popescu Adrian',

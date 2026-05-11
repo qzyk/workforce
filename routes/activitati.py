@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Modul Rapoarte Activitate Zilnica
+EDIFICO WORKFORCE - Modul Rapoarte Activitate Zilnica
 Blueprint: /activitati
 """
 
@@ -1396,7 +1396,7 @@ def raport_proiect():
 
 
 # ============================================================
-# EXPORT INNOVA - Structura xlsx exacta dupa template-ul referinta
+# EXPORT EDIFICO - Structura xlsx exacta dupa template-ul referinta
 # Un sheet per angajat, grupare pe saptamani in luna
 # ============================================================
 
@@ -1407,18 +1407,18 @@ LUNI_RO = [
 
 
 def _get_company_name():
-    """Citeste numele firmei din config-ul aplicatiei (fallback INNOVA)."""
+    """Citeste numele firmei din config-ul aplicatiei (fallback EDIFICO)."""
     try:
         from routes.setari import _load_config
         cfg = _load_config()
         nume = cfg.get('firma_nume', '').strip()
         if nume:
-            # Extrage doar prima parte (ex: "INNOVA CONSTRUCT SRL" -> "INNOVA")
-            short = nume.split()[0] if nume else 'INNOVA'
+            # Extrage doar prima parte (ex: "EDIFICO CONSTRUCT SRL" -> "EDIFICO")
+            short = nume.split()[0] if nume else 'EDIFICO'
             return short, nume
     except Exception:
         pass
-    return 'INNOVA', 'INNOVA CONSTRUCT SRL'
+    return 'EDIFICO', 'EDIFICO CONSTRUCT SRL'
 
 
 def _saptamani_din_luna(an, luna, sarbatori_set, zile_extra_lucrate=None):
@@ -1646,7 +1646,7 @@ def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
 
 
 # === STILURI XLSX (cu paleta consistenta) ===
-COLOR_PRIMARY = '1A237E'     # albastru INNOVA
+COLOR_PRIMARY = '1A237E'     # albastru EDIFICO
 COLOR_TITLE_RED = 'C62828'   # rosu titlu
 COLOR_HEADER_BG = '283593'   # albastru header
 COLOR_HEADER_FG = 'FFFFFF'   # text alb pe header
@@ -1885,7 +1885,7 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
 
 def _construieste_sheet_angajat(wb, angajat, perioade, company_short, sheet_index=0):
     """
-    Construieste un sheet INNOVA pentru un angajat, pe o lista de perioade [(an, luna), ...].
+    Construieste un sheet EDIFICO pentru un angajat, pe o lista de perioade [(an, luna), ...].
     """
     S = _stiluri_xlsx()
 
@@ -1963,12 +1963,12 @@ def _construieste_sheet_angajat(wb, angajat, perioade, company_short, sheet_inde
     return ws
 
 
-@activitati_bp.route('/raport/innova')
+@activitati_bp.route('/raport/edifico')
 @activitati_bp.route('/export')
 @login_required
-def export_innova():
+def export_edifico():
     """
-    Export xlsx cu structura INNOVA exacta:
+    Export xlsx cu structura EDIFICO exacta:
     - Un sheet per angajat
     - Titlu rosu bold "Raport de activitate <COMPANY> - <luna> <an>"
     - Numele angajatului in B6:E6

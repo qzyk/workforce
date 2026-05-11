@@ -118,7 +118,7 @@ TRANSLATIONS = {
     'Nu sunteti autentificat.': {'en': 'You are not authenticated.'},
 
     # === BIM specific ===
-    'Generare Raport INNOVA': {'en': 'Generate INNOVA Report'},
+    'Generare Raport EDIFICO': {'en': 'Generate EDIFICO Report'},
     'Selecteaza toti': {'en': 'Select all'},
     'Deselecteaza': {'en': 'Deselect all'},
     'Tine apasat Ctrl pentru selectie multipla': {'en': 'Hold Ctrl for multi-select'},

@@ -130,5 +130,5 @@ Sau pe GitHub: **Open Pull Request** și merge prin UI.
 - [ ] Switch RO ↔ EN funcționează
 - [ ] Crearea unui șantier de test → funcționează
 - [ ] Editare/ștergere șantier → funcționează
-- [ ] Tab Activități → exportul INNOVA continuă să meargă
+- [ ] Tab Activități → exportul EDIFICO continuă să meargă
 - [ ] Pontaje → continuă să se salveze fără erori (nullable FK BIM)

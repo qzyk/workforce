@@ -11,7 +11,7 @@ Tenant detection sources (in ordine):
 1. flask.g.tenant_override (set programatic, ex. test fixture)
 2. session['tenant_id']
 3. current_user.tenant_id (din DB)
-4. subdomain (ex: innova.workforce.app -> tenant cod 'innova')
+4. subdomain (ex: edifico.workforce.app -> tenant cod 'edifico')
 5. None (si MODE=off, e ok)
 
 Decoratori:
@@ -92,7 +92,7 @@ def get_current_tenant():
 def _resolve_tenant_from_subdomain():
     """
     Mapping subdomain -> tenant_id.
-    Ex: innova.workforce.app -> Tenant(cod='innova').id
+    Ex: edifico.workforce.app -> Tenant(cod='edifico').id
     """
     host = request.host.split(':')[0]
     parts = host.split('.')

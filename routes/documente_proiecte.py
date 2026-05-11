@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Rute Documente Proiecte
+EDIFICO WORKFORCE - Rute Documente Proiecte
 Gestiune documente per proiect, organizate pe tipuri de instalatii.
 """
 

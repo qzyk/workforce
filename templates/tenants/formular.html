@@ -17,7 +17,7 @@
         <div class="card-panel">
             <div class="card-panel-body" style="padding:20px;">
                 <div class="form-group">
-                    <label class="form-label">Cod * <small style="color:var(--gray-500);">(unic, lowercase, ex: innova, beta-srl)</small></label>
+                    <label class="form-label">Cod * <small style="color:var(--gray-500);">(unic, lowercase, ex: edifico, beta-srl)</small></label>
                     <input type="text" name="cod" class="form-control" maxlength="50" required pattern="[a-z0-9-]+"
                            value="{{ tenant.cod if tenant else '' }}"
                            {{ 'readonly' if tenant }}>

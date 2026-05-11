@@ -163,7 +163,7 @@ def generate_openapi_spec(app=None) -> dict:
     spec = {
         'openapi': '3.0.3',
         'info': {
-            'title': 'INNOVA Workforce BIM/Digital Twin API',
+            'title': 'EDIFICO Workforce BIM/Digital Twin API',
             'version': '1.0.0',
             'description': (
                 'API publica pentru integrari externe. Trei moduri de autentificare:\n'
@@ -171,7 +171,7 @@ def generate_openapi_spec(app=None) -> dict:
                 '- **sensor_token** (header X-Sensor-Token, per senzor) — pentru gateway-uri IoT\n'
                 '- **api_token** (header Authorization: Bearer <token>) — pentru integrari programatice\n'
             ),
-            'contact': {'name': 'INNOVA Workforce'},
+            'contact': {'name': 'EDIFICO Workforce'},
         },
         'servers': [{'url': '/'}],
         'components': {

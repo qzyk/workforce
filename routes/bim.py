@@ -1,5 +1,5 @@
 """
-INNOVA WORKFORCE - Modul BIM (Building Information Modeling)
+EDIFICO WORKFORCE - Modul BIM (Building Information Modeling)
 Blueprint: /bim
 
 Rutele expun:

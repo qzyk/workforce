@@ -73,18 +73,18 @@ def test_e2e_creeaza_activitate_zilnica(e2e_server, page):
 
 
 # ============================================================
-# E2E 3: Modal Export INNOVA
+# E2E 3: Modal Export EDIFICO
 # ============================================================
 
-def test_e2e_modal_export_innova(e2e_server, page):
+def test_e2e_modal_export_edifico(e2e_server, page):
     login_as_admin(page, e2e_server)
     page.goto(f'{e2e_server}/activitati/')
 
-    # Click pe butonul Export INNOVA
-    page.click('button:has-text("Export INNOVA")')
+    # Click pe butonul Export EDIFICO
+    page.click('button:has-text("Export EDIFICO")')
 
     # Modalul ar trebui sa fie vizibil
-    modal = page.locator('#exportInnovaModal')
+    modal = page.locator('#exportEdificoModal')
     assert modal.is_visible()
 
     # Multi-select angajati

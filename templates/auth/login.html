@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Autentificare - INNOVA WORKFORCE{% endblock %}
+{% block title %}Autentificare - EDIFICO WORKFORCE{% endblock %}
 
 {% block public_content %}
 <div class="login-page">
@@ -39,7 +39,7 @@
                     </label>
                     <input type="email" id="email" name="email"
                            value="{{ email|default('') }}"
-                           placeholder="exemplu@innova.ro"
+                           placeholder="exemplu@edifico.ro"
                            required autocomplete="email"
                            {% if locked|default(false) %}disabled{% endif %}>
                 </div>
@@ -82,13 +82,13 @@
             <div class="login-demo">
                 <p class="demo-title"><i class="fa-solid fa-info-circle"></i> Conturi demo:</p>
                 <div class="demo-accounts">
-                    <button type="button" class="demo-btn" onclick="fillDemo('albert.ciolacu@innova.ro','admin123')">
+                    <button type="button" class="demo-btn" onclick="fillDemo('albert.ciolacu@edifico.ro','admin123')">
                         <i class="fa-solid fa-user-shield"></i> Admin
                     </button>
-                    <button type="button" class="demo-btn" onclick="fillDemo('manager@innova.ro','manager123')">
+                    <button type="button" class="demo-btn" onclick="fillDemo('manager@edifico.ro','manager123')">
                         <i class="fa-solid fa-user-tie"></i> Manager
                     </button>
-                    <button type="button" class="demo-btn" onclick="fillDemo('operator@innova.ro','op123')">
+                    <button type="button" class="demo-btn" onclick="fillDemo('operator@edifico.ro','op123')">
                         <i class="fa-solid fa-user"></i> Operator
                     </button>
                 </div>
@@ -96,7 +96,7 @@
         </div>
 
         <div class="login-footer-text">
-            &copy; {{ today.year if today is defined else '2024' }} INNOVA WORKFORCE
+            &copy; {{ today.year if today is defined else '2024' }} EDIFICO WORKFORCE
         </div>
     </div>
 </div>
