@@ -27,28 +27,41 @@
             {% endif %}
             {% endwith %}
 
+            <!-- Lang switcher (top-right of card) -->
+            <div style="position:absolute; top:14px; right:14px; display:flex; gap:5px; z-index:5;">
+                {% for lang in supported_langs %}
+                <a href="{{ url_for('set_language', lang=lang) }}"
+                   style="display:inline-flex; gap:4px; align-items:center; padding:3px 8px; border-radius:12px; font-size:0.72rem; font-weight:600; text-decoration:none;
+                          {% if lang == current_lang %}background:var(--edifico-gold, #C9A961); color:var(--edifico-obsidian, #0B1426);{% else %}background:rgba(0,0,0,0.04); color:#888; border:1px solid #e8e1d0;{% endif %}"
+                   title="{% if lang == 'ro' %}Romana{% else %}English{% endif %}">
+                    <span style="font-size:0.95rem; line-height:1;">{% if lang == 'ro' %}&#127479;&#127476;{% else %}&#127468;&#127463;{% endif %}</span>
+                    {{ lang|upper }}
+                </a>
+                {% endfor %}
+            </div>
+
             <!-- Login Form -->
             <form method="POST" class="login-form" id="loginForm">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                 <div class="form-group">
                     <label for="email">
-                        <i class="fa-solid fa-envelope"></i> Email
+                        <i class="fa-solid fa-envelope"></i> {{ _('Email') }}
                     </label>
                     <input type="email" id="email" name="email"
                            value="{{ email|default('') }}"
-                           placeholder="exemplu@edifico.ro"
+                           placeholder="{% if current_lang == 'en' %}example@edifico.space{% else %}exemplu@edifico.space{% endif %}"
                            required autocomplete="email"
                            {% if locked|default(false) %}disabled{% endif %}>
                 </div>
 
                 <div class="form-group">
                     <label for="parola">
-                        <i class="fa-solid fa-lock"></i> Parola
+                        <i class="fa-solid fa-lock"></i> {{ _('Parola') }}
                     </label>
                     <div class="password-wrapper">
                         <input type="password" id="parola" name="parola"
-                               placeholder="Introduceti parola"
+                               placeholder="{% if current_lang == 'en' %}Enter password{% else %}Introduceti parola{% endif %}"
                                required autocomplete="current-password"
                                {% if locked|default(false) %}disabled{% endif %}>
                         <button type="button" class="password-toggle" id="togglePassword" tabindex="-1">
@@ -61,24 +74,24 @@
                     <label class="checkbox-label">
                         <input type="checkbox" name="remember" value="1">
                         <span class="checkmark"></span>
-                        Tine-ma minte (30 zile)
+                        {{ _('Tine-ma minte') }} (30 {{ _('Zile') | lower }})
                     </label>
                 </div>
 
                 <button type="submit" class="login-btn" id="loginBtn"
                         {% if locked|default(false) %}disabled{% endif %}>
                     <span class="btn-text">
-                        <i class="fa-solid fa-right-to-bracket"></i> Autentificare
+                        <i class="fa-solid fa-right-to-bracket"></i> {{ _('Autentificare') }}
                     </span>
                     <span class="btn-loading" style="display:none;">
-                        <i class="fa-solid fa-spinner fa-spin"></i> Se autentifica...
+                        <i class="fa-solid fa-spinner fa-spin"></i> {% if current_lang == 'en' %}Signing in...{% else %}Se autentifica...{% endif %}
                     </span>
                 </button>
             </form>
 
             <!-- Demo Accounts -->
             <div class="login-demo">
-                <p class="demo-title"><i class="fa-solid fa-info-circle"></i> Conturi demo:</p>
+                <p class="demo-title"><i class="fa-solid fa-info-circle"></i> {{ _('Conturi demo') }}:</p>
                 <div class="demo-accounts">
                     <button type="button" class="demo-btn" onclick="fillDemo('albert.ciolacu@edifico.ro','admin123')">
                         <i class="fa-solid fa-user-shield"></i> Admin
@@ -94,7 +107,7 @@
         </div>
 
         <div class="login-footer-text">
-            &copy; {{ today.year if today is defined else '2026' }} Edifico — One platform, all your sites
+            &copy; {{ today.year if today is defined else '2026' }} Edifico — {{ _('One platform, all your sites') }}
         </div>
     </div>
 </div>

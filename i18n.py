@@ -26,7 +26,7 @@ from flask_login import current_user
 
 # Dictionar central de traduceri
 TRANSLATIONS = {
-    # === Navigare ===
+    # === Navigare principala ===
     'Dashboard': {'en': 'Dashboard'},
     'Angajati': {'en': 'Employees'},
     'Proiecte': {'en': 'Projects'},
@@ -39,6 +39,8 @@ TRANSLATIONS = {
     'BIM': {'en': 'BIM'},
     'Profil': {'en': 'Profile'},
     'Deconectare': {'en': 'Logout'},
+    'Autentificare': {'en': 'Sign in'},
+    'Tenants': {'en': 'Tenants'},
 
     # === BIM Navigation ===
     'Santiere': {'en': 'Sites'},
@@ -59,9 +61,32 @@ TRANSLATIONS = {
     'Asset': {'en': 'Asset'},
     'Assets': {'en': 'Assets'},
     'Tree': {'en': 'Tree'},
+    'Modele 3D': {'en': '3D Models'},
+    'Data Quality': {'en': 'Data Quality'},
     'Import IFC': {'en': 'Import IFC'},
     'Export BCF': {'en': 'Export BCF'},
     'Viewer 3D': {'en': '3D Viewer'},
+    'Modele': {'en': 'Models'},
+    'Senzori IoT': {'en': 'IoT Sensors'},
+    'Alerte': {'en': 'Alerts'},
+    'Kanban': {'en': 'Kanban'},
+    'Reguli': {'en': 'Rules'},
+    'Clash detection': {'en': 'Clash detection'},
+    'Roluri': {'en': 'Roles'},
+    'Tokens': {'en': 'Tokens'},
+    'API': {'en': 'API'},
+    'Versiuni': {'en': 'Versions'},
+    'Versiune': {'en': 'Version'},
+    'Viewer federat': {'en': 'Federated viewer'},
+    'Schedule 4D': {'en': '4D Schedule'},
+    'Cost 5D': {'en': '5D Cost'},
+    'Timeline 4D': {'en': '4D Timeline'},
+    'Dashboard Cost 5D': {'en': '5D Cost Dashboard'},
+
+    # === Activitati submenu ===
+    'Toate': {'en': 'All'},
+    'Saptamanale': {'en': 'Weekly'},
+    'Lunare': {'en': 'Monthly'},
 
     # === Actiuni comune ===
     'Salveaza': {'en': 'Save'},
@@ -70,6 +95,7 @@ TRANSLATIONS = {
     'Sterge': {'en': 'Delete'},
     'Adauga': {'en': 'Add'},
     'Filtreaza': {'en': 'Filter'},
+    'Filtre': {'en': 'Filters'},
     'Reset': {'en': 'Reset'},
     'Cauta': {'en': 'Search'},
     'Detalii': {'en': 'Details'},
@@ -79,8 +105,20 @@ TRANSLATIONS = {
     'Reincarca': {'en': 'Reload'},
     'Descarca': {'en': 'Download'},
     'Genereaza': {'en': 'Generate'},
-    'Toate': {'en': 'All'},
     'Niciunul': {'en': 'None'},
+    'Continua': {'en': 'Continue'},
+    'Aproba': {'en': 'Approve'},
+    'Respinge': {'en': 'Reject'},
+    'Vezi': {'en': 'View'},
+    'Nou': {'en': 'New'},
+    'Adauga nou': {'en': 'Add new'},
+    'Export': {'en': 'Export'},
+    'Import': {'en': 'Import'},
+    'Upload': {'en': 'Upload'},
+    'Salveaza modificarile': {'en': 'Save changes'},
+    'Promoveaza': {'en': 'Promote'},
+    'Revoca': {'en': 'Revoke'},
+    'Asignaza': {'en': 'Assign'},
 
     # === Status comun ===
     'Activ': {'en': 'Active'},
@@ -94,10 +132,22 @@ TRANSLATIONS = {
     'Respins': {'en': 'Rejected'},
     'Draft': {'en': 'Draft'},
     'Trimis': {'en': 'Submitted'},
+    'Planificat': {'en': 'Planned'},
+    'Verificat': {'en': 'Verified'},
+    'Anulat': {'en': 'Cancelled'},
+    'Amanat': {'en': 'Postponed'},
+    'Publicat': {'en': 'Published'},
+    'Partajat': {'en': 'Shared'},
+    'Arhivat': {'en': 'Archived'},
+    'Noua': {'en': 'New'},
+    'Confirmata': {'en': 'Confirmed'},
+    'Falsa': {'en': 'False'},
+    'Rezolvata': {'en': 'Resolved'},
 
     # === Form labels ===
     'Cod': {'en': 'Code'},
     'Nume': {'en': 'Name'},
+    'Prenume': {'en': 'First name'},
     'Descriere': {'en': 'Description'},
     'Adresa': {'en': 'Address'},
     'Data': {'en': 'Date'},
@@ -109,6 +159,62 @@ TRANSLATIONS = {
     'Limba': {'en': 'Language'},
     'Romana': {'en': 'Romanian'},
     'Engleza': {'en': 'English'},
+    'Telefon': {'en': 'Phone'},
+    'CNP': {'en': 'National ID'},
+    'Functie': {'en': 'Position'},
+    'Disciplina': {'en': 'Discipline'},
+    'Categorie': {'en': 'Category'},
+    'Severitate': {'en': 'Severity'},
+    'Titlu': {'en': 'Title'},
+    'Autor': {'en': 'Author'},
+    'Cantitate': {'en': 'Quantity'},
+    'Unitate': {'en': 'Unit'},
+    'Pret unitar': {'en': 'Unit price'},
+    'Total': {'en': 'Total'},
+    'Valoare': {'en': 'Value'},
+    'Comentariu': {'en': 'Comment'},
+    'Note': {'en': 'Notes'},
+    'Optional': {'en': 'Optional'},
+    'Obligatoriu': {'en': 'Required'},
+
+    # === Date / Time ===
+    'Astazi': {'en': 'Today'},
+    'Ieri': {'en': 'Yesterday'},
+    'Maine': {'en': 'Tomorrow'},
+    'Luna': {'en': 'Month'},
+    'Saptamana': {'en': 'Week'},
+    'An': {'en': 'Year'},
+    'Zile': {'en': 'Days'},
+    'Ore': {'en': 'Hours'},
+    'Minute': {'en': 'Minutes'},
+    'Data inceput': {'en': 'Start date'},
+    'Data sfarsit': {'en': 'End date'},
+    'Data start': {'en': 'Start date'},
+    'Data start planificat': {'en': 'Planned start date'},
+    'Data sfarsit planificat': {'en': 'Planned end date'},
+    'Data creare': {'en': 'Created on'},
+    'Data modificare': {'en': 'Modified on'},
+
+    # === Severitati / Categorii BIM ===
+    'mica': {'en': 'low'},
+    'medie': {'en': 'medium'},
+    'mare': {'en': 'high'},
+    'critica': {'en': 'critical'},
+    'Mica': {'en': 'Low'},
+    'Medie': {'en': 'Medium'},
+    'Mare': {'en': 'High'},
+    'Critica': {'en': 'Critical'},
+
+    # === Header / search / notifications ===
+    'Cauta BIM (cod element / spatiu / santier)...': {'en': 'Search BIM (element code / space / site)...'},
+    'Notificari': {'en': 'Notifications'},
+    'Nicio notificare': {'en': 'No notifications'},
+    'documente necesita atentie': {'en': 'documents need attention'},
+    'pontaje in asteptare': {'en': 'timesheets pending'},
+
+    # === Sidebar specific ===
+    'Instaleaza app': {'en': 'Install app'},
+    'Workforce Manager': {'en': 'Workforce Manager'},
 
     # === Mesaje sistem ===
     'Salvat cu succes.': {'en': 'Saved successfully.'},
@@ -116,17 +222,57 @@ TRANSLATIONS = {
     'Eroare la salvare': {'en': 'Save error'},
     'Acces interzis.': {'en': 'Access denied.'},
     'Nu sunteti autentificat.': {'en': 'You are not authenticated.'},
+    'Trebuie sa fiti autentificat pentru a accesa aceasta pagina.':
+        {'en': 'You must be signed in to access this page.'},
+
+    # === Login page ===
+    'Bine ati venit': {'en': 'Welcome'},
+    'Conectati-va la cont': {'en': 'Sign in to your account'},
+    'Tine-ma minte': {'en': 'Remember me'},
+    'Conturi demo': {'en': 'Demo accounts'},
+    'Date contact: edifico.space': {'en': 'Contact: edifico.space'},
+    'Conectare': {'en': 'Sign in'},
+    'Ai uitat parola?': {'en': 'Forgot password?'},
+    'Managementul fortei de munca in constructii':
+        {'en': 'Construction workforce management'},
+
+    # === Dashboard widgets ===
+    'Statistici generale': {'en': 'General statistics'},
+    'Bine ai venit': {'en': 'Welcome'},
+    'Zile de nastere': {'en': 'Birthdays'},
+    'La multi ani': {'en': 'Happy birthday'},
+    'Astazi este ziua de nastere a': {'en': 'Today is the birthday of'},
+    'Vezi toate': {'en': 'View all'},
+    'Total': {'en': 'Total'},
+    'Numar': {'en': 'Count'},
 
     # === BIM specific ===
     'Generare Raport EDIFICO': {'en': 'Generate EDIFICO Report'},
     'Selecteaza toti': {'en': 'Select all'},
     'Deselecteaza': {'en': 'Deselect all'},
-    'Tine apasat Ctrl pentru selectie multipla': {'en': 'Hold Ctrl for multi-select'},
+    'Tine apasat Ctrl pentru selectie multipla':
+        {'en': 'Hold Ctrl for multi-select'},
     'Niciun santier inca.': {'en': 'No sites yet.'},
     'Adauga primul santier': {'en': 'Add first site'},
     'Building Information Modeling': {'en': 'Building Information Modeling'},
     'Issues deschise': {'en': 'Open issues'},
     'Arbore santiere': {'en': 'Site tree'},
+
+    # === BIM dashboard buttons ===
+    'Reguli model checking': {'en': 'Model checking rules'},
+    'Versiuni model': {'en': 'Model versions'},
+    'Adauga senzor': {'en': 'Add sensor'},
+    'Comentarii': {'en': 'Comments'},
+
+    # === Footer ===
+    'Toate drepturile rezervate.': {'en': 'All rights reserved.'},
+    'One platform, all your sites': {'en': 'One platform, all your sites'},
+
+    # === Profile / password / modal ===
+    'Schimba parola': {'en': 'Change password'},
+    'Confirmare stergere': {'en': 'Confirm deletion'},
+    'Sunteti sigur ca doriti sa stergeti acest element?':
+        {'en': 'Are you sure you want to delete this item?'},
 }
 
 
