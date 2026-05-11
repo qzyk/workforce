@@ -146,7 +146,8 @@ Evolutia platformei catre BIM/Digital Twin se face in 8 faze incrementale, fieca
 | 3 | Model versioning + Federation (CDE workflow) | **Live (branch)** |
 | 4 | Clash detection + Rule engine | **Live (branch)** |
 | 5 | 4D/5D - Schedule + Cost | **Live (branch)** |
-| 6 | Digital Twin / IoT layer (sensori, time-series) | **In curs (acest PR)** |
+| 6 | Digital Twin / IoT layer (sensori, time-series) | **Live (branch)** |
+| 7 | Real-time collab via SSE + Kanban issue board | **In curs (acest PR)** |
 | 5 | 4D/5D - Schedule + Cost | Planificat |
 | 6 | Digital Twin / IoT layer (sensori, time-series) | Planificat |
 | 7 | Real-time collab via SSE + Kanban issue board | Planificat |
@@ -330,6 +331,43 @@ set_flag('bim-iot-sensors', True)
 - `/bim/api/sensor/<id>/history?agg=raw|1h|1d&from=&to=` — time-series JSON
 
 Toate alertele si tranzitiile se loaheaza in `audit_log`.
+
+### Real-time Collab + Kanban (Faza 7)
+
+Colaborare multi-user fara WebSockets persistente (incompatibile cu PythonAnywhere).
+Foloseste **Server-Sent Events** (HTTP streaming) cu reconnect automat client-side.
+
+**Componente**:
+- **Kanban board** drag-and-drop pe IssueBIM (coloane: deschis, in_lucru, rezolvat, verificat, inchis)
+- **Comments inline** pe fiecare issue (cu sub-threads via `parent_id`)
+- **Presence heartbeat** la 30s (lista utilizatori activi pe acelasi context)
+- **SSE event stream** pentru notificari live (`issue_status_change`, `comment_new`,
+  `sensor_alert`, `presence_join`, ...)
+
+**Arhitectura SSE pe PythonAnywhere**:
+- Endpoint `/bim/api/events/stream?since=<id>&santier_id=<id>` returneaza
+  `text/event-stream`
+- Stream se inchide automat la 30s (limita request PA)
+- Clientul reconnecteaza imediat cu `since=<last_event_id>`
+- Pe DB doar long-polling (interval 2s) — fara worker/broker
+
+**Activare**:
+```python
+from services.feature_flags import set_flag
+set_flag('bim-realtime-collab', True)
+set_flag('bim-issue-kanban', True)
+```
+
+**Pagini noi**:
+- `/bim/kanban` — board global (toate issues)
+- `/bim/kanban/santier/<id>` — board filtrat pe santier
+- `/bim/issue/<id>/comments` — comentarii cu form inline si SSE pentru update live
+- `/bim/api/issue/<id>/comments` — JSON list
+- `/bim/api/presence/heartbeat` — POST cu context_type + context_id
+- `/bim/api/events/stream` — SSE stream
+- `/bim/issue/<id>/status` — POST drag-and-drop (admin/manager only pentru `verificat`/`inchis`)
+
+Toate operatiile genereaza `RealtimeEvent` + `audit_log`.
 
 ## Securitate
 

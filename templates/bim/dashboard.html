@@ -67,6 +67,11 @@
             <i class="fa-solid fa-triangle-exclamation"></i> Alerte
         </a>
         {% endif %}
+        {% if feature_enabled('bim-issue-kanban') %}
+        <a href="{{ url_for('bim.kanban') }}" class="btn btn-outline">
+            <i class="fa-solid fa-table-columns"></i> Kanban
+        </a>
+        {% endif %}
     </div>
     {% endif %}
 </div>

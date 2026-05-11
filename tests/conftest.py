@@ -65,6 +65,7 @@ def cleanup_test_data(app):
         BIMRule, RuleViolation, ClashRun, ClashResult,
         BIMTaskSchedule, BIMCostItem,
         Senzor, SensorReading, SensorAlert,
+        BIMComment, UserPresence, RealtimeEvent,
     )
     with app.app_context():
         try:
@@ -73,6 +74,7 @@ def cleanup_test_data(app):
                         SensorAlert, SensorReading, Senzor,
                         ClashResult, ClashRun, RuleViolation, BIMRule,
                         BIMCostItem, BIMTaskSchedule,
+                        BIMComment, UserPresence, RealtimeEvent,
                         ExternalMapping, Asset, IssueBIM,
                         ElementBIM, Spatiu, Zona, Nivel, Cladire, Santier, ModelBIM):
                 for obj in cls.query.all():

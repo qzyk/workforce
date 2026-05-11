@@ -30,6 +30,7 @@ from models import (
     BIMModelVersion, BIMRule, RuleViolation, ClashRun, ClashResult,
     BIMTaskSchedule, BIMCostItem,
     Senzor, SensorReading, SensorAlert,
+    BIMComment, UserPresence, RealtimeEvent,
     db, Santier, Cladire, Nivel, Zona, Spatiu, ElementBIM, Asset,
     IssueBIM, ModelBIM, Proiect, RaportActivitate, Pontaj,
     ExternalMapping,
@@ -44,6 +45,8 @@ from services import bim_4d as fourd_svc
 from services import bim_5d as fived_svc
 from services import iot_ingest as iot_ingest_svc
 from services import iot_query as iot_query_svc
+from services import realtime as rt_svc
+from services import presence as presence_svc
 from services import feature_flags as ff_svc
 from services import feature_flags
 from services import aps_viewer
@@ -1687,3 +1690,285 @@ def api_sensor_history(sensor_id):
                                                      from_ts=from_ts, to_ts=to_ts, agg=agg)})
     except (ValueError, TypeError) as e:
         return jsonify({'error': f'parametri invalizi: {e}'}), 400
+
+
+# ============================================================
+# REAL-TIME COLLAB + KANBAN (Faza 7)
+# Activare: bim-realtime-collab, bim-issue-kanban (default OFF)
+# ============================================================
+
+def _ensure_realtime_enabled():
+    if not ff_svc.is_enabled('bim-realtime-collab'):
+        flash('Real-time collab nu e activat pentru acest tenant.', 'info')
+        return redirect(url_for('bim.dashboard'))
+    return None
+
+
+def _ensure_kanban_enabled():
+    if not ff_svc.is_enabled('bim-issue-kanban'):
+        flash('Kanban issues nu e activat pentru acest tenant.', 'info')
+        return redirect(url_for('bim.dashboard'))
+    return None
+
+
+# ---------- KANBAN ----------
+
+@bim_bp.route('/kanban')
+@bim_bp.route('/kanban/santier/<int:santier_id>')
+@login_required
+def kanban(santier_id=None):
+    """Kanban board pentru IssueBIM. Coloane = status workflow."""
+    redir = _ensure_kanban_enabled()
+    if redir:
+        return redir
+
+    santier = Santier.query.get(santier_id) if santier_id else None
+    q = IssueBIM.query
+    if santier_id:
+        # Filtru pe santier prin cladire / nivel / spatiu / element
+        cladiri_ids = [c.id for c in Cladire.query.filter_by(santier_id=santier_id).all()]
+        if cladiri_ids:
+            from sqlalchemy import or_
+            q = q.filter(or_(
+                IssueBIM.cladire_id.in_(cladiri_ids),
+                IssueBIM.element_bim_id.in_(
+                    db.session.query(ElementBIM.id).filter(ElementBIM.cladire_id.in_(cladiri_ids))
+                ),
+            ))
+        else:
+            q = q.filter(IssueBIM.id == -1)  # niciun rezultat
+
+    issues = q.order_by(IssueBIM.severitate.desc(), IssueBIM.id.desc()).limit(500).all()
+
+    # Grupare pe status (coloanele kanban)
+    coloane = {
+        'deschis': [],
+        'in_lucru': [],
+        'rezolvat': [],
+        'verificat': [],
+        'inchis': [],
+    }
+    for iss in issues:
+        coloane.setdefault(iss.status, []).append(iss)
+
+    # Presence (cine vede acelasi kanban)
+    active_users = []
+    if ff_svc.is_enabled('bim-realtime-collab'):
+        active_users = presence_svc.get_active_users(
+            context_type='kanban', context_id=santier_id or 0,
+        )
+
+    # Latest event id (pentru SSE start)
+    latest_event_id = rt_svc.get_latest_event_id() if ff_svc.is_enabled('bim-realtime-collab') else 0
+
+    santiere = Santier.query.order_by(Santier.cod).all()
+
+    return render_template('bim/kanban.html',
+                           santier=santier, santiere=santiere,
+                           coloane=coloane,
+                           active_users=active_users,
+                           latest_event_id=latest_event_id,
+                           realtime_enabled=ff_svc.is_enabled('bim-realtime-collab'))
+
+
+@bim_bp.route('/issue/<int:issue_id>/status', methods=['POST'])
+@login_required
+def issue_change_status(issue_id):
+    """
+    Schimba status-ul unui issue (drag & drop kanban).
+    Body: status=<noul_status>. Publica RealtimeEvent.
+    """
+    issue = IssueBIM.query.get_or_404(issue_id)
+    new_status = (request.form.get('status') or request.json.get('status') if request.is_json else request.form.get('status'))
+    if not new_status:
+        return jsonify({'error': 'status missing'}), 400
+
+    valid_statuses = ('deschis', 'in_lucru', 'rezolvat', 'verificat', 'inchis', 'anulat')
+    if new_status not in valid_statuses:
+        return jsonify({'error': f'status invalid: {new_status}'}), 400
+
+    if current_user.rol not in ('admin', 'manager') and new_status in ('verificat', 'inchis'):
+        return jsonify({'error': 'doar admin/manager poate verifica/inchide'}), 403
+
+    old_status = issue.status
+    issue.status = new_status
+
+    audit_svc.log_update('issue_bim', issue.id,
+                          old_values={'status': old_status},
+                          new_values={'status': new_status})
+
+    # Publica eveniment real-time (best-effort, nu blocam la eroare)
+    if ff_svc.is_enabled('bim-realtime-collab'):
+        santier_id = None
+        if issue.cladire_id:
+            cladire = Cladire.query.get(issue.cladire_id)
+            santier_id = cladire.santier_id if cladire else None
+        try:
+            rt_svc.publish_event(
+                'issue_status_change',
+                santier_id=santier_id,
+                payload={'issue_id': issue.id, 'old_status': old_status,
+                         'new_status': new_status, 'titlu': issue.titlu[:120]},
+                user_id=current_user.id,
+                commit=False,  # vom commit la final intr-o singura tranzactie
+            )
+        except Exception:
+            pass
+
+    db.session.commit()
+
+    if request.is_json or request.headers.get('Accept', '').startswith('application/json'):
+        return jsonify({'ok': True, 'status': new_status})
+    flash(f'Issue #{issue.id}: {old_status} → {new_status}', 'success')
+    return redirect(request.referrer or url_for('bim.kanban'))
+
+
+# ---------- COMMENTS ----------
+
+@bim_bp.route('/issue/<int:issue_id>/comments', methods=['GET', 'POST'])
+@login_required
+def issue_comments(issue_id):
+    """List/add comments pe issue."""
+    issue = IssueBIM.query.get_or_404(issue_id)
+
+    if request.method == 'POST':
+        if not ff_svc.is_enabled('bim-realtime-collab'):
+            return jsonify({'error': 'feature disabled'}), 403
+        text = (request.form.get('text') or
+                (request.json.get('text') if request.is_json else None) or '').strip()
+        if not text:
+            return jsonify({'error': 'text obligatoriu'}), 400
+        if len(text) > 5000:
+            return jsonify({'error': 'text prea lung (max 5000)'}), 400
+
+        parent_id = request.form.get('parent_id', type=int)
+        comment = BIMComment(
+            issue_id=issue.id,
+            parent_id=parent_id,
+            autor_id=current_user.id,
+            text=text,
+        )
+        db.session.add(comment)
+        db.session.flush()
+
+        # Publica event
+        santier_id = None
+        if issue.cladire_id:
+            cladire = Cladire.query.get(issue.cladire_id)
+            santier_id = cladire.santier_id if cladire else None
+        try:
+            rt_svc.publish_event(
+                'comment_new',
+                santier_id=santier_id,
+                payload={
+                    'comment_id': comment.id,
+                    'issue_id': issue.id,
+                    'autor_id': current_user.id,
+                    'autor_nume': f'{current_user.nume} {current_user.prenume}',
+                    'text_preview': text[:200],
+                },
+                user_id=current_user.id,
+                commit=False,
+            )
+        except Exception:
+            pass
+
+        audit_svc.log_create('bim_comment', comment.id,
+                              new_values={'issue_id': issue.id, 'text_len': len(text)})
+        db.session.commit()
+
+        if request.is_json:
+            return jsonify({'ok': True, 'comment_id': comment.id,
+                            'text': text,
+                            'autor_nume': f'{current_user.nume} {current_user.prenume}',
+                            'data_creare': comment.data_creare.isoformat()})
+        return redirect(url_for('bim.issue_comments', issue_id=issue_id))
+
+    comments = (BIMComment.query.filter_by(issue_id=issue_id, sters=False)
+                .order_by(BIMComment.data_creare).all())
+
+    return render_template('bim/issue_comments.html',
+                           issue=issue, comments=comments,
+                           realtime_enabled=ff_svc.is_enabled('bim-realtime-collab'))
+
+
+@bim_bp.route('/api/issue/<int:issue_id>/comments')
+@login_required
+def api_issue_comments(issue_id):
+    """JSON list comments."""
+    comments = (BIMComment.query.filter_by(issue_id=issue_id, sters=False)
+                .order_by(BIMComment.data_creare).all())
+    return jsonify({
+        'issue_id': issue_id,
+        'count': len(comments),
+        'comments': [{
+            'id': c.id,
+            'autor_id': c.autor_id,
+            'autor_nume': f'{c.autor.nume} {c.autor.prenume}' if c.autor else '?',
+            'text': c.text,
+            'parent_id': c.parent_id,
+            'data_creare': c.data_creare.isoformat() if c.data_creare else None,
+        } for c in comments],
+    })
+
+
+# ---------- PRESENCE ----------
+
+@bim_bp.route('/api/presence/heartbeat', methods=['POST'])
+@login_required
+def presence_heartbeat():
+    """Update presence pentru user-ul curent."""
+    if not ff_svc.is_enabled('bim-realtime-collab'):
+        return jsonify({'enabled': False}), 200
+
+    context_type = (request.json.get('context_type') if request.is_json
+                    else request.form.get('context_type'))
+    context_id_raw = (request.json.get('context_id') if request.is_json
+                      else request.form.get('context_id'))
+    context_id = None
+    try:
+        if context_id_raw is not None and context_id_raw != '':
+            context_id = int(context_id_raw)
+    except (ValueError, TypeError):
+        context_id = None
+
+    presence_svc.heartbeat(
+        current_user.id,
+        user_nume=f'{current_user.nume} {current_user.prenume}',
+        context_type=context_type,
+        context_id=context_id,
+    )
+    return jsonify({'ok': True, 'context_type': context_type, 'context_id': context_id})
+
+
+# ---------- SSE STREAM ----------
+
+@bim_bp.route('/api/events/stream')
+@login_required
+def events_stream():
+    """
+    SSE stream cu evenimentele noi. Filtre prin query string:
+    ?santier_id=X, ?since=<event_id>
+
+    Stream se inchide dupa max 30s (limita PA). Clientul reconnecteaza.
+    """
+    if not ff_svc.is_enabled('bim-realtime-collab'):
+        return jsonify({'enabled': False}), 403
+
+    santier_id = request.args.get('santier_id', type=int)
+    proiect_id = request.args.get('proiect_id', type=int)
+    since = request.args.get('since', default=0, type=int)
+
+    from flask import Response
+
+    def generate():
+        # Iese din generator inainte de a face commit (sa nu blocam DB)
+        for chunk in rt_svc.sse_stream(santier_id=santier_id,
+                                         proiect_id=proiect_id,
+                                         start_after_id=since,
+                                         max_duration_seconds=30):
+            yield chunk
+
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache',
+                             'X-Accel-Buffering': 'no'})

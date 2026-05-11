@@ -2686,3 +2686,125 @@ class SensorAlert(db.Model):
         return f'<SensorAlert senzor={self.senzor_id} {self.tip} {self.status}>'
 
 
+# ============================================================
+# REAL-TIME COLLAB + KANBAN (Faza 7)
+# Comments pe issues, presence heartbeat, event stream pentru SSE.
+# ============================================================
+
+class BIMComment(db.Model):
+    """
+    Comentariu pe un IssueBIM. Poate fi sub-thread (parent_id) sau root.
+    """
+    __tablename__ = 'bim_comments'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    issue_id = db.Column(db.Integer, db.ForeignKey('bim_issues.id'),
+                          nullable=False, index=True)
+    parent_id = db.Column(db.Integer, db.ForeignKey('bim_comments.id'),
+                           nullable=True, index=True)
+
+    autor_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'),
+                          nullable=False, index=True)
+
+    text = db.Column(db.Text, nullable=False)
+    mentions = db.Column(db.String(500), nullable=True)
+    # JSON list cu ID-uri @mentions: '[2, 5, 8]'
+
+    # Soft delete
+    sters = db.Column(db.Boolean, default=False, nullable=False)
+    sters_la = db.Column(db.DateTime, nullable=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow,
+                             nullable=False, index=True)
+    data_editare = db.Column(db.DateTime, default=datetime.utcnow,
+                              onupdate=datetime.utcnow)
+
+    issue = db.relationship('IssueBIM', foreign_keys=[issue_id],
+                            backref=db.backref('comentarii', lazy='dynamic',
+                                               order_by='BIMComment.data_creare'))
+    autor = db.relationship('Utilizator', foreign_keys=[autor_id])
+    parent = db.relationship('BIMComment', remote_side='BIMComment.id',
+                             backref=db.backref('replies', lazy='dynamic'))
+
+    __table_args__ = (
+        db.Index('ix_comment_issue_data', 'issue_id', 'data_creare'),
+    )
+
+    def __repr__(self):
+        return f'<BIMComment issue={self.issue_id} autor={self.autor_id}>'
+
+
+class UserPresence(db.Model):
+    """
+    Presence heartbeat per user. Update la fiecare 30s pe parcursul
+    timpului in care user-ul are pagina deschisa.
+    """
+    __tablename__ = 'bim_user_presence'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    user_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'),
+                         nullable=False, unique=True, index=True)
+
+    # Contextul curent (ce vede user-ul)
+    context_type = db.Column(db.String(30), nullable=True)
+    # 'kanban' | 'viewer_federat' | 'sensor_detaliu' | etc.
+    context_id = db.Column(db.Integer, nullable=True)
+    # ex: santier_id pentru kanban, model_id pentru viewer
+
+    last_seen_at = db.Column(db.DateTime, default=datetime.utcnow,
+                              nullable=False, index=True)
+
+    # Cache cu numele user-ului (pentru a evita JOIN frecvent)
+    user_nume = db.Column(db.String(150), nullable=True)
+
+    user = db.relationship('Utilizator', foreign_keys=[user_id])
+
+    def __repr__(self):
+        return f'<UserPresence user={self.user_id} context={self.context_type}:{self.context_id}>'
+
+
+class RealtimeEvent(db.Model):
+    """
+    Eveniment publicat pentru consum prin SSE stream.
+    Append-only; cleanup periodic (cron sau la limit).
+
+    Tipuri:
+        'issue_status_change' | 'comment_new' | 'sensor_alert' |
+        'presence_join' | 'presence_leave' | 'model_version_changed'
+    """
+    __tablename__ = 'bim_realtime_events'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    # Scope: project_id (proiect) sau santier_id (santier)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                            nullable=True, index=True)
+    santier_id = db.Column(db.Integer, db.ForeignKey('bim_santiere.id'),
+                            nullable=True, index=True)
+
+    event_type = db.Column(db.String(40), nullable=False, index=True)
+
+    # Payload JSON cu detalii (issue_id, comment_id, sensor_id, etc.)
+    payload_json = db.Column(db.Text, nullable=True)
+
+    # Cine a generat evenimentul (poate fi None pentru system events)
+    user_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True, index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow,
+                            nullable=False, index=True)
+
+    user = db.relationship('Utilizator', foreign_keys=[user_id])
+    proiect = db.relationship('Proiect', foreign_keys=[proiect_id])
+    santier = db.relationship('Santier', foreign_keys=[santier_id])
+
+    __table_args__ = (
+        db.Index('ix_event_scope', 'proiect_id', 'santier_id', 'id'),
+        db.Index('ix_event_created', 'created_at'),
+    )
+
+    def __repr__(self):
+        return f'<RealtimeEvent #{self.id} {self.event_type} santier={self.santier_id}>'
+
+

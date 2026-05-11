@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Issue #{{ issue.id }} - Comentarii{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.issues_lista') }}">Issues</a></li>
+<li class="breadcrumb-item active">#{{ issue.id }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.issue-header { background:white; padding:18px; border-radius:8px; margin-bottom:14px; border-left:4px solid var(--primary); }
+.issue-header.s-critica { border-left-color:#dc3545; }
+.issue-header.s-mare    { border-left-color:#fd7e14; }
+.issue-header.s-medie   { border-left-color:#ffc107; }
+.issue-header.s-mica    { border-left-color:#adb5bd; }
+.comment-list { background:white; border-radius:8px; padding:18px; }
+.comment { padding:12px; border-bottom:1px solid #f0f0f0; }
+.comment:last-child { border-bottom:none; }
+.comment-header { display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:6px; }
+.comment-autor { font-weight:600; color:var(--primary); }
+.comment-data { color:var(--gray-500); font-size:0.78rem; }
+.comment-text { font-size:0.92rem; white-space:pre-wrap; word-wrap:break-word; }
+.comment-form { background:white; padding:18px; border-radius:8px; margin-top:14px; }
+.comment-form textarea { width:100%; min-height:80px; resize:vertical; }
+.tip-pill { padding:1px 8px; border-radius:8px; background:#e3f2fd; color:#0d47a1; font-size:0.78rem; }
+.status-deschis    { color:#dc3545; font-weight:600; }
+.status-in_lucru   { color:#fd7e14; font-weight:600; }
+.status-rezolvat   { color:#28a745; font-weight:600; }
+.status-verificat  { color:#0277BD; font-weight:600; }
+.status-inchis     { color:var(--gray-500); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="issue-header s-{{ issue.severitate }}">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+        <div style="flex:1; min-width:300px;">
+            <h2 style="margin:0;">{{ issue.titlu }}</h2>
+            <div style="margin-top:6px; font-size:0.85rem; color:var(--gray-500);">
+                #{{ issue.id }} | <span class="tip-pill">{{ issue.tip }}</span> | Severitate: <strong>{{ issue.severitate }}</strong> | Status: <span class="status-{{ issue.status }}">{{ issue.status }}</span>
+                {% if issue.cod %} | Cod: {{ issue.cod }}{% endif %}
+                {% if issue.element_bim %} | <i class="fa-solid fa-cube"></i> <a href="{{ url_for('bim.element_detaliu', id=issue.element_bim_id) }}">{{ issue.element_bim.cod }}</a>{% endif %}
+            </div>
+            {% if issue.descriere %}
+            <div style="margin-top:10px; font-size:0.92rem; white-space:pre-wrap;">{{ issue.descriere }}</div>
+            {% endif %}
+        </div>
+        <a href="{{ url_for('bim.kanban') }}" class="btn btn-outline">← Kanban</a>
+    </div>
+</div>
+
+<h3 style="margin-top:0;"><i class="fa-solid fa-comments"></i> Comentarii ({{ comments|length }})</h3>
+
+<div class="comment-list" id="commentList">
+    {% if comments %}
+    {% for c in comments %}
+    <div class="comment" data-comment-id="{{ c.id }}">
+        <div class="comment-header">
+            <span class="comment-autor">{{ c.autor.nume }} {{ c.autor.prenume }}</span>
+            <span class="comment-data">{{ c.data_creare.strftime('%d.%m.%Y %H:%M') }}</span>
+        </div>
+        <div class="comment-text">{{ c.text }}</div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p style="color:var(--gray-500); text-align:center;">Niciun comentariu inca. Fii primul!</p>
+    {% endif %}
+</div>
+
+{% if realtime_enabled %}
+<form method="POST" class="comment-form" id="commentForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label style="font-weight:600; display:block; margin-bottom:6px;">Adauga comentariu:</label>
+    <textarea name="text" required placeholder="Scrie aici (max 5000 caractere)..." maxlength="5000"></textarea>
+    <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Posteaza</button>
+    </div>
+</form>
+{% else %}
+<div style="margin-top:14px; padding:12px; background:#FFF8E1; border-left:3px solid var(--warning); border-radius:6px; font-size:0.88rem;">
+    Real-time collab (`bim-realtime-collab`) nu e activat. Comentariile sunt read-only.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if realtime_enabled %}
+<script>
+const ISSUE_ID = {{ issue.id }};
+let lastEventId = 0;  // vom initializa la primul fetch
+
+// Fetch initial last event id
+fetch('/bim/api/events/stream?since=999999999', { method: 'HEAD' }).catch(() => {});
+
+// AJAX submit comment (no full page reload)
+document.getElementById('commentForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const form = ev.target;
+    const text = form.querySelector('textarea[name="text"]').value.trim();
+    if (!text) return;
+    try {
+        const resp = await fetch(`/bim/issue/${ISSUE_ID}/comments`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+            credentials: 'same-origin',
+            body: JSON.stringify({text: text}),
+        });
+        // CSRF: fallback la form data
+        if (resp.status === 400 || resp.status === 403) {
+            const fd = new FormData(form);
+            const r2 = await fetch(`/bim/issue/${ISSUE_ID}/comments`, {
+                method: 'POST', body: fd, credentials: 'same-origin',
+                headers: {'Accept': 'application/json'},
+            });
+            if (r2.ok) {
+                appendCommentLocal(text);
+                form.querySelector('textarea').value = '';
+                return;
+            }
+        }
+        if (resp.ok) {
+            const data = await resp.json();
+            appendCommentLocal(text, data.autor_nume);
+            form.querySelector('textarea').value = '';
+        } else {
+            alert('Eroare la postare');
+        }
+    } catch (e) {
+        alert('Network error: ' + e.message);
+    }
+});
+
+function appendCommentLocal(text, autor) {
+    const list = document.getElementById('commentList');
+    const div = document.createElement('div');
+    div.className = 'comment';
+    const now = new Date().toLocaleString('ro-RO');
+    div.innerHTML = `
+        <div class="comment-header">
+            <span class="comment-autor">${autor || 'Tu'}</span>
+            <span class="comment-data">${now}</span>
+        </div>
+        <div class="comment-text"></div>
+    `;
+    div.querySelector('.comment-text').textContent = text;
+    list.appendChild(div);
+}
+
+// SSE pentru comentarii noi de la altii
+function connectSSE() {
+    if (typeof EventSource === 'undefined') return;
+    const url = `/bim/api/events/stream?since=${lastEventId}`;
+    const es = new EventSource(url);
+    es.addEventListener('comment_new', (ev) => {
+        const data = JSON.parse(ev.data);
+        lastEventId = data.id;
+        if (data.payload.issue_id === ISSUE_ID && data.user_id !== {{ current_user.id }}) {
+            appendCommentLocal(data.payload.text_preview, data.payload.autor_nume);
+        }
+    });
+    es.addEventListener('close', () => { es.close(); setTimeout(connectSSE, 1000); });
+    es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };
+}
+connectSSE();
+</script>
+{% endif %}
+{% endblock %}

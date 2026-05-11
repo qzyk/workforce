@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}Kanban Issues BIM{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Kanban Issues</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.kanban-board { display:grid; grid-template-columns:repeat(5, 1fr); gap:10px; }
+.kanban-col { background:#f5f7fa; border-radius:8px; padding:10px; min-height:400px; }
+.kanban-col-header { font-size:0.85rem; font-weight:700; text-transform:uppercase; padding:6px 8px;
+                     border-radius:5px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+.col-deschis    { background:#FFEBEE; color:#B71C1C; }
+.col-in_lucru   { background:#FFF8E1; color:#F57F17; }
+.col-rezolvat   { background:#E1F5FE; color:#0277BD; }
+.col-verificat  { background:#E8F5E9; color:#2E7D32; }
+.col-inchis     { background:#ECEFF1; color:#37474F; }
+
+.issue-card { background:white; padding:10px 12px; border-radius:6px;
+              box-shadow:0 1px 3px rgba(0,0,0,0.08); margin-bottom:8px; cursor:grab;
+              border-left:3px solid var(--gray-300); }
+.issue-card.dragging { opacity:0.4; }
+.issue-card:hover { box-shadow:0 2px 6px rgba(0,0,0,0.15); }
+.issue-card.s-critica { border-left-color:#dc3545; }
+.issue-card.s-mare    { border-left-color:#fd7e14; }
+.issue-card.s-medie   { border-left-color:#ffc107; }
+.issue-card.s-mica    { border-left-color:#adb5bd; }
+.issue-titlu { font-size:0.88rem; font-weight:600; margin-bottom:4px; }
+.issue-meta { font-size:0.72rem; color:var(--gray-500); display:flex; gap:8px; flex-wrap:wrap; }
+.tag-tip { padding:1px 6px; border-radius:8px; background:#e3f2fd; color:#0d47a1; font-size:0.7rem; }
+.kanban-col.drop-target { background:#dbeafe; outline:2px dashed #2563eb; }
+
+.presence-bar { background:white; padding:8px 14px; border-radius:8px; margin-bottom:14px;
+                font-size:0.85rem; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.presence-pill { background:#e3f2fd; padding:3px 10px; border-radius:12px; }
+.presence-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981; margin-right:4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:12px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-table-columns" style="color:var(--primary);"></i> Kanban Issues
+        {% if santier %} - {{ santier.cod }}{% endif %}
+    </h2>
+    <form method="GET" action="{{ url_for('bim.kanban') }}" style="display:flex; gap:8px;">
+        <select name="santier_id" onchange="window.location.href = this.value ? '{{ url_for('bim.kanban') }}/santier/' + this.value : '{{ url_for('bim.kanban') }}'">
+            <option value="">- Toate santierele -</option>
+            {% for s in santiere %}
+            <option value="{{ s.id }}" {% if santier and s.id == santier.id %}selected{% endif %}>{{ s.cod }} - {{ s.nume }}</option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
+
+<div class="presence-bar" id="presenceBar">
+    <strong><i class="fa-solid fa-users"></i> Online acum:</strong>
+    {% if active_users %}
+        {% for u in active_users %}
+        <span class="presence-pill"><span class="presence-dot"></span>{{ u.user_nume or '?' }}</span>
+        {% endfor %}
+    {% else %}
+        <span style="color:var(--gray-500);">doar tu</span>
+    {% endif %}
+</div>
+
+<div class="kanban-board">
+    {% for status, status_label in [('deschis', 'Deschis'), ('in_lucru', 'In lucru'), ('rezolvat', 'Rezolvat'), ('verificat', 'Verificat'), ('inchis', 'Inchis')] %}
+    <div class="kanban-col" data-status="{{ status }}" ondrop="onDrop(event, '{{ status }}')" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)">
+        <div class="kanban-col-header col-{{ status }}">
+            {{ status_label }}
+            <span>{{ coloane.get(status, [])|length }}</span>
+        </div>
+        {% for iss in coloane.get(status, []) %}
+        <div class="issue-card s-{{ iss.severitate }}" draggable="true" data-issue-id="{{ iss.id }}"
+             ondragstart="onDragStart(event)" ondragend="onDragEnd(event)">
+            <div class="issue-titlu">
+                <a href="{{ url_for('bim.issue_comments', issue_id=iss.id) }}" style="text-decoration:none; color:inherit;">
+                    {{ iss.titlu|truncate(60) }}
+                </a>
+            </div>
+            <div class="issue-meta">
+                <span class="tag-tip">{{ iss.tip }}</span>
+                <span><i class="fa-solid fa-triangle-exclamation"></i> {{ iss.severitate }}</span>
+                {% if iss.element_bim %}
+                <span><i class="fa-solid fa-cube"></i> {{ iss.element_bim.cod }}</span>
+                {% endif %}
+                {% if iss.cod %}<span>#{{ iss.cod }}</span>{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+
+<div style="margin-top:14px; padding:10px; background:#FFF8E1; border-left:3px solid var(--warning); border-radius:6px; font-size:0.85rem;">
+    <i class="fa-solid fa-info-circle"></i>
+    Trage si plaseaza issue-urile intre coloane pentru a schimba status. Click pe titlu pentru a vedea/adauga comentarii.
+    {% if realtime_enabled %}<br><i class="fa-solid fa-bolt" style="color:var(--success);"></i> Real-time activ. Modificarile altor utilizatori apar automat.{% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const REALTIME_ENABLED = {{ 'true' if realtime_enabled else 'false' }};
+const SANTIER_ID = {{ santier.id if santier else 'null' }};
+let lastEventId = {{ latest_event_id }};
+
+function getCsrfToken() {
+    const m = document.cookie.match(/csrf_token=([^;]+)/);
+    if (m) return m[1];
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
+// ============================================================
+// Drag & Drop
+// ============================================================
+let draggedCard = null;
+function onDragStart(ev) {
+    draggedCard = ev.target;
+    ev.target.classList.add('dragging');
+    ev.dataTransfer.effectAllowed = 'move';
+}
+function onDragEnd(ev) {
+    ev.target.classList.remove('dragging');
+    document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drop-target'));
+    draggedCard = null;
+}
+function onDragOver(ev) {
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'move';
+    ev.currentTarget.classList.add('drop-target');
+}
+function onDragLeave(ev) {
+    if (ev.currentTarget === ev.target) {
+        ev.currentTarget.classList.remove('drop-target');
+    }
+}
+function onDrop(ev, newStatus) {
+    ev.preventDefault();
+    ev.currentTarget.classList.remove('drop-target');
+    if (!draggedCard) return;
+    const issueId = draggedCard.dataset.issueId;
+    // Optimistic update
+    ev.currentTarget.appendChild(draggedCard);
+    // POST status change
+    const formData = new FormData();
+    formData.append('status', newStatus);
+    formData.append('csrf_token', '{{ csrf_token() }}');
+    fetch(`/bim/issue/${issueId}/status`, {
+        method: 'POST', body: formData,
+        headers: {'Accept': 'application/json'},
+        credentials: 'same-origin',
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.ok) {
+            alert('Eroare: ' + (data.error || 'unknown'));
+            location.reload();
+        }
+    })
+    .catch(e => { alert('Network error'); location.reload(); });
+}
+
+// ============================================================
+// Presence heartbeat (la 30s)
+// ============================================================
+function sendHeartbeat() {
+    if (!REALTIME_ENABLED) return;
+    const data = new FormData();
+    data.append('context_type', 'kanban');
+    if (SANTIER_ID !== null) data.append('context_id', SANTIER_ID);
+    data.append('csrf_token', '{{ csrf_token() }}');
+    fetch('/bim/api/presence/heartbeat', {
+        method: 'POST', body: data, credentials: 'same-origin',
+    }).catch(() => {});
+}
+if (REALTIME_ENABLED) {
+    sendHeartbeat();
+    setInterval(sendHeartbeat, 30000);
+}
+
+// ============================================================
+// SSE: subscribe la evenimente reale time
+// ============================================================
+function connectSSE() {
+    if (!REALTIME_ENABLED || typeof EventSource === 'undefined') return;
+    const url = `/bim/api/events/stream?since=${lastEventId}${SANTIER_ID ? '&santier_id=' + SANTIER_ID : ''}`;
+    const es = new EventSource(url);
+
+    es.addEventListener('issue_status_change', (ev) => {
+        const data = JSON.parse(ev.data);
+        lastEventId = data.id;
+        // Toast simplu
+        showToast(`Issue #${data.payload.issue_id}: ${data.payload.old_status} → ${data.payload.new_status}`);
+        // Refresh dupa 1.5s pentru a vedea modificarea
+        clearTimeout(window._kanbanRefresh);
+        window._kanbanRefresh = setTimeout(() => location.reload(), 1500);
+    });
+    es.addEventListener('comment_new', (ev) => {
+        const data = JSON.parse(ev.data);
+        lastEventId = data.id;
+        showToast(`Comment nou pe issue #${data.payload.issue_id}: ${data.payload.text_preview}`);
+    });
+    es.addEventListener('close', () => {
+        es.close();
+        // Reconnect dupa 1s
+        setTimeout(connectSSE, 1000);
+    });
+    es.onerror = () => {
+        es.close();
+        // Reconnect dupa 5s la eroare
+        setTimeout(connectSSE, 5000);
+    };
+}
+function showToast(msg) {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed; bottom:20px; right:20px; background:#333; color:white; padding:10px 16px; border-radius:6px; z-index:9999; max-width:380px; font-size:0.88rem; box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 5000);
+}
+connectSSE();
+</script>
+{% endblock %}
