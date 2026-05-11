@@ -1,0 +1,68 @@
+{
+  "name": "Edifico",
+  "short_name": "Edifico",
+  "description": "Edifico — One platform, all your sites. BIM, Digital Twin si Workforce pentru constructii.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0B1426",
+  "background_color": "#0B1426",
+  "lang": "ro",
+  "dir": "ltr",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/static/img/pwa/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/img/pwa/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/img/pwa/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/img/pwa/icon-192-maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/img/pwa/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "BIM Dashboard",
+      "short_name": "BIM",
+      "description": "Acces rapid la modulul BIM",
+      "url": "/bim/",
+      "icons": [{"src": "/static/img/pwa/icon-192.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "Activitati zilnice",
+      "short_name": "Activitati",
+      "description": "Pontaj si raport activitati",
+      "url": "/activitati",
+      "icons": [{"src": "/static/img/pwa/icon-192.png", "sizes": "192x192"}]
+    }
+  ]
+}

@@ -243,6 +243,13 @@ a:hover { color: var(--primary-light); }
 .sidebar-logout { color: rgba(255,255,255,0.5) !important; }
 .sidebar-logout:hover { color: var(--danger-light) !important; background: rgba(198,40,40,0.15) !important; }
 
+/* PWA install button in sidebar - apare doar cand prompt e disponibil */
+.sidebar-install { color: var(--edifico-gold) !important; font-weight: 500; }
+.sidebar-install:hover { color: var(--edifico-gold-light) !important; background: rgba(201, 169, 97, 0.12) !important; }
+
+/* Ascund elemente de UI duplicate cand app-ul e instalat ca PWA (display-mode: standalone) */
+.pwa-installed .pwa-hide-when-installed { display: none !important; }
+
 .sidebar-footer {
     padding: 12px 20px;
     border-top: 1px solid rgba(255,255,255,0.1);

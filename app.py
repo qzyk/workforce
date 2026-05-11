@@ -87,6 +87,40 @@ def create_app(config_name='default'):
     app.register_blueprint(bim_bp)
     app.register_blueprint(tenants_bp)
 
+    # --------------------------------------------------------
+    # PWA ROUTES (instalare ca app native pe iOS/Android)
+    # --------------------------------------------------------
+    @app.route('/sw.js')
+    def pwa_service_worker():
+        """
+        Servesc Service Worker de la root scope (/) ca sa controleze
+        toate request-urile aplicatiei, nu doar /static/.
+        """
+        from flask import send_from_directory, make_response
+        response = make_response(send_from_directory(
+            app.static_folder, 'sw.js', mimetype='application/javascript'
+        ))
+        # Service Worker nu se cache-eaza (vrem sa primim actualizari rapide)
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Service-Worker-Allowed'] = '/'
+        return response
+
+    @app.route('/offline')
+    def pwa_offline_page():
+        """Pagina fallback cand utilizatorul e offline."""
+        return render_template('offline.html')
+
+    @app.route('/manifest.webmanifest')
+    def pwa_manifest():
+        """Servire manifest.webmanifest cu MIME type corect."""
+        from flask import send_from_directory, make_response
+        response = make_response(send_from_directory(
+            app.static_folder, 'manifest.webmanifest',
+            mimetype='application/manifest+json'
+        ))
+        response.headers['Cache-Control'] = 'public, max-age=3600'
+        return response
+
     # Init i18n (RO/EN)
     import i18n as _i18n
     _i18n.init_app(app)

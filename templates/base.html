@@ -8,8 +8,24 @@
 
     <!-- Favicons -->
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
-    <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='img/pwa/icon-192.png') }}">
     <meta name="theme-color" content="#0B1426">
+
+    <!-- ==== PWA: Progressive Web App (install pe iOS + Android) ==== -->
+    <link rel="manifest" href="/manifest.webmanifest">
+
+    <!-- iOS Safari specific (NU citesc manifest la fel ca Chrome) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Edifico">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/pwa/apple-touch-icon.png') }}">
+
+    <!-- Microsoft Tile (Windows tablet / Edge legacy) -->
+    <meta name="msapplication-TileColor" content="#0B1426">
+    <meta name="msapplication-TileImage" content="{{ url_for('static', filename='img/pwa/icon-144.png') }}">
+
+    <!-- iOS color matching pentru status bar -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <!-- Google Fonts: Inter (UI) + Cinzel (brand serif latin imperial) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -173,6 +189,12 @@
                 {% endif %}
                 {% endif %}
                 <li class="sidebar-divider"></li>
+                <li id="pwaInstallBtn" style="display:none;">
+                    <a href="javascript:edificoInstallPWA()" class="sidebar-install">
+                        <i class="fa-solid fa-mobile-screen"></i>
+                        <span>Instaleaza app</span>
+                    </a>
+                </li>
                 <li>
                     <a href="{{ url_for('auth.logout') }}" class="sidebar-logout">
                         <i class="fa-solid fa-right-from-bracket"></i>
@@ -453,5 +475,73 @@
     </script>
 
     {% block extra_js %}{% endblock %}
+
+    <!-- ==== PWA: Service Worker registration + Install Prompt ==== -->
+    <script>
+    (function() {
+        // Inregistrare Service Worker (cache + offline support)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                    .then(function(reg) {
+                        // SW activ
+                        if (reg.waiting) {
+                            // Versiune noua gata - notifica utilizatorul (opt)
+                            console.log('[PWA] Versiune noua disponibila.');
+                        }
+                        // Detectie update in background
+                        reg.addEventListener('updatefound', function() {
+                            var sw = reg.installing;
+                            if (!sw) return;
+                            sw.addEventListener('statechange', function() {
+                                if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+                                    console.log('[PWA] Update disponibil - reload pentru a-l aplica.');
+                                }
+                            });
+                        });
+                    })
+                    .catch(function(err) {
+                        console.warn('[PWA] Service Worker register esuat:', err);
+                    });
+            });
+        }
+
+        // Capturez evenimentul beforeinstallprompt (Android Chrome) ca sa
+        // afisez un buton personalizat "Install Edifico" pentru utilizatori.
+        var deferredPrompt = null;
+        window.addEventListener('beforeinstallprompt', function(e) {
+            e.preventDefault();
+            deferredPrompt = e;
+            // Afisez butonul daca exista in pagina
+            var btn = document.getElementById('pwaInstallBtn');
+            if (btn) btn.style.display = 'inline-flex';
+        });
+
+        // Functia globala apelata din buton
+        window.edificoInstallPWA = function() {
+            if (!deferredPrompt) {
+                alert('Pentru a instala Edifico:\n\n' +
+                      'Android Chrome: meniu (⋮) → Add to Home screen\n' +
+                      'iOS Safari: butonul Share → Add to Home Screen');
+                return;
+            }
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then(function(choice) {
+                if (choice.outcome === 'accepted') {
+                    console.log('[PWA] Utilizator a acceptat instalarea.');
+                }
+                deferredPrompt = null;
+                var btn = document.getElementById('pwaInstallBtn');
+                if (btn) btn.style.display = 'none';
+            });
+        };
+
+        // Detectez daca rulam deja ca PWA instalata (standalone mode)
+        if (window.matchMedia('(display-mode: standalone)').matches ||
+            window.navigator.standalone === true) {
+            document.documentElement.classList.add('pwa-installed');
+        }
+    })();
+    </script>
 </body>
 </html>

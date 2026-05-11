@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline — Edifico</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <meta name="theme-color" content="#0B1426">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Cinzel:wght@500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --gold: #C9A961;
+            --gold-light: #E0BB6E;
+            --obsidian: #0B1426;
+            --obsidian-deep: #050A14;
+            --cream: #F5F1E8;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            font-family: 'Inter', sans-serif;
+            background:
+                radial-gradient(ellipse at top, rgba(201, 169, 97, 0.08) 0%, transparent 50%),
+                linear-gradient(135deg, var(--obsidian-deep) 0%, var(--obsidian) 100%);
+            color: var(--cream);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .offline-card {
+            text-align: center;
+            max-width: 460px;
+        }
+        .offline-icon {
+            width: 90px;
+            height: 90px;
+            margin: 0 auto 24px;
+            border-radius: 50%;
+            background: rgba(201, 169, 97, 0.12);
+            border: 2px solid var(--gold);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Cinzel', serif;
+            font-size: 60px;
+            color: var(--gold);
+            font-weight: 600;
+        }
+        h1 {
+            font-family: 'Cinzel', serif;
+            font-size: 32px;
+            font-weight: 500;
+            letter-spacing: 6px;
+            color: var(--cream);
+            margin-bottom: 14px;
+        }
+        h2 {
+            font-size: 18px;
+            font-weight: 500;
+            color: var(--gold);
+            margin-bottom: 20px;
+            letter-spacing: 0.5px;
+        }
+        p {
+            font-size: 14px;
+            line-height: 1.6;
+            color: rgba(245, 241, 232, 0.75);
+            margin-bottom: 24px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 32px;
+            background: var(--gold);
+            color: var(--obsidian);
+            border: none;
+            border-radius: 4px;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn:hover {
+            background: var(--gold-light);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(201, 169, 97, 0.4);
+        }
+        .tagline {
+            margin-top: 40px;
+            font-size: 11px;
+            letter-spacing: 4px;
+            color: var(--gold);
+            text-transform: uppercase;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-card">
+        <div class="offline-icon">E</div>
+        <h1>OFFLINE</h1>
+        <h2>Nu exista conexiune la internet</h2>
+        <p>
+            Aplicatia Edifico necesita conexiune internet pentru a sincroniza datele.
+            Verifica reteaua WiFi sau date mobile si reincearca.
+        </p>
+        <button class="btn" onclick="location.reload()">Reincearca</button>
+        <div class="tagline">One platform, all your sites</div>
+    </div>
+</body>
+</html>
