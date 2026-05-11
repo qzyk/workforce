@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Roluri BIM{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Roluri</li>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-user-shield" style="color:var(--primary);"></i> Roluri BIM (RBAC fin)</h2>
+</div>
+
+<div class="card-panel" style="margin-bottom:18px;">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-plus"></i> Asignare noua</h3></div>
+    <div class="card-panel-body" style="padding:18px;">
+        <form method="POST" action="{{ url_for('bim.role_nou') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:10px;">
+                <div class="form-group">
+                    <label>Utilizator</label>
+                    <select name="user_id" required>
+                        <option value="">-</option>
+                        {% for u in users %}
+                        <option value="{{ u.id }}">{{ u.nume }} {{ u.prenume }} ({{ u.email }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Rol</label>
+                    <select name="rol" required>
+                        <option value="">-</option>
+                        {% for cod, label in roluri %}<option value="{{ cod }}">{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Scope type</label>
+                    <select name="scope_type">
+                        {% for cod, label in scope_types %}<option value="{{ cod }}">{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Scope ID (santier/cladire)</label>
+                    <input type="number" name="scope_id" placeholder="ID-ul santierului / cladirii (opt)" />
+                </div>
+                <div class="form-group">
+                    <label>Disciplina (pt. scope=disciplina)</label>
+                    <select name="scope_disciplina">
+                        <option value="">-</option>
+                        <option value="ARH">ARH</option>
+                        <option value="STR">STR</option>
+                        <option value="MEP">MEP</option>
+                        <option value="ELE">ELE</option>
+                        <option value="HVAC">HVAC</option>
+                        <option value="SAN">SAN</option>
+                    </select>
+                </div>
+            </div>
+            <div style="text-align:right;">
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Asignaza</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<h3>Asignari active ({{ asignari|length }})</h3>
+{% if asignari %}
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Utilizator</th>
+            <th>Rol</th>
+            <th>Scope</th>
+            <th>Asignat</th>
+            <th>Actiuni</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in asignari %}
+        <tr>
+            <td>{% if a.user %}{{ a.user.nume }} {{ a.user.prenume }}{% else %}#{{ a.user_id }}{% endif %}</td>
+            <td><code>{{ a.rol }}</code></td>
+            <td>
+                {{ a.scope_type }}
+                {% if a.scope_id %}: #{{ a.scope_id }}{% endif %}
+                {% if a.scope_disciplina %}: {{ a.scope_disciplina }}{% endif %}
+            </td>
+            <td style="font-size:0.82rem;">{{ a.data_creare.strftime('%d.%m.%Y') if a.data_creare else '-' }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('bim.role_revoke', asgn_id=a.id) }}" style="display:inline;"
+                      onsubmit="return confirm('Revoca asignarea?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-outline" style="font-size:0.78rem; padding:3px 10px; color:var(--danger); border-color:var(--danger);">Revoca</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p style="color:var(--gray-500);">Nicio asignare de rol fin inca. Admin-ul tenant-ului are oricum drepturi globale.</p>
+{% endif %}
+
+<div style="margin-top:16px; padding:12px; background:#E3F2FD; border-left:3px solid var(--primary); border-radius:6px; font-size:0.88rem;">
+    <strong>Note:</strong> Admin global tenant bypass orice RBAC fin. Rolurile fine se aplica peste rolul de baza (admin/manager/operator).
+    Vezi <a href="{{ url_for('bim.api_docs') }}">docs API</a> pentru lista de actiuni protejate.
+</div>
+{% endblock %}

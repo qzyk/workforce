@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Docs API BIM{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Docs API</li>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui.css">
+<style>
+.swagger-ui-container { background:white; padding:20px; border-radius:8px; min-height:600px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-book" style="color:var(--primary);"></i> API Documentation</h2>
+    <a href="{{ url_for('bim.api_openapi_spec') }}" class="btn btn-outline" target="_blank">
+        <i class="fa-solid fa-code"></i> openapi.json
+    </a>
+</div>
+
+<div class="swagger-ui-container">
+    <div id="swagger-ui"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui-bundle.js"></script>
+<script>
+window.onload = function() {
+    SwaggerUIBundle({
+        url: '{{ url_for("bim.api_openapi_spec") }}',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [SwaggerUIBundle.presets.apis],
+        layout: 'BaseLayout',
+    });
+};
+</script>
+{% endblock %}

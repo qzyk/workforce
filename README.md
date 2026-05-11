@@ -141,17 +141,17 @@ Evolutia platformei catre BIM/Digital Twin se face in 8 faze incrementale, fieca
 
 | Faza | Tema | Status |
 |------|------|--------|
-| 1 | Foundation: Alembic + audit log + feature flags + CI | **Live** |
-| 2 | 3D Viewer xeokit-sdk + APS adapter (stub) | **Live** |
-| 3 | Model versioning + Federation (CDE workflow) | **Live (branch)** |
-| 4 | Clash detection + Rule engine | **Live (branch)** |
-| 5 | 4D/5D - Schedule + Cost | **Live (branch)** |
-| 6 | Digital Twin / IoT layer (sensori, time-series) | **Live (branch)** |
-| 7 | Real-time collab via SSE + Kanban issue board | **In curs (acest PR)** |
-| 5 | 4D/5D - Schedule + Cost | Planificat |
-| 6 | Digital Twin / IoT layer (sensori, time-series) | Planificat |
-| 7 | Real-time collab via SSE + Kanban issue board | Planificat |
-| 8 | Governance, COBie, BCF complet, RBAC fin | Planificat |
+| 1 | Foundation: Alembic + audit log + feature flags + CI | **Live (prod)** |
+| 2 | 3D Viewer xeokit-sdk + APS adapter | **Live (branch)** |
+| 3 | Model versioning + Federation (CDE workflow ISO 19650) | **Live (branch)** |
+| 4 | Clash detection + Rule engine declarativ | **Live (branch)** |
+| 5 | 4D Schedule + 5D Cost | **Live (branch)** |
+| 6 | Digital Twin / IoT (sensori + time-series + alerte) | **Live (branch)** |
+| 7 | Real-time collab via SSE + Kanban issue board | **Live (branch)** |
+| 8 | Governance: RBAC fin + API tokens + COBie + BCF + OpenAPI | **In curs (acest PR — FINAL)** |
+
+**Roadmap finalizat — 8/8 faze**: 401 teste verzi, 8 migratii Alembic,
+arhitectura strict aditiva (toate feature-urile sub feature flags).
 
 Feature-urile noi se activeaza prin `feature_flags` (default OFF).
 Vezi catalogul flag-urilor in `services/feature_flags.py:KNOWN_FLAGS`.
@@ -368,6 +368,62 @@ set_flag('bim-issue-kanban', True)
 - `/bim/issue/<id>/status` — POST drag-and-drop (admin/manager only pentru `verificat`/`inchis`)
 
 Toate operatiile genereaza `RealtimeEvent` + `audit_log`.
+
+### Governance, COBie, BCF, RBAC fin, API publica (Faza 8 — final)
+
+Finalizeaza platforma cu guvernanta enterprise + interoperabilitate
+buildingSMART completa.
+
+**RBAC fin** (ISO 19650): 7 roluri (information_manager, lead_designer,
+task_team_manager, reviewer, viewer, cost_manager, iot_operator) cu scope
+fin (global / proiect / santier / cladire / disciplina).
+
+```python
+from services.rbac import assign_role, has_permission
+assign_role(user_id=5, rol='lead_designer',
+            scope_type='disciplina', scope_disciplina='ARH')
+has_permission(user, 'version:publish', disciplina='ARH')  # True
+```
+
+**API publica versionata cu tokens**: `/bim/api/v1/*` cu autentificare
+prin `Authorization: Bearer <token>` sau `X-Api-Token`. Tokenii au scopes
+(`bim:read`, `iot:read`, etc.) si data de expirare optionala.
+
+**COBie export**: Excel cu 6 sheet-uri (Facility/Floor/Space/Type/Component/Contact)
+conform COBie 2.4 pentru handover catre facility management.
+
+```
+GET /bim/santier/<id>/cobie.xlsx
+```
+
+**BCF 2.1 round-trip**:
+- Export: toate issues -> `.bcfzip` cu markup.bcf XML
+- Import: `.bcfzip` -> IssueBIM (UPSERT pe `bcf_topic_guid`)
+- Mapare bidirectionala: status (Open <-> deschis), priority (High <-> mare)
+- Importa si Comments din BCF
+
+**OpenAPI 3.0 spec** la `/bim/api/openapi.json` + Swagger UI la `/bim/api/docs`.
+
+**Activare**:
+```python
+from services.feature_flags import set_flag
+set_flag('bim-rbac-fine', True)
+set_flag('bim-public-api', True)
+set_flag('bim-cobie-export', True)
+set_flag('bim-bcf-full', True)
+```
+
+**Pagini noi**:
+- `/bim/roles` — admin: asignare roluri fine cu scope
+- `/bim/tokens` — management API tokens (cu scopes)
+- `/bim/santier/<id>/cobie.xlsx` — export COBie
+- `/bim/issues/export-bcf` + `POST /bim/issues/import-bcf` — BCF round-trip
+- `/bim/api/v1/issues` — API publica (Bearer token, scope `bim:read`)
+- `/bim/api/v1/element/<id>/state` — API publica (scope `iot:read`)
+- `/bim/api/openapi.json` + `/bim/api/docs` — OpenAPI spec + Swagger UI
+
+Toate operatiile (creare token, asignare rol, export/import BCF, export COBie)
+se loaheaza in `audit_log`.
 
 ## Securitate
 

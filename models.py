@@ -2808,3 +2808,154 @@ class RealtimeEvent(db.Model):
         return f'<RealtimeEvent #{self.id} {self.event_type} santier={self.santier_id}>'
 
 
+# ============================================================
+# RBAC FIN (Faza 8) — roluri pe scope BIM
+# Conform ISO 19650: Information Manager, Lead Designer per disciplina,
+# Task Team Manager, Reviewer, Viewer.
+# ============================================================
+
+class BIMRoleAssignment(db.Model):
+    """
+    Asignare rol pentru un user pe un scope BIM specific.
+    Un user poate avea mai multe asignari (ex: Lead Designer pe ARH la
+    santier 1 + Reviewer global pe tenant).
+    """
+    __tablename__ = 'bim_role_assignments'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    user_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'),
+                         nullable=False, index=True)
+
+    # Numele rolului (din ROLURI sau custom)
+    rol = db.Column(db.String(40), nullable=False, index=True)
+    # 'information_manager' | 'lead_designer' | 'task_team_manager' |
+    # 'reviewer' | 'viewer' | 'cost_manager' | 'iot_operator'
+
+    # Scope: ce scope acopera rolul
+    # 'global' (orice) | 'santier' | 'cladire' | 'disciplina' | 'proiect'
+    scope_type = db.Column(db.String(20), default='global', nullable=False, index=True)
+    scope_id = db.Column(db.Integer, nullable=True, index=True)
+    # Pentru scope_type='disciplina' folosim scope_disciplina (codul ARH/STR/etc.)
+    scope_disciplina = db.Column(db.String(20), nullable=True, index=True)
+
+    activ = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    data_start = db.Column(db.Date, nullable=True)
+    data_sfarsit = db.Column(db.Date, nullable=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    user = db.relationship('Utilizator', foreign_keys=[user_id],
+                           backref=db.backref('bim_role_assignments', lazy='dynamic'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    ROLURI = [
+        ('information_manager', 'Information Manager (project lead)'),
+        ('lead_designer',       'Lead Designer (per disciplina)'),
+        ('task_team_manager',   'Task Team Manager'),
+        ('reviewer',            'Reviewer (read-only published)'),
+        ('viewer',              'Viewer (read-only general)'),
+        ('cost_manager',        'Cost Manager (5D)'),
+        ('iot_operator',        'IoT Operator (ingest only)'),
+    ]
+    SCOPE_TYPES = [
+        ('global',     'Global (tot tenant-ul)'),
+        ('proiect',    'Proiect specific'),
+        ('santier',    'Santier specific'),
+        ('cladire',    'Cladire specifica'),
+        ('disciplina', 'Disciplina (ARH, STR, ...)'),
+    ]
+
+    __table_args__ = (
+        db.Index('ix_rba_user_rol_scope', 'user_id', 'rol', 'scope_type'),
+    )
+
+    def is_in_force(self, today=None) -> bool:
+        """True daca rolul e activ azi (intre data_start si data_sfarsit)."""
+        if not self.activ:
+            return False
+        today = today or date.today()
+        if self.data_start and today < self.data_start:
+            return False
+        if self.data_sfarsit and today > self.data_sfarsit:
+            return False
+        return True
+
+    def __repr__(self):
+        scope = f'{self.scope_type}:{self.scope_id or self.scope_disciplina or "*"}'
+        return f'<BIMRoleAssignment user={self.user_id} {self.rol} {scope}>'
+
+
+# ============================================================
+# API TOKENS (Faza 8) — token-auth pentru API publica
+# ============================================================
+
+class ApiToken(db.Model):
+    """
+    Token API pentru integrari externe (BI tools, mobile apps, automation).
+    Scope-uri JSON lista de actiuni permise.
+    """
+    __tablename__ = 'bim_api_tokens'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    # Token-ul propriu-zis (64 hex chars). Stocat plain — invalidam prin
+    # rotatie / dezactivare. Tokenul nu trebuie sa fie inghitit usor.
+    token = db.Column(db.String(64), nullable=False, unique=True, index=True)
+
+    # Etichete pentru UI
+    nume = db.Column(db.String(150), nullable=False)
+    descriere = db.Column(db.Text, nullable=True)
+
+    # Owner: user-ul care a creat (vine in 'authenticated_user' la auth via token)
+    owner_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'),
+                          nullable=False, index=True)
+
+    # Lista de scope-uri permise (JSON list of strings).
+    # ex: ["bim:read", "bim:write_issues", "iot:ingest"]
+    scopes_json = db.Column(db.Text, nullable=False, default='[]')
+
+    activ = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    expires_at = db.Column(db.DateTime, nullable=True, index=True)
+    last_used_at = db.Column(db.DateTime, nullable=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    owner = db.relationship('Utilizator', foreign_keys=[owner_id])
+
+    SCOPES_DISPONIBILE = [
+        ('bim:read',           'Citire BIM (toate datele)'),
+        ('bim:write_issues',   'Scriere issues + comentarii'),
+        ('iot:ingest',         'Ingest date senzori (token per-senzor recomandat)'),
+        ('iot:read',           'Citire date senzori'),
+        ('cost:read',          'Citire date cost (5D)'),
+        ('schedule:read',      'Citire date schedule (4D)'),
+        ('admin:tokens',       'Management tokens (admin)'),
+    ]
+
+    @property
+    def scopes(self) -> list[str]:
+        import json as _json
+        try:
+            return _json.loads(self.scopes_json or '[]')
+        except (ValueError, TypeError):
+            return []
+
+    @scopes.setter
+    def scopes(self, value: list[str]):
+        import json as _json
+        self.scopes_json = _json.dumps(list(value), ensure_ascii=False)
+
+    @property
+    def is_expired(self) -> bool:
+        return bool(self.expires_at and datetime.utcnow() > self.expires_at)
+
+    def has_scope(self, scope: str) -> bool:
+        scopes = self.scopes
+        return scope in scopes or '*' in scopes
+
+    def __repr__(self):
+        return f'<ApiToken {self.nume} owner={self.owner_id} scopes={len(self.scopes)}>'
+
+

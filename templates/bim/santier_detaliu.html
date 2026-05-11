@@ -38,6 +38,11 @@
             <i class="fa-solid fa-chart-pie"></i> Cost 5D
         </a>
         {% endif %}
+        {% if feature_enabled('bim-cobie-export') %}
+        <a href="{{ url_for('bim.cobie_export_santier', santier_id=santier.id) }}" class="btn btn-outline" title="Export COBie xlsx pentru handover">
+            <i class="fa-solid fa-file-export"></i> COBie
+        </a>
+        {% endif %}
         <a href="{{ url_for('bim.santier_editeaza', id=santier.id) }}" class="btn btn-outline">
             <i class="fa-solid fa-pen"></i> Editeaza
         </a>

@@ -72,6 +72,19 @@
             <i class="fa-solid fa-table-columns"></i> Kanban
         </a>
         {% endif %}
+        {% if feature_enabled('bim-rbac-fine') and current_user.rol == 'admin' %}
+        <a href="{{ url_for('bim.roles_lista') }}" class="btn btn-outline">
+            <i class="fa-solid fa-user-shield"></i> Roluri
+        </a>
+        {% endif %}
+        {% if feature_enabled('bim-public-api') %}
+        <a href="{{ url_for('bim.tokens_lista') }}" class="btn btn-outline">
+            <i class="fa-solid fa-key"></i> Tokens
+        </a>
+        {% endif %}
+        <a href="{{ url_for('bim.api_docs') }}" class="btn btn-outline" title="Documentatie API">
+            <i class="fa-solid fa-book"></i> API
+        </a>
     </div>
     {% endif %}
 </div>

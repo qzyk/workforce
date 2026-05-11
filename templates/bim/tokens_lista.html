@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}API Tokens{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">API Tokens</li>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-key" style="color:var(--primary);"></i> API Tokens</h2>
+    <a href="{{ url_for('bim.api_docs') }}" class="btn btn-outline"><i class="fa-solid fa-book"></i> Docs API</a>
+</div>
+
+<div class="card-panel" style="margin-bottom:18px;">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-plus"></i> Token nou</h3></div>
+    <div class="card-panel-body" style="padding:18px;">
+        <form method="POST" action="{{ url_for('bim.token_nou') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div style="display:grid; grid-template-columns:1fr 1fr 200px; gap:10px;">
+                <div class="form-group">
+                    <label>Nume <span style="color:var(--danger);">*</span></label>
+                    <input type="text" name="nume" required maxlength="150" placeholder="ex: BI dashboard prod" />
+                </div>
+                <div class="form-group">
+                    <label>Descriere</label>
+                    <input type="text" name="descriere" maxlength="500" placeholder="Pentru ce e folosit" />
+                </div>
+                <div class="form-group">
+                    <label>Expira in (zile)</label>
+                    <input type="number" name="expires_days" min="1" placeholder="gol = niciodata" />
+                </div>
+            </div>
+
+            <label style="font-weight:600; display:block; margin-top:10px;">Scope-uri (selecteaza ce poate face token-ul):</label>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:6px; margin:8px 0;">
+                {% for cod, label in scopes_disponibile %}
+                <label style="display:flex; gap:6px; padding:6px; background:#f5f7fa; border-radius:4px;">
+                    <input type="checkbox" name="scopes" value="{{ cod }}" />
+                    <span><code>{{ cod }}</code> — {{ label }}</span>
+                </label>
+                {% endfor %}
+            </div>
+
+            <div style="background:#FFEBEE; padding:10px; border-radius:6px; font-size:0.85rem; margin:10px 0; border-left:3px solid var(--danger);">
+                <i class="fa-solid fa-warning"></i>
+                <strong>Atentie:</strong> Token-ul va fi afisat O SINGURA DATA dupa creare. Pastreaza-l in siguranta.
+            </div>
+
+            <div style="text-align:right;">
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Creeaza token</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<h3>Tokens existente ({{ tokens|length }})</h3>
+{% if tokens %}
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Nume</th>
+            <th>Owner</th>
+            <th>Scopes</th>
+            <th>Status</th>
+            <th>Expira</th>
+            <th>Ultima folosire</th>
+            <th>Actiuni</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for t in tokens %}
+        <tr>
+            <td>
+                <strong>{{ t.nume }}</strong>
+                {% if t.descriere %}<div style="font-size:0.78rem; color:var(--gray-500);">{{ t.descriere|truncate(60) }}</div>{% endif %}
+            </td>
+            <td>{% if t.owner %}{{ t.owner.email }}{% else %}#{{ t.owner_id }}{% endif %}</td>
+            <td>
+                {% for s in t.scopes %}<code style="font-size:0.75rem; background:#e3f2fd; padding:1px 5px; border-radius:4px;">{{ s }}</code> {% endfor %}
+            </td>
+            <td>
+                {% if not t.activ %}<span style="color:var(--gray-500);">revocat</span>
+                {% elif t.is_expired %}<span style="color:var(--danger);">expirat</span>
+                {% else %}<span style="color:var(--success);">activ</span>
+                {% endif %}
+            </td>
+            <td style="font-size:0.82rem;">{{ t.expires_at.strftime('%d.%m.%Y') if t.expires_at else 'niciodata' }}</td>
+            <td style="font-size:0.82rem;">{{ t.last_used_at.strftime('%d.%m.%Y %H:%M') if t.last_used_at else '-' }}</td>
+            <td>
+                {% if t.activ %}
+                <form method="POST" action="{{ url_for('bim.token_revoke', token_id=t.id) }}" style="display:inline;"
+                      onsubmit="return confirm('Revoca tokenul {{ t.nume }}? Aplicatiile care folosesc tokenul nu vor mai functiona.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-outline" style="font-size:0.78rem; padding:3px 10px; color:var(--danger); border-color:var(--danger);">Revoca</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state" style="padding:40px; text-align:center; background:white; border-radius:10px;">
+    <i class="fa-solid fa-key" style="font-size:2.5rem; color:var(--gray-300);"></i>
+    <p style="margin-top:12px; color:var(--gray-500);">Niciun API token. Creeaza unul de mai sus.</p>
+</div>
+{% endif %}
+
+<div style="margin-top:16px; padding:12px; background:#FFF8E1; border-left:3px solid var(--warning); border-radius:6px; font-size:0.88rem;">
+    <strong>Folosire:</strong> trimite header <code>Authorization: Bearer &lt;token&gt;</code> sau <code>X-Api-Token: &lt;token&gt;</code>
+    pe rute <code>/bim/api/v1/*</code>. Vezi <a href="{{ url_for('bim.api_docs') }}">docs API</a>.
+</div>
+{% endblock %}

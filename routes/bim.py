@@ -31,6 +31,7 @@ from models import (
     BIMTaskSchedule, BIMCostItem,
     Senzor, SensorReading, SensorAlert,
     BIMComment, UserPresence, RealtimeEvent,
+    BIMRoleAssignment, ApiToken, Utilizator,
     db, Santier, Cladire, Nivel, Zona, Spatiu, ElementBIM, Asset,
     IssueBIM, ModelBIM, Proiect, RaportActivitate, Pontaj,
     ExternalMapping,
@@ -47,6 +48,11 @@ from services import iot_ingest as iot_ingest_svc
 from services import iot_query as iot_query_svc
 from services import realtime as rt_svc
 from services import presence as presence_svc
+from services import rbac as rbac_svc
+from services import api_tokens as tokens_svc
+from services import cobie_export as cobie_svc
+from services import bcf_io as bcf_svc
+from services import openapi as openapi_svc
 from services import feature_flags as ff_svc
 from services import feature_flags
 from services import aps_viewer
@@ -1972,3 +1978,252 @@ def events_stream():
     return Response(generate(), mimetype='text/event-stream',
                     headers={'Cache-Control': 'no-cache',
                              'X-Accel-Buffering': 'no'})
+
+
+# ============================================================
+# GOVERNANCE - Faza 8 (RBAC fin + API tokens + COBie + BCF + OpenAPI)
+# Activare: feature flags 'bim-rbac-fine', 'bim-cobie-export',
+#           'bim-bcf-full', 'bim-public-api' (default OFF)
+# ============================================================
+
+# ---------- RBAC ROLE ASSIGNMENTS ----------
+
+@bim_bp.route('/roles')
+@login_required
+@manager_or_admin
+def roles_lista():
+    """Lista asignari de roluri (admin/manager only)."""
+    if not ff_svc.is_enabled('bim-rbac-fine'):
+        flash('RBAC fin nu e activat pentru acest tenant.', 'info')
+        return redirect(url_for('bim.dashboard'))
+    asignari = (BIMRoleAssignment.query.filter_by(activ=True)
+                .order_by(BIMRoleAssignment.user_id, BIMRoleAssignment.rol)
+                .all())
+    users = Utilizator.query.filter_by(activ=True).order_by(Utilizator.nume).all()
+    santiere = Santier.query.order_by(Santier.cod).all()
+    return render_template('bim/roles_lista.html',
+                           asignari=asignari, users=users, santiere=santiere,
+                           roluri=BIMRoleAssignment.ROLURI,
+                           scope_types=BIMRoleAssignment.SCOPE_TYPES)
+
+
+@bim_bp.route('/role/nou', methods=['POST'])
+@login_required
+@manager_or_admin
+def role_nou():
+    """Creeaza o asignare de rol."""
+    if not ff_svc.is_enabled('bim-rbac-fine'):
+        flash('RBAC fin nu e activat.', 'danger')
+        return redirect(url_for('bim.dashboard'))
+    try:
+        user_id = request.form.get('user_id', type=int)
+        rol = request.form.get('rol', '').strip()
+        scope_type = request.form.get('scope_type', 'global').strip()
+        scope_id = request.form.get('scope_id', type=int)
+        scope_disciplina = request.form.get('scope_disciplina', '').strip() or None
+        if not user_id or not rol:
+            flash('user si rol sunt obligatorii.', 'danger')
+            return redirect(url_for('bim.roles_lista'))
+        rbac_svc.assign_role(user_id, rol,
+                              scope_type=scope_type, scope_id=scope_id,
+                              scope_disciplina=scope_disciplina,
+                              created_by=current_user)
+        flash(f'Asignare rol "{rol}" creata.', 'success')
+    except ValueError as e:
+        flash(str(e), 'danger')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare: {e}', 'danger')
+    return redirect(url_for('bim.roles_lista'))
+
+
+@bim_bp.route('/role/<int:asgn_id>/revoke', methods=['POST'])
+@login_required
+@manager_or_admin
+def role_revoke(asgn_id):
+    asgn = BIMRoleAssignment.query.get_or_404(asgn_id)
+    rbac_svc.revoke_role(asgn, user=current_user)
+    flash(f'Asignare #{asgn_id} dezactivata.', 'info')
+    return redirect(url_for('bim.roles_lista'))
+
+
+# ---------- API TOKENS ----------
+
+@bim_bp.route('/tokens')
+@login_required
+def tokens_lista():
+    """Lista API tokens (user-ul curent vede doar tokens proprii, admin vede tot)."""
+    if not ff_svc.is_enabled('bim-public-api'):
+        flash('API publica nu e activata pentru acest tenant.', 'info')
+        return redirect(url_for('bim.dashboard'))
+    q = ApiToken.query
+    if current_user.rol != 'admin':
+        q = q.filter_by(owner_id=current_user.id)
+    tokens = q.order_by(ApiToken.data_creare.desc()).all()
+    return render_template('bim/tokens_lista.html', tokens=tokens,
+                           scopes_disponibile=ApiToken.SCOPES_DISPONIBILE)
+
+
+@bim_bp.route('/token/nou', methods=['POST'])
+@login_required
+def token_nou():
+    """Creeaza un API token. Token-ul plain se afiseaza o singura data."""
+    if not ff_svc.is_enabled('bim-public-api'):
+        flash('API publica nu e activata.', 'danger')
+        return redirect(url_for('bim.dashboard'))
+    try:
+        nume = request.form.get('nume', '').strip()
+        descriere = request.form.get('descriere', '').strip()
+        scopes = request.form.getlist('scopes')
+        expires_days = request.form.get('expires_days', type=int)
+        tok = tokens_svc.create_token(
+            nume=nume, owner_id=current_user.id, scopes=scopes,
+            descriere=descriere or None, expires_days=expires_days,
+        )
+        flash(f'Token "{tok.nume}" creat. **API KEY (afisat o singura data)**: {tok.token}',
+              'warning')
+    except ValueError as e:
+        flash(str(e), 'danger')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la creare token: {e}', 'danger')
+    return redirect(url_for('bim.tokens_lista'))
+
+
+@bim_bp.route('/token/<int:token_id>/revoke', methods=['POST'])
+@login_required
+def token_revoke(token_id):
+    tok = ApiToken.query.get_or_404(token_id)
+    if tok.owner_id != current_user.id and current_user.rol != 'admin':
+        abort(403)
+    tokens_svc.revoke_token(tok)
+    flash(f'Token "{tok.nume}" revocat.', 'info')
+    return redirect(url_for('bim.tokens_lista'))
+
+
+# ---------- COBie EXPORT ----------
+
+@bim_bp.route('/santier/<int:santier_id>/cobie.xlsx')
+@login_required
+def cobie_export_santier(santier_id):
+    """Export COBie xlsx pentru un santier."""
+    if not ff_svc.is_enabled('bim-cobie-export'):
+        flash('COBie export nu e activat pentru acest tenant.', 'info')
+        return redirect(url_for('bim.santier_detaliu', id=santier_id))
+    santier = Santier.query.get_or_404(santier_id)
+    try:
+        buf = cobie_svc.generate_cobie_workbook(santier_id,
+                                                 generated_by=current_user.email)
+    except Exception as e:
+        flash(f'Eroare la generare COBie: {e}', 'danger')
+        return redirect(url_for('bim.santier_detaliu', id=santier_id))
+
+    audit_svc.log('export_cobie', 'santier', santier_id,
+                  new_values={'format': 'cobie_xlsx'}, commit=True)
+
+    from flask import send_file
+    return send_file(
+        buf,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=f'COBie-{santier.cod}-{datetime.utcnow().strftime("%Y%m%d")}.xlsx',
+    )
+
+
+# ---------- BCF EXPORT / IMPORT ----------
+
+@bim_bp.route('/issues/export-bcf')
+@login_required
+def bcf_export_all():
+    """Export toate issues ca .bcfzip."""
+    if not ff_svc.is_enabled('bim-bcf-full'):
+        flash('BCF complet nu e activat pentru acest tenant.', 'info')
+        return redirect(url_for('bim.issues_lista'))
+    try:
+        buf = bcf_svc.export_bcfzip()
+    except ValueError as e:
+        flash(str(e), 'warning')
+        return redirect(url_for('bim.issues_lista'))
+
+    audit_svc.log('export_bcf', 'bim_issue_bulk', None,
+                  new_values={'format': 'bcfzip_21'}, commit=True)
+
+    from flask import send_file
+    return send_file(
+        buf, mimetype='application/octet-stream',
+        as_attachment=True,
+        download_name=f'issues-{datetime.utcnow().strftime("%Y%m%d-%H%M")}.bcfzip',
+    )
+
+
+@bim_bp.route('/issues/import-bcf', methods=['POST'])
+@login_required
+@manager_or_admin
+def bcf_import_endpoint():
+    """Import .bcfzip cu issues."""
+    if not ff_svc.is_enabled('bim-bcf-full'):
+        flash('BCF complet nu e activat.', 'danger')
+        return redirect(url_for('bim.issues_lista'))
+    f = request.files.get('bcf_file')
+    if not f or not f.filename:
+        flash('Fisier BCF lipseste.', 'danger')
+        return redirect(url_for('bim.issues_lista'))
+    if not (f.filename.lower().endswith('.bcfzip') or f.filename.lower().endswith('.bcf')):
+        flash('Fisier trebuie sa fie .bcfzip', 'danger')
+        return redirect(url_for('bim.issues_lista'))
+    try:
+        stats = bcf_svc.import_bcfzip(f, user=current_user)
+        flash(f'BCF import: {stats["created"]} create, {stats["updated"]} update, '
+              f'{stats["skipped"]} skip, {len(stats["errors"])} erori.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare import BCF: {e}', 'danger')
+    return redirect(url_for('bim.issues_lista'))
+
+
+# ---------- OPENAPI SPEC ----------
+
+@bim_bp.route('/api/openapi.json')
+def api_openapi_spec():
+    """OpenAPI 3.0 spec - public, fara auth."""
+    return jsonify(openapi_svc.generate_openapi_spec())
+
+
+@bim_bp.route('/api/docs')
+def api_docs():
+    """Pagina HTML cu documentatie API (Swagger UI via CDN)."""
+    return render_template('bim/api_docs.html')
+
+
+# ---------- PUBLIC API v1 (token-auth) ----------
+
+@bim_bp.route('/api/v1/issues')
+@tokens_svc.api_token_required('bim:read')
+def api_v1_issues():
+    """Lista issues - protejat cu API token (scope bim:read)."""
+    status = request.args.get('status')
+    q = IssueBIM.query
+    if status:
+        q = q.filter_by(status=status)
+    issues = q.order_by(IssueBIM.id.desc()).limit(200).all()
+    return jsonify({
+        'count': len(issues),
+        'data': [{
+            'id': i.id,
+            'cod': i.cod,
+            'titlu': i.titlu,
+            'descriere': i.descriere,
+            'tip': i.tip,
+            'severitate': i.severitate,
+            'status': i.status,
+            'bcf_topic_guid': i.bcf_topic_guid,
+            'element_bim_id': i.element_bim_id,
+        } for i in issues],
+    })
+
+
+@bim_bp.route('/api/v1/element/<int:element_id>/state')
+@tokens_svc.api_token_required('iot:read')
+def api_v1_element_state(element_id):
+    """Current state senzori pentru un element - protejat cu API token."""
+    return jsonify(iot_query_svc.get_current_state_element(element_id))
