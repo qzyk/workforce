@@ -1,19 +1,19 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Editeaza Angajat' if angajat else 'Adauga Angajat' }} - EDIFICO WORKFORCE{% endblock %}
+{% block title %}{{ _('Editeaza Angajat') if angajat else _('Adauga Angajat') }} — Edifico{% endblock %}
 
 {% block breadcrumb %}
-<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
 <span>/</span>
-<a href="{{ url_for('angajati.lista') }}">Angajati</a>
+<a href="{{ url_for('angajati.lista') }}">{{ _('Angajati') }}</a>
 <span>/</span>
-<span class="active">{{ 'Editeaza' if angajat else 'Adauga' }}</span>
+<span class="active">{{ _('Editeaza') if angajat else _('Adauga') }}</span>
 {% endblock %}
 
 {% block content %}
 <div style="max-width: 900px; margin: 0 auto;">
     <h2 style="margin-bottom: 24px;">
         <i class="fa-solid fa-{{ 'user-pen' if angajat else 'user-plus' }}" style="color: var(--primary);"></i>
-        {{ 'Editeaza Angajat' if angajat else 'Adauga Angajat Nou' }}
+        {{ _('Editeaza Angajat') if angajat else _('Adauga Angajat Nou') }}
     </h2>
 
     <form method="POST" enctype="multipart/form-data" id="angajatForm" novalidate>
@@ -23,7 +23,7 @@
         <div class="card-panel" style="margin-bottom: 20px;">
             <div class="card-panel-header">
                 <h3 class="form-section-title" style="margin:0; border:0; padding:0;">
-                    <i class="fa-solid fa-user"></i> Date Personale
+                    <i class="fa-solid fa-user"></i> {{ _('Date Personale') }}
                 </h3>
             </div>
             <div class="card-panel-body">
@@ -206,18 +206,51 @@
             </div>
         </div>
 
+        <!-- Sectiunea: Santiere / Proiecte asignate -->
+        <div class="card-panel" style="margin-bottom: 20px;">
+            <div class="card-panel-header">
+                <h3 class="form-section-title" style="margin:0; border:0; padding:0;">
+                    <i class="fa-solid fa-map-location-dot"></i> {{ _('Santiere') }} / {{ _('Proiecte') }}
+                </h3>
+            </div>
+            <div class="card-panel-body">
+                <div class="form-group">
+                    <label class="form-label">{{ form.proiecte_asignate.label.text }}</label>
+                    {% if form.proiecte_asignate.choices %}
+                    {{ form.proiecte_asignate(class_="form-control", size="8", style="min-height:180px;") }}
+                    <small style="color: var(--gray-500); display:block; margin-top:8px;">
+                        <i class="fa-solid fa-info-circle"></i>
+                        {{ _('Tine apasat Ctrl (Cmd pe Mac) pentru a selecta sau deselecta mai multe.') }}
+                        {{ _('Modificarile se salveaza la submit-ul formularului.') }}
+                    </small>
+                    {% for error in form.proiecte_asignate.errors %}
+                    <small style="color: var(--danger); display:block;">{{ error }}</small>
+                    {% endfor %}
+                    {% else %}
+                    <div class="empty-state" style="padding: 14px; background:var(--gray-50); border-radius:8px;">
+                        <small style="color: var(--gray-500);">
+                            <i class="fa-solid fa-circle-info"></i>
+                            {{ _('Nu exista proiecte active. Creeaza intai un proiect din meniu.') }}
+                            <a href="{{ url_for('proiecte.adauga') }}" style="color: var(--primary);">{{ _('Adauga proiect nou') }}</a>.
+                        </small>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
         <!-- Butoane -->
         <div style="display: flex; gap: 12px; justify-content: flex-end; margin-bottom: 40px;">
             <a href="{{ url_for('angajati.lista') }}" class="btn btn-outline">
-                <i class="fa-solid fa-xmark"></i> Anuleaza
+                <i class="fa-solid fa-xmark"></i> {{ _('Anuleaza') }}
             </a>
             {% if not angajat %}
             <button type="submit" name="salveaza_si_adauga" class="btn btn-secondary">
-                <i class="fa-solid fa-plus"></i> Salveaza si Adauga Altul
+                <i class="fa-solid fa-plus"></i> {{ _('Salveaza si Adauga Altul') }}
             </button>
             {% endif %}
             <button type="submit" name="salveaza" class="btn btn-primary">
-                <i class="fa-solid fa-check"></i> Salveaza
+                <i class="fa-solid fa-check"></i> {{ _('Salveaza') }}
             </button>
         </div>
     </form>

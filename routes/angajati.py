@@ -140,6 +140,11 @@ def adauga():
         _handle_photo_upload(angajat, form.poza_profil.data)
 
         db.session.add(angajat)
+        db.session.flush()  # ca sa avem angajat.id pentru AngajatProiect
+
+        # Asignare proiecte (santiere) selectate
+        _sync_angajat_proiecte(angajat, form.proiecte_asignate.data or [])
+
         db.session.commit()
         flash(f'Angajatul {angajat.nume_complet} a fost adaugat cu succes!', 'success')
 
@@ -206,6 +211,17 @@ def editeaza(id):
     form = AngajatForm(obj=angajat)
     form.angajat_id.data = str(angajat.id)
 
+    # Pre-populez proiectele asignate active (data_sfarsit NULL sau >= today)
+    if request.method == 'GET':
+        asocieri_active = AngajatProiect.query.filter(
+            AngajatProiect.angajat_id == angajat.id,
+            db.or_(
+                AngajatProiect.data_sfarsit.is_(None),
+                AngajatProiect.data_sfarsit >= date.today(),
+            )
+        ).all()
+        form.proiecte_asignate.data = [a.proiect_id for a in asocieri_active]
+
     if form.validate_on_submit():
         angajat.nume = form.nume.data.strip()
         angajat.prenume = form.prenume.data.strip()
@@ -228,11 +244,84 @@ def editeaza(id):
 
         _handle_photo_upload(angajat, form.poza_profil.data)
 
+        # Sync proiecte (santiere) - diff cu cele existente
+        proiecte_noi = form.proiecte_asignate.data or []
+        adaugate, eliminate = _sync_angajat_proiecte(angajat, proiecte_noi)
+
         db.session.commit()
-        flash('Datele angajatului au fost actualizate!', 'success')
+
+        msg = 'Datele angajatului au fost actualizate!'
+        if adaugate or eliminate:
+            parti = []
+            if adaugate:
+                parti.append(f'{adaugate} santiere adaugate')
+            if eliminate:
+                parti.append(f'{eliminate} santiere eliminate')
+            msg += f' ({", ".join(parti)})'
+        flash(msg, 'success')
         return redirect(url_for('angajati.detalii', id=id))
 
     return render_template('angajati/formular.html', form=form, angajat=angajat)
+
+
+def _sync_angajat_proiecte(angajat, proiecte_ids_noi):
+    """
+    Sincronizeaza asocierile angajat-proiect cu lista noua de id-uri.
+
+    Strategie:
+    - Pentru fiecare proiect_id NOU care nu exista in asocierile active:
+      - Daca exista o asociere dezalocata recent (data_sfarsit setat), o re-activez
+        (data_sfarsit = NULL)
+      - Altfel creez o asociere noua cu data_start = today
+    - Pentru fiecare asociere ACTIVA al carei proiect NU e in lista noua:
+      - Setez data_sfarsit = today (dezalocare blanda, pastreaza istoricul)
+
+    Returneaza tuple (adaugate, eliminate) - counturi pentru flash message.
+    """
+    proiecte_ids_noi = set(int(pid) for pid in proiecte_ids_noi if pid)
+    today_d = date.today()
+
+    # Asocieri active curente
+    asocieri_active = AngajatProiect.query.filter(
+        AngajatProiect.angajat_id == angajat.id,
+        db.or_(
+            AngajatProiect.data_sfarsit.is_(None),
+            AngajatProiect.data_sfarsit >= today_d,
+        )
+    ).all()
+    proiecte_active = {a.proiect_id: a for a in asocieri_active}
+
+    adaugate = 0
+    eliminate = 0
+
+    # ADAUGA: proiecte din lista noua care nu sunt active
+    for pid in proiecte_ids_noi:
+        if pid in proiecte_active:
+            continue  # deja asignat
+        # Verific daca exista o asociere dezalocata in trecut
+        veche = (AngajatProiect.query
+                 .filter_by(angajat_id=angajat.id, proiect_id=pid)
+                 .order_by(AngajatProiect.data_sfarsit.desc()).first())
+        if veche and veche.data_sfarsit:
+            # Re-activez asocierea dezalocata
+            veche.data_sfarsit = None
+            veche.data_start = today_d
+        else:
+            ap = AngajatProiect(
+                angajat_id=angajat.id, proiect_id=pid,
+                data_start=today_d,
+                functie_pe_proiect=angajat.functie,
+            )
+            db.session.add(ap)
+        adaugate += 1
+
+    # ELIMINA: asocieri active care nu mai sunt in lista noua
+    for pid, asoc in proiecte_active.items():
+        if pid not in proiecte_ids_noi:
+            asoc.data_sfarsit = today_d
+            eliminate += 1
+
+    return adaugate, eliminate
 
 
 # ============================================================

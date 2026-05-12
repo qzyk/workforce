@@ -1,26 +1,26 @@
 {% extends "base.html" %}
 
-{% block title %}Angajati - EDIFICO WORKFORCE{% endblock %}
+{% block title %}{{ _('Angajati') }} — Edifico{% endblock %}
 
 {% block breadcrumb %}
-<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
 <span>/</span>
-<span class="active">Angajati</span>
+<span class="active">{{ _('Angajati') }}</span>
 {% endblock %}
 
 {% block content %}
 <!-- Header -->
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
-    <h2 style="margin: 0;"><i class="fa-solid fa-hard-hat" style="color: var(--primary);"></i> Angajati</h2>
+    <h2 style="margin: 0;"><i class="fa-solid fa-hard-hat" style="color: var(--primary);"></i> {{ _('Angajati') }}</h2>
     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
         <a href="{{ url_for('angajati.export_excel') }}" class="btn btn-success">
-            <i class="fa-solid fa-file-excel"></i> Export Excel
+            <i class="fa-solid fa-file-excel"></i> {{ _('Export') }} Excel
         </a>
         <button type="button" class="btn btn-outline" onclick="document.getElementById('importModal').classList.add('active')">
-            <i class="fa-solid fa-file-import"></i> Import Excel
+            <i class="fa-solid fa-file-import"></i> {{ _('Import') }} Excel
         </button>
         <a href="{{ url_for('angajati.adauga') }}" class="btn btn-primary">
-            <i class="fa-solid fa-user-plus"></i> Adauga Angajat
+            <i class="fa-solid fa-user-plus"></i> {{ _('Adauga Angajat') }}
         </a>
     </div>
 </div>
@@ -31,28 +31,28 @@
         <div class="stat-icon bg-success"><i class="fa-solid fa-user-check"></i></div>
         <div>
             <div class="stat-number">{{ total_activi }}</div>
-            <div class="stat-label">Activi</div>
+            <div class="stat-label">{{ _('Activ') }}</div>
         </div>
     </div>
     <div class="stat-mini">
         <div class="stat-icon bg-gray"><i class="fa-solid fa-user-xmark"></i></div>
         <div>
             <div class="stat-number">{{ total_inactivi }}</div>
-            <div class="stat-label">Inactivi</div>
+            <div class="stat-label">{{ _('Inactiv') }}</div>
         </div>
     </div>
     <div class="stat-mini">
         <div class="stat-icon bg-warning"><i class="fa-solid fa-user-clock"></i></div>
         <div>
             <div class="stat-number">{{ total_suspendati }}</div>
-            <div class="stat-label">Suspendati</div>
+            <div class="stat-label">{{ _('Suspendat') }}</div>
         </div>
     </div>
     <div class="stat-mini">
         <div class="stat-icon bg-primary"><i class="fa-solid fa-users"></i></div>
         <div>
             <div class="stat-number">{{ total_activi + total_inactivi + total_suspendati }}</div>
-            <div class="stat-label">Total</div>
+            <div class="stat-label">{{ _('Total') }}</div>
         </div>
     </div>
 </div>
@@ -60,23 +60,23 @@
 <!-- Filtre -->
 <div class="card-panel" style="margin-bottom: 20px;">
     <div class="card-panel-header" style="cursor: pointer;" onclick="this.parentElement.querySelector('.filter-body').classList.toggle('collapsed')">
-        <h3 style="margin:0; font-size: 0.95rem;"><i class="fa-solid fa-filter"></i> Filtre</h3>
+        <h3 style="margin:0; font-size: 0.95rem;"><i class="fa-solid fa-filter"></i> {{ _('Filtre') }}</h3>
         <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem;"></i>
     </div>
     <div class="card-panel-body filter-body">
         <form method="GET" action="{{ url_for('angajati.lista') }}">
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; align-items: end;">
                 <div class="form-group">
-                    <label class="form-label">Cautare (nume, CNP)</label>
-                    <input type="text" name="cautare" class="form-control" value="{{ cautare }}" placeholder="Cauta angajat...">
+                    <label class="form-label">{{ _('Cauta') }} ({{ _('Nume') }}, CNP)</label>
+                    <input type="text" name="cautare" class="form-control" value="{{ cautare }}" placeholder="{{ _('Cauta angajat') }}...">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Status</label>
+                    <label class="form-label">{{ _('Status') }}</label>
                     <select name="status" class="form-select">
-                        <option value="">Toate</option>
-                        <option value="activ" {{ 'selected' if status_filtru == 'activ' }}>Activ</option>
-                        <option value="inactiv" {{ 'selected' if status_filtru == 'inactiv' }}>Inactiv</option>
-                        <option value="suspendat" {{ 'selected' if status_filtru == 'suspendat' }}>Suspendat</option>
+                        <option value="">{{ _('Toate') }}</option>
+                        <option value="activ" {{ 'selected' if status_filtru == 'activ' }}>{{ _('Activ') }}</option>
+                        <option value="inactiv" {{ 'selected' if status_filtru == 'inactiv' }}>{{ _('Inactiv') }}</option>
+                        <option value="suspendat" {{ 'selected' if status_filtru == 'suspendat' }}>{{ _('Suspendat') }}</option>
                     </select>
                 </div>
                 <div class="form-group">

@@ -197,26 +197,29 @@
             <!-- Lista echipa -->
             <div class="card-panel">
                 <div class="card-panel-header">
-                    <h3><i class="fa-solid fa-users"></i> Membrii Echipei</h3>
+                    <h3><i class="fa-solid fa-users"></i> {{ _('Membrii Echipei') }}
+                        <small style="color:var(--gray-500); font-weight:400; font-size:0.78rem; margin-left:8px;">
+                            ({{ angajati_activi|length }} {{ _('activi') }}{% set istoric = angajati_asoc|length - angajati_activi|length %}{% if istoric %}, {{ istoric }} {{ _('in istoric') }}{% endif %})
+                        </small>
+                    </h3>
                 </div>
                 <div class="card-panel-body" style="padding: 0;">
-                    {% if angajati_asoc %}
+                    {# Sectiunea 1: ANGAJATI ACTIVI #}
+                    {% if angajati_activi %}
                     <div class="table-responsive">
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th>Angajat</th>
-                                    <th>Functie</th>
-                                    <th>Tarif (RON/h)</th>
-                                    <th>Data Start</th>
-                                    <th>Status</th>
-                                    <th>Actiuni</th>
+                                    <th>{{ _('Angajat') }}</th>
+                                    <th>{{ _('Functie') }}</th>
+                                    <th>{{ _('Tarif') }} (RON/h)</th>
+                                    <th>{{ _('Data Start') }}</th>
+                                    <th>{{ _('Actiuni') }}</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for ap in angajati_asoc %}
-                                {% set activ = not ap.data_sfarsit or ap.data_sfarsit >= today %}
-                                <tr style="{{ 'opacity: 0.5;' if not activ }}">
+                                {% for ap in angajati_activi %}
+                                <tr>
                                     <td>
                                         <a href="{{ url_for('angajati.detalii', id=ap.angajat.id) }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
                                             {{ ap.angajat.nume_complet }}
@@ -226,22 +229,13 @@
                                     <td>{{ '{:,.2f}'.format(ap.tarif_negociat) if ap.tarif_negociat else '-' }}</td>
                                     <td>{{ ap.data_start.strftime('%d.%m.%Y') if ap.data_start else '-' }}</td>
                                     <td>
-                                        {% if activ %}
-                                        <span class="badge-status badge-activ">Activ</span>
-                                        {% else %}
-                                        <span class="badge-status badge-inactiv">Dezalocat</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if activ %}
                                         <form method="POST" action="{{ url_for('proiecte.elimina_angajat', id=proiect.id, ap_id=ap.id) }}" style="display:inline;">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="btn-action btn-delete" title="Dezaloaca"
-                                                    onclick="return confirm('Doriti sa dezalocati angajatul {{ ap.angajat.nume_complet }} de pe proiect?')">
+                                            <button type="submit" class="btn-action btn-delete" title="{{ _('Dezaloca de pe proiect') }}"
+                                                    onclick="return confirm('{{ _('Doriti sa dezalocati angajatul') }} {{ ap.angajat.nume_complet }}? {{ _('Asocierea va aparea in tab Istoric si poate fi re-activata oricand.') }}')">
                                                 <i class="fa-solid fa-user-minus"></i>
                                             </button>
                                         </form>
-                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -250,8 +244,67 @@
                     </div>
                     {% else %}
                     <div class="empty-state" style="padding: 24px;">
-                        <p>Niciun angajat asignat pe acest proiect.</p>
+                        <p>{{ _('Niciun angajat asignat pe acest proiect.') }}</p>
                     </div>
+                    {% endif %}
+
+                    {# Sectiunea 2: ISTORIC (angajati dezalocati) #}
+                    {% set angajati_istoric = angajati_asoc | rejectattr('data_sfarsit', 'none') | list %}
+                    {% set angajati_istoric = angajati_istoric | selectattr('data_sfarsit', 'lt', today) | list %}
+                    {% if angajati_istoric %}
+                    <details style="border-top: 1px solid var(--gray-200); padding: 14px 18px; background: var(--gray-50);">
+                        <summary style="cursor:pointer; font-size:0.88rem; color:var(--gray-700); user-select:none;">
+                            <i class="fa-solid fa-clock-rotate-left" style="margin-right:6px; color:var(--gray-500);"></i>
+                            <strong>{{ _('Istoric') }}</strong>
+                            ({{ angajati_istoric|length }} {{ _('dezalocati anterior') }})
+                        </summary>
+                        <table class="data-table" style="margin-top:12px; font-size:0.88rem; opacity:0.85;">
+                            <thead>
+                                <tr style="background:transparent;">
+                                    <th>{{ _('Angajat') }}</th>
+                                    <th>{{ _('Functie') }}</th>
+                                    <th>{{ _('Perioada') }}</th>
+                                    <th>{{ _('Actiuni') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ap in angajati_istoric %}
+                                <tr>
+                                    <td>
+                                        <a href="{{ url_for('angajati.detalii', id=ap.angajat.id) }}" style="color: var(--gray-600); text-decoration: none;">
+                                            {{ ap.angajat.nume_complet }}
+                                        </a>
+                                    </td>
+                                    <td>{{ ap.functie_pe_proiect or ap.angajat.functie or '-' }}</td>
+                                    <td style="font-size:0.82rem;">
+                                        {{ ap.data_start.strftime('%d.%m.%Y') if ap.data_start else '-' }}
+                                        →
+                                        {{ ap.data_sfarsit.strftime('%d.%m.%Y') if ap.data_sfarsit else '-' }}
+                                    </td>
+                                    <td style="white-space:nowrap;">
+                                        <form method="POST" action="{{ url_for('proiecte.realoca_angajat', id=proiect.id, ap_id=ap.id) }}" style="display:inline;">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn-action" title="{{ _('Re-aloca pe proiect') }}"
+                                                    style="color:var(--success);"
+                                                    onclick="return confirm('{{ _('Re-aloca angajatul') }} {{ ap.angajat.nume_complet }} {{ _('pe acest proiect?') }}')">
+                                                <i class="fa-solid fa-user-plus"></i>
+                                            </button>
+                                        </form>
+                                        {% if current_user.rol in ['admin', 'manager'] %}
+                                        <form method="POST" action="{{ url_for('proiecte.sterge_asignare', id=proiect.id, ap_id=ap.id) }}" style="display:inline;">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn-action btn-delete" title="{{ _('Sterge definitiv din istoric') }}"
+                                                    onclick="return confirm('{{ _('Stergere DEFINITIVA') }}: {{ ap.angajat.nume_complet }}. {{ _('Aceasta actiune nu poate fi anulata. Continui?') }}')">
+                                                <i class="fa-solid fa-trash-can"></i>
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </details>
                     {% endif %}
                 </div>
             </div>

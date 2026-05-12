@@ -327,14 +327,61 @@ def adauga_angajat(id):
 @proiecte_bp.route('/<int:id>/elimina-angajat/<int:ap_id>', methods=['POST'])
 @login_required
 def elimina_angajat(id, ap_id):
+    """Dezalocare soft: seteaza data_sfarsit = today, pastreaza istoricul."""
     ap = AngajatProiect.query.get_or_404(ap_id)
     if ap.proiect_id != id:
         flash('Asociere invalida.', 'danger')
         return redirect(url_for('proiecte.detalii', id=id))
 
+    nume = ap.angajat.nume_complet
     ap.data_sfarsit = date.today()
     db.session.commit()
-    flash(f'Angajatul {ap.angajat.nume_complet} a fost dezalocat de pe proiect.', 'success')
+    flash(f'Angajatul {nume} a fost dezalocat de pe proiect. '
+          f'Apare in tab Istoric si poate fi re-alocat oricand.', 'success')
+    return redirect(url_for('proiecte.detalii', id=id))
+
+
+@proiecte_bp.route('/<int:id>/realoca-angajat/<int:ap_id>', methods=['POST'])
+@login_required
+def realoca_angajat(id, ap_id):
+    """Re-activare asociere dezalocata: data_sfarsit = NULL, data_start = today."""
+    ap = AngajatProiect.query.get_or_404(ap_id)
+    if ap.proiect_id != id:
+        flash('Asociere invalida.', 'danger')
+        return redirect(url_for('proiecte.detalii', id=id))
+
+    if not ap.data_sfarsit:
+        flash(f'Angajatul {ap.angajat.nume_complet} e deja activ pe proiect.', 'info')
+        return redirect(url_for('proiecte.detalii', id=id))
+
+    ap.data_sfarsit = None
+    ap.data_start = date.today()
+    db.session.commit()
+    flash(f'Angajatul {ap.angajat.nume_complet} a fost re-alocat pe proiect.', 'success')
+    return redirect(url_for('proiecte.detalii', id=id))
+
+
+@proiecte_bp.route('/<int:id>/sterge-asignare/<int:ap_id>', methods=['POST'])
+@login_required
+def sterge_asignare(id, ap_id):
+    """
+    Stergere definitiva a asocierii angajat-proiect din DB.
+    NU sterge angajatul, doar randul din AngajatProiect.
+    Permis doar de manager / admin (asociere e istoric audit-relevant).
+    """
+    if current_user.rol not in ('admin', 'manager'):
+        flash('Doar admin / manager poate sterge definitiv o asociere.', 'danger')
+        return redirect(url_for('proiecte.detalii', id=id))
+
+    ap = AngajatProiect.query.get_or_404(ap_id)
+    if ap.proiect_id != id:
+        flash('Asociere invalida.', 'danger')
+        return redirect(url_for('proiecte.detalii', id=id))
+
+    nume = ap.angajat.nume_complet
+    db.session.delete(ap)
+    db.session.commit()
+    flash(f'Asocierea cu {nume} a fost stearsa definitiv din istoric.', 'info')
     return redirect(url_for('proiecte.detalii', id=id))
 
 

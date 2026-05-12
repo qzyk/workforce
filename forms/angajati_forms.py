@@ -6,7 +6,7 @@ import re
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, FileAllowed
 from wtforms import (
-    StringField, SelectField, TextAreaField, DecimalField,
+    StringField, SelectField, SelectMultipleField, TextAreaField, DecimalField,
     DateField, HiddenField
 )
 from wtforms.validators import (
@@ -115,10 +115,27 @@ class AngajatForm(FlaskForm):
     ])
     observatii = TextAreaField('Observatii', validators=[Optional()])
 
+    # Asignare santiere / proiecte (m2m prin AngajatProiect)
+    # In terminologia AEC: un "santier" = un Proiect aici. Pastram numele
+    # din UI ("santiere") dar tehnic e Proiect.id.
+    proiecte_asignate = SelectMultipleField(
+        'Santiere / Proiecte asignate',
+        coerce=int,
+        validators=[Optional()],
+        description='Selecteaza unul sau mai multe santiere pe care angajatul va lucra.',
+    )
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from models import Angajat
+        from models import Angajat, Proiect
         self.functie.choices = Angajat.FUNCTII
+        # Populez choices pentru proiecte cu cele active + planificate
+        proiecte = (Proiect.query
+                    .filter(Proiect.status.in_(['activ', 'planificat']))
+                    .order_by(Proiect.cod_proiect).all())
+        self.proiecte_asignate.choices = [
+            (p.id, f'{p.cod_proiect} — {p.nume}') for p in proiecte
+        ]
 
     def validate_data_incetare(self, field):
         if field.data and self.data_angajare.data:

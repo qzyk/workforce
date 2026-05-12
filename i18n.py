@@ -273,6 +273,123 @@ TRANSLATIONS = {
     'Confirmare stergere': {'en': 'Confirm deletion'},
     'Sunteti sigur ca doriti sa stergeti acest element?':
         {'en': 'Are you sure you want to delete this item?'},
+
+    # === Pagini lista angajati / proiecte ===
+    'Adauga Angajat': {'en': 'Add Employee'},
+    'Adauga Angajat Nou': {'en': 'Add New Employee'},
+    'Editeaza Angajat': {'en': 'Edit Employee'},
+    'Lista angajati': {'en': 'Employee list'},
+    'Cauta angajat': {'en': 'Search employee'},
+    'Nume complet': {'en': 'Full name'},
+    'Date Personale': {'en': 'Personal Details'},
+    'Date Profesionale': {'en': 'Professional Details'},
+    'Salveaza si Adauga Altul': {'en': 'Save and Add Another'},
+    'Anuleaza': {'en': 'Cancel'},
+    'Salveaza': {'en': 'Save'},
+    'Date angajare': {'en': 'Employment data'},
+
+    # === Forma angajat - santiere ===
+    'Tine apasat Ctrl (Cmd pe Mac) pentru a selecta sau deselecta mai multe.':
+        {'en': 'Hold Ctrl (Cmd on Mac) to select or deselect multiple items.'},
+    'Modificarile se salveaza la submit-ul formularului.':
+        {'en': 'Changes are saved when you submit the form.'},
+    'Nu exista proiecte active. Creeaza intai un proiect din meniu.':
+        {'en': 'No active projects. Create a project from the menu first.'},
+    'Adauga proiect nou': {'en': 'Add new project'},
+
+    # === Proiect detalii - echipa ===
+    'Membrii Echipei': {'en': 'Team Members'},
+    'activi': {'en': 'active'},
+    'in istoric': {'en': 'in history'},
+    'Angajat': {'en': 'Employee'},
+    'Tarif': {'en': 'Rate'},
+    'Actiuni': {'en': 'Actions'},
+    'Data Start': {'en': 'Start Date'},
+    'Perioada': {'en': 'Period'},
+    'Istoric': {'en': 'History'},
+    'dezalocati anterior': {'en': 'previously unassigned'},
+    'Dezaloca de pe proiect': {'en': 'Unassign from project'},
+    'Re-aloca pe proiect': {'en': 'Re-assign to project'},
+    'Doriti sa dezalocati angajatul': {'en': 'Unassign employee'},
+    'Asocierea va aparea in tab Istoric si poate fi re-activata oricand.':
+        {'en': 'The assignment will appear in the History tab and can be re-activated at any time.'},
+    'Re-aloca angajatul': {'en': 'Re-assign employee'},
+    'pe acest proiect?': {'en': 'to this project?'},
+    'Sterge definitiv din istoric': {'en': 'Permanently delete from history'},
+    'Stergere DEFINITIVA': {'en': 'PERMANENT deletion'},
+    'Aceasta actiune nu poate fi anulata. Continui?':
+        {'en': 'This action cannot be undone. Continue?'},
+    'Niciun angajat asignat pe acest proiect.':
+        {'en': 'No employees assigned to this project.'},
+
+    # === Proiect general ===
+    'Adauga proiect': {'en': 'Add project'},
+    'Editeaza proiect': {'en': 'Edit project'},
+    'Cod proiect': {'en': 'Project code'},
+    'Buget': {'en': 'Budget'},
+    'Manager proiect': {'en': 'Project manager'},
+    'Proiecte active': {'en': 'Active projects'},
+    'Proiecte finalizate': {'en': 'Completed projects'},
+
+    # === Dashboard widgets ===
+    'Total angajati': {'en': 'Total employees'},
+    'Angajati activi': {'en': 'Active employees'},
+    'Pontaje luna curenta': {'en': 'Current month timesheets'},
+    'Ore luna curenta': {'en': 'Current month hours'},
+    'Documente expirate': {'en': 'Expired documents'},
+    'Documente expira': {'en': 'Documents expiring'},
+    'Activitati saptamana': {'en': 'Activities this week'},
+    'Alerte': {'en': 'Alerts'},
+    'Notificari pontaj': {'en': 'Timesheet notifications'},
+    'Vezi detalii': {'en': 'View details'},
+
+    # === Pontaje ===
+    'Pontaj': {'en': 'Timesheet'},
+    'Pontaj nou': {'en': 'New timesheet'},
+    'Ora start': {'en': 'Start time'},
+    'Ora sfarsit': {'en': 'End time'},
+    'Ore lucrate': {'en': 'Hours worked'},
+    'Ore normale': {'en': 'Regular hours'},
+    'Ore suplimentare': {'en': 'Overtime hours'},
+    'Aproba pontaj': {'en': 'Approve timesheet'},
+    'Respinge pontaj': {'en': 'Reject timesheet'},
+
+    # === Documente ===
+    'Document': {'en': 'Document'},
+    'Documente angajat': {'en': 'Employee documents'},
+    'Tip document': {'en': 'Document type'},
+    'Data emitere': {'en': 'Issue date'},
+    'Data expirare': {'en': 'Expiry date'},
+    'Expira in': {'en': 'Expires in'},
+    'Expirat': {'en': 'Expired'},
+
+    # === Activitati ===
+    'Activitate noua': {'en': 'New activity'},
+    'Activitate zilnica': {'en': 'Daily activity'},
+    'Activitate saptamanala': {'en': 'Weekly activity'},
+    'Activitate lunara': {'en': 'Monthly activity'},
+    'Panou activitati': {'en': 'Activities panel'},
+
+    # === Empty states & errors ===
+    'Niciun angajat': {'en': 'No employees'},
+    'Niciun proiect': {'en': 'No projects'},
+    'Nu s-au gasit rezultate.': {'en': 'No results found.'},
+    'Adauga primul element': {'en': 'Add first item'},
+    'Eroare': {'en': 'Error'},
+    'Avertisment': {'en': 'Warning'},
+    'Informatie': {'en': 'Information'},
+    'Succes': {'en': 'Success'},
+
+    # === Common UI labels ===
+    'Inapoi la lista': {'en': 'Back to list'},
+    'Vezi mai mult': {'en': 'See more'},
+    'Optiuni': {'en': 'Options'},
+    'Pagina': {'en': 'Page'},
+    'din': {'en': 'of'},
+    'Primul': {'en': 'First'},
+    'Anterior': {'en': 'Previous'},
+    'Urmator': {'en': 'Next'},
+    'Ultimul': {'en': 'Last'},
 }
 
 
