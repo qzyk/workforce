@@ -157,7 +157,9 @@ def detalii(id):
         AngajatProiect.data_start.desc()
     ).all()
 
-    angajati_activi = [a for a in angajati_asoc if not a.data_sfarsit or a.data_sfarsit >= date.today()]
+    # Activ = data_sfarsit IS NULL. Cand se dezaloca, set data_sfarsit = today,
+    # deci dispare imediat din "activi". Filter simplu si clar.
+    angajati_activi = [a for a in angajati_asoc if not a.data_sfarsit]
     angajati_disponibili = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
 
     # Distributie functii pentru chart
@@ -395,7 +397,9 @@ def raport(id):
     proiect = Proiect.query.get_or_404(id)
 
     angajati_asoc = AngajatProiect.query.filter_by(proiect_id=id).all()
-    angajati_activi = [a for a in angajati_asoc if not a.data_sfarsit or a.data_sfarsit >= date.today()]
+    # Activ = data_sfarsit IS NULL. Cand se dezaloca, set data_sfarsit = today,
+    # deci dispare imediat din "activi". Filter simplu si clar.
+    angajati_activi = [a for a in angajati_asoc if not a.data_sfarsit]
 
     total_ore = proiect.get_total_ore()
     cost_manopera = _calculeaza_cost_manopera(id)
