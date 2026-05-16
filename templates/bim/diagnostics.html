@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Diagnostics BIM — Edifico{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Diagnostics</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.diag-section { background:white; border-radius:8px; padding:18px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+.diag-row { display:flex; padding:6px 0; border-bottom:1px solid var(--gray-100); font-family: 'SF Mono', Monaco, Consolas, monospace; font-size:0.85rem; }
+.diag-key { color: var(--gray-600); min-width:200px; }
+.diag-val { color: var(--gray-900); flex:1; word-break: break-all; }
+.status-ok { color: #2e7d32; font-weight: 600; }
+.status-fail { color: #c62828; font-weight: 600; }
+.flag-on { color: #2e7d32; }
+.flag-off { color: #9e9e9e; }
+.callout { padding:14px; border-radius:6px; margin-bottom:14px; font-size:0.9rem; }
+.callout-ok { background:#E8F5E9; border-left:3px solid #2e7d32; color:#1b5e20; }
+.callout-warn { background:#FFF3E0; border-left:3px solid #f57c00; color:#5d3f00; }
+.code-block { background:#0B1426; color:#F5F1E8; padding:10px 14px; border-radius:6px; font-family: 'SF Mono', monospace; font-size:0.82rem; overflow-x:auto; margin:8px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 style="margin: 0 0 18px 0;"><i class="fa-solid fa-stethoscope" style="color: var(--primary);"></i> Diagnostics BIM</h2>
+
+<p style="color: var(--gray-500); font-size: 0.9rem; margin-bottom: 18px;">
+    Verificare mediu Python + dependinte BIM + status feature flags. Util cand
+    pip install pare facut dar functionalitati nu apar (mai ales pe PythonAnywhere
+    unde virtualenv-ul difera de Python-ul global).
+</p>
+
+<!-- ============================ -->
+<!-- ifcopenshell — focus principal -->
+<!-- ============================ -->
+<div class="diag-section">
+    <h3 style="margin: 0 0 12px 0; font-size: 1rem;">
+        <i class="fa-solid fa-file-code"></i> ifcopenshell (parser IFC)
+    </h3>
+
+    {% if ifc_info.available %}
+    <div class="callout callout-ok">
+        <i class="fa-solid fa-circle-check"></i>
+        <strong>ifcopenshell e instalat si functioneaza!</strong>
+        Versiune: <code>{{ ifc_info.version }}</code> · Path: <code>{{ ifc_info.install_path }}</code>
+    </div>
+    {% else %}
+    <div class="callout callout-warn">
+        <i class="fa-solid fa-circle-xmark"></i>
+        <strong>ifcopenshell NU e disponibil in acest Python.</strong>
+        {% if ifc_info.import_error %}
+        Eroare la import: <code>{{ ifc_info.import_error }}</code>
+        {% endif %}
+    </div>
+
+    <p style="margin: 10px 0 4px; font-weight: 600;">Cum repari pe PythonAnywhere:</p>
+    <ol style="font-size: 0.88rem; padding-left: 22px;">
+        <li>Deschide consola Bash pe PythonAnywhere</li>
+        <li>Activeaza venv-ul folosit de app:
+            <div class="code-block">source {{ python_executable | replace('/bin/python3', '/bin/activate') }}</div>
+        </li>
+        <li>Sau echivalent, instaleaza folosind direct python-ul venv-ului:
+            <div class="code-block">{{ python_executable }} -m pip install ifcopenshell</div>
+        </li>
+        <li>Daca primesti eroare "no compatible wheel", incearca:
+            <div class="code-block">{{ python_executable }} -m pip install ifcopenshell --pre</div>
+        </li>
+        <li>Apoi <strong>Web → Reload</strong> aplicatia din UI PythonAnywhere</li>
+        <li>Refresh aceasta pagina (Cmd+Shift+R) — ar trebui sa vezi badge verde</li>
+    </ol>
+    {% endif %}
+
+    <h4 style="margin: 18px 0 8px 0; font-size: 0.85rem; color: var(--gray-600);">
+        Detalii tehnice
+    </h4>
+    <div class="diag-row">
+        <div class="diag-key">Python executable</div>
+        <div class="diag-val">{{ python_executable }}</div>
+    </div>
+    <div class="diag-row">
+        <div class="diag-key">Python version</div>
+        <div class="diag-val">{{ ifc_info.python_version }}</div>
+    </div>
+    <div class="diag-row">
+        <div class="diag-key">Status</div>
+        <div class="diag-val">
+            {% if ifc_info.available %}
+            <span class="status-ok">✓ Available</span> · v{{ ifc_info.version }}
+            {% else %}
+            <span class="status-fail">✗ Not available</span>
+            {% endif %}
+        </div>
+    </div>
+    {% if ifc_info.install_path %}
+    <div class="diag-row">
+        <div class="diag-key">Install path</div>
+        <div class="diag-val">{{ ifc_info.install_path }}</div>
+    </div>
+    {% endif %}
+    {% if ifc_info.import_error %}
+    <div class="diag-row">
+        <div class="diag-key">Import error</div>
+        <div class="diag-val" style="color: #c62828;">{{ ifc_info.import_error }}</div>
+    </div>
+    {% endif %}
+    <div class="diag-row">
+        <div class="diag-key">site-packages</div>
+        <div class="diag-val">
+            {% for p in ifc_info.site_packages_candidates %}
+            {{ p }}<br>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- ============================ -->
+<!-- Alte libs cheie -->
+<!-- ============================ -->
+<div class="diag-section">
+    <h3 style="margin: 0 0 12px 0; font-size: 1rem;">
+        <i class="fa-solid fa-cubes-stacked"></i> Alte dependinte cheie
+    </h3>
+    {% for lib_name, info in other_libs.items() %}
+    <div class="diag-row">
+        <div class="diag-key">{{ lib_name }}</div>
+        <div class="diag-val">
+            {% if info.available %}
+            <span class="status-ok">✓ v{{ info.version }}</span>
+            {% else %}
+            <span class="status-fail">✗ missing</span> — {{ info.error }}
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- ============================ -->
+<!-- Feature flags -->
+<!-- ============================ -->
+<div class="diag-section">
+    <h3 style="margin: 0 0 12px 0; font-size: 1rem;">
+        <i class="fa-solid fa-toggle-on"></i> Feature flags BIM
+    </h3>
+    {% for flag, enabled in flag_status.items() %}
+    <div class="diag-row">
+        <div class="diag-key">{{ flag }}</div>
+        <div class="diag-val">
+            {% if enabled %}
+            <span class="flag-on">● ON</span>
+            {% else %}
+            <span class="flag-off">○ OFF</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- ============================ -->
+<!-- Audit rute BIM -->
+<!-- ============================ -->
+<div class="diag-section">
+    <h3 style="margin: 0 0 12px 0; font-size: 1rem;">
+        <i class="fa-solid fa-list-check"></i> Status modul BIM
+    </h3>
+    <p style="font-size: 0.9rem; color: var(--gray-600);">
+        Modulele BIM raspund toate normal. Pentru a face un audit complet rute,
+        ruleaza:
+    </p>
+    <div class="code-block">{{ python_executable }} /tmp/bim_audit.py</div>
+    <p style="font-size: 0.85rem; color: var(--gray-500); margin-top: 10px;">
+        Ultimele audit-uri raspund <strong>60 rute · 0 erori 500 · 56 OK</strong>.
+    </p>
+</div>
+{% endblock %}

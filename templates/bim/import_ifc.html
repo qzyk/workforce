@@ -11,14 +11,35 @@
     <h2 style="margin:0 0 20px 0;"><i class="fa-solid fa-file-import" style="color:var(--primary);"></i> Import model IFC</h2>
 
     {% if not ifcopenshell_disponibil %}
-    <div class="act-warning" style="background:#FFF3E0; border-left:3px solid var(--warning); padding:14px;">
+    <div class="act-warning" style="background:#FFF3E0; border-left:3px solid var(--warning); padding:14px; margin-bottom:18px;">
         <i class="fa-solid fa-triangle-exclamation"></i>
-        <strong>ifcopenshell nu este instalat.</strong><br>
-        Pentru a activa importul IFC, instaleaza pachetul:
-        <code style="display:block; background:white; padding:6px; margin-top:6px; border-radius:4px; font-size:0.85rem;">
-            pip install ifcopenshell
+        <strong>ifcopenshell nu este instalat in acest Python environment.</strong>
+
+        <p style="margin:10px 0 6px;"><strong>Pe PythonAnywhere (cel mai frecvent caz):</strong></p>
+        <p style="margin:0 0 6px; font-size:0.88rem;">
+            App-ul ruleaza in venv-ul <code>workforce-env</code>. Trebuie sa instalezi
+            <code>ifcopenshell</code> ÎN acel venv, nu global. Comanda corecta:
+        </p>
+        <code style="display:block; background:#0B1426; color:#F5F1E8; padding:10px; margin-top:6px; border-radius:4px; font-size:0.82rem; font-family:'SF Mono',monospace; line-height:1.5;">
+            source ~/.virtualenvs/workforce-env/bin/activate<br>
+            pip install ifcopenshell<br>
+            deactivate
         </code>
-        Apoi reincarca aplicatia. Importurile pot fi facute si in mod <code>dry_run</code> pentru a testa parsarea fara salvare in DB.
+        <p style="margin:10px 0 0; font-size:0.85rem;">
+            Daca primesti eroare <em>"could not find a version that satisfies"</em>:
+        </p>
+        <code style="display:block; background:#0B1426; color:#F5F1E8; padding:8px; margin-top:4px; border-radius:4px; font-size:0.82rem; font-family:'SF Mono',monospace;">
+            ~/.virtualenvs/workforce-env/bin/pip install ifcopenshell --pre
+        </code>
+        <p style="margin:10px 0 0; font-size:0.88rem;">
+            Apoi <strong>Web → Reload</strong> aplicatia din UI PythonAnywhere si refresh aceasta pagina.
+        </p>
+
+        <p style="margin:14px 0 0; font-size:0.9rem;">
+            <i class="fa-solid fa-stethoscope" style="color:var(--primary);"></i>
+            Pentru diagnostic complet (Python executable, venv path, error message exact):
+            <a href="{{ url_for('bim.bim_diagnostics') }}" style="color:var(--primary); font-weight:600;">deschide pagina Diagnostics</a>.
+        </p>
     </div>
     {% endif %}
 

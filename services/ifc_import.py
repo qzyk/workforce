@@ -53,6 +53,36 @@ def is_available():
         return False
 
 
+def detection_info():
+    """
+    Returneaza informatii detaliate despre detectia ifcopenshell.
+    Util pentru diagnostic cand instalarea pare facuta dar lib-ul nu apare.
+    Mai ales pe PythonAnywhere unde app-ul ruleaza in venv si trebuie
+    sa instalezi pachetul exact in acel venv, nu global.
+    """
+    import sys
+    info = {
+        'python_executable': sys.executable,
+        'python_version': sys.version.split()[0],
+        'sys_path_first_5': sys.path[:5],
+        'site_packages_candidates': [p for p in sys.path if 'site-packages' in p][:3],
+        'available': False,
+        'version': None,
+        'install_path': None,
+        'import_error': None,
+    }
+    try:
+        import ifcopenshell
+        info['available'] = True
+        info['version'] = getattr(ifcopenshell, 'version', 'unknown')
+        info['install_path'] = getattr(ifcopenshell, '__file__', None)
+    except ImportError as e:
+        info['import_error'] = str(e)
+    except Exception as e:
+        info['import_error'] = f'{type(e).__name__}: {e}'
+    return info
+
+
 def import_ifc(file_path, santier_id=None, dry_run=False):
     """
     Parcurge un fisier IFC si creeaza Cladire/Nivel/Spatiu/ElementBIM in DB.

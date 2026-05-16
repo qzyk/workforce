@@ -2227,3 +2227,48 @@ def api_v1_issues():
 def api_v1_element_state(element_id):
     """Current state senzori pentru un element - protejat cu API token."""
     return jsonify(iot_query_svc.get_current_state_element(element_id))
+
+
+# ============================================================
+# DIAGNOSTICS — pagina de debug pentru env Python + dependinte BIM
+# Util cand pip install pare facut dar lib-uri nu apar (PA venv etc.)
+# ============================================================
+
+@bim_bp.route('/diagnostics')
+@login_required
+@manager_or_admin
+def bim_diagnostics():
+    """
+    Afiseaza info despre mediul Python actual + status dependinte BIM.
+    Pe PythonAnywhere ajuta sa identifici daca pip install s-a facut
+    in venv-ul corect (cel care ruleaza app-ul).
+    """
+    import sys
+    try:
+        ifc_info = ifc_service.detection_info()
+    except Exception as e:
+        ifc_info = {'error': str(e), 'available': False}
+
+    # Verific si alte lib-uri importante BIM
+    other_libs = {}
+    for lib_name in ('openpyxl', 'reportlab', 'PIL', 'pandas'):
+        try:
+            mod = __import__(lib_name)
+            other_libs[lib_name] = {
+                'available': True,
+                'version': getattr(mod, '__version__', 'unknown'),
+            }
+        except ImportError as e:
+            other_libs[lib_name] = {'available': False, 'error': str(e)}
+
+    # Feature flags status
+    flag_status = {}
+    for flag_key in ff_svc.KNOWN_FLAGS.keys():
+        flag_status[flag_key] = ff_svc.is_enabled(flag_key)
+
+    return render_template('bim/diagnostics.html',
+                           ifc_info=ifc_info,
+                           other_libs=other_libs,
+                           python_executable=sys.executable,
+                           python_version=sys.version,
+                           flag_status=flag_status)
