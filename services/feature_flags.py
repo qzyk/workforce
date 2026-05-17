@@ -58,6 +58,10 @@ KNOWN_FLAGS: dict[str, str] = {
     'bim-cobie-export': 'Export COBie',
     'bim-bcf-full': 'Import/Export BCF 2.1/3.0 complet',
     'bim-public-api': 'API publica versionata cu tokens',
+    # Faza 9 - Contract & Project Controls
+    'controale-contract': 'Modul Contract Controls (contracte, termene, oferte, situatii, revendicari, PV)',
+    'controale-contract-import-msproject': 'Activeaza import MS Project XML in programe referinta',
+    'controale-contract-notificari-email': 'Activeaza trimitere email pentru alertele de termen (in plus de in-app)',
 }
 
 

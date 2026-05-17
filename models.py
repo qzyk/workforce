@@ -2959,3 +2959,1106 @@ class ApiToken(db.Model):
         return f'<ApiToken {self.nume} owner={self.owner_id} scopes={len(self.scopes)}>'
 
 
+# ============================================================
+# FAZA 9 - CONTRACT & PROJECT CONTROLS
+#
+# Modul aditional (gated pe feature flag 'controale-contract', default OFF):
+#   A. Contract + termene contractuale + termene urmarite (alerte 30-zile)
+#   B. Program de referinta (import MS Project XML) + taskuri ierarhice
+#   C. Oferta + BoQ (deviz) + cantitati executate lunar + situatii lunare
+#      + raport lucrari lunar la nivel proiect (aggregator)
+#   D. Corespondenta + revendicari + 3 tabele M:N
+#      (revendicari_termeni / revendicari_taskuri / revendicari_cantitati)
+#   E. Procese verbale + anexe polimorfice + inbox notificari + reguli notificare
+#
+# Conventii respectate (identic cu fazele 1-8):
+#   - tenant_id nullable FK pe TOATE tabelele
+#   - data_creare + creat_de_id pe entitatile editabile
+#   - status / tip fields ca String(20-40) + class attr STATUSES/TIPURI
+#   - JSON serializat manual via Text + property (NU db.JSON)
+#   - PK Integer (NU BigInteger - SQLite safety, lectie Faza 6)
+#   - Indexes composite pentru query-uri lunare / status / scadenta
+#   - Strict aditiv: 0 ALTER pe tabele existente
+# ============================================================
+
+
+# ---- A. CONTRACT + TERMENE ----
+
+class Contract(db.Model):
+    """
+    Contract de lucrari intre beneficiar si antreprenor.
+
+    Un proiect are un contract principal (parinte_contract_id=None) si
+    optional N acte aditionale (parinte_contract_id=contract_principal.id).
+    Statusul 'activ' se aplica doar contractului in vigoare la momentul T.
+    """
+    __tablename__ = 'contracte'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)
+    parinte_contract_id = db.Column(db.Integer, db.ForeignKey('contracte.id'),
+                                    nullable=True, index=True)
+
+    nr_contract = db.Column(db.String(100), nullable=False)
+    data_semnare = db.Column(db.Date, nullable=False)
+    # Notice to Proceed pentru proiectare
+    data_inceput_referinta = db.Column(db.Date, nullable=True)
+    # Notice to Proceed pentru executie
+    data_inceput_executie = db.Column(db.Date, nullable=True)
+    data_finalizare_planificata = db.Column(db.Date, nullable=True)
+
+    valoare_totala = db.Column(db.Numeric(14, 2), nullable=True)
+    moneda = db.Column(db.String(3), nullable=False, default='RON')
+
+    beneficiar = db.Column(db.String(255), nullable=True)
+    antreprenor = db.Column(db.String(255), nullable=True)
+    obiect_contract = db.Column(db.Text, nullable=True)
+    observatii = db.Column(db.Text, nullable=True)
+
+    status = db.Column(db.String(20), nullable=False, default='activ', index=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('contracte', lazy='dynamic'))
+    parinte_contract = db.relationship('Contract', remote_side=[id],
+                                       backref=db.backref('acte_aditionale', lazy='dynamic'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    STATUSES = [
+        ('draft',      'Draft'),
+        ('activ',      'Activ'),
+        ('suspendat',  'Suspendat'),
+        ('reziliat',   'Reziliat'),
+        ('finalizat',  'Finalizat'),
+    ]
+    MONEDE = [('RON', 'Leu (RON)'), ('EUR', 'Euro (EUR)')]
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'nr_contract',
+                            name='uix_contract_nr_per_tenant'),
+        db.Index('ix_contract_proiect_status', 'proiect_id', 'status'),
+        db.Index('ix_contract_finalizare', 'data_finalizare_planificata'),
+    )
+
+    def __repr__(self):
+        return f'<Contract {self.nr_contract} proiect={self.proiect_id} {self.status}>'
+
+
+class TermenContract(db.Model):
+    """
+    Termen contractual (milestone) cu data scadenta, tip si responsabil.
+
+    Tipuri principale: proiectare, executie, predare_amplasament,
+    receptie_*, emitere_program_referinta, raspuns_notificare, altul.
+    """
+    __tablename__ = 'termeni_contract'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    contract_id = db.Column(db.Integer, db.ForeignKey('contracte.id'),
+                            nullable=False, index=True)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)  # denorm pentru query rapid
+
+    denumire = db.Column(db.String(255), nullable=False)
+    tip = db.Column(db.String(40), nullable=False, index=True)
+    descriere = db.Column(db.Text, nullable=True)
+
+    data_scadenta = db.Column(db.Date, nullable=False)
+    data_realizare = db.Column(db.Date, nullable=True)
+    zile_alerta_inainte = db.Column(db.Integer, nullable=False, default=7)
+
+    status = db.Column(db.String(20), nullable=False, default='planificat', index=True)
+    responsabil_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    contract = db.relationship('Contract',
+                               backref=db.backref('termeni', lazy='dynamic'))
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('termeni_contract', lazy='dynamic'))
+    responsabil = db.relationship('Utilizator', foreign_keys=[responsabil_id])
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    TIPURI = [
+        ('proiectare',                 'Proiectare'),
+        ('executie',                   'Executie'),
+        ('predare_amplasament',        'Predare amplasament'),
+        ('receptie_proiectare',        'Receptie proiectare'),
+        ('receptie_partiala',          'Receptie partiala'),
+        ('receptie_finala',            'Receptie finala'),
+        ('emitere_program_referinta',  'Emitere program de referinta'),
+        ('raspuns_notificare',         'Raspuns la notificare'),
+        ('altul',                      'Altul'),
+    ]
+    STATUSES = [
+        ('planificat', 'Planificat'),
+        ('in_curs',    'In curs'),
+        ('realizat',   'Realizat'),
+        ('intarziat',  'Intarziat'),
+        ('anulat',     'Anulat'),
+    ]
+
+    __table_args__ = (
+        db.Index('ix_termen_proiect_data', 'proiect_id', 'data_scadenta'),
+        db.Index('ix_termen_status_data',  'status',     'data_scadenta'),
+    )
+
+    def __repr__(self):
+        return f'<TermenContract {self.tip} {self.data_scadenta} {self.status}>'
+
+
+class TermenUrmarit(db.Model):
+    """
+    Termen generat automat de o regula (ex: 30 zile raspuns la notificare,
+    30 zile emitere program de referinta).
+
+    Polymorphic source: (entitate_sursa, id_entitate_sursa) — fara FK strict,
+    pentru a permite legarea la diverse entitati (corespondenta, revendicare,
+    contract).
+
+    Folosit de jobul APScheduler care emite NotificareApp + email cand
+    data_scadenta - zile_anticipare <= today si status='activ'.
+    """
+    __tablename__ = 'termeni_urmariti'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)
+
+    entitate_sursa = db.Column(db.String(30), nullable=False)
+    id_entitate_sursa = db.Column(db.Integer, nullable=False)
+
+    tip_regula = db.Column(db.String(40), nullable=False, index=True)
+
+    data_start = db.Column(db.Date, nullable=False)
+    data_scadenta = db.Column(db.Date, nullable=False, index=True)
+    zile_grace = db.Column(db.Integer, nullable=False, default=30)
+    zile_anticipare = db.Column(db.Integer, nullable=False, default=7)
+
+    status = db.Column(db.String(20), nullable=False, default='activ', index=True)
+    data_indeplinire = db.Column(db.Date, nullable=True)
+    note = db.Column(db.Text, nullable=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('termeni_urmariti', lazy='dynamic'))
+
+    STATUSES = [
+        ('activ',       'Activ'),
+        ('indeplinit',  'Indeplinit'),
+        ('expirat',     'Expirat'),
+        ('anulat',      'Anulat'),
+    ]
+    TIPURI_REGULA = [
+        ('raspuns_30_zile',          'Raspuns 30 zile la notificare'),
+        ('emitere_program_30_zile',  'Emitere program referinta in 30 zile'),
+        ('custom',                   'Regula custom'),
+    ]
+    ENTITATI_SURSA = [
+        ('corespondenta',  'Corespondenta'),
+        ('revendicare',    'Revendicare'),
+        ('contract',       'Contract'),
+    ]
+
+    __table_args__ = (
+        db.Index('ix_termen_urm_sursa',       'entitate_sursa', 'id_entitate_sursa'),
+        db.Index('ix_termen_urm_status_data', 'status',         'data_scadenta'),
+    )
+
+    def __repr__(self):
+        return (f'<TermenUrmarit {self.tip_regula} scadenta={self.data_scadenta} '
+                f'{self.status}>')
+
+
+# ---- B. PROGRAM DE REFERINTA + TASKURI (MS Project import) ----
+
+class ProgramReferinta(db.Model):
+    """
+    Program de referinta (graficul de executie) - versionat.
+
+    Importat din MS Project XML (sau introdus manual). O versiune e
+    'aprobata=True' la momentul T; restul raman istoric.
+    """
+    __tablename__ = 'programe_referinta'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)
+    contract_id = db.Column(db.Integer, db.ForeignKey('contracte.id'),
+                            nullable=True, index=True)
+
+    versiune = db.Column(db.Integer, nullable=False, default=1)
+    denumire = db.Column(db.String(255), nullable=False)
+
+    data_emitere = db.Column(db.Date, nullable=False)
+    data_inceput_program = db.Column(db.Date, nullable=True)
+    data_sfarsit_program = db.Column(db.Date, nullable=True)
+
+    sursa_import = db.Column(db.String(30), nullable=False, default='manual')
+    fisier_sursa_path = db.Column(db.String(500), nullable=True)
+
+    aprobat = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    aprobat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_aprobare = db.Column(db.DateTime, nullable=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('programe_referinta', lazy='dynamic'))
+    contract = db.relationship('Contract',
+                               backref=db.backref('programe_referinta', lazy='dynamic'))
+    aprobat_de = db.relationship('Utilizator', foreign_keys=[aprobat_de_id])
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    SURSE_IMPORT = [
+        ('msproject_xml', 'MS Project XML'),
+        ('msproject_mpp', 'MS Project MPP (necesita conversie XML)'),
+        ('manual',        'Introdus manual'),
+    ]
+
+    __table_args__ = (
+        db.UniqueConstraint('proiect_id', 'versiune',
+                            name='uix_program_proiect_versiune'),
+        db.Index('ix_program_proiect_aprobat', 'proiect_id', 'aprobat'),
+    )
+
+    def __repr__(self):
+        return f'<ProgramReferinta proiect={self.proiect_id} v{self.versiune}>'
+
+
+class TaskProgram(db.Model):
+    """
+    Task din programul de referinta (line item din MS Project).
+
+    Ierarhic via parinte_task_id (summary tasks). Predecesori stocati ca JSON
+    pentru a permite tipuri de dependinta (FS/SS/FF/SF) + lag.
+
+    Hook optional catre BIMTaskSchedule (Faza 5) pentru integrare 4D BIM
+    viitoare (un task program <-> N task-uri BIM la nivel de element).
+    """
+    __tablename__ = 'taskuri_program'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    program_id = db.Column(db.Integer, db.ForeignKey('programe_referinta.id'),
+                           nullable=False, index=True)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)  # denorm
+    parinte_task_id = db.Column(db.Integer, db.ForeignKey('taskuri_program.id'),
+                                nullable=True, index=True)
+
+    cod_extern = db.Column(db.String(100), nullable=True)  # UID din MS Project
+    cod_wbs = db.Column(db.String(100), nullable=True)
+    denumire = db.Column(db.String(500), nullable=False)
+    nivel_ierarhie = db.Column(db.Integer, nullable=False, default=1)
+
+    data_start_planificat = db.Column(db.Date, nullable=False)
+    data_sfarsit_planificat = db.Column(db.Date, nullable=False)
+    data_start_real = db.Column(db.Date, nullable=True)
+    data_sfarsit_real = db.Column(db.Date, nullable=True)
+
+    durata_zile = db.Column(db.Integer, nullable=True)
+    procent_realizare = db.Column(db.Numeric(5, 2), nullable=False, default=0)
+
+    tip_task = db.Column(db.String(20), nullable=False, default='task', index=True)
+    predecesori_json = db.Column(db.Text, nullable=False, default='[]')
+
+    # Hook optional catre BIMTaskSchedule (Faza 5)
+    bim_task_schedule_id = db.Column(db.Integer,
+                                     db.ForeignKey('bim_task_schedules.id'),
+                                     nullable=True, index=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    program = db.relationship('ProgramReferinta',
+                              backref=db.backref('taskuri', lazy='dynamic'))
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('taskuri_program', lazy='dynamic'))
+    parinte = db.relationship('TaskProgram', remote_side=[id],
+                              backref=db.backref('copii', lazy='dynamic'))
+
+    TIPURI_TASK = [
+        ('milestone', 'Milestone'),
+        ('summary',   'Summary task'),
+        ('task',      'Task normal'),
+    ]
+
+    __table_args__ = (
+        db.UniqueConstraint('program_id', 'cod_extern',
+                            name='uix_task_program_codext'),
+        db.Index('ix_task_program_data',    'program_id', 'data_start_planificat'),
+        db.Index('ix_task_proiect_sfarsit', 'proiect_id', 'data_sfarsit_planificat'),
+    )
+
+    @property
+    def predecesori(self) -> list:
+        """Lista predecesorilor: [{'uid_extern': str, 'tip': 'FS'|'SS'|'FF'|'SF',
+        'lag_zile': int}, ...]"""
+        import json as _json
+        try:
+            return _json.loads(self.predecesori_json or '[]')
+        except (ValueError, TypeError):
+            return []
+
+    @predecesori.setter
+    def predecesori(self, value: list):
+        import json as _json
+        self.predecesori_json = _json.dumps(list(value), ensure_ascii=False)
+
+    def __repr__(self):
+        return f'<TaskProgram {self.cod_extern or self.id} {self.denumire[:30]}>'
+
+
+# ---- C. TEHNICO-ECONOMIC (Oferta + BoQ + Cantitati + Situatii) ----
+
+class OfertaContract(db.Model):
+    """
+    Oferta tehnico-economica asociata unui contract - versionata.
+
+    Aggregate top-level cu valori totale; line items in PozitieBoQ.
+    Sursa import: eDevize (XML / ALDOC), Excel (XLSX), sau manual.
+    """
+    __tablename__ = 'oferte_contract'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    contract_id = db.Column(db.Integer, db.ForeignKey('contracte.id'),
+                            nullable=False, index=True)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)  # denorm
+
+    versiune = db.Column(db.Integer, nullable=False, default=1)
+    data_emitere = db.Column(db.Date, nullable=False)
+
+    valoare_totala = db.Column(db.Numeric(14, 2), nullable=True)
+    valoare_manopera = db.Column(db.Numeric(14, 2), nullable=True)
+    valoare_materiale = db.Column(db.Numeric(14, 2), nullable=True)
+    valoare_utilaje = db.Column(db.Numeric(14, 2), nullable=True)
+    valoare_transport = db.Column(db.Numeric(14, 2), nullable=True)
+
+    sursa_import = db.Column(db.String(30), nullable=False, default='manual')
+    fisier_sursa_path = db.Column(db.String(500), nullable=True)
+
+    aprobata = db.Column(db.Boolean, nullable=False, default=False, index=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    contract = db.relationship('Contract',
+                               backref=db.backref('oferte', lazy='dynamic'))
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('oferte_contract', lazy='dynamic'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    SURSE_IMPORT = [
+        ('edevize_xml',   'eDevize XML'),
+        ('edevize_aldoc', 'eDevize ALDOC'),
+        ('excel_xlsx',    'Excel XLSX'),
+        ('manual',        'Introdusa manual'),
+    ]
+
+    __table_args__ = (
+        db.UniqueConstraint('contract_id', 'versiune',
+                            name='uix_oferta_contract_versiune'),
+    )
+
+    def __repr__(self):
+        return f'<OfertaContract contract={self.contract_id} v{self.versiune}>'
+
+
+class PozitieBoQ(db.Model):
+    """
+    Pozitie din Bill of Quantities (deviz) - line item al unei oferte.
+
+    Ierarhic via parinte_pozitie_id (capitole / subcapitole / articole).
+    Hook optional catre BIMCostItem (Faza 5) pentru rollup BIM <-> deviz.
+    """
+    __tablename__ = 'pozitii_boq'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    oferta_id = db.Column(db.Integer, db.ForeignKey('oferte_contract.id'),
+                          nullable=False, index=True)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)  # denorm
+    parinte_pozitie_id = db.Column(db.Integer, db.ForeignKey('pozitii_boq.id'),
+                                   nullable=True, index=True)
+
+    cod_articol = db.Column(db.String(50), nullable=False)  # ex eDevize: 'CA01A1'
+    cod_capitol = db.Column(db.String(50), nullable=True)
+    denumire = db.Column(db.Text, nullable=False)
+    um = db.Column(db.String(20), nullable=False)  # mc, mp, kg, ora, buc, ...
+
+    cantitate_oferta = db.Column(db.Numeric(14, 4), nullable=False, default=0)
+    pret_unitar = db.Column(db.Numeric(14, 4), nullable=False, default=0)
+
+    valoare_materiale_unitar = db.Column(db.Numeric(14, 4), nullable=True)
+    valoare_manopera_unitar = db.Column(db.Numeric(14, 4), nullable=True)
+    valoare_utilaj_unitar = db.Column(db.Numeric(14, 4), nullable=True)
+    valoare_transport_unitar = db.Column(db.Numeric(14, 4), nullable=True)
+
+    categorie = db.Column(db.String(20), nullable=False, default='mixt', index=True)
+    ordine = db.Column(db.Integer, nullable=False, default=0)
+
+    # Hook optional catre BIMCostItem (Faza 5)
+    bim_cost_item_id = db.Column(db.Integer, db.ForeignKey('bim_cost_items.id'),
+                                 nullable=True, index=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    oferta = db.relationship('OfertaContract',
+                             backref=db.backref('pozitii', lazy='dynamic'))
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('pozitii_boq', lazy='dynamic'))
+    parinte_pozitie = db.relationship('PozitieBoQ', remote_side=[id],
+                                      backref=db.backref('subpozitii', lazy='dynamic'))
+
+    CATEGORII = [
+        ('materiale', 'Materiale'),
+        ('manopera',  'Manopera'),
+        ('utilaje',   'Utilaje'),
+        ('transport', 'Transport'),
+        ('mixt',      'Mixt (compus)'),
+    ]
+
+    __table_args__ = (
+        db.Index('ix_pozitie_oferta_ordine',  'oferta_id',  'ordine'),
+        db.Index('ix_pozitie_proiect_cod',    'proiect_id', 'cod_articol'),
+        db.Index('ix_pozitie_capitol',        'cod_capitol'),
+    )
+
+    def __repr__(self):
+        return f'<PozitieBoQ {self.cod_articol} {self.um} qty={self.cantitate_oferta}>'
+
+
+class CantitateExecutataLunara(db.Model):
+    """
+    Cantitate executata in luna X anul Y pentru o pozitie BoQ.
+
+    Validare in 2 pasi: inregistrare (operator) -> validare (manager).
+    Unic per (pozitie, an, luna) pentru a evita dublarile.
+    """
+    __tablename__ = 'cantitati_executate_lunare'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    pozitie_boq_id = db.Column(db.Integer, db.ForeignKey('pozitii_boq.id'),
+                               nullable=False, index=True)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)  # denorm
+
+    luna = db.Column(db.Integer, nullable=False)  # 1-12
+    an = db.Column(db.Integer, nullable=False)
+
+    cantitate_executata = db.Column(db.Numeric(14, 4), nullable=False, default=0)
+    valoare_calculata = db.Column(db.Numeric(14, 2), nullable=True)
+    procent_din_oferta = db.Column(db.Numeric(5, 2), nullable=True)
+
+    note = db.Column(db.Text, nullable=True)
+
+    inregistrat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_inregistrare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    validat = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    validat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_validare = db.Column(db.DateTime, nullable=True)
+
+    pozitie_boq = db.relationship('PozitieBoQ',
+                                  backref=db.backref('cantitati_lunare', lazy='dynamic'))
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('cantitati_executate_lunare', lazy='dynamic'))
+    inregistrat_de = db.relationship('Utilizator', foreign_keys=[inregistrat_de_id])
+    validat_de = db.relationship('Utilizator', foreign_keys=[validat_de_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('pozitie_boq_id', 'an', 'luna',
+                            name='uix_cantitate_pozitie_lunaan'),
+        db.Index('ix_cant_proiect_anluna', 'proiect_id', 'an', 'luna'),
+    )
+
+    def __repr__(self):
+        return (f'<CantitateExecutataLunara pozitie={self.pozitie_boq_id} '
+                f'{self.an}-{self.luna:02d} qty={self.cantitate_executata}>')
+
+
+class SituatieLunara(db.Model):
+    """
+    Situatie de lucrari lunara (valorificare cantitati + costuri).
+
+    Aggregata din CantitateExecutataLunara pentru (proiect, an, luna).
+    Exportabila ca PDF/Excel pentru beneficiar. Workflow: draft -> emisa ->
+    aprobata_beneficiar -> platita.
+    """
+    __tablename__ = 'situatii_lunare'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)
+    contract_id = db.Column(db.Integer, db.ForeignKey('contracte.id'),
+                            nullable=False, index=True)
+
+    luna = db.Column(db.Integer, nullable=False)
+    an = db.Column(db.Integer, nullable=False)
+    data_emitere = db.Column(db.Date, nullable=False, default=date.today)
+    numar_situatie = db.Column(db.String(50), nullable=True)
+
+    valoare_totala_luna = db.Column(db.Numeric(14, 2), nullable=True)
+    valoare_cumulat_la_zi = db.Column(db.Numeric(14, 2), nullable=True)
+    procent_avans_total = db.Column(db.Numeric(5, 2), nullable=True)
+
+    status = db.Column(db.String(25), nullable=False, default='draft', index=True)
+
+    fisier_export_pdf_path = db.Column(db.String(500), nullable=True)
+    fisier_export_xlsx_path = db.Column(db.String(500), nullable=True)
+
+    aprobat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_aprobare = db.Column(db.DateTime, nullable=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('situatii_lunare', lazy='dynamic'))
+    contract = db.relationship('Contract',
+                               backref=db.backref('situatii_lunare', lazy='dynamic'))
+    aprobat_de = db.relationship('Utilizator', foreign_keys=[aprobat_de_id])
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    STATUSES = [
+        ('draft',               'Draft'),
+        ('emisa',               'Emisa'),
+        ('aprobata_beneficiar', 'Aprobata de beneficiar'),
+        ('platita',             'Platita'),
+        ('respinsa',            'Respinsa'),
+    ]
+
+    __table_args__ = (
+        db.UniqueConstraint('proiect_id', 'an', 'luna',
+                            name='uix_situatie_proiect_anluna'),
+        db.Index('ix_situatie_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f'<SituatieLunara proiect={self.proiect_id} {self.an}-{self.luna:02d} {self.status}>'
+
+
+class RaportLucrariProiect(db.Model):
+    """
+    Raport lunar de lucrari la nivel de proiect (aggregator, nu duplica date).
+
+    Citeste din Pontaj (ore) + RaportActivitate (progres) + TaskProgram
+    (acoperire) pentru a sintetiza progresul lunii. Snapshot la momentul T,
+    poate fi re-generat oricand.
+    """
+    __tablename__ = 'rapoarte_lucrari_proiect'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)
+
+    luna = db.Column(db.Integer, nullable=False)
+    an = db.Column(db.Integer, nullable=False)
+    data_intocmire = db.Column(db.Date, nullable=False, default=date.today)
+
+    ore_totale_manopera = db.Column(db.Numeric(10, 2), nullable=True)
+    progres_descriere = db.Column(db.Text, nullable=True)
+    task_program_acoperite_json = db.Column(db.Text, nullable=False, default='[]')
+
+    intocmit_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('rapoarte_lucrari_proiect', lazy='dynamic'))
+    intocmit_de = db.relationship('Utilizator', foreign_keys=[intocmit_de_id])
+
+    __table_args__ = (
+        db.Index('ix_raport_lucr_proiect_anluna', 'proiect_id', 'an', 'luna'),
+    )
+
+    @property
+    def taskuri_acoperite(self) -> list:
+        """Lista UID-uri externe MS Project tratate in raportul lunar."""
+        import json as _json
+        try:
+            return _json.loads(self.task_program_acoperite_json or '[]')
+        except (ValueError, TypeError):
+            return []
+
+    @taskuri_acoperite.setter
+    def taskuri_acoperite(self, value: list):
+        import json as _json
+        self.task_program_acoperite_json = _json.dumps(list(value), ensure_ascii=False)
+
+    def __repr__(self):
+        return f'<RaportLucrariProiect proiect={self.proiect_id} {self.an}-{self.luna:02d}>'
+
+
+# ---- D. CORESPONDENTA + REVENDICARI + LEGATURI M:N ----
+
+class Corespondenta(db.Model):
+    """
+    Inregistrare corespondenta corporate per proiect.
+
+    Tip: scrisoare / email / notificare / adresa_oficiala / raspuns.
+    Subtip 'notificare_cerinte_beneficiar' + genereaza_termen=True declanseaza
+    auto-crearea unui TermenUrmarit (regula 30 zile).
+    """
+    __tablename__ = 'corespondente'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)
+    contract_id = db.Column(db.Integer, db.ForeignKey('contracte.id'),
+                            nullable=True, index=True)
+
+    numar_inregistrare = db.Column(db.String(100), nullable=False)
+    data_inregistrare = db.Column(db.Date, nullable=False)
+
+    tip = db.Column(db.String(30), nullable=False, index=True)
+    subtip = db.Column(db.String(50), nullable=True, index=True)
+    directie = db.Column(db.String(10), nullable=False, default='primita', index=True)
+
+    expeditor = db.Column(db.String(255), nullable=True)
+    destinatar = db.Column(db.String(255), nullable=True)
+    subiect = db.Column(db.String(500), nullable=True)
+    continut_text = db.Column(db.Text, nullable=True)
+    fisier_path = db.Column(db.String(500), nullable=True)
+
+    genereaza_termen = db.Column(db.Boolean, nullable=False, default=False, index=True)
+
+    raspuns_la_id = db.Column(db.Integer, db.ForeignKey('corespondente.id'),
+                              nullable=True, index=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('corespondente', lazy='dynamic'))
+    contract = db.relationship('Contract',
+                               backref=db.backref('corespondente', lazy='dynamic'))
+    raspuns_la = db.relationship('Corespondenta', remote_side=[id],
+                                 backref=db.backref('raspunsuri', lazy='dynamic'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    TIPURI = [
+        ('scrisoare',         'Scrisoare'),
+        ('email',             'Email'),
+        ('notificare',        'Notificare'),
+        ('adresa_oficiala',   'Adresa oficiala'),
+        ('raspuns',           'Raspuns'),
+    ]
+    SUBTIPURI = [
+        ('notificare_cerinte_beneficiar', 'Notificare privind cerintele beneficiarului'),
+        ('notificare_intarziere',         'Notificare intarziere'),
+        ('solicitare_clarificare',        'Solicitare clarificare'),
+        ('raspuns',                       'Raspuns'),
+        ('altul',                         'Altul'),
+    ]
+    DIRECTII = [
+        ('primita', 'Primita'),
+        ('emisa',   'Emisa'),
+    ]
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'numar_inregistrare',
+                            name='uix_coresp_nr_per_tenant'),
+        db.Index('ix_coresp_proiect_data',    'proiect_id', 'data_inregistrare'),
+        db.Index('ix_coresp_subtip_genereaza','subtip',     'genereaza_termen'),
+    )
+
+    def __repr__(self):
+        return f'<Corespondenta {self.numar_inregistrare} {self.tip} {self.directie}>'
+
+
+class Revendicare(db.Model):
+    """
+    Revendicare (Claim) - cerere de prelungire / costuri suplimentare /
+    schimbare scop / perturbare.
+
+    Se leaga M:N catre termene contractuale, taskuri program si cantitati
+    lunare (tabele revendicari_termeni / revendicari_taskuri /
+    revendicari_cantitati) pentru a permite detectia automata a conflictelor.
+    """
+    __tablename__ = 'revendicari'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)
+    contract_id = db.Column(db.Integer, db.ForeignKey('contracte.id'),
+                            nullable=False, index=True)
+
+    numar_revendicare = db.Column(db.String(100), nullable=False)
+    data_emitere = db.Column(db.Date, nullable=False)
+
+    tip = db.Column(db.String(30), nullable=False, index=True)
+    descriere = db.Column(db.Text, nullable=True)
+
+    valoare_solicitata = db.Column(db.Numeric(14, 2), nullable=True)
+    zile_prelungire_solicitate = db.Column(db.Integer, nullable=True)
+
+    status = db.Column(db.String(20), nullable=False, default='draft', index=True)
+    data_decizie = db.Column(db.Date, nullable=True)
+    motivare_decizie = db.Column(db.Text, nullable=True)
+
+    corespondenta_initiatoare_id = db.Column(db.Integer, db.ForeignKey('corespondente.id'),
+                                             nullable=True, index=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('revendicari', lazy='dynamic'))
+    contract = db.relationship('Contract',
+                               backref=db.backref('revendicari', lazy='dynamic'))
+    corespondenta_initiatoare = db.relationship('Corespondenta', foreign_keys=[corespondenta_initiatoare_id])
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    TIPURI = [
+        ('intarziere',            'Intarziere'),
+        ('schimbare_scop',        'Schimbare scop'),
+        ('perturbare',            'Perturbare'),
+        ('costuri_suplimentare',  'Costuri suplimentare'),
+        ('prelungire_termen',     'Prelungire termen'),
+    ]
+    STATUSES = [
+        ('draft',       'Draft'),
+        ('emisa',       'Emisa'),
+        ('in_analiza',  'In analiza'),
+        ('negociere',   'Negociere'),
+        ('aprobata',    'Aprobata'),
+        ('respinsa',    'Respinsa'),
+    ]
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'numar_revendicare',
+                            name='uix_revend_nr_per_tenant'),
+        db.Index('ix_revend_proiect_status', 'proiect_id', 'status'),
+        db.Index('ix_revend_emitere',        'data_emitere'),
+    )
+
+    def __repr__(self):
+        return f'<Revendicare {self.numar_revendicare} {self.tip} {self.status}>'
+
+
+class RevendicareTermen(db.Model):
+    """Legatura M:N: Revendicare <-> TermenContract."""
+    __tablename__ = 'revendicari_termeni'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    revendicare_id = db.Column(db.Integer, db.ForeignKey('revendicari.id'),
+                               nullable=False, index=True)
+    termen_contract_id = db.Column(db.Integer, db.ForeignKey('termeni_contract.id'),
+                                   nullable=False, index=True)
+
+    tip_legatura = db.Column(db.String(20), nullable=False, default='consecinta')
+    observatii = db.Column(db.Text, nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    revendicare = db.relationship('Revendicare',
+                                  backref=db.backref('legaturi_termeni', lazy='dynamic'))
+    termen = db.relationship('TermenContract',
+                             backref=db.backref('legaturi_revendicari', lazy='dynamic'))
+
+    TIPURI_LEGATURA = [
+        ('cauza',      'Cauza'),
+        ('consecinta', 'Consecinta'),
+        ('referinta',  'Referinta'),
+    ]
+
+    __table_args__ = (
+        db.UniqueConstraint('revendicare_id', 'termen_contract_id',
+                            name='uix_revend_termen'),
+    )
+
+
+class RevendicareTask(db.Model):
+    """Legatura M:N: Revendicare <-> TaskProgram (task din MS Project)."""
+    __tablename__ = 'revendicari_taskuri'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    revendicare_id = db.Column(db.Integer, db.ForeignKey('revendicari.id'),
+                               nullable=False, index=True)
+    task_program_id = db.Column(db.Integer, db.ForeignKey('taskuri_program.id'),
+                                nullable=False, index=True)
+
+    tip_legatura = db.Column(db.String(20), nullable=False, default='consecinta')
+    observatii = db.Column(db.Text, nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    revendicare = db.relationship('Revendicare',
+                                  backref=db.backref('legaturi_taskuri', lazy='dynamic'))
+    task = db.relationship('TaskProgram',
+                           backref=db.backref('legaturi_revendicari', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('revendicare_id', 'task_program_id',
+                            name='uix_revend_task'),
+    )
+
+
+class RevendicareCantitate(db.Model):
+    """Legatura M:N: Revendicare <-> CantitateExecutataLunara."""
+    __tablename__ = 'revendicari_cantitati'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    revendicare_id = db.Column(db.Integer, db.ForeignKey('revendicari.id'),
+                               nullable=False, index=True)
+    cantitate_lunara_id = db.Column(db.Integer,
+                                    db.ForeignKey('cantitati_executate_lunare.id'),
+                                    nullable=False, index=True)
+
+    observatii = db.Column(db.Text, nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    revendicare = db.relationship('Revendicare',
+                                  backref=db.backref('legaturi_cantitati', lazy='dynamic'))
+    cantitate = db.relationship('CantitateExecutataLunara',
+                                backref=db.backref('legaturi_revendicari', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('revendicare_id', 'cantitate_lunara_id',
+                            name='uix_revend_cantitate'),
+    )
+
+
+# ---- E. PROCESE VERBALE + ANEXE + NOTIFICARI ----
+
+class ProcesVerbal(db.Model):
+    """
+    Proces verbal (PV) - documente formale de receptie / predare-primire.
+
+    Tipuri: predare_amplasament, receptie_proiectare, receptie_partiala,
+    receptie_finala, altul. Template-based: generat via python-docx + reportlab
+    (Faza 14).
+    """
+    __tablename__ = 'procese_verbale'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)
+    contract_id = db.Column(db.Integer, db.ForeignKey('contracte.id'),
+                            nullable=True, index=True)
+
+    tip = db.Column(db.String(30), nullable=False, index=True)
+    numar = db.Column(db.String(100), nullable=True)
+    data_emitere = db.Column(db.Date, nullable=False)
+
+    participanti_json = db.Column(db.Text, nullable=False, default='[]')
+    obiect = db.Column(db.Text, nullable=True)
+    concluzii = db.Column(db.Text, nullable=True)
+
+    template_folosit = db.Column(db.String(100), nullable=True)
+    fisier_pdf_path = db.Column(db.String(500), nullable=True)
+    fisier_docx_path = db.Column(db.String(500), nullable=True)
+    semnat = db.Column(db.Boolean, nullable=False, default=False, index=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('procese_verbale', lazy='dynamic'))
+    contract = db.relationship('Contract',
+                               backref=db.backref('procese_verbale', lazy='dynamic'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    TIPURI = [
+        ('predare_amplasament',  'Predare-primire amplasament'),
+        ('receptie_proiectare',  'Receptie proiectare'),
+        ('receptie_partiala',    'Receptie partiala (stadiu fizic)'),
+        ('receptie_finala',      'Receptie finala'),
+        ('altul',                'Altul'),
+    ]
+
+    __table_args__ = (
+        db.Index('ix_pv_proiect_tip', 'proiect_id', 'tip'),
+        db.Index('ix_pv_emitere',     'data_emitere'),
+    )
+
+    @property
+    def participanti(self) -> list:
+        """Lista participantilor: [{'nume': str, 'functie': str, 'organizatie': str}, ...]"""
+        import json as _json
+        try:
+            return _json.loads(self.participanti_json or '[]')
+        except (ValueError, TypeError):
+            return []
+
+    @participanti.setter
+    def participanti(self, value: list):
+        import json as _json
+        self.participanti_json = _json.dumps(list(value), ensure_ascii=False)
+
+    def __repr__(self):
+        return f'<ProcesVerbal {self.tip} {self.numar or self.id} {self.data_emitere}>'
+
+
+class Anexa(db.Model):
+    """
+    Atasament polimorfic (foto santier, schita, PDF rapid).
+
+    Se leaga la diverse entitati: cantitate_executata, revendicare,
+    corespondenta, proces_verbal, task_program. Pentru fisiere "grele" cu
+    versionare (contract original, oferta originala, PV final semnat) se
+    foloseste DocumentProiect + RevizieDocument (existente).
+    """
+    __tablename__ = 'anexe'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    entitate_tinta = db.Column(db.String(30), nullable=False)
+    id_entitate_tinta = db.Column(db.Integer, nullable=False)
+
+    tip_fisier = db.Column(db.String(20), nullable=False, default='foto', index=True)
+
+    fisier_path = db.Column(db.String(500), nullable=False)
+    nume_original = db.Column(db.String(255), nullable=True)
+    dimensiune_bytes = db.Column(db.Integer, nullable=True)
+    mime_type = db.Column(db.String(100), nullable=True)
+    descriere = db.Column(db.Text, nullable=True)
+
+    incarcat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_incarcare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    incarcat_de = db.relationship('Utilizator', foreign_keys=[incarcat_de_id])
+
+    TIPURI_FISIER = [
+        ('foto',             'Fotografie'),
+        ('pdf',              'PDF'),
+        ('schita',           'Schita / desen'),
+        ('document_semnat',  'Document semnat'),
+        ('altul',            'Altul'),
+    ]
+    ENTITATI_TINTA = [
+        ('cantitate_executata', 'Cantitate executata lunara'),
+        ('revendicare',         'Revendicare'),
+        ('corespondenta',       'Corespondenta'),
+        ('proces_verbal',       'Proces verbal'),
+        ('task_program',        'Task program'),
+    ]
+
+    __table_args__ = (
+        db.Index('ix_anexa_tinta', 'entitate_tinta', 'id_entitate_tinta'),
+    )
+
+    def __repr__(self):
+        return f'<Anexa {self.tip_fisier} {self.entitate_tinta}:{self.id_entitate_tinta}>'
+
+
+class NotificareApp(db.Model):
+    """
+    Notificare in-app per utilizator (inbox bell-icon).
+
+    Generate de jobul APScheduler din TermenUrmarit, de evenimente
+    importante (Corespondenta noua, Revendicare actualizata, Situatie aprobata)
+    sau de reguli configurate.
+    """
+    __tablename__ = 'notificari_app'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    utilizator_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'),
+                              nullable=False, index=True)
+
+    tip = db.Column(db.String(40), nullable=False, index=True)
+    titlu = db.Column(db.String(255), nullable=False)
+    mesaj = db.Column(db.Text, nullable=True)
+    link_url = db.Column(db.String(500), nullable=True)
+
+    entitate_referinta = db.Column(db.String(30), nullable=True)
+    id_entitate_referinta = db.Column(db.Integer, nullable=True)
+
+    citita = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    data_citire = db.Column(db.DateTime, nullable=True)
+
+    utilizator = db.relationship('Utilizator',
+                                 backref=db.backref('notificari_app', lazy='dynamic'))
+
+    TIPURI = [
+        ('termen_apropiat',       'Termen apropiat de scadenta'),
+        ('termen_depasit',        'Termen depasit'),
+        ('revendicare_actualizata','Revendicare actualizata'),
+        ('corespondenta_noua',    'Corespondenta noua'),
+        ('situatie_aprobata',     'Situatie lunara aprobata'),
+        ('proces_verbal_emis',    'Proces verbal emis'),
+        ('generic',               'Notificare generica'),
+    ]
+
+    __table_args__ = (
+        db.Index('ix_notif_user_citita_data', 'utilizator_id', 'citita', 'data_creare'),
+    )
+
+    def __repr__(self):
+        return f'<NotificareApp user={self.utilizator_id} {self.tip} citita={self.citita}>'
+
+
+class ReguliNotificareProiect(db.Model):
+    """
+    Configurare reguli de notificare per proiect (cine primeste ce, cand).
+
+    Email destinatari ca JSON list (decuplat de Utilizator pentru emails
+    externe). Anticipare = zile inainte de scadenta cand se emite prima
+    notificare.
+    """
+    __tablename__ = 'reguli_notificare_proiect'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)
+
+    tip_eveniment = db.Column(db.String(40), nullable=False, index=True)
+    email_destinatari_json = db.Column(db.Text, nullable=False, default='[]')
+    zile_anticipare = db.Column(db.Integer, nullable=False, default=7)
+
+    email_activ = db.Column(db.Boolean, nullable=False, default=False)
+    in_app_activ = db.Column(db.Boolean, nullable=False, default=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('reguli_notificare', lazy='dynamic'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('proiect_id', 'tip_eveniment',
+                            name='uix_regula_proiect_eveniment'),
+    )
+
+    @property
+    def email_destinatari(self) -> list:
+        """Lista emails destinatari."""
+        import json as _json
+        try:
+            return _json.loads(self.email_destinatari_json or '[]')
+        except (ValueError, TypeError):
+            return []
+
+    @email_destinatari.setter
+    def email_destinatari(self, value: list):
+        import json as _json
+        self.email_destinatari_json = _json.dumps(list(value), ensure_ascii=False)
+
+    def __repr__(self):
+        return (f'<ReguliNotificareProiect proiect={self.proiect_id} '
+                f'{self.tip_eveniment} email={self.email_activ} app={self.in_app_activ}>')
+
+
