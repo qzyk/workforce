@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Editeaza') if termen else _('Adauga') }} {{ _('Termen contractual') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.lista') }}">{{ _('Contracte') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.detalii', id=contract.id) }}">{{ contract.nr_contract }}</a>
+<span>/</span>
+<span class="active">{{ _('Editeaza termen') if termen else _('Termen nou') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <h2 style="margin-bottom: 8px;">
+        <i class="fa-solid fa-{{ 'pen' if termen else 'plus' }}" style="color: var(--primary);"></i>
+        {{ _('Editeaza termen') if termen else _('Termen contractual nou') }}
+    </h2>
+    <p style="color: var(--text-muted); margin-bottom: 20px;">
+        {{ _('Contract') }}: <strong>{{ contract.nr_contract }}</strong>
+    </p>
+
+    <form method="POST" novalidate>
+        {{ form.hidden_tag() }}
+        {% if termen %}{{ form.termen_id(value=termen.id) }}{% endif %}
+
+        <div class="card-panel">
+            <div class="card-panel-body">
+                <div class="form-group">
+                    <label class="form-label">{{ _('Denumire termen') }} <span class="text-danger">*</span></label>
+                    {{ form.denumire(class_="form-control", placeholder=_('Ex. Receptie partiala etaj 3')) }}
+                    {% if form.denumire.errors %}<div class="field-error">{{ form.denumire.errors[0] }}</div>{% endif %}
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Tip termen') }} <span class="text-danger">*</span></label>
+                        {{ form.tip(class_="form-select") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Status') }} <span class="text-danger">*</span></label>
+                        {{ form.status(class_="form-select") }}
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">{{ _('Descriere') }}</label>
+                    {{ form.descriere(class_="form-control", rows="2") }}
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Data scadenta') }} <span class="text-danger">*</span></label>
+                        {{ form.data_scadenta(class_="form-control", type="date") }}
+                        {% if form.data_scadenta.errors %}<div class="field-error">{{ form.data_scadenta.errors[0] }}</div>{% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Data realizare') }}</label>
+                        {{ form.data_realizare(class_="form-control", type="date") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Zile alerta inainte') }}</label>
+                        {{ form.zile_alerta_inainte(class_="form-control", type="number", min="0", max="365") }}
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">{{ _('Responsabil') }}</label>
+                    {{ form.responsabil_id(class_="form-select") }}
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+            <a href="{{ url_for('contracte.detalii', id=contract.id) }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> {{ _('Anulare') }}
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-save"></i> {{ _('Salveaza') }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

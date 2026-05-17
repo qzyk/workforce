@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Editeaza') if pv else _('Adauga') }} {{ _('Proces verbal') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.pv_lista') }}">{{ _('Procese verbale') }}</a>
+<span>/</span>
+<span class="active">{{ _('Editeaza PV') if pv else _('PV nou') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+    <h2 style="margin-bottom: 20px;">
+        <i class="fa-solid fa-{{ 'pen' if pv else 'plus' }}" style="color: var(--primary);"></i>
+        {{ _('Editeaza PV') if pv else _('Proces verbal nou') }}
+    </h2>
+
+    <form method="POST" novalidate>
+        {{ form.hidden_tag() }}
+        {% if pv %}{{ form.pv_id(value=pv.id) }}{% endif %}
+
+        <!-- Asociere -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-link"></i> {{ _('Asociere') }}</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Proiect') }} <span class="text-danger">*</span></label>
+                        {{ form.proiect_id(class_="form-select") }}
+                        {% if form.proiect_id.errors %}<div class="field-error">{{ form.proiect_id.errors[0] }}</div>{% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Contract (optional)') }}</label>
+                        {{ form.contract_id(class_="form-select") }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Identificare -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-id-card"></i> {{ _('Identificare') }}</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Tip proces verbal') }} <span class="text-danger">*</span></label>
+                        {{ form.tip(class_="form-select") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Numar PV') }}</label>
+                        {{ form.numar(class_="form-control", placeholder="PV-2026-001") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Data emitere') }} <span class="text-danger">*</span></label>
+                        {{ form.data_emitere(class_="form-control", type="date") }}
+                        {% if form.data_emitere.errors %}<div class="field-error">{{ form.data_emitere.errors[0] }}</div>{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Continut -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-file-lines"></i> {{ _('Continut') }}</h3>
+            </div>
+            <div class="card-panel-body">
+                <div class="form-group">
+                    <label class="form-label">{{ _('Obiect') }}</label>
+                    {{ form.obiect(class_="form-control", rows="3") }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">{{ _('Concluzii') }}</label>
+                    {{ form.concluzii(class_="form-control", rows="3") }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Participanti -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-users"></i> {{ _('Participanti') }}</h3>
+            </div>
+            <div class="card-panel-body">
+                <div class="form-group">
+                    <label class="form-label">{{ _('Participanti (cate unul pe linie, format: Nume | Functie | Organizatie)') }}</label>
+                    {{ form.participanti_text(class_="form-control", rows="5",
+                                              placeholder="Ion Popescu | Diriginte santier | Beneficiar SRL\nMaria Ionescu | Sef proiect | Antreprenor SA") }}
+                    <small style="color: var(--text-muted);">
+                        {{ _('Folositi | (pipe) ca separator. Liniile goale sunt ignorate.') }}
+                    </small>
+                </div>
+
+                <div class="form-group" style="margin-top: 16px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        {{ form.semnat() }}
+                        <span>{{ _('PV semnat de toti participantii') }}</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+            <a href="{{ url_for('contracte.pv_lista') }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> {{ _('Anulare') }}
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-save"></i> {{ _('Salveaza') }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

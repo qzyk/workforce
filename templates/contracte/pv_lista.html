@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Procese verbale') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.lista') }}">{{ _('Contracte') }}</a>
+<span>/</span>
+<span class="active">{{ _('Procese verbale') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-file-signature" style="color: var(--primary);"></i>
+        {{ _('Procese verbale') }}
+    </h2>
+    <a href="{{ url_for('contracte.pv_nou') }}" class="btn btn-primary">
+        <i class="fa-solid fa-plus"></i> {{ _('PV nou') }}
+    </a>
+</div>
+
+<!-- Filtre -->
+<form method="GET" class="card-panel" style="margin-bottom: 20px; padding: 16px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end;">
+        <div class="form-group" style="margin: 0;">
+            <label class="form-label">{{ _('Tip') }}</label>
+            <select name="tip" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for cod, label in tipuri %}
+                <option value="{{ cod }}" {% if tip_filtru == cod %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin: 0;">
+            <label class="form-label">{{ _('Proiect') }}</label>
+            <select name="proiect" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for p in proiecte %}
+                <option value="{{ p.id }}" {% if proiect_filtru == p.id %}selected{% endif %}>
+                    {{ p.cod_proiect }} - {{ p.nume }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-filter"></i> {{ _('Filtreaza') }}
+            </button>
+        </div>
+    </div>
+</form>
+
+{% if pv_list %}
+<div class="card-panel">
+    <table class="table" style="width: 100%;">
+        <thead>
+            <tr style="background: var(--bg-elevated);">
+                <th style="text-align: left; padding: 12px;">{{ _('Tip') }}</th>
+                <th style="text-align: left; padding: 12px;">{{ _('Nr.') }}</th>
+                <th style="text-align: left; padding: 12px;">{{ _('Proiect') }}</th>
+                <th style="text-align: center; padding: 12px;">{{ _('Data emitere') }}</th>
+                <th style="text-align: center; padding: 12px;">{{ _('Semnat') }}</th>
+                <th style="text-align: center; padding: 12px;">{{ _('Actiuni') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for pv in pv_list %}
+            <tr style="border-top: 1px solid var(--border);">
+                <td style="padding: 12px;">
+                    <span class="badge" style="font-size: 0.75rem;">{{ pv.tip }}</span>
+                </td>
+                <td style="padding: 12px;">{{ pv.numar or '-' }}</td>
+                <td style="padding: 12px; font-size: 0.85rem;">
+                    {% if pv.proiect %}{{ pv.proiect.cod_proiect }} - {{ pv.proiect.nume }}{% endif %}
+                </td>
+                <td style="padding: 12px; text-align: center;">{{ pv.data_emitere }}</td>
+                <td style="padding: 12px; text-align: center;">
+                    {% if pv.semnat %}
+                    <i class="fa-solid fa-check-circle" style="color: var(--success);"></i>
+                    {% else %}
+                    <i class="fa-regular fa-circle" style="color: var(--text-muted);"></i>
+                    {% endif %}
+                </td>
+                <td style="padding: 12px; text-align: center;">
+                    <a href="{{ url_for('contracte.pv_editeaza', id=pv.id) }}"
+                       class="btn btn-sm btn-outline"><i class="fa-solid fa-pen"></i></a>
+                    <form method="POST" action="{{ url_for('contracte.pv_sterge', id=pv.id) }}"
+                          style="display: inline;"
+                          onsubmit="return confirm('{{ _('Sigur stergi acest PV?') }}');">
+                        <button type="submit" class="btn btn-sm btn-outline" style="color: var(--danger);">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card-panel" style="text-align: center; padding: 60px 20px;">
+    <i class="fa-solid fa-file-signature" style="font-size: 4rem; color: var(--text-muted); opacity: 0.3;"></i>
+    <h3 style="margin-top: 20px; color: var(--text-muted);">{{ _('Niciun PV gasit') }}</h3>
+    <a href="{{ url_for('contracte.pv_nou') }}" class="btn btn-primary" style="margin-top: 12px;">
+        <i class="fa-solid fa-plus"></i> {{ _('PV nou') }}
+    </a>
+</div>
+{% endif %}
+{% endblock %}

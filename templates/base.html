@@ -147,6 +147,20 @@
                     </ul>
                     {% endif %}
                 </li>
+                {% if feature_enabled('controale-contract') %}
+                <li>
+                    <a href="{{ url_for('contracte.lista') }}" class="{% if request.endpoint and request.endpoint.startswith('contracte') %}active{% endif %}">
+                        <i class="fa-solid fa-file-contract"></i>
+                        <span>{{ _('Contracte') }}</span>
+                    </a>
+                    {% if request.endpoint and request.endpoint.startswith('contracte') %}
+                    <ul class="sidebar-submenu" style="list-style:none; padding:4px 0 4px 36px; margin:0;">
+                        <li><a href="{{ url_for('contracte.lista') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-list" style="margin-right:6px; font-size:0.75rem;"></i> {{ _('Toate contractele') }}</a></li>
+                        <li><a href="{{ url_for('contracte.pv_lista') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-file-signature" style="margin-right:6px; font-size:0.75rem;"></i> {{ _('Procese verbale') }}</a></li>
+                    </ul>
+                    {% endif %}
+                </li>
+                {% endif %}
                 <li>
                     <a href="{{ url_for('masini.lista') }}" class="{% if request.endpoint and 'masini' in request.endpoint %}active{% endif %}">
                         <i class="fa-solid fa-car-side"></i>

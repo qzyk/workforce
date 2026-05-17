@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Editeaza') if contract else _('Adauga') }} {{ _('Contract') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.lista') }}">{{ _('Contracte') }}</a>
+<span>/</span>
+<span class="active">{{ _('Editeaza') if contract else _('Contract nou') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+    <h2 style="margin-bottom: 20px;">
+        <i class="fa-solid fa-{{ 'pen' if contract else 'plus' }}" style="color: var(--primary);"></i>
+        {{ _('Editeaza Contract') if contract else _('Contract nou') }}
+    </h2>
+
+    <form method="POST" novalidate>
+        {{ form.hidden_tag() }}
+        {% if contract %}
+        {{ form.contract_id(value=contract.id) }}
+        {% endif %}
+
+        <!-- Asociere -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-link"></i> {{ _('Asociere') }}</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Proiect') }} <span class="text-danger">*</span></label>
+                        {{ form.proiect_id(class_="form-select") }}
+                        {% if form.proiect_id.errors %}<div class="field-error">{{ form.proiect_id.errors[0] }}</div>{% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Contract parinte (pentru acte aditionale)') }}</label>
+                        {{ form.parinte_contract_id(class_="form-select") }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Identificare -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-id-card"></i> {{ _('Identificare') }}</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Nr. contract') }} <span class="text-danger">*</span></label>
+                        {{ form.nr_contract(class_="form-control", placeholder="C-2026-001") }}
+                        {% if form.nr_contract.errors %}<div class="field-error">{{ form.nr_contract.errors[0] }}</div>{% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Data semnare') }} <span class="text-danger">*</span></label>
+                        {{ form.data_semnare(class_="form-control", type="date") }}
+                        {% if form.data_semnare.errors %}<div class="field-error">{{ form.data_semnare.errors[0] }}</div>{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Date-cheie -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-calendar-days"></i> {{ _('Date-cheie') }}</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('NTP proiectare') }}</label>
+                        {{ form.data_inceput_referinta(class_="form-control", type="date") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('NTP executie') }}</label>
+                        {{ form.data_inceput_executie(class_="form-control", type="date") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Data finalizare planificata') }}</label>
+                        {{ form.data_finalizare_planificata(class_="form-control", type="date") }}
+                        {% if form.data_finalizare_planificata.errors %}<div class="field-error">{{ form.data_finalizare_planificata.errors[0] }}</div>{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Valori -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-coins"></i> {{ _('Valori financiare') }}</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Valoare totala') }}</label>
+                        {{ form.valoare_totala(class_="form-control", placeholder="0.00", step="0.01") }}
+                        {% if form.valoare_totala.errors %}<div class="field-error">{{ form.valoare_totala.errors[0] }}</div>{% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Moneda') }}</label>
+                        {{ form.moneda(class_="form-select") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Status') }}</label>
+                        {{ form.status(class_="form-select") }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Parti contractante -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-handshake"></i> {{ _('Parti contractante') }}</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Beneficiar') }}</label>
+                        {{ form.beneficiar(class_="form-control", placeholder=_('Numele beneficiarului')) }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Antreprenor') }}</label>
+                        {{ form.antreprenor(class_="form-control", placeholder=_('Numele antreprenorului')) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Continut -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-file-lines"></i> {{ _('Continut') }}</h3>
+            </div>
+            <div class="card-panel-body">
+                <div class="form-group">
+                    <label class="form-label">{{ _('Obiect contract') }}</label>
+                    {{ form.obiect_contract(class_="form-control", rows="3") }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">{{ _('Observatii') }}</label>
+                    {{ form.observatii(class_="form-control", rows="2") }}
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+            <a href="{{ url_for('contracte.lista') }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> {{ _('Anulare') }}
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-save"></i> {{ _('Salveaza') }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

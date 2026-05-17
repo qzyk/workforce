@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block title %}{{ contract.nr_contract }} - {{ _('Contract') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.lista') }}">{{ _('Contracte') }}</a>
+<span>/</span>
+<span class="active">{{ contract.nr_contract }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-file-contract" style="color: var(--primary);"></i>
+            {{ contract.nr_contract }}
+            {% if contract.parinte_contract %}
+            <span class="badge" style="background: var(--bg-elevated); font-size: 0.7rem; vertical-align: middle;">
+                {{ _('Act aditional la') }} {{ contract.parinte_contract.nr_contract }}
+            </span>
+            {% endif %}
+        </h2>
+        {% if contract.proiect %}
+        <div style="color: var(--text-muted); margin-top: 4px;">
+            <i class="fa-solid fa-folder"></i>
+            <a href="{{ url_for('proiecte.detalii', id=contract.proiect.id) }}"
+               style="color: var(--text-muted); text-decoration: none;">
+                {{ contract.proiect.cod_proiect }} - {{ contract.proiect.nume }}
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    <div>
+        <a href="{{ url_for('contracte.formular_editeaza', id=contract.id) }}" class="btn btn-primary">
+            <i class="fa-solid fa-pen"></i> {{ _('Editeaza') }}
+        </a>
+        <form method="POST" action="{{ url_for('contracte.sterge', id=contract.id) }}"
+              style="display: inline;"
+              onsubmit="return confirm('{{ _('Sigur stergi acest contract?') }}');">
+            <button type="submit" class="btn btn-danger">
+                <i class="fa-solid fa-trash"></i> {{ _('Sterge') }}
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Status badge mare -->
+<div style="margin-bottom: 20px;">
+    {% if contract.status == 'activ' %}
+        <span class="badge" style="background: var(--success); color: white; font-size: 0.9rem;">{{ _('Activ') }}</span>
+    {% elif contract.status == 'suspendat' %}
+        <span class="badge" style="background: var(--warning); color: white; font-size: 0.9rem;">{{ _('Suspendat') }}</span>
+    {% elif contract.status == 'reziliat' %}
+        <span class="badge" style="background: var(--danger); color: white; font-size: 0.9rem;">{{ _('Reziliat') }}</span>
+    {% elif contract.status == 'finalizat' %}
+        <span class="badge" style="background: var(--text-muted); color: white; font-size: 0.9rem;">{{ _('Finalizat') }}</span>
+    {% else %}
+        <span class="badge">{{ contract.status }}</span>
+    {% endif %}
+</div>
+
+<!-- Date contract -->
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-info-circle"></i> {{ _('Date contract') }}</h3>
+    </div>
+    <div class="card-panel-body">
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+            <div>
+                <strong>{{ _('Data semnare') }}:</strong> {{ contract.data_semnare or '-' }}
+            </div>
+            <div>
+                <strong>{{ _('Data finalizare planificata') }}:</strong> {{ contract.data_finalizare_planificata or '-' }}
+            </div>
+            <div>
+                <strong>{{ _('NTP proiectare') }}:</strong> {{ contract.data_inceput_referinta or '-' }}
+            </div>
+            <div>
+                <strong>{{ _('NTP executie') }}:</strong> {{ contract.data_inceput_executie or '-' }}
+            </div>
+            <div>
+                <strong>{{ _('Valoare totala') }}:</strong>
+                {% if contract.valoare_totala %}
+                    {{ '%.2f' | format(contract.valoare_totala) }} {{ contract.moneda }}
+                {% else %}-{% endif %}
+            </div>
+            <div>
+                <strong>{{ _('Moneda') }}:</strong> {{ contract.moneda }}
+            </div>
+            <div>
+                <strong>{{ _('Beneficiar') }}:</strong> {{ contract.beneficiar or '-' }}
+            </div>
+            <div>
+                <strong>{{ _('Antreprenor') }}:</strong> {{ contract.antreprenor or '-' }}
+            </div>
+        </div>
+        {% if contract.obiect_contract %}
+        <div style="margin-top: 16px;">
+            <strong>{{ _('Obiect contract') }}:</strong>
+            <p style="margin: 8px 0 0 0; white-space: pre-wrap;">{{ contract.obiect_contract }}</p>
+        </div>
+        {% endif %}
+        {% if contract.observatii %}
+        <div style="margin-top: 16px;">
+            <strong>{{ _('Observatii') }}:</strong>
+            <p style="margin: 8px 0 0 0; white-space: pre-wrap;">{{ contract.observatii }}</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Acte aditionale -->
+<div class="card-panel">
+    <div class="card-panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3><i class="fa-solid fa-layer-group"></i> {{ _('Acte aditionale') }} ({{ acte_aditionale|length }})</h3>
+        <a href="{{ url_for('contracte.formular_nou') }}?parinte={{ contract.id }}" class="btn btn-sm btn-outline">
+            <i class="fa-solid fa-plus"></i> {{ _('Adauga act aditional') }}
+        </a>
+    </div>
+    <div class="card-panel-body">
+        {% if acte_aditionale %}
+        <table class="table" style="width: 100%;">
+            <thead>
+                <tr><th>{{ _('Nr.') }}</th><th>{{ _('Data semnare') }}</th>
+                    <th>{{ _('Valoare') }}</th><th>{{ _('Status') }}</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for a in acte_aditionale %}
+                <tr>
+                    <td><a href="{{ url_for('contracte.detalii', id=a.id) }}">{{ a.nr_contract }}</a></td>
+                    <td>{{ a.data_semnare }}</td>
+                    <td>{% if a.valoare_totala %}{{ '%.2f' | format(a.valoare_totala) }} {{ a.moneda }}{% else %}-{% endif %}</td>
+                    <td><span class="badge">{{ a.status }}</span></td>
+                    <td><a href="{{ url_for('contracte.detalii', id=a.id) }}" class="btn btn-sm btn-outline"><i class="fa-solid fa-eye"></i></a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--text-muted); margin: 0;">{{ _('Niciun act aditional.') }}</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Termene contractuale -->
+<div class="card-panel">
+    <div class="card-panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3><i class="fa-solid fa-calendar-check"></i> {{ _('Termene contractuale') }} ({{ termene|length }})</h3>
+        <a href="{{ url_for('contracte.termen_nou', contract_id=contract.id) }}" class="btn btn-sm btn-outline">
+            <i class="fa-solid fa-plus"></i> {{ _('Adauga termen') }}
+        </a>
+    </div>
+    <div class="card-panel-body">
+        {% if termene %}
+        <table class="table" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th>{{ _('Denumire') }}</th><th>{{ _('Tip') }}</th>
+                    <th>{{ _('Data scadenta') }}</th><th>{{ _('Data realizare') }}</th>
+                    <th>{{ _('Status') }}</th><th>{{ _('Actiuni') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in termene %}
+                <tr>
+                    <td>{{ t.denumire }}</td>
+                    <td><span class="badge" style="font-size: 0.7rem;">{{ t.tip }}</span></td>
+                    <td>{{ t.data_scadenta }}</td>
+                    <td>{{ t.data_realizare or '-' }}</td>
+                    <td>
+                        {% if t.status == 'realizat' %}
+                            <span class="badge" style="background: var(--success); color: white;">{{ _('Realizat') }}</span>
+                        {% elif t.status == 'intarziat' %}
+                            <span class="badge" style="background: var(--danger); color: white;">{{ _('Intarziat') }}</span>
+                        {% elif t.status == 'in_curs' %}
+                            <span class="badge" style="background: var(--warning); color: white;">{{ _('In curs') }}</span>
+                        {% else %}
+                            <span class="badge">{{ t.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('contracte.termen_editeaza', termen_id=t.id) }}"
+                           class="btn btn-sm btn-outline"><i class="fa-solid fa-pen"></i></a>
+                        <form method="POST" action="{{ url_for('contracte.termen_sterge', termen_id=t.id) }}"
+                              style="display: inline;"
+                              onsubmit="return confirm('{{ _('Sigur stergi acest termen?') }}');">
+                            <button type="submit" class="btn btn-sm btn-outline" style="color: var(--danger);">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--text-muted); margin: 0;">{{ _('Niciun termen inregistrat.') }}</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Procese verbale -->
+<div class="card-panel">
+    <div class="card-panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3><i class="fa-solid fa-file-signature"></i> {{ _('Procese verbale') }} ({{ pv_list|length }})</h3>
+        <a href="{{ url_for('contracte.pv_nou') }}?contract_id={{ contract.id }}&proiect_id={{ contract.proiect_id }}"
+           class="btn btn-sm btn-outline">
+            <i class="fa-solid fa-plus"></i> {{ _('Adauga PV') }}
+        </a>
+    </div>
+    <div class="card-panel-body">
+        {% if pv_list %}
+        <table class="table" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th>{{ _('Tip') }}</th><th>{{ _('Nr.') }}</th>
+                    <th>{{ _('Data emitere') }}</th><th>{{ _('Semnat') }}</th>
+                    <th>{{ _('Actiuni') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pv in pv_list %}
+                <tr>
+                    <td><span class="badge" style="font-size: 0.7rem;">{{ pv.tip }}</span></td>
+                    <td>{{ pv.numar or '-' }}</td>
+                    <td>{{ pv.data_emitere }}</td>
+                    <td>
+                        {% if pv.semnat %}
+                        <i class="fa-solid fa-check-circle" style="color: var(--success);"></i>
+                        {% else %}
+                        <i class="fa-regular fa-circle" style="color: var(--text-muted);"></i>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('contracte.pv_editeaza', id=pv.id) }}"
+                           class="btn btn-sm btn-outline"><i class="fa-solid fa-pen"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--text-muted); margin: 0;">{{ _('Niciun PV asociat.') }}</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

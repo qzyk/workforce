@@ -72,6 +72,7 @@ def create_app(config_name='default'):
     from routes.masini import masini_bp
     from routes.bim import bim_bp
     from routes.tenants import tenants_bp
+    from routes.contracte import contracte_bp  # Faza 10 - gated pe flag 'controale-contract'
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -86,6 +87,7 @@ def create_app(config_name='default'):
     app.register_blueprint(masini_bp)
     app.register_blueprint(bim_bp)
     app.register_blueprint(tenants_bp)
+    app.register_blueprint(contracte_bp, url_prefix='/contracte')
 
     # --------------------------------------------------------
     # PWA ROUTES (instalare ca app native pe iOS/Android)

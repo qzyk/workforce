@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Contracte') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<span class="active">{{ _('Contracte') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-file-contract" style="color: var(--primary);"></i>
+        {{ _('Contracte') }}
+    </h2>
+    <a href="{{ url_for('contracte.formular_nou') }}" class="btn btn-primary">
+        <i class="fa-solid fa-plus"></i> {{ _('Contract nou') }}
+    </a>
+</div>
+
+<!-- Statistici rapide -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
+    <div class="card-panel" style="padding: 12px; text-align: center;">
+        <div style="font-size: 0.85rem; color: var(--text-muted);">{{ _('Active') }}</div>
+        <div style="font-size: 1.8rem; font-weight: 600; color: var(--success);">{{ total_activ }}</div>
+    </div>
+    <div class="card-panel" style="padding: 12px; text-align: center;">
+        <div style="font-size: 0.85rem; color: var(--text-muted);">{{ _('Suspendate') }}</div>
+        <div style="font-size: 1.8rem; font-weight: 600; color: var(--warning);">{{ total_suspendat }}</div>
+    </div>
+    <div class="card-panel" style="padding: 12px; text-align: center;">
+        <div style="font-size: 0.85rem; color: var(--text-muted);">{{ _('Finalizate') }}</div>
+        <div style="font-size: 1.8rem; font-weight: 600; color: var(--text-muted);">{{ total_finalizat }}</div>
+    </div>
+</div>
+
+<!-- Filtre -->
+<form method="GET" class="card-panel" style="margin-bottom: 20px; padding: 16px;">
+    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 12px; align-items: end;">
+        <div class="form-group" style="margin: 0;">
+            <label class="form-label">{{ _('Cautare') }}</label>
+            <input type="text" name="cautare" value="{{ cautare }}" class="form-control"
+                   placeholder="{{ _('Nr. contract, beneficiar, antreprenor...') }}">
+        </div>
+        <div class="form-group" style="margin: 0;">
+            <label class="form-label">{{ _('Status') }}</label>
+            <select name="status" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for cod, label in statuses %}
+                <option value="{{ cod }}" {% if status_filtru == cod %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin: 0;">
+            <label class="form-label">{{ _('Proiect') }}</label>
+            <select name="proiect" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for p in proiecte %}
+                <option value="{{ p.id }}" {% if proiect_filtru == p.id %}selected{% endif %}>
+                    {{ p.cod_proiect }} - {{ p.nume }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-filter"></i> {{ _('Filtreaza') }}
+            </button>
+        </div>
+    </div>
+</form>
+
+<!-- Lista contracte -->
+{% if contracte %}
+<div class="card-panel">
+    <table class="table" style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="background: var(--bg-elevated);">
+                <th style="text-align: left; padding: 12px;">{{ _('Nr. contract') }}</th>
+                <th style="text-align: left; padding: 12px;">{{ _('Proiect') }}</th>
+                <th style="text-align: left; padding: 12px;">{{ _('Beneficiar') }}</th>
+                <th style="text-align: right; padding: 12px;">{{ _('Valoare') }}</th>
+                <th style="text-align: center; padding: 12px;">{{ _('Data semnare') }}</th>
+                <th style="text-align: center; padding: 12px;">{{ _('Status') }}</th>
+                <th style="text-align: center; padding: 12px;">{{ _('Actiuni') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in contracte %}
+            <tr style="border-top: 1px solid var(--border);">
+                <td style="padding: 12px;">
+                    <a href="{{ url_for('contracte.detalii', id=c.id) }}"
+                       style="font-weight: 600; color: var(--primary); text-decoration: none;">
+                        {{ c.nr_contract }}
+                    </a>
+                    {% if c.acte_aditionale.count() > 0 %}
+                    <span class="badge" style="background: var(--bg-elevated); margin-left: 6px; font-size: 0.7rem;">
+                        +{{ c.acte_aditionale.count() }} {{ _('acte aditionale') }}
+                    </span>
+                    {% endif %}
+                </td>
+                <td style="padding: 12px;">
+                    {% if c.proiect %}
+                    <span style="font-size: 0.85rem;">{{ c.proiect.cod_proiect }}</span><br>
+                    <span style="font-size: 0.78rem; color: var(--text-muted);">{{ c.proiect.nume }}</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 12px; font-size: 0.85rem;">{{ c.beneficiar or '-' }}</td>
+                <td style="padding: 12px; text-align: right; font-variant-numeric: tabular-nums;">
+                    {% if c.valoare_totala %}
+                    {{ '%.2f' | format(c.valoare_totala) }} {{ c.moneda }}
+                    {% else %}-{% endif %}
+                </td>
+                <td style="padding: 12px; text-align: center; font-size: 0.85rem;">{{ c.data_semnare }}</td>
+                <td style="padding: 12px; text-align: center;">
+                    {% if c.status == 'activ' %}
+                        <span class="badge" style="background: var(--success); color: white;">{{ _('Activ') }}</span>
+                    {% elif c.status == 'suspendat' %}
+                        <span class="badge" style="background: var(--warning); color: white;">{{ _('Suspendat') }}</span>
+                    {% elif c.status == 'reziliat' %}
+                        <span class="badge" style="background: var(--danger); color: white;">{{ _('Reziliat') }}</span>
+                    {% elif c.status == 'finalizat' %}
+                        <span class="badge" style="background: var(--text-muted); color: white;">{{ _('Finalizat') }}</span>
+                    {% else %}
+                        <span class="badge">{{ c.status }}</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 12px; text-align: center;">
+                    <a href="{{ url_for('contracte.detalii', id=c.id) }}"
+                       class="btn btn-sm btn-outline" title="{{ _('Detalii') }}">
+                        <i class="fa-solid fa-eye"></i>
+                    </a>
+                    <a href="{{ url_for('contracte.formular_editeaza', id=c.id) }}"
+                       class="btn btn-sm btn-outline" title="{{ _('Editeaza') }}">
+                        <i class="fa-solid fa-pen"></i>
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card-panel" style="text-align: center; padding: 60px 20px;">
+    <i class="fa-solid fa-file-contract" style="font-size: 4rem; color: var(--text-muted); opacity: 0.3;"></i>
+    <h3 style="margin-top: 20px; color: var(--text-muted);">{{ _('Niciun contract gasit') }}</h3>
+    <p style="color: var(--text-muted);">{{ _('Creeaza primul contract pentru a porni modulul de Contract Controls.') }}</p>
+    <a href="{{ url_for('contracte.formular_nou') }}" class="btn btn-primary" style="margin-top: 12px;">
+        <i class="fa-solid fa-plus"></i> {{ _('Contract nou') }}
+    </a>
+</div>
+{% endif %}
+{% endblock %}
