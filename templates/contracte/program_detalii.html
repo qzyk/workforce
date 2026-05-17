@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Program de referinta') }} v{{ program.versiune }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.lista') }}">{{ _('Contracte') }}</a>
+<span>/</span>
+{% if program.contract %}
+<a href="{{ url_for('contracte.detalii', id=program.contract.id) }}">{{ program.contract.nr_contract }}</a>
+<span>/</span>
+{% endif %}
+<span class="active">{{ _('Program') }} v{{ program.versiune }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-diagram-project" style="color: var(--primary);"></i>
+            {{ program.denumire }}
+            <span class="badge" style="background: var(--bg-elevated); margin-left: 8px;">v{{ program.versiune }}</span>
+        </h2>
+        <div style="color: var(--text-muted); margin-top: 6px; font-size: 0.85rem;">
+            {{ _('Sursa') }}: <code>{{ program.sursa_import }}</code>
+            • {{ _('Emis') }}: {{ program.data_emitere }}
+            • {{ _('Taskuri') }}: <strong>{{ taskuri|length }}</strong>
+            {% if program.aprobat %}
+            • <span style="color: var(--success);"><i class="fa-solid fa-check"></i> {{ _('Aprobat') }}</span>
+            {% else %}
+            • <span style="color: var(--text-muted);">{{ _('Neaprobat') }}</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% if taskuri %}
+<div class="card-panel">
+    <table class="table" style="width: 100%; font-size: 0.9rem;">
+        <thead>
+            <tr style="background: var(--bg-elevated);">
+                <th style="text-align: left; padding: 10px;">WBS</th>
+                <th style="text-align: left; padding: 10px;">{{ _('Denumire') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Tip') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Start') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Finish') }}</th>
+                <th style="text-align: right; padding: 10px;">{{ _('Durata') }}</th>
+                <th style="text-align: right; padding: 10px;">{{ _('Realizare') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Pred.') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in taskuri %}
+            <tr style="border-top: 1px solid var(--border);
+                       {% if t.tip_task == 'summary' %}background: rgba(201, 169, 97, 0.05);{% endif %}">
+                <td style="padding: 8px; font-family: monospace; font-size: 0.8rem;">{{ t.cod_wbs or t.cod_extern or '-' }}</td>
+                <td style="padding: 8px; padding-left: {{ 8 + (t.nivel_ierarhie or 1) * 16 }}px;">
+                    {% if t.tip_task == 'milestone' %}
+                    <i class="fa-solid fa-diamond" style="color: var(--primary); font-size: 0.7rem;"></i>
+                    {% elif t.tip_task == 'summary' %}
+                    <strong>{{ t.denumire }}</strong>
+                    {% else %}
+                    {{ t.denumire }}
+                    {% endif %}
+                    {% if t.tip_task == 'milestone' %}{{ t.denumire }}{% endif %}
+                </td>
+                <td style="padding: 8px; text-align: center;">
+                    <span class="badge" style="font-size: 0.7rem;">{{ t.tip_task }}</span>
+                </td>
+                <td style="padding: 8px; text-align: center; font-size: 0.82rem;">{{ t.data_start_planificat }}</td>
+                <td style="padding: 8px; text-align: center; font-size: 0.82rem;">{{ t.data_sfarsit_planificat }}</td>
+                <td style="padding: 8px; text-align: right; font-variant-numeric: tabular-nums;">
+                    {% if t.durata_zile is not none %}{{ t.durata_zile }} {{ _('zile') }}{% else %}-{% endif %}
+                </td>
+                <td style="padding: 8px; text-align: right; font-variant-numeric: tabular-nums;">
+                    {% if t.procent_realizare %}{{ '%.0f'|format(t.procent_realizare) }}%{% else %}0%{% endif %}
+                </td>
+                <td style="padding: 8px; text-align: center; font-size: 0.8rem; color: var(--text-muted);">
+                    {{ t.predecesori|length }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card-panel" style="text-align: center; padding: 40px 20px;">
+    <p style="color: var(--text-muted); margin: 0;">{{ _('Niciun task in acest program.') }}</p>
+</div>
+{% endif %}
+{% endblock %}

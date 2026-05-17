@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Oferta') }} v{{ oferta.versiune }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.lista') }}">{{ _('Contracte') }}</a>
+<span>/</span>
+{% if oferta.contract %}
+<a href="{{ url_for('contracte.detalii', id=oferta.contract.id) }}">{{ oferta.contract.nr_contract }}</a>
+<span>/</span>
+{% endif %}
+<span class="active">{{ _('Oferta') }} v{{ oferta.versiune }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-file-invoice-dollar" style="color: var(--primary);"></i>
+            {{ _('Oferta') }} v{{ oferta.versiune }}
+            {% if oferta.aprobata %}
+            <span class="badge" style="background: var(--success); color: white; margin-left: 8px;">{{ _('Aprobata') }}</span>
+            {% endif %}
+        </h2>
+        <div style="color: var(--text-muted); margin-top: 6px; font-size: 0.85rem;">
+            {{ _('Sursa') }}: <code>{{ oferta.sursa_import }}</code>
+            • {{ _('Emisa') }}: {{ oferta.data_emitere }}
+            • {{ _('Pozitii') }}: <strong>{{ pozitii|length }}</strong>
+            {% if oferta.valoare_totala %}
+            • {{ _('Valoare totala') }}: <strong>{{ '%.2f'|format(oferta.valoare_totala) }} RON</strong>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Totals pe categorii -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
+    {% for categorie, val in totals.items() %}
+    {% if val > 0 %}
+    <div class="card-panel" style="padding: 12px; text-align: center;">
+        <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">{{ categorie }}</div>
+        <div style="font-size: 1.4rem; font-weight: 600; color: var(--primary); font-variant-numeric: tabular-nums;">
+            {{ '%.2f'|format(val) }}
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+
+{% if pozitii %}
+<div class="card-panel">
+    <table class="table" style="width: 100%; font-size: 0.85rem;">
+        <thead>
+            <tr style="background: var(--bg-elevated);">
+                <th style="text-align: left; padding: 10px;">{{ _('Cod articol') }}</th>
+                <th style="text-align: left; padding: 10px;">{{ _('Capitol') }}</th>
+                <th style="text-align: left; padding: 10px;">{{ _('Denumire') }}</th>
+                <th style="text-align: center; padding: 10px;">UM</th>
+                <th style="text-align: right; padding: 10px;">{{ _('Cantitate') }}</th>
+                <th style="text-align: right; padding: 10px;">{{ _('Pret unitar') }}</th>
+                <th style="text-align: right; padding: 10px;">{{ _('Valoare') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Categorie') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in pozitii %}
+            <tr style="border-top: 1px solid var(--border);">
+                <td style="padding: 8px; font-family: monospace; font-weight: 600;">{{ p.cod_articol }}</td>
+                <td style="padding: 8px; font-size: 0.78rem; color: var(--text-muted);">{{ p.cod_capitol or '-' }}</td>
+                <td style="padding: 8px;">{{ p.denumire }}</td>
+                <td style="padding: 8px; text-align: center;">{{ p.um }}</td>
+                <td style="padding: 8px; text-align: right; font-variant-numeric: tabular-nums;">{{ '%.4f'|format(p.cantitate_oferta) }}</td>
+                <td style="padding: 8px; text-align: right; font-variant-numeric: tabular-nums;">{{ '%.4f'|format(p.pret_unitar) }}</td>
+                <td style="padding: 8px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600;">
+                    {{ '%.2f'|format(p.cantitate_oferta * p.pret_unitar) }}
+                </td>
+                <td style="padding: 8px; text-align: center;">
+                    <span class="badge" style="font-size: 0.7rem;">{{ p.categorie }}</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card-panel" style="text-align: center; padding: 40px 20px;">
+    <p style="color: var(--text-muted); margin: 0;">{{ _('Nicio pozitie BoQ in aceasta oferta.') }}</p>
+</div>
+{% endif %}
+{% endblock %}

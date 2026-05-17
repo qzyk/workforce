@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Name>Proiect Test Edifico</Name>
+  <Title>Test Project pentru parser Faza 11</Title>
+  <StartDate>2025-01-01T08:00:00</StartDate>
+  <FinishDate>2025-06-30T17:00:00</FinishDate>
+  <Tasks>
+    <Task>
+      <UID>0</UID>
+      <ID>0</ID>
+      <Name>Project Summary Task</Name>
+      <OutlineLevel>0</OutlineLevel>
+      <Summary>true</Summary>
+      <Start>2025-01-01T08:00:00</Start>
+      <Finish>2025-06-30T17:00:00</Finish>
+    </Task>
+    <Task>
+      <UID>1</UID>
+      <ID>1</ID>
+      <Name>Faza proiectare</Name>
+      <Type>1</Type>
+      <WBS>1</WBS>
+      <OutlineLevel>1</OutlineLevel>
+      <Summary>true</Summary>
+      <Milestone>false</Milestone>
+      <Start>2025-01-01T08:00:00</Start>
+      <Finish>2025-02-28T17:00:00</Finish>
+      <Duration>PT480H0M0S</Duration>
+      <PercentComplete>100</PercentComplete>
+    </Task>
+    <Task>
+      <UID>2</UID>
+      <ID>2</ID>
+      <Name>Releveu si studiu de teren</Name>
+      <Type>1</Type>
+      <WBS>1.1</WBS>
+      <OutlineLevel>2</OutlineLevel>
+      <Summary>false</Summary>
+      <Milestone>false</Milestone>
+      <Start>2025-01-01T08:00:00</Start>
+      <Finish>2025-01-15T17:00:00</Finish>
+      <Duration>PT80H0M0S</Duration>
+      <PercentComplete>100</PercentComplete>
+    </Task>
+    <Task>
+      <UID>3</UID>
+      <ID>3</ID>
+      <Name>Proiect tehnic</Name>
+      <Type>1</Type>
+      <WBS>1.2</WBS>
+      <OutlineLevel>2</OutlineLevel>
+      <Summary>false</Summary>
+      <Milestone>false</Milestone>
+      <Start>2025-01-16T08:00:00</Start>
+      <Finish>2025-02-28T17:00:00</Finish>
+      <Duration>PT240H0M0S</Duration>
+      <PercentComplete>100</PercentComplete>
+      <PredecessorLink>
+        <PredecessorUID>2</PredecessorUID>
+        <Type>1</Type>
+        <LinkLag>0</LinkLag>
+      </PredecessorLink>
+    </Task>
+    <Task>
+      <UID>4</UID>
+      <ID>4</ID>
+      <Name>Faza executie</Name>
+      <Type>1</Type>
+      <WBS>2</WBS>
+      <OutlineLevel>1</OutlineLevel>
+      <Summary>true</Summary>
+      <Milestone>false</Milestone>
+      <Start>2025-03-01T08:00:00</Start>
+      <Finish>2025-06-30T17:00:00</Finish>
+      <Duration>PT960H0M0S</Duration>
+      <PercentComplete>40</PercentComplete>
+      <PredecessorLink>
+        <PredecessorUID>3</PredecessorUID>
+        <Type>1</Type>
+        <LinkLag>0</LinkLag>
+      </PredecessorLink>
+    </Task>
+    <Task>
+      <UID>5</UID>
+      <ID>5</ID>
+      <Name>Receptie finala</Name>
+      <Type>1</Type>
+      <WBS>3</WBS>
+      <OutlineLevel>1</OutlineLevel>
+      <Summary>false</Summary>
+      <Milestone>true</Milestone>
+      <Start>2025-06-30T08:00:00</Start>
+      <Finish>2025-06-30T17:00:00</Finish>
+      <Duration>PT0H0M0S</Duration>
+      <PercentComplete>0</PercentComplete>
+      <PredecessorLink>
+        <PredecessorUID>4</PredecessorUID>
+        <Type>1</Type>
+        <LinkLag>0</LinkLag>
+      </PredecessorLink>
+    </Task>
+  </Tasks>
+</Project>

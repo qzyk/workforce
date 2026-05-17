@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Oferta>
+    <Antet>
+        <Numar>OF-2025-0001</Numar>
+        <DataEmitere>2025-01-20</DataEmitere>
+        <ValoareTotala>89500.00</ValoareTotala>
+        <Moneda>RON</Moneda>
+    </Antet>
+    <Capitole>
+        <Capitol cod="CA01" denumire="Terasamente">
+            <Articole>
+                <Articol cod="CA01A1" denumire="Sapatura manuala in pamant" um="mc"
+                         cantitate="150.0000" pret_unitar="45.50" categorie="manopera">
+                    <Detalii>
+                        <ValoareManopera>30.00</ValoareManopera>
+                        <ValoareMateriale>10.00</ValoareMateriale>
+                        <ValoareUtilaj>5.50</ValoareUtilaj>
+                        <ValoareTransport>0</ValoareTransport>
+                    </Detalii>
+                </Articol>
+                <Articol cod="CA01A2" denumire="Compactare pat fundatie" um="mp"
+                         cantitate="320.0000" pret_unitar="12.75" categorie="utilaje"/>
+            </Articole>
+        </Capitol>
+        <Capitol cod="CB01" denumire="Beton armat">
+            <Articole>
+                <Articol cod="CB01A1" denumire="Beton C20/25 pereti" um="mc"
+                         cantitate="85.5000" pret_unitar="650,00" categorie="materiale"/>
+                <Articol cod="CB01A2" denumire="Cofraj metalic pereti" um="mp"
+                         cantitate="280.0000" pret_unitar="55.00" categorie="manopera"/>
+                <Articol cod="CB01A3" denumire="Armatura PC52" um="kg"
+                         cantitate="3200.000" pret_unitar="4.80" categorie="materiale"/>
+            </Articole>
+        </Capitol>
+    </Capitole>
+</Oferta>

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Import oferta') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.lista') }}">{{ _('Contracte') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.detalii', id=contract.id) }}">{{ contract.nr_contract }}</a>
+<span>/</span>
+<span class="active">{{ _('Import oferta') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <h2 style="margin-bottom: 8px;">
+        <i class="fa-solid fa-file-invoice-dollar" style="color: var(--primary);"></i>
+        {{ _('Import oferta tehnico-economica') }}
+    </h2>
+    <p style="color: var(--text-muted); margin-bottom: 20px;">
+        {{ _('Contract') }}: <strong>{{ contract.nr_contract }}</strong>
+    </p>
+
+    <div class="card-panel" style="background: rgba(201, 169, 97, 0.08); border-left: 4px solid var(--primary);">
+        <div class="card-panel-body">
+            <p style="margin: 0;">
+                <i class="fa-solid fa-info-circle" style="color: var(--primary);"></i>
+                {{ _('Suportat: eDevize XML (export ALDOC) si Excel XLSX cu structura BoQ standard.') }}
+            </p>
+            <p style="margin: 8px 0 0 0; color: var(--text-muted); font-size: 0.85rem;">
+                {{ _('Excel - coloane asteptate (rand 1 = header)') }}:
+                A=cod_articol, B=cod_capitol, C=denumire, D=um, E=cantitate, F=pret_unitar, G=categorie
+            </p>
+        </div>
+    </div>
+
+    <form method="POST" enctype="multipart/form-data" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <div class="card-panel">
+            <div class="card-panel-body">
+                <div class="form-group">
+                    <label class="form-label">{{ _('Tip parser') }}</label>
+                    <select name="tip_parser" class="form-select">
+                        <option value="auto">{{ _('Auto-detect dupa extensie') }}</option>
+                        <option value="edevize_xml">eDevize XML</option>
+                        <option value="excel_xlsx">Excel XLSX</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">{{ _('Fisier') }} <span class="text-danger">*</span></label>
+                    <input type="file" name="fisier" accept=".xml,.xlsx" class="form-control" required>
+                    <small style="color: var(--text-muted);">
+                        {{ _('Acceptat: .xml, .xlsx. Marime maxima: 25MB.') }}
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        {% if parse_result and parse_result.warnings %}
+        <div class="card-panel" style="border-left: 4px solid var(--warning);">
+            <div class="card-panel-header"><h3><i class="fa-solid fa-triangle-exclamation"></i> {{ _('Warnings parser') }} ({{ parse_result.warnings|length }})</h3></div>
+            <div class="card-panel-body">
+                <ul style="margin: 0; padding-left: 20px;">
+                    {% for w in parse_result.warnings %}
+                    <li style="color: var(--warning); font-size: 0.85rem;">{{ w }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+            <a href="{{ url_for('contracte.detalii', id=contract.id) }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> {{ _('Anulare') }}
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-upload"></i> {{ _('Importeaza') }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
