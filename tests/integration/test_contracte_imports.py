@@ -225,6 +225,36 @@ class TestOfertaImport:
             ).all()
             assert len(audits) >= 1
 
+    def test_upload_edevize_pdf(self, app, authenticated_client, flag_on, contract_f11, tmp_path):
+        """Upload PDF eDevize sintetic -> creeaza OfertaContract + PozitieBoQ-uri."""
+        from tests.fixtures.imports.build_sample_edevize_pdf import build_sample_pdf
+        from models import OfertaContract, PozitieBoQ
+        pdf_path = build_sample_pdf(str(tmp_path / 'edevize_test.pdf'))
+
+        with open(pdf_path, 'rb') as f:
+            r = authenticated_client.post(
+                f'/contracte/{contract_f11["contract_id"]}/oferta/import',
+                data={
+                    'tip_parser': 'edevize_pdf',
+                    'fisier': (f, 'deviz.pdf'),
+                },
+                content_type='multipart/form-data',
+                follow_redirects=False,
+            )
+        assert r.status_code in (302, 303), f'Status {r.status_code}, data: {r.data[:500]}'
+        with app.app_context():
+            oferte = OfertaContract.query.filter_by(
+                contract_id=contract_f11['contract_id'], sursa_import='edevize_pdf'
+            ).all()
+            assert len(oferte) == 1
+            pozitii = PozitieBoQ.query.filter_by(oferta_id=oferte[0].id).all()
+            # Fixture sintetic are 5 articole
+            assert len(pozitii) == 5
+            # Verific ca sufixele speciale sunt pastrate
+            codes = {p.cod_articol for p in pozitii}
+            assert 'CR06A%' in codes
+            assert 'CK03B02^' in codes
+
     def test_upload_excel_xlsx(self, app, authenticated_client, flag_on, contract_f11, tmp_path):
         from models import OfertaContract, PozitieBoQ
         # Construiesc XLSX inline

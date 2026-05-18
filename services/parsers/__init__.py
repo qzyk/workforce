@@ -26,10 +26,12 @@ Folosire tipica:
 from .base import Parser, ParseResult, ParseError
 from .msproject_xml_parser import MSProjectXMLParser
 from .edevize_xml_parser import EDevizeXMLParser
+from .edevize_pdf_parser import EDevizePDFParser
 from .excel_boq_parser import ExcelBoQParser
 
 
 __all__ = [
     'Parser', 'ParseResult', 'ParseError',
-    'MSProjectXMLParser', 'EDevizeXMLParser', 'ExcelBoQParser',
+    'MSProjectXMLParser', 'EDevizeXMLParser', 'EDevizePDFParser',
+    'ExcelBoQParser',
 ]

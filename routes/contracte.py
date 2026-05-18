@@ -36,12 +36,13 @@ from forms.contract_forms import (
 import services.audit as audit_svc
 from services.feature_flags import is_enabled
 from services.parsers import (
-    MSProjectXMLParser, EDevizeXMLParser, ExcelBoQParser, ParseError,
+    MSProjectXMLParser, EDevizeXMLParser, EDevizePDFParser,
+    ExcelBoQParser, ParseError,
 )
 
 
 ALLOWED_EXT_MSPROJECT = {'xml'}
-ALLOWED_EXT_OFERTA = {'xml', 'xlsx'}
+ALLOWED_EXT_OFERTA = {'xml', 'xlsx', 'pdf'}
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB hard limit per file
 
 
@@ -702,12 +703,19 @@ def oferta_import(contract_id):
                                    contract=contract)
 
         ext = file_path.rsplit('.', 1)[1].lower()
-        # Auto-detect parser
+        # Auto-detect parser dupa extensie
         if tip_parser == 'auto':
-            tip_parser = 'edevize_xml' if ext == 'xml' else 'excel_xlsx'
+            if ext == 'xml':
+                tip_parser = 'edevize_xml'
+            elif ext == 'pdf':
+                tip_parser = 'edevize_pdf'
+            else:
+                tip_parser = 'excel_xlsx'
 
         if tip_parser == 'edevize_xml':
             parser = EDevizeXMLParser()
+        elif tip_parser == 'edevize_pdf':
+            parser = EDevizePDFParser()
         elif tip_parser == 'excel_xlsx':
             parser = ExcelBoQParser()
         else:
