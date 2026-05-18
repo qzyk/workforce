@@ -290,6 +290,12 @@
                             <span>{{ badge_counts.pontaje_pending }} {{ _('pontaje in asteptare') }}</span>
                         </a>
                         {% endif %}
+                        {% if badge_counts.notif_app and badge_counts.notif_app > 0 %}
+                        <a class="notif-item notif-info" href="{{ url_for('contracte.notificari_inbox') }}">
+                            <i class="fa-solid fa-bell"></i>
+                            <span>{{ badge_counts.notif_app }} {{ _('notificari necitite') }}</span>
+                        </a>
+                        {% endif %}
                         {% if alerte_count == 0 %}
                         <div class="notif-empty">
                             <i class="fa-regular fa-bell-slash"></i>

@@ -109,6 +109,14 @@
             <a href="{{ url_for('contracte.pv_lista') }}" class="btn btn-outline">
                 <i class="fa-solid fa-xmark"></i> {{ _('Anulare') }}
             </a>
+            {% if pv %}
+            <a href="{{ url_for('contracte.pv_export_docx', id=pv.id) }}" class="btn btn-outline" target="_blank">
+                <i class="fa-solid fa-file-word"></i> {{ _('Export DOCX') }}
+            </a>
+            <a href="{{ url_for('contracte.pv_export_pdf', id=pv.id) }}" class="btn btn-outline" target="_blank">
+                <i class="fa-solid fa-file-pdf"></i> {{ _('Export PDF') }}
+            </a>
+            {% endif %}
             <button type="submit" class="btn btn-primary">
                 <i class="fa-solid fa-save"></i> {{ _('Salveaza') }}
             </button>

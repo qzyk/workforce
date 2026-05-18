@@ -221,6 +221,14 @@ def create_app(config_name='default'):
             badge_counts['masini_alerta'] = masini_alerta
 
             alerte_count = doc_expirate + masini_alerta + (badge_counts['pontaje_pending'] if current_user.is_manager else 0)
+            # Faza 14: include NotificareApp count in badge global
+            try:
+                from services.notificari_app import count_necitite
+                notif_app_count = count_necitite(current_user.id)
+                badge_counts['notif_app'] = notif_app_count
+                alerte_count += notif_app_count
+            except Exception:
+                badge_counts['notif_app'] = 0
             badge_counts['total_alerte'] = alerte_count
 
         return {
@@ -683,6 +691,28 @@ def create_app(config_name='default'):
         _incarca_tipuri_instalatii()
         _incarca_categorii_activitati()
         click.echo('[OK] Tipuri instalatii, documente proiect si categorii activitati incarcate!')
+
+    # --------------------------------------------------------
+    # COMANDA CLI: flask job-notificari (Faza 14)
+    # --------------------------------------------------------
+    @app.cli.command('job-notificari')
+    def job_notificari_command():
+        """Ruleaza manual job-ul de notificari (util pentru testing fara APScheduler)."""
+        from services.notificari_job import ruleaza_job_notificari
+        stats = ruleaza_job_notificari()
+        click.echo(f'[OK] Job notificari rulat: {stats}')
+
+    # --------------------------------------------------------
+    # APScheduler register (Faza 14)
+    # --------------------------------------------------------
+    try:
+        from services.notificari_job import init_scheduler
+        init_scheduler(app)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(
+            'APScheduler init a esuat (graceful): %s', e
+        )
 
     return app
 

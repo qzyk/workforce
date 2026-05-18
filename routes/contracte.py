@@ -46,6 +46,9 @@ from forms.revendicare_forms import (
     RevendicareForm, LinkRevendicareTermenForm, LinkRevendicareTaskForm,
     LinkRevendicareCantitateForm,
 )
+from forms.reguli_notificare_forms import (
+    ReguliNotificareForm, parse_emails_text, format_emails_text,
+)
 import services.audit as audit_svc
 from services.feature_flags import is_enabled
 from services.parsers import (
@@ -60,6 +63,11 @@ from services.termen_urmarit import (
     creeaza_termen_din_corespondenta, sterge_termen_din_corespondenta,
 )
 from services.conflict_revendicare import detecta_conflicte, numara_conflicte
+from services.notificari_app import (
+    marcheaza_citita, marcheaza_toate_citite, count_necitite, lista_notificari,
+)
+from services.pv_generator import genereaza_pv_docx, genereaza_pv_pdf
+from models import NotificareApp, ReguliNotificareProiect
 
 
 ALLOWED_EXT_MSPROJECT = {'xml'}
@@ -1778,3 +1786,199 @@ def revendicare_link_sterge(rev_id, tip, link_id):
         db.session.rollback()
         flash(f'Eroare: {e}', 'danger')
     return redirect(url_for('contracte.revendicare_detalii', id=rev_id))
+
+
+# ============================================================
+# FAZA 14 - NOTIFICARI IN-APP (inbox + mark-read)
+# ============================================================
+
+@contracte_bp.route('/notificari/inbox')
+@login_required
+def notificari_inbox():
+    """Inbox notificari pentru utilizator curent."""
+    doar_necitite = request.args.get('doar_necitite', '0') == '1'
+    notificari = lista_notificari(current_user.id, doar_necitite=doar_necitite,
+                                  limit=200)
+    return render_template('contracte/notificari_inbox.html',
+                           notificari=notificari, doar_necitite=doar_necitite,
+                           count_necitite=count_necitite(current_user.id))
+
+
+@contracte_bp.route('/notificari/<int:id>/mark-read', methods=['POST'])
+@login_required
+def notificare_mark_read(id):
+    """Marcheaza o notificare ca citita."""
+    ok = marcheaza_citita(id, current_user.id)
+    next_url = request.referrer or url_for('contracte.notificari_inbox')
+    if ok:
+        flash('Notificare marcata ca citita.', 'success')
+    return redirect(next_url)
+
+
+@contracte_bp.route('/notificari/mark-all-read', methods=['POST'])
+@login_required
+def notificari_mark_all_read():
+    """Bulk mark-as-read pentru utilizator."""
+    count = marcheaza_toate_citite(current_user.id)
+    flash(f'{count} notificari marcate ca citite.', 'info')
+    return redirect(url_for('contracte.notificari_inbox'))
+
+
+@contracte_bp.route('/notificari/count')
+@login_required
+def notificari_count():
+    """JSON cu count notificari necitite (pentru bell badge)."""
+    from flask import jsonify
+    return jsonify({'count': count_necitite(current_user.id)})
+
+
+# ============================================================
+# FAZA 14 - PV EXPORT DOCX / PDF
+# ============================================================
+
+@contracte_bp.route('/pv/<int:id>/export/docx')
+@login_required
+def pv_export_docx(id):
+    """Export DOCX pentru un ProcesVerbal."""
+    from flask import send_file
+    try:
+        path = genereaza_pv_docx(id)
+    except Exception as e:
+        flash(f'Eroare generare DOCX: {e}', 'danger')
+        return redirect(url_for('contracte.pv_lista'))
+    return send_file(
+        path, as_attachment=True,
+        download_name=os.path.basename(path),
+        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    )
+
+
+@contracte_bp.route('/pv/<int:id>/export/pdf')
+@login_required
+def pv_export_pdf(id):
+    """Export PDF pentru un ProcesVerbal."""
+    from flask import send_file
+    try:
+        path = genereaza_pv_pdf(id)
+    except Exception as e:
+        flash(f'Eroare generare PDF: {e}', 'danger')
+        return redirect(url_for('contracte.pv_lista'))
+    return send_file(path, as_attachment=True,
+                     download_name=os.path.basename(path),
+                     mimetype='application/pdf')
+
+
+# ============================================================
+# FAZA 14 - REGULI NOTIFICARE PROIECT (CRUD config)
+# ============================================================
+
+@contracte_bp.route('/proiect/<int:proiect_id>/reguli-notificare')
+@login_required
+def reguli_notificare_lista(proiect_id):
+    """Lista reguli notificare configurate pentru un proiect."""
+    proiect = Proiect.query.get_or_404(proiect_id)
+    reguli = ReguliNotificareProiect.query.filter_by(
+        proiect_id=proiect_id
+    ).order_by(ReguliNotificareProiect.tip_eveniment).all()
+    return render_template('contracte/reguli_notificare_lista.html',
+                           proiect=proiect, reguli=reguli)
+
+
+@contracte_bp.route('/proiect/<int:proiect_id>/reguli-notificare/nou',
+                    methods=['GET', 'POST'])
+@login_required
+def regula_notificare_nou(proiect_id):
+    proiect = Proiect.query.get_or_404(proiect_id)
+    form = ReguliNotificareForm()
+    if form.validate_on_submit():
+        # Verific unicitate (proiect_id, tip_eveniment)
+        existing = ReguliNotificareProiect.query.filter_by(
+            proiect_id=proiect_id, tip_eveniment=form.tip_eveniment.data
+        ).first()
+        if existing:
+            flash(f'Exista deja o regula pentru "{form.tip_eveniment.data}" '
+                  'pe acest proiect. Editeaz-o in loc.', 'warning')
+            return redirect(url_for('contracte.regula_notificare_editeaza',
+                                     id=existing.id))
+        try:
+            r = ReguliNotificareProiect(
+                proiect_id=proiect_id,
+                tip_eveniment=form.tip_eveniment.data,
+                zile_anticipare=form.zile_anticipare.data,
+                in_app_activ=bool(form.in_app_activ.data),
+                email_activ=bool(form.email_activ.data),
+                creat_de_id=current_user.id,
+            )
+            r.email_destinatari = parse_emails_text(
+                form.email_destinatari_text.data or ''
+            )
+            db.session.add(r)
+            db.session.flush()
+            audit_svc.log_create('reguli_notificare_proiect', r.id, new_values={
+                'proiect_id': proiect_id, 'tip_eveniment': r.tip_eveniment,
+                'in_app': r.in_app_activ, 'email': r.email_activ,
+            })
+            db.session.commit()
+            flash(f'Regula creata pentru evenimentul "{r.tip_eveniment}".',
+                  'success')
+            return redirect(url_for('contracte.reguli_notificare_lista',
+                                     proiect_id=proiect_id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare salvare: {e}', 'danger')
+    return render_template('contracte/reguli_notificare_formular.html',
+                           form=form, proiect=proiect, regula=None)
+
+
+@contracte_bp.route('/regula-notificare/<int:id>/editeaza',
+                    methods=['GET', 'POST'])
+@login_required
+def regula_notificare_editeaza(id):
+    r = ReguliNotificareProiect.query.get_or_404(id)
+    form = ReguliNotificareForm(obj=r)
+    if request.method == 'GET':
+        form.regula_id.data = r.id
+        form.email_destinatari_text.data = format_emails_text(r.email_destinatari)
+
+    if form.validate_on_submit():
+        try:
+            audit_fields = ['tip_eveniment', 'zile_anticipare', 'in_app_activ',
+                            'email_activ']
+            before = audit_svc.snapshot(r, audit_fields)
+            r.tip_eveniment = form.tip_eveniment.data
+            r.zile_anticipare = form.zile_anticipare.data
+            r.in_app_activ = bool(form.in_app_activ.data)
+            r.email_activ = bool(form.email_activ.data)
+            r.email_destinatari = parse_emails_text(
+                form.email_destinatari_text.data or ''
+            )
+            audit_svc.log_update('reguli_notificare_proiect', r.id, before,
+                                 audit_svc.snapshot(r, audit_fields))
+            db.session.commit()
+            flash('Regula actualizata.', 'success')
+            return redirect(url_for('contracte.reguli_notificare_lista',
+                                     proiect_id=r.proiect_id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare salvare: {e}', 'danger')
+    return render_template('contracte/reguli_notificare_formular.html',
+                           form=form, proiect=r.proiect, regula=r)
+
+
+@contracte_bp.route('/regula-notificare/<int:id>/sterge', methods=['POST'])
+@login_required
+def regula_notificare_sterge(id):
+    r = ReguliNotificareProiect.query.get_or_404(id)
+    proiect_id = r.proiect_id
+    try:
+        audit_svc.log_delete('reguli_notificare_proiect', r.id, old_values={
+            'proiect_id': proiect_id, 'tip_eveniment': r.tip_eveniment,
+        })
+        db.session.delete(r)
+        db.session.commit()
+        flash('Regula stearsa.', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare: {e}', 'danger')
+    return redirect(url_for('contracte.reguli_notificare_lista',
+                             proiect_id=proiect_id))

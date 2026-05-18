@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Editeaza regula') if regula else _('Regula noua') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.detalii', id=proiect.id) }}">{{ proiect.cod_proiect }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.reguli_notificare_lista', proiect_id=proiect.id) }}">{{ _('Reguli notificare') }}</a>
+<span>/</span>
+<span class="active">{{ _('Editeaza') if regula else _('Noua') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 700px; margin: 0 auto;">
+    <h2 style="margin-bottom: 20px;">
+        <i class="fa-solid fa-{{ 'pen' if regula else 'plus' }}" style="color: var(--primary);"></i>
+        {{ _('Editeaza regula notificare') if regula else _('Regula notificare noua') }}
+    </h2>
+
+    <form method="POST" novalidate>
+        {{ form.hidden_tag() }}
+        {% if regula %}{{ form.regula_id(value=regula.id) }}{% endif %}
+
+        <div class="card-panel">
+            <div class="card-panel-body">
+                <div class="form-group">
+                    <label class="form-label">{{ _('Tip eveniment') }} <span class="text-danger">*</span></label>
+                    {{ form.tip_eveniment(class_="form-select") }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">{{ _('Zile anticipare') }} <span class="text-danger">*</span></label>
+                    {{ form.zile_anticipare(class_="form-control", type="number", min="0", max="365") }}
+                    <small style="color: var(--text-muted);">
+                        {{ _('Cu cate zile inainte de scadenta se trimite notificarea. Default 7.') }}
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        {{ form.in_app_activ() }}
+                        <span><i class="fa-solid fa-bell" style="color: var(--primary);"></i> {{ _('Notificari in-app active') }}</span>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        {{ form.email_activ() }}
+                        <span><i class="fa-solid fa-envelope" style="color: var(--primary);"></i> {{ _('Trimite email') }}</span>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">{{ _('Emails destinatari (cate unul pe linie)') }}</label>
+                    {{ form.email_destinatari_text(class_="form-control", rows="4",
+                                                   placeholder="manager@firma.ro&#10;sef@firma.ro&#10;director@firma.ro") }}
+                    <small style="color: var(--text-muted);">
+                        {{ _('Doar daca email trimitere e activ. Cate unul pe linie.') }}
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+            <a href="{{ url_for('contracte.reguli_notificare_lista', proiect_id=proiect.id) }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> {{ _('Anulare') }}
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-save"></i> {{ _('Salveaza') }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

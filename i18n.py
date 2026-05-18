@@ -678,6 +678,41 @@ TRANSLATIONS = {
     'Adauga legatura cu Task program': {'en': 'Add link to Program task'},
     'Adauga legatura cu Cantitate executata': {'en': 'Add link to Executed quantity'},
     'Observatii': {'en': 'Notes'},
+
+    # === Faza 14 - Notificari + PV templating ===
+    'Notificari': {'en': 'Notifications'},
+    'notificari necitite': {'en': 'unread notifications'},
+    'necitite': {'en': 'unread'},
+    'Marcheaza toate citite': {'en': 'Mark all read'},
+    'Marcheaza citita': {'en': 'Mark as read'},
+    'Notificare marcata ca citita.': {'en': 'Notification marked as read.'},
+    'Doar necitite': {'en': 'Only unread'},
+    'Vezi toate': {'en': 'See all'},
+    'Inbox gol': {'en': 'Empty inbox'},
+    'Nicio notificare necitita': {'en': 'No unread notifications'},
+    'NEW': {'en': 'NEW'},
+    'Reguli notificare': {'en': 'Notification rules'},
+    'Regula notificare noua': {'en': 'New notification rule'},
+    'Editeaza regula notificare': {'en': 'Edit notification rule'},
+    'Regula noua': {'en': 'New rule'},
+    'Sterge aceasta regula?': {'en': 'Delete this rule?'},
+    'Nicio regula configurata': {'en': 'No rule configured'},
+    'Configureaza reguli per tip de eveniment pentru a primi notificari in-app sau pe email.':
+        {'en': 'Configure rules per event type to receive in-app or email notifications.'},
+    'Tip eveniment': {'en': 'Event type'},
+    'Zile anticipare': {'en': 'Days anticipation'},
+    'Cu cate zile inainte de scadenta se trimite notificarea. Default 7.':
+        {'en': 'How many days before due date the notification is sent. Default 7.'},
+    'In-app': {'en': 'In-app'},
+    'Email': {'en': 'Email'},
+    'Trimite email': {'en': 'Send email'},
+    'Notificari in-app active': {'en': 'In-app notifications active'},
+    'Destinatari': {'en': 'Recipients'},
+    'Emails destinatari (cate unul pe linie)': {'en': 'Recipient emails (one per line)'},
+    'Doar daca email trimitere e activ. Cate unul pe linie.':
+        {'en': 'Only if email sending is active. One per line.'},
+    'Export DOCX': {'en': 'Export DOCX'},
+    'Export PDF': {'en': 'Export PDF'},
 }
 
 

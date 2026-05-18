@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Notificari') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<span class="active">{{ _('Notificari') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-bell" style="color: var(--primary);"></i>
+        {{ _('Notificari') }}
+        {% if count_necitite > 0 %}
+        <span class="badge" style="background: var(--danger); color: white; margin-left: 8px;">{{ count_necitite }} {{ _('necitite') }}</span>
+        {% endif %}
+    </h2>
+    <div style="display: flex; gap: 8px;">
+        <a href="?doar_necitite={{ '0' if doar_necitite else '1' }}" class="btn btn-outline">
+            {% if doar_necitite %}<i class="fa-solid fa-eye"></i> {{ _('Vezi toate') }}
+            {% else %}<i class="fa-solid fa-filter"></i> {{ _('Doar necitite') }}{% endif %}
+        </a>
+        {% if count_necitite > 0 %}
+        <form method="POST" action="{{ url_for('contracte.notificari_mark_all_read') }}" style="display:inline;">
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-check-double"></i> {{ _('Marcheaza toate citite') }}
+            </button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+{% if notificari %}
+<div class="card-panel" style="padding: 0;">
+    {% for n in notificari %}
+    <div style="padding: 14px 16px; border-bottom: 1px solid var(--border);
+                {% if not n.citita %}background: rgba(201, 169, 97, 0.06);{% endif %}">
+        <div style="display: flex; justify-content: space-between; align-items: start; gap: 16px;">
+            <div style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    {% if n.tip == 'termen_apropiat' %}<i class="fa-solid fa-bell" style="color: var(--warning);"></i>
+                    {% elif n.tip == 'termen_depasit' %}<i class="fa-solid fa-triangle-exclamation" style="color: var(--danger);"></i>
+                    {% elif n.tip == 'corespondenta_noua' %}<i class="fa-solid fa-envelope" style="color: var(--primary);"></i>
+                    {% elif n.tip == 'revendicare_actualizata' %}<i class="fa-solid fa-gavel" style="color: var(--primary);"></i>
+                    {% elif n.tip == 'situatie_aprobata' %}<i class="fa-solid fa-check-circle" style="color: var(--success);"></i>
+                    {% elif n.tip == 'proces_verbal_emis' %}<i class="fa-solid fa-file-signature" style="color: var(--primary);"></i>
+                    {% else %}<i class="fa-solid fa-circle-info" style="color: var(--text-muted);"></i>{% endif %}
+                    <strong>{{ n.titlu }}</strong>
+                    {% if not n.citita %}<span class="badge" style="background: var(--primary); color: white; font-size: 0.7rem;">{{ _('NEW') }}</span>{% endif %}
+                </div>
+                {% if n.mesaj %}
+                <div style="margin-top: 6px; color: var(--text-muted); font-size: 0.85rem; white-space: pre-wrap;">{{ n.mesaj }}</div>
+                {% endif %}
+                <div style="margin-top: 6px; color: var(--text-muted); font-size: 0.75rem;">
+                    {{ n.data_creare.strftime('%Y-%m-%d %H:%M') }}
+                    {% if n.entitate_referinta %} • <code>{{ n.entitate_referinta }}#{{ n.id_entitate_referinta }}</code>{% endif %}
+                </div>
+            </div>
+            <div style="display: flex; gap: 6px; flex-shrink: 0;">
+                {% if n.link_url %}
+                <a href="{{ n.link_url }}" class="btn btn-sm btn-outline"><i class="fa-solid fa-arrow-right"></i></a>
+                {% endif %}
+                {% if not n.citita %}
+                <form method="POST" action="{{ url_for('contracte.notificare_mark_read', id=n.id) }}" style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-outline" title="{{ _('Marcheaza citita') }}">
+                        <i class="fa-solid fa-check"></i>
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card-panel" style="text-align: center; padding: 60px 20px;">
+    <i class="fa-solid fa-bell-slash" style="font-size: 4rem; color: var(--text-muted); opacity: 0.3;"></i>
+    <h3 style="margin-top: 20px; color: var(--text-muted);">
+        {% if doar_necitite %}{{ _('Nicio notificare necitita') }}{% else %}{{ _('Inbox gol') }}{% endif %}
+    </h3>
+</div>
+{% endif %}
+{% endblock %}
