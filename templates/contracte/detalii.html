@@ -39,6 +39,12 @@
         <a href="{{ url_for('contracte.rapoarte_lucrari_lista', proiect_id=contract.proiect.id) }}" class="btn btn-outline">
             <i class="fa-solid fa-clipboard-check"></i> {{ _('Rapoarte lunare') }}
         </a>
+        <a href="{{ url_for('contracte.corespondenta_lista') }}?proiect={{ contract.proiect.id }}" class="btn btn-outline">
+            <i class="fa-solid fa-envelopes-bulk"></i> {{ _('Corespondenta') }}
+        </a>
+        <a href="{{ url_for('contracte.revendicari_lista') }}?proiect={{ contract.proiect.id }}" class="btn btn-outline">
+            <i class="fa-solid fa-gavel"></i> {{ _('Revendicari') }}
+        </a>
         {% endif %}
         <a href="{{ url_for('contracte.formular_editeaza', id=contract.id) }}" class="btn btn-primary">
             <i class="fa-solid fa-pen"></i> {{ _('Editeaza') }}

@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Editeaza') if corespondenta else _('Adauga') }} {{ _('Corespondenta') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.corespondenta_lista') }}">{{ _('Corespondenta') }}</a>
+<span>/</span>
+<span class="active">{{ _('Editeaza') if corespondenta else _('Inregistrare noua') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+    <h2 style="margin-bottom: 20px;">
+        <i class="fa-solid fa-{{ 'pen' if corespondenta else 'plus' }}" style="color: var(--primary);"></i>
+        {{ _('Editeaza corespondenta') if corespondenta else _('Inregistrare corespondenta noua') }}
+    </h2>
+
+    <form method="POST" novalidate>
+        {{ form.hidden_tag() }}
+        {% if corespondenta %}{{ form.corespondenta_id(value=corespondenta.id) }}{% endif %}
+
+        <!-- Asociere -->
+        <div class="card-panel">
+            <div class="card-panel-header"><h3><i class="fa-solid fa-link"></i> {{ _('Asociere') }}</h3></div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Proiect') }} <span class="text-danger">*</span></label>
+                        {{ form.proiect_id(class_="form-select") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Contract (optional)') }}</label>
+                        {{ form.contract_id(class_="form-select") }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Identificare -->
+        <div class="card-panel">
+            <div class="card-panel-header"><h3><i class="fa-solid fa-id-card"></i> {{ _('Identificare') }}</h3></div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Numar inregistrare') }} <span class="text-danger">*</span></label>
+                        {{ form.numar_inregistrare(class_="form-control", placeholder="COR-2026-001") }}
+                        {% if form.numar_inregistrare.errors %}<div class="field-error">{{ form.numar_inregistrare.errors[0] }}</div>{% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Data inregistrare') }} <span class="text-danger">*</span></label>
+                        {{ form.data_inregistrare(class_="form-control", type="date") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Tip') }}</label>
+                        {{ form.tip(class_="form-select") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Directie') }}</label>
+                        {{ form.directie(class_="form-select") }}
+                    </div>
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label class="form-label">{{ _('Subtip') }}</label>
+                        {{ form.subtip(class_="form-select") }}
+                        <small style="color: var(--text-muted);">{{ _('Cu "notificare_cerinte_beneficiar" + checkbox-ul de mai jos -> termen automat 30 zile.') }}</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Parti contractante -->
+        <div class="card-panel">
+            <div class="card-panel-header"><h3><i class="fa-solid fa-people-arrows"></i> {{ _('Parti') }}</h3></div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Expeditor') }}</label>
+                        {{ form.expeditor(class_="form-control") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Destinatar') }}</label>
+                        {{ form.destinatar(class_="form-control") }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Continut -->
+        <div class="card-panel">
+            <div class="card-panel-header"><h3><i class="fa-solid fa-file-lines"></i> {{ _('Continut') }}</h3></div>
+            <div class="card-panel-body">
+                <div class="form-group">
+                    <label class="form-label">{{ _('Subiect') }}</label>
+                    {{ form.subiect(class_="form-control") }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">{{ _('Continut text') }}</label>
+                    {{ form.continut_text(class_="form-control", rows="5") }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Legaturi -->
+        <div class="card-panel">
+            <div class="card-panel-header"><h3><i class="fa-solid fa-reply"></i> {{ _('Legaturi') }}</h3></div>
+            <div class="card-panel-body">
+                <div class="form-group">
+                    <label class="form-label">{{ _('Raspuns la (corespondenta anterioara)') }}</label>
+                    {{ form.raspuns_la_id(class_="form-select") }}
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        {{ form.genereaza_termen() }}
+                        <span>
+                            <i class="fa-solid fa-bell" style="color: var(--warning);"></i>
+                            {{ _('Genereaza termen 30 zile (regula notificare)') }}
+                        </span>
+                    </label>
+                    <small style="color: var(--text-muted); margin-left: 24px; display: block;">
+                        {{ _('Bifeaza pentru notificarile beneficiarului care impun raspuns in 30 zile. Sistemul va crea automat un TermenUrmarit cu data scadenta.') }}
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+            <a href="{{ url_for('contracte.corespondenta_lista') }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> {{ _('Anulare') }}
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-save"></i> {{ _('Salveaza') }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

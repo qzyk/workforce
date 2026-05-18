@@ -29,6 +29,8 @@ from models import (
     db, Proiect, Contract, TermenContract, ProcesVerbal, Utilizator,
     ProgramReferinta, TaskProgram, OfertaContract, PozitieBoQ,
     CantitateExecutataLunara, SituatieLunara, RaportLucrariProiect,
+    Corespondenta, Revendicare, RevendicareTermen, RevendicareTask,
+    RevendicareCantitate, TermenUrmarit,
 )
 from forms.contract_forms import (
     ContractForm, TermenContractForm, ProcesVerbalForm,
@@ -38,6 +40,11 @@ from forms.cantitate_forms import CantitateLunaraForm, parse_bulk_cantitati
 from forms.situatie_forms import (
     SituatieLunaraForm, SchimbaStatusSituatieForm, RaportLucrariForm,
     LUNI_CHOICES,
+)
+from forms.corespondenta_forms import CorespondentaForm
+from forms.revendicare_forms import (
+    RevendicareForm, LinkRevendicareTermenForm, LinkRevendicareTaskForm,
+    LinkRevendicareCantitateForm,
 )
 import services.audit as audit_svc
 from services.feature_flags import is_enabled
@@ -49,6 +56,10 @@ from services.situatii import (
     genereaza_situatie, export_situatie_xlsx, export_situatie_pdf, LUNI_RO,
 )
 from services.rapoarte_lucrari import genereaza_raport_lucrari
+from services.termen_urmarit import (
+    creeaza_termen_din_corespondenta, sterge_termen_din_corespondenta,
+)
+from services.conflict_revendicare import detecta_conflicte, numara_conflicte
 
 
 ALLOWED_EXT_MSPROJECT = {'xml'}
@@ -1254,3 +1265,516 @@ def raport_lucrari_detalii(raport_id):
     return render_template('contracte/raport_lucrari_detalii.html',
                            raport=raport, luna_text=LUNI_RO.get(raport.luna, raport.luna),
                            taskuri_details=taskuri_acoperite_details)
+
+
+# ============================================================
+# FAZA 13 - CORESPONDENTA (registru per proiect)
+# ============================================================
+
+@contracte_bp.route('/corespondenta')
+@login_required
+def corespondenta_lista():
+    """Lista corespondenta (toate proiectele, filtrabila)."""
+    proiect_filtru = request.args.get('proiect', type=int)
+    tip_filtru = (request.args.get('tip') or '').strip()
+    subtip_filtru = (request.args.get('subtip') or '').strip()
+    directie_filtru = (request.args.get('directie') or '').strip()
+    cautare = (request.args.get('cautare') or '').strip()
+    page = request.args.get('page', 1, type=int)
+
+    query = Corespondenta.query
+    if proiect_filtru:
+        query = query.filter_by(proiect_id=proiect_filtru)
+    if tip_filtru:
+        query = query.filter_by(tip=tip_filtru)
+    if subtip_filtru:
+        query = query.filter_by(subtip=subtip_filtru)
+    if directie_filtru:
+        query = query.filter_by(directie=directie_filtru)
+    if cautare:
+        query = query.filter(
+            db.or_(
+                Corespondenta.numar_inregistrare.ilike(f'%{cautare}%'),
+                Corespondenta.subiect.ilike(f'%{cautare}%'),
+                Corespondenta.expeditor.ilike(f'%{cautare}%'),
+                Corespondenta.destinatar.ilike(f'%{cautare}%'),
+            )
+        )
+    pagination = query.order_by(Corespondenta.data_inregistrare.desc()) \
+        .paginate(page=page, per_page=30, error_out=False)
+
+    proiecte_pentru_filtru = Proiect.query.order_by(Proiect.cod_proiect).all()
+    return render_template(
+        'contracte/corespondenta_lista.html',
+        corespondente=pagination.items, pagination=pagination,
+        proiecte=proiecte_pentru_filtru,
+        tipuri=Corespondenta.TIPURI, subtipuri=Corespondenta.SUBTIPURI,
+        directii=Corespondenta.DIRECTII,
+        proiect_filtru=proiect_filtru, tip_filtru=tip_filtru,
+        subtip_filtru=subtip_filtru, directie_filtru=directie_filtru,
+        cautare=cautare,
+    )
+
+
+@contracte_bp.route('/corespondenta/nou', methods=['GET', 'POST'])
+@login_required
+def corespondenta_nou():
+    form = CorespondentaForm()
+    preset_proiect = request.args.get('proiect_id', type=int)
+    preset_contract = request.args.get('contract_id', type=int)
+    if request.method == 'GET':
+        if preset_proiect:
+            form.proiect_id.data = preset_proiect
+            form.populeaza_raspuns_la(preset_proiect)
+        if preset_contract:
+            form.contract_id.data = preset_contract
+
+    if request.method == 'POST' and form.proiect_id.data:
+        form.populeaza_raspuns_la(form.proiect_id.data)
+
+    if form.validate_on_submit():
+        try:
+            contract_id = form.contract_id.data or None
+            if contract_id == 0:
+                contract_id = None
+            raspuns_la_id = form.raspuns_la_id.data or None
+            if raspuns_la_id == 0:
+                raspuns_la_id = None
+            c = Corespondenta(
+                proiect_id=form.proiect_id.data,
+                contract_id=contract_id,
+                numar_inregistrare=form.numar_inregistrare.data.strip(),
+                data_inregistrare=form.data_inregistrare.data,
+                tip=form.tip.data,
+                subtip=(form.subtip.data or '').strip() or None,
+                directie=form.directie.data,
+                expeditor=(form.expeditor.data or '').strip() or None,
+                destinatar=(form.destinatar.data or '').strip() or None,
+                subiect=(form.subiect.data or '').strip() or None,
+                continut_text=form.continut_text.data or None,
+                raspuns_la_id=raspuns_la_id,
+                genereaza_termen=bool(form.genereaza_termen.data),
+                creat_de_id=current_user.id,
+            )
+            db.session.add(c)
+            db.session.flush()
+            # Hook auto: creare TermenUrmarit daca genereaza_termen=True
+            termen_creat = None
+            if c.genereaza_termen:
+                termen_creat = creeaza_termen_din_corespondenta(c, current_user.id)
+            audit_svc.log_create('corespondenta', c.id, new_values={
+                'proiect_id': c.proiect_id, 'tip': c.tip,
+                'subtip': c.subtip, 'directie': c.directie,
+                'numar_inregistrare': c.numar_inregistrare,
+            })
+            db.session.commit()
+            msg = f'Corespondenta "{c.numar_inregistrare}" inregistrata.'
+            if termen_creat:
+                msg += (f' Termen 30 zile creat automat '
+                        f'(scadenta {termen_creat.data_scadenta}).')
+            flash(msg, 'success')
+            return redirect(url_for('contracte.corespondenta_detalii', id=c.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare la salvare: {e}', 'danger')
+
+    return render_template('contracte/corespondenta_formular.html',
+                           form=form, corespondenta=None)
+
+
+@contracte_bp.route('/corespondenta/<int:id>')
+@login_required
+def corespondenta_detalii(id):
+    c = Corespondenta.query.get_or_404(id)
+    raspunsuri = Corespondenta.query.filter_by(raspuns_la_id=c.id).order_by(
+        Corespondenta.data_inregistrare
+    ).all()
+    termen_asociat = TermenUrmarit.query.filter_by(
+        entitate_sursa='corespondenta', id_entitate_sursa=c.id
+    ).first()
+    return render_template('contracte/corespondenta_detalii.html',
+                           corespondenta=c, raspunsuri=raspunsuri,
+                           termen_asociat=termen_asociat)
+
+
+@contracte_bp.route('/corespondenta/<int:id>/editeaza', methods=['GET', 'POST'])
+@login_required
+def corespondenta_editeaza(id):
+    c = Corespondenta.query.get_or_404(id)
+    form = CorespondentaForm(obj=c)
+    form.populeaza_raspuns_la(c.proiect_id)
+    if request.method == 'GET':
+        form.corespondenta_id.data = c.id
+        form.contract_id.data = c.contract_id or 0
+        form.raspuns_la_id.data = c.raspuns_la_id or 0
+        form.subtip.data = c.subtip or ''
+
+    if form.validate_on_submit():
+        try:
+            audit_fields = ['proiect_id', 'contract_id', 'numar_inregistrare',
+                            'tip', 'subtip', 'directie', 'genereaza_termen']
+            before = audit_svc.snapshot(c, audit_fields)
+            had_termen = bool(c.genereaza_termen)
+            contract_id = form.contract_id.data or None
+            if contract_id == 0:
+                contract_id = None
+            raspuns_la_id = form.raspuns_la_id.data or None
+            if raspuns_la_id == 0:
+                raspuns_la_id = None
+            c.proiect_id = form.proiect_id.data
+            c.contract_id = contract_id
+            c.numar_inregistrare = form.numar_inregistrare.data.strip()
+            c.data_inregistrare = form.data_inregistrare.data
+            c.tip = form.tip.data
+            c.subtip = (form.subtip.data or '').strip() or None
+            c.directie = form.directie.data
+            c.expeditor = (form.expeditor.data or '').strip() or None
+            c.destinatar = (form.destinatar.data or '').strip() or None
+            c.subiect = (form.subiect.data or '').strip() or None
+            c.continut_text = form.continut_text.data or None
+            c.raspuns_la_id = raspuns_la_id
+            c.genereaza_termen = bool(form.genereaza_termen.data)
+            # Hook: gestionare TermenUrmarit la schimbarea genereaza_termen
+            if c.genereaza_termen:
+                creeaza_termen_din_corespondenta(c, current_user.id)
+            elif had_termen and not c.genereaza_termen:
+                sterge_termen_din_corespondenta(c)
+            audit_svc.log_update('corespondenta', c.id, before,
+                                 audit_svc.snapshot(c, audit_fields))
+            db.session.commit()
+            flash('Corespondenta actualizata.', 'success')
+            return redirect(url_for('contracte.corespondenta_detalii', id=c.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare la salvare: {e}', 'danger')
+
+    return render_template('contracte/corespondenta_formular.html',
+                           form=form, corespondenta=c)
+
+
+@contracte_bp.route('/corespondenta/<int:id>/sterge', methods=['POST'])
+@login_required
+def corespondenta_sterge(id):
+    c = Corespondenta.query.get_or_404(id)
+    proiect_id = c.proiect_id
+    try:
+        audit_svc.log_delete('corespondenta', c.id, old_values={
+            'numar_inregistrare': c.numar_inregistrare, 'tip': c.tip,
+        })
+        # Sterge TermenUrmarit asociat (daca exista)
+        sterge_termen_din_corespondenta(c)
+        db.session.delete(c)
+        db.session.commit()
+        flash('Corespondenta stearsa.', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la stergere: {e}', 'danger')
+    return redirect(url_for('contracte.corespondenta_lista', proiect=proiect_id))
+
+
+# ============================================================
+# FAZA 13 - REVENDICARI (Claims)
+# ============================================================
+
+@contracte_bp.route('/revendicari')
+@login_required
+def revendicari_lista():
+    """Lista revendicari toate proiectele, filtrabila."""
+    proiect_filtru = request.args.get('proiect', type=int)
+    status_filtru = (request.args.get('status') or '').strip()
+    tip_filtru = (request.args.get('tip') or '').strip()
+    cautare = (request.args.get('cautare') or '').strip()
+
+    query = Revendicare.query
+    if proiect_filtru:
+        query = query.filter_by(proiect_id=proiect_filtru)
+    if status_filtru:
+        query = query.filter_by(status=status_filtru)
+    if tip_filtru:
+        query = query.filter_by(tip=tip_filtru)
+    if cautare:
+        query = query.filter(
+            db.or_(
+                Revendicare.numar_revendicare.ilike(f'%{cautare}%'),
+                Revendicare.descriere.ilike(f'%{cautare}%'),
+            )
+        )
+    revendicari = query.order_by(Revendicare.data_emitere.desc()).all()
+
+    # Numara conflicte per revendicare (read-only, cache per request)
+    conflicte_count = {r.id: numara_conflicte(r.id) for r in revendicari}
+
+    proiecte_pentru_filtru = Proiect.query.order_by(Proiect.cod_proiect).all()
+    return render_template(
+        'contracte/revendicari_lista.html',
+        revendicari=revendicari, conflicte_count=conflicte_count,
+        proiecte=proiecte_pentru_filtru,
+        tipuri=Revendicare.TIPURI, statuses=Revendicare.STATUSES,
+        proiect_filtru=proiect_filtru, status_filtru=status_filtru,
+        tip_filtru=tip_filtru, cautare=cautare,
+    )
+
+
+@contracte_bp.route('/revendicare/nou', methods=['GET', 'POST'])
+@login_required
+def revendicare_nou():
+    form = RevendicareForm()
+    preset_contract = request.args.get('contract_id', type=int)
+    preset_corespondenta = request.args.get('corespondenta_id', type=int)
+    if request.method == 'GET':
+        if preset_contract:
+            contract = Contract.query.get(preset_contract)
+            if contract:
+                form.contract_id.data = contract.id
+                form.proiect_id.data = contract.proiect_id
+                form.populeaza_corespondenta(contract.proiect_id)
+        if preset_corespondenta:
+            form.corespondenta_initiatoare_id.data = preset_corespondenta
+
+    if request.method == 'POST' and form.proiect_id.data:
+        form.populeaza_corespondenta(form.proiect_id.data)
+
+    if form.validate_on_submit():
+        try:
+            coresp_id = form.corespondenta_initiatoare_id.data or None
+            if coresp_id == 0:
+                coresp_id = None
+            r = Revendicare(
+                proiect_id=form.proiect_id.data,
+                contract_id=form.contract_id.data,
+                numar_revendicare=form.numar_revendicare.data.strip(),
+                data_emitere=form.data_emitere.data,
+                tip=form.tip.data,
+                descriere=form.descriere.data or None,
+                valoare_solicitata=form.valoare_solicitata.data,
+                zile_prelungire_solicitate=form.zile_prelungire_solicitate.data,
+                status=form.status.data,
+                data_decizie=form.data_decizie.data,
+                motivare_decizie=form.motivare_decizie.data or None,
+                corespondenta_initiatoare_id=coresp_id,
+                creat_de_id=current_user.id,
+            )
+            db.session.add(r)
+            db.session.flush()
+            audit_svc.log_create('revendicare', r.id, new_values={
+                'numar_revendicare': r.numar_revendicare,
+                'tip': r.tip, 'status': r.status,
+                'valoare_solicitata': str(r.valoare_solicitata or 0),
+            })
+            db.session.commit()
+            flash(f'Revendicare "{r.numar_revendicare}" creata.', 'success')
+            return redirect(url_for('contracte.revendicare_detalii', id=r.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare la salvare: {e}', 'danger')
+
+    return render_template('contracte/revendicare_formular.html',
+                           form=form, revendicare=None)
+
+
+@contracte_bp.route('/revendicare/<int:id>')
+@login_required
+def revendicare_detalii(id):
+    r = Revendicare.query.get_or_404(id)
+    # Conflicte detection (live)
+    conflicte = detecta_conflicte(r.id)
+    # Legaturi M:N
+    legaturi_termeni = RevendicareTermen.query.filter_by(revendicare_id=r.id).all()
+    legaturi_taskuri = RevendicareTask.query.filter_by(revendicare_id=r.id).all()
+    legaturi_cantitati = RevendicareCantitate.query.filter_by(revendicare_id=r.id).all()
+    return render_template(
+        'contracte/revendicare_detalii.html',
+        revendicare=r, conflicte=conflicte,
+        legaturi_termeni=legaturi_termeni,
+        legaturi_taskuri=legaturi_taskuri,
+        legaturi_cantitati=legaturi_cantitati,
+    )
+
+
+@contracte_bp.route('/revendicare/<int:id>/editeaza', methods=['GET', 'POST'])
+@login_required
+def revendicare_editeaza(id):
+    r = Revendicare.query.get_or_404(id)
+    form = RevendicareForm(obj=r)
+    form.populeaza_corespondenta(r.proiect_id)
+    if request.method == 'GET':
+        form.revendicare_id.data = r.id
+        form.corespondenta_initiatoare_id.data = r.corespondenta_initiatoare_id or 0
+
+    if form.validate_on_submit():
+        try:
+            audit_fields = ['numar_revendicare', 'tip', 'status',
+                            'valoare_solicitata', 'zile_prelungire_solicitate',
+                            'data_decizie']
+            before = audit_svc.snapshot(r, audit_fields)
+            coresp_id = form.corespondenta_initiatoare_id.data or None
+            if coresp_id == 0:
+                coresp_id = None
+            r.proiect_id = form.proiect_id.data
+            r.contract_id = form.contract_id.data
+            r.numar_revendicare = form.numar_revendicare.data.strip()
+            r.data_emitere = form.data_emitere.data
+            r.tip = form.tip.data
+            r.descriere = form.descriere.data or None
+            r.valoare_solicitata = form.valoare_solicitata.data
+            r.zile_prelungire_solicitate = form.zile_prelungire_solicitate.data
+            r.status = form.status.data
+            r.data_decizie = form.data_decizie.data
+            r.motivare_decizie = form.motivare_decizie.data or None
+            r.corespondenta_initiatoare_id = coresp_id
+            audit_svc.log_update('revendicare', r.id, before,
+                                 audit_svc.snapshot(r, audit_fields))
+            db.session.commit()
+            flash('Revendicare actualizata.', 'success')
+            return redirect(url_for('contracte.revendicare_detalii', id=r.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare la salvare: {e}', 'danger')
+
+    return render_template('contracte/revendicare_formular.html',
+                           form=form, revendicare=r)
+
+
+@contracte_bp.route('/revendicare/<int:id>/sterge', methods=['POST'])
+@login_required
+def revendicare_sterge(id):
+    r = Revendicare.query.get_or_404(id)
+    try:
+        audit_svc.log_delete('revendicare', r.id, old_values={
+            'numar_revendicare': r.numar_revendicare, 'tip': r.tip,
+        })
+        # Sterge legaturile M:N explicit
+        RevendicareTermen.query.filter_by(revendicare_id=r.id).delete()
+        RevendicareTask.query.filter_by(revendicare_id=r.id).delete()
+        RevendicareCantitate.query.filter_by(revendicare_id=r.id).delete()
+        db.session.delete(r)
+        db.session.commit()
+        flash('Revendicare stearsa.', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la stergere: {e}', 'danger')
+    return redirect(url_for('contracte.revendicari_lista'))
+
+
+# ============================================================
+# FAZA 13 - LEGATURI M:N (Revendicare <-> Termen/Task/Cantitate)
+# ============================================================
+
+@contracte_bp.route('/revendicare/<int:id>/link/termen', methods=['GET', 'POST'])
+@login_required
+def revendicare_link_termen(id):
+    r = Revendicare.query.get_or_404(id)
+    form = LinkRevendicareTermenForm()
+    form.populeaza_termene(r.contract_id)
+    if form.validate_on_submit():
+        # Verific unicitate
+        existing = RevendicareTermen.query.filter_by(
+            revendicare_id=r.id, termen_contract_id=form.termen_contract_id.data,
+        ).first()
+        if existing:
+            flash('Legatura cu acest termen exista deja.', 'warning')
+        else:
+            try:
+                link = RevendicareTermen(
+                    revendicare_id=r.id,
+                    termen_contract_id=form.termen_contract_id.data,
+                    tip_legatura=form.tip_legatura.data,
+                    observatii=form.observatii.data or None,
+                )
+                db.session.add(link)
+                db.session.commit()
+                flash('Legatura cu termen adaugata.', 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Eroare: {e}', 'danger')
+        return redirect(url_for('contracte.revendicare_detalii', id=r.id))
+    return render_template('contracte/revendicare_link_form.html',
+                           form=form, revendicare=r, tip='termen')
+
+
+@contracte_bp.route('/revendicare/<int:id>/link/task', methods=['GET', 'POST'])
+@login_required
+def revendicare_link_task(id):
+    r = Revendicare.query.get_or_404(id)
+    form = LinkRevendicareTaskForm()
+    form.populeaza_taskuri(r.proiect_id)
+    if form.validate_on_submit():
+        existing = RevendicareTask.query.filter_by(
+            revendicare_id=r.id, task_program_id=form.task_program_id.data,
+        ).first()
+        if existing:
+            flash('Legatura cu acest task exista deja.', 'warning')
+        else:
+            try:
+                link = RevendicareTask(
+                    revendicare_id=r.id,
+                    task_program_id=form.task_program_id.data,
+                    tip_legatura=form.tip_legatura.data,
+                    observatii=form.observatii.data or None,
+                )
+                db.session.add(link)
+                db.session.commit()
+                flash('Legatura cu task adaugata.', 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Eroare: {e}', 'danger')
+        return redirect(url_for('contracte.revendicare_detalii', id=r.id))
+    return render_template('contracte/revendicare_link_form.html',
+                           form=form, revendicare=r, tip='task')
+
+
+@contracte_bp.route('/revendicare/<int:id>/link/cantitate', methods=['GET', 'POST'])
+@login_required
+def revendicare_link_cantitate(id):
+    r = Revendicare.query.get_or_404(id)
+    form = LinkRevendicareCantitateForm()
+    form.populeaza_cantitati(r.proiect_id)
+    if form.validate_on_submit():
+        existing = RevendicareCantitate.query.filter_by(
+            revendicare_id=r.id, cantitate_lunara_id=form.cantitate_lunara_id.data,
+        ).first()
+        if existing:
+            flash('Legatura cu aceasta cantitate exista deja.', 'warning')
+        else:
+            try:
+                link = RevendicareCantitate(
+                    revendicare_id=r.id,
+                    cantitate_lunara_id=form.cantitate_lunara_id.data,
+                    observatii=form.observatii.data or None,
+                )
+                db.session.add(link)
+                db.session.commit()
+                flash('Legatura cu cantitate adaugata.', 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Eroare: {e}', 'danger')
+        return redirect(url_for('contracte.revendicare_detalii', id=r.id))
+    return render_template('contracte/revendicare_link_form.html',
+                           form=form, revendicare=r, tip='cantitate')
+
+
+@contracte_bp.route('/revendicare/<int:rev_id>/link/<string:tip>/<int:link_id>/sterge',
+                    methods=['POST'])
+@login_required
+def revendicare_link_sterge(rev_id, tip, link_id):
+    """Sterge o legatura M:N (tip = termen|task|cantitate)."""
+    model_map = {
+        'termen': RevendicareTermen,
+        'task': RevendicareTask,
+        'cantitate': RevendicareCantitate,
+    }
+    model = model_map.get(tip)
+    if not model:
+        flash(f'Tip legatura necunoscut: {tip}', 'danger')
+        return redirect(url_for('contracte.revendicare_detalii', id=rev_id))
+    link = model.query.get_or_404(link_id)
+    if link.revendicare_id != rev_id:
+        abort(404)
+    try:
+        db.session.delete(link)
+        db.session.commit()
+        flash('Legatura stearsa.', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare: {e}', 'danger')
+    return redirect(url_for('contracte.revendicare_detalii', id=rev_id))

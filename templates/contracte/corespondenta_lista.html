@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Corespondenta') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.lista') }}">{{ _('Contracte') }}</a>
+<span>/</span>
+<span class="active">{{ _('Corespondenta') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-envelopes-bulk" style="color: var(--primary);"></i>
+        {{ _('Corespondenta') }}
+    </h2>
+    <a href="{{ url_for('contracte.corespondenta_nou') }}" class="btn btn-primary">
+        <i class="fa-solid fa-plus"></i> {{ _('Inregistrare noua') }}
+    </a>
+</div>
+
+<form method="GET" class="card-panel" style="margin-bottom: 16px; padding: 12px;">
+    <div style="display: grid; grid-template-columns: 1.5fr 1fr 1.5fr 1fr 1.5fr auto; gap: 10px; align-items: end;">
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Proiect') }}</label>
+            <select name="proiect" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for p in proiecte %}
+                <option value="{{ p.id }}" {% if proiect_filtru == p.id %}selected{% endif %}>{{ p.cod_proiect }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Tip') }}</label>
+            <select name="tip" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for cod, label in tipuri %}
+                <option value="{{ cod }}" {% if tip_filtru == cod %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Subtip') }}</label>
+            <select name="subtip" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for cod, label in subtipuri %}
+                <option value="{{ cod }}" {% if subtip_filtru == cod %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Directie') }}</label>
+            <select name="directie" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for cod, label in directii %}
+                <option value="{{ cod }}" {% if directie_filtru == cod %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Cautare') }}</label>
+            <input type="text" name="cautare" value="{{ cautare }}" class="form-control" placeholder="{{ _('Nr, subiect, expeditor...') }}">
+        </div>
+        <div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-filter"></i>
+            </button>
+        </div>
+    </div>
+</form>
+
+{% if corespondente %}
+<div class="card-panel" style="padding: 0;">
+    <table class="table" style="width: 100%;">
+        <thead>
+            <tr style="background: var(--bg-elevated);">
+                <th style="text-align: left; padding: 10px;">{{ _('Numar') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Data') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Tip') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Directie') }}</th>
+                <th style="text-align: left; padding: 10px;">{{ _('Subiect') }}</th>
+                <th style="text-align: left; padding: 10px;">{{ _('Parti') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Termen') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Actiuni') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in corespondente %}
+            <tr style="border-top: 1px solid var(--border);">
+                <td style="padding: 10px; font-family: monospace; font-weight: 600;">{{ c.numar_inregistrare }}</td>
+                <td style="padding: 10px; text-align: center;">{{ c.data_inregistrare }}</td>
+                <td style="padding: 10px; text-align: center;">
+                    <span class="badge" style="font-size: 0.7rem;">{{ c.tip }}</span>
+                </td>
+                <td style="padding: 10px; text-align: center;">
+                    {% if c.directie == 'primita' %}
+                    <i class="fa-solid fa-arrow-down" style="color: var(--success);"></i>
+                    {% else %}
+                    <i class="fa-solid fa-arrow-up" style="color: var(--warning);"></i>
+                    {% endif %}
+                    {{ c.directie }}
+                </td>
+                <td style="padding: 10px;">
+                    {{ c.subiect[:60] if c.subiect else '-' }}{% if c.subiect and c.subiect|length > 60 %}...{% endif %}
+                </td>
+                <td style="padding: 10px; font-size: 0.82rem;">
+                    {% if c.directie == 'primita' %}{{ _('De la') }}: {{ c.expeditor or '-' }}{% else %}{{ _('Catre') }}: {{ c.destinatar or '-' }}{% endif %}
+                </td>
+                <td style="padding: 10px; text-align: center;">
+                    {% if c.genereaza_termen %}
+                    <i class="fa-solid fa-bell" style="color: var(--warning);" title="{{ _('Genereaza termen 30 zile') }}"></i>
+                    {% endif %}
+                </td>
+                <td style="padding: 10px; text-align: center;">
+                    <a href="{{ url_for('contracte.corespondenta_detalii', id=c.id) }}" class="btn btn-sm btn-outline"><i class="fa-solid fa-eye"></i></a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if pagination.pages > 1 %}
+<div style="display: flex; justify-content: center; gap: 6px; margin-top: 16px;">
+    {% if pagination.has_prev %}
+    <a href="?{% for k, v in request.args.items() %}{% if k != 'page' %}{{ k }}={{ v }}&{% endif %}{% endfor %}page={{ pagination.prev_num }}" class="btn btn-sm btn-outline"><i class="fa-solid fa-chevron-left"></i></a>
+    {% endif %}
+    <span style="color: var(--text-muted); padding: 6px 12px;">{{ _('Pagina') }} {{ pagination.page }} / {{ pagination.pages }}</span>
+    {% if pagination.has_next %}
+    <a href="?{% for k, v in request.args.items() %}{% if k != 'page' %}{{ k }}={{ v }}&{% endif %}{% endfor %}page={{ pagination.next_num }}" class="btn btn-sm btn-outline"><i class="fa-solid fa-chevron-right"></i></a>
+    {% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="card-panel" style="text-align: center; padding: 60px 20px;">
+    <i class="fa-solid fa-envelope-open" style="font-size: 4rem; color: var(--text-muted); opacity: 0.3;"></i>
+    <h3 style="margin-top: 20px; color: var(--text-muted);">{{ _('Nicio corespondenta inregistrata') }}</h3>
+    <a href="{{ url_for('contracte.corespondenta_nou') }}" class="btn btn-primary" style="margin-top: 12px;">
+        <i class="fa-solid fa-plus"></i> {{ _('Inregistrare noua') }}
+    </a>
+</div>
+{% endif %}
+{% endblock %}

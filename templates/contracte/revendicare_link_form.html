@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Adauga legatura') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.revendicari_lista') }}">{{ _('Revendicari') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.revendicare_detalii', id=revendicare.id) }}">{{ revendicare.numar_revendicare }}</a>
+<span>/</span>
+<span class="active">{{ _('Legatura') }} {{ tip }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 700px; margin: 0 auto;">
+    <h2 style="margin-bottom: 8px;">
+        <i class="fa-solid fa-link" style="color: var(--primary);"></i>
+        {% if tip == 'termen' %}{{ _('Adauga legatura cu Termen contractual') }}
+        {% elif tip == 'task' %}{{ _('Adauga legatura cu Task program') }}
+        {% elif tip == 'cantitate' %}{{ _('Adauga legatura cu Cantitate executata') }}
+        {% endif %}
+    </h2>
+    <p style="color: var(--text-muted); margin-bottom: 20px;">
+        {{ _('Revendicare') }}: <strong>{{ revendicare.numar_revendicare }}</strong>
+    </p>
+
+    <form method="POST" novalidate>
+        {{ form.hidden_tag() }}
+        <div class="card-panel">
+            <div class="card-panel-body">
+                {% if tip == 'termen' %}
+                <div class="form-group">
+                    <label class="form-label">{{ _('Termen contractual') }} <span class="text-danger">*</span></label>
+                    {{ form.termen_contract_id(class_="form-select") }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">{{ _('Tip legatura') }}</label>
+                    {{ form.tip_legatura(class_="form-select") }}
+                </div>
+                {% elif tip == 'task' %}
+                <div class="form-group">
+                    <label class="form-label">{{ _('Task program') }} <span class="text-danger">*</span></label>
+                    {{ form.task_program_id(class_="form-select") }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">{{ _('Tip legatura') }}</label>
+                    {{ form.tip_legatura(class_="form-select") }}
+                </div>
+                {% elif tip == 'cantitate' %}
+                <div class="form-group">
+                    <label class="form-label">{{ _('Cantitate executata') }} <span class="text-danger">*</span></label>
+                    {{ form.cantitate_lunara_id(class_="form-select") }}
+                </div>
+                {% endif %}
+                <div class="form-group">
+                    <label class="form-label">{{ _('Observatii') }}</label>
+                    {{ form.observatii(class_="form-control", rows="3") }}
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+            <a href="{{ url_for('contracte.revendicare_detalii', id=revendicare.id) }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> {{ _('Anulare') }}
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-link"></i> {{ _('Adauga legatura') }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

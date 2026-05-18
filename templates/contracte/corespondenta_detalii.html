@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}{{ corespondenta.numar_inregistrare }} - {{ _('Corespondenta') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.corespondenta_lista') }}">{{ _('Corespondenta') }}</a>
+<span>/</span>
+<span class="active">{{ corespondenta.numar_inregistrare }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-envelope" style="color: var(--primary);"></i>
+            {{ corespondenta.numar_inregistrare }}
+            <span class="badge" style="margin-left: 8px; font-size: 0.7rem;">{{ corespondenta.tip }}</span>
+            {% if corespondenta.subtip %}
+            <span class="badge" style="background: var(--bg-elevated); font-size: 0.7rem;">{{ corespondenta.subtip }}</span>
+            {% endif %}
+        </h2>
+        <div style="color: var(--text-muted); margin-top: 4px; font-size: 0.85rem;">
+            {{ corespondenta.data_inregistrare }} •
+            {% if corespondenta.directie == 'primita' %}
+            <i class="fa-solid fa-arrow-down" style="color: var(--success);"></i> {{ _('Primita') }} de la <strong>{{ corespondenta.expeditor or '-' }}</strong>
+            {% else %}
+            <i class="fa-solid fa-arrow-up" style="color: var(--warning);"></i> {{ _('Emisa') }} catre <strong>{{ corespondenta.destinatar or '-' }}</strong>
+            {% endif %}
+        </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('contracte.corespondenta_editeaza', id=corespondenta.id) }}" class="btn btn-primary">
+            <i class="fa-solid fa-pen"></i> {{ _('Editeaza') }}
+        </a>
+        <form method="POST" action="{{ url_for('contracte.corespondenta_sterge', id=corespondenta.id) }}"
+              style="display: inline;"
+              onsubmit="return confirm('{{ _('Sigur stergi aceasta corespondenta?') }}');">
+            <button type="submit" class="btn btn-danger">
+                <i class="fa-solid fa-trash"></i> {{ _('Sterge') }}
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Termen 30 zile asociat (daca exista) -->
+{% if termen_asociat %}
+<div class="card-panel" style="border-left: 4px solid var(--warning);">
+    <div class="card-panel-body" style="display: flex; align-items: center; gap: 12px;">
+        <i class="fa-solid fa-bell" style="font-size: 1.5rem; color: var(--warning);"></i>
+        <div style="flex: 1;">
+            <strong>{{ _('Termen 30 zile activ') }}:</strong> {{ _('Scadenta') }} <strong>{{ termen_asociat.data_scadenta }}</strong>
+            <span style="color: var(--text-muted); margin-left: 12px;">({{ _('Status') }}: {{ termen_asociat.status }})</span>
+        </div>
+        {% if termen_asociat.status == 'expirat' %}
+        <span class="badge" style="background: var(--danger); color: white;">{{ _('Depasit') }}</span>
+        {% elif termen_asociat.status == 'indeplinit' %}
+        <span class="badge" style="background: var(--success); color: white;">{{ _('Indeplinit') }}</span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Continut -->
+<div class="card-panel">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-file-lines"></i> {{ _('Continut') }}</h3></div>
+    <div class="card-panel-body">
+        {% if corespondenta.subiect %}
+        <p><strong>{{ _('Subiect') }}:</strong> {{ corespondenta.subiect }}</p>
+        {% endif %}
+        {% if corespondenta.continut_text %}
+        <pre style="white-space: pre-wrap; font-family: inherit; margin: 0; color: var(--text);">{{ corespondenta.continut_text }}</pre>
+        {% else %}
+        <p style="color: var(--text-muted); margin: 0;">{{ _('Continut text neinregistrat.') }}</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Asociere -->
+<div class="card-panel">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-link"></i> {{ _('Asociere') }}</h3></div>
+    <div class="card-panel-body">
+        {% if corespondenta.proiect %}
+        <p>{{ _('Proiect') }}:
+            <a href="{{ url_for('proiecte.detalii', id=corespondenta.proiect.id) }}">
+                {{ corespondenta.proiect.cod_proiect }} - {{ corespondenta.proiect.nume }}
+            </a>
+        </p>
+        {% endif %}
+        {% if corespondenta.contract %}
+        <p>{{ _('Contract') }}:
+            <a href="{{ url_for('contracte.detalii', id=corespondenta.contract.id) }}">
+                {{ corespondenta.contract.nr_contract }}
+            </a>
+        </p>
+        {% endif %}
+        {% if corespondenta.raspuns_la %}
+        <p>{{ _('Este raspuns la') }}:
+            <a href="{{ url_for('contracte.corespondenta_detalii', id=corespondenta.raspuns_la.id) }}">
+                {{ corespondenta.raspuns_la.numar_inregistrare }}
+            </a>
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Raspunsuri -->
+{% if raspunsuri %}
+<div class="card-panel">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-reply"></i> {{ _('Raspunsuri') }} ({{ raspunsuri|length }})</h3></div>
+    <div class="card-panel-body">
+        <table class="table" style="width: 100%;">
+            <thead>
+                <tr><th>{{ _('Numar') }}</th><th>{{ _('Data') }}</th><th>{{ _('Tip') }}</th><th>{{ _('Subiect') }}</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for r in raspunsuri %}
+                <tr>
+                    <td><strong>{{ r.numar_inregistrare }}</strong></td>
+                    <td>{{ r.data_inregistrare }}</td>
+                    <td><span class="badge">{{ r.tip }}</span></td>
+                    <td>{{ r.subiect[:60] if r.subiect else '-' }}</td>
+                    <td><a href="{{ url_for('contracte.corespondenta_detalii', id=r.id) }}" class="btn btn-sm btn-outline"><i class="fa-solid fa-eye"></i></a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Quick actions -->
+<div class="card-panel" style="background: rgba(201, 169, 97, 0.05);">
+    <div class="card-panel-body" style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <a href="{{ url_for('contracte.corespondenta_nou') }}?proiect_id={{ corespondenta.proiect_id }}{% if corespondenta.contract_id %}&contract_id={{ corespondenta.contract_id }}{% endif %}"
+           class="btn btn-outline">
+            <i class="fa-solid fa-reply"></i> {{ _('Adauga raspuns') }}
+        </a>
+        {% if corespondenta.contract_id %}
+        <a href="{{ url_for('contracte.revendicare_nou') }}?contract_id={{ corespondenta.contract_id }}&corespondenta_id={{ corespondenta.id }}"
+           class="btn btn-outline">
+            <i class="fa-solid fa-gavel"></i> {{ _('Initiaza revendicare') }}
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}{{ revendicare.numar_revendicare }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.revendicari_lista') }}">{{ _('Revendicari') }}</a>
+<span>/</span>
+<span class="active">{{ revendicare.numar_revendicare }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-gavel" style="color: var(--primary);"></i>
+            {{ revendicare.numar_revendicare }}
+            <span class="badge" style="margin-left: 8px;">{{ revendicare.tip }}</span>
+        </h2>
+        <div style="color: var(--text-muted); margin-top: 4px; font-size: 0.85rem;">
+            {{ _('Emisa') }}: {{ revendicare.data_emitere }} •
+            {% if revendicare.contract %}
+            {{ _('Contract') }}: <a href="{{ url_for('contracte.detalii', id=revendicare.contract.id) }}" style="color: var(--text-muted);">{{ revendicare.contract.nr_contract }}</a>
+            {% endif %}
+        </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('contracte.revendicare_editeaza', id=revendicare.id) }}" class="btn btn-primary">
+            <i class="fa-solid fa-pen"></i> {{ _('Editeaza') }}
+        </a>
+        <form method="POST" action="{{ url_for('contracte.revendicare_sterge', id=revendicare.id) }}"
+              style="display: inline;"
+              onsubmit="return confirm('{{ _('Sigur stergi aceasta revendicare?') }}');">
+            <button type="submit" class="btn btn-danger">
+                <i class="fa-solid fa-trash"></i> {{ _('Sterge') }}
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Status badge mare -->
+<div style="margin-bottom: 16px;">
+    {% if revendicare.status == 'draft' %}<span class="badge" style="font-size: 0.95rem;">{{ _('Draft') }}</span>
+    {% elif revendicare.status == 'emisa' %}<span class="badge" style="background: var(--warning); color: white; font-size: 0.95rem;">{{ _('Emisa') }}</span>
+    {% elif revendicare.status == 'in_analiza' %}<span class="badge" style="background: var(--primary); color: white; font-size: 0.95rem;">{{ _('In analiza') }}</span>
+    {% elif revendicare.status == 'negociere' %}<span class="badge" style="background: var(--primary); color: white; font-size: 0.95rem;">{{ _('Negociere') }}</span>
+    {% elif revendicare.status == 'aprobata' %}<span class="badge" style="background: var(--success); color: white; font-size: 0.95rem;">{{ _('Aprobata') }}</span>
+    {% elif revendicare.status == 'respinsa' %}<span class="badge" style="background: var(--danger); color: white; font-size: 0.95rem;">{{ _('Respinsa') }}</span>
+    {% endif %}
+</div>
+
+<!-- Sumar carduri -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
+    {% if revendicare.valoare_solicitata %}
+    <div class="card-panel" style="padding: 12px; text-align: center;">
+        <div style="font-size: 0.8rem; color: var(--text-muted);">{{ _('Valoare solicitata') }}</div>
+        <div style="font-size: 1.4rem; font-weight: 600; color: var(--primary); font-variant-numeric: tabular-nums;">
+            {{ '%.2f'|format(revendicare.valoare_solicitata) }} RON
+        </div>
+    </div>
+    {% endif %}
+    {% if revendicare.zile_prelungire_solicitate %}
+    <div class="card-panel" style="padding: 12px; text-align: center;">
+        <div style="font-size: 0.8rem; color: var(--text-muted);">{{ _('Prelungire solicitata') }}</div>
+        <div style="font-size: 1.4rem; font-weight: 600; color: var(--primary); font-variant-numeric: tabular-nums;">
+            {{ revendicare.zile_prelungire_solicitate }} {{ _('zile') }}
+        </div>
+    </div>
+    {% endif %}
+    <div class="card-panel" style="padding: 12px; text-align: center;">
+        <div style="font-size: 0.8rem; color: var(--text-muted);">{{ _('Conflicte') }}</div>
+        <div style="font-size: 1.4rem; font-weight: 600;">
+            {% set crit = conflicte | selectattr('severitate', 'eq', 'critical') | list | length %}
+            {% set warn = conflicte | selectattr('severitate', 'eq', 'warning') | list | length %}
+            {% if crit > 0 %}<span style="color: var(--danger);">⚠ {{ conflicte|length }}</span>
+            {% elif warn > 0 %}<span style="color: var(--warning);">⚠ {{ conflicte|length }}</span>
+            {% else %}<span style="color: var(--success);">{{ conflicte|length }}</span>{% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Descriere + Motivare -->
+<div class="card-panel">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-file-lines"></i> {{ _('Detalii') }}</h3></div>
+    <div class="card-panel-body">
+        {% if revendicare.descriere %}
+        <p><strong>{{ _('Descriere') }}:</strong></p>
+        <pre style="white-space: pre-wrap; font-family: inherit;">{{ revendicare.descriere }}</pre>
+        {% endif %}
+        {% if revendicare.motivare_decizie %}
+        <p style="margin-top: 16px;"><strong>{{ _('Motivare decizie') }}:</strong></p>
+        <pre style="white-space: pre-wrap; font-family: inherit;">{{ revendicare.motivare_decizie }}</pre>
+        <p style="margin-top: 8px; color: var(--text-muted);"><strong>{{ _('Data decizie') }}:</strong> {{ revendicare.data_decizie or '-' }}</p>
+        {% endif %}
+        {% if revendicare.corespondenta_initiatoare %}
+        <p style="margin-top: 16px;">
+            <strong>{{ _('Corespondenta initiatoare') }}:</strong>
+            <a href="{{ url_for('contracte.corespondenta_detalii', id=revendicare.corespondenta_initiatoare.id) }}">
+                {{ revendicare.corespondenta_initiatoare.numar_inregistrare }}
+            </a>
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Conflicte detection (badge si tabel) -->
+<div class="card-panel" style="{% if conflicte %}border-left: 4px solid var(--warning);{% endif %}">
+    <div class="card-panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>
+            <i class="fa-solid fa-triangle-exclamation"></i> {{ _('Conflicte detectate') }}
+            {% if conflicte %}
+            <span class="badge" style="background: var(--warning); color: white; margin-left: 8px;">{{ conflicte|length }}</span>
+            {% else %}
+            <span class="badge" style="background: var(--success); color: white; margin-left: 8px;">0</span>
+            {% endif %}
+        </h3>
+    </div>
+    <div class="card-panel-body">
+        {% if conflicte %}
+        <table class="table" style="width: 100%; font-size: 0.85rem;">
+            <thead>
+                <tr><th>{{ _('Severitate') }}</th><th>{{ _('Entitate') }}</th><th>{{ _('Detalii') }}</th></tr>
+            </thead>
+            <tbody>
+                {% for c in conflicte %}
+                <tr>
+                    <td style="padding: 8px;">
+                        {% if c.severitate == 'critical' %}
+                        <span class="badge" style="background: var(--danger); color: white;">{{ _('Critical') }}</span>
+                        {% elif c.severitate == 'warning' %}
+                        <span class="badge" style="background: var(--warning); color: white;">{{ _('Warning') }}</span>
+                        {% else %}
+                        <span class="badge">{{ _('Info') }}</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 8px;"><code style="font-size: 0.78rem;">{{ c.entitate }}</code> #{{ c.id }}</td>
+                    <td style="padding: 8px;">
+                        <strong>{{ c.titlu }}</strong><br>
+                        <span style="color: var(--text-muted); font-size: 0.82rem;">{{ c.descriere }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--success); margin: 0;">
+            <i class="fa-solid fa-check-circle"></i> {{ _('Niciun conflict detectat cu state-ul curent al proiectului.') }}
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Legaturi M:N termene -->
+<div class="card-panel">
+    <div class="card-panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3><i class="fa-solid fa-calendar-check"></i> {{ _('Termene legate') }} ({{ legaturi_termeni|length }})</h3>
+        <a href="{{ url_for('contracte.revendicare_link_termen', id=revendicare.id) }}" class="btn btn-sm btn-outline">
+            <i class="fa-solid fa-plus"></i> {{ _('Adauga') }}
+        </a>
+    </div>
+    <div class="card-panel-body">
+        {% if legaturi_termeni %}
+        <table class="table" style="width: 100%; font-size: 0.85rem;">
+            <thead>
+                <tr><th>{{ _('Termen') }}</th><th>{{ _('Scadenta') }}</th><th>{{ _('Tip legatura') }}</th><th>{{ _('Observatii') }}</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for l in legaturi_termeni %}
+                <tr>
+                    <td>{{ l.termen.denumire }} <span style="color: var(--text-muted);">({{ l.termen.tip }})</span></td>
+                    <td>{{ l.termen.data_scadenta }}</td>
+                    <td><span class="badge" style="font-size: 0.7rem;">{{ l.tip_legatura }}</span></td>
+                    <td style="color: var(--text-muted); font-size: 0.82rem;">{{ l.observatii or '-' }}</td>
+                    <td>
+                        <form method="POST" action="{{ url_for('contracte.revendicare_link_sterge', rev_id=revendicare.id, tip='termen', link_id=l.id) }}" style="display:inline;"
+                              onsubmit="return confirm('{{ _('Sterge aceasta legatura?') }}');">
+                            <button type="submit" class="btn btn-sm btn-outline" style="color: var(--danger);"><i class="fa-solid fa-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}<p style="color: var(--text-muted); margin: 0;">{{ _('Nicio legatura cu termene contractuale.') }}</p>{% endif %}
+    </div>
+</div>
+
+<!-- Legaturi M:N taskuri -->
+<div class="card-panel">
+    <div class="card-panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3><i class="fa-solid fa-diagram-project"></i> {{ _('Taskuri legate') }} ({{ legaturi_taskuri|length }})</h3>
+        <a href="{{ url_for('contracte.revendicare_link_task', id=revendicare.id) }}" class="btn btn-sm btn-outline">
+            <i class="fa-solid fa-plus"></i> {{ _('Adauga') }}
+        </a>
+    </div>
+    <div class="card-panel-body">
+        {% if legaturi_taskuri %}
+        <table class="table" style="width: 100%; font-size: 0.85rem;">
+            <thead>
+                <tr><th>{{ _('Cod') }}</th><th>{{ _('Denumire') }}</th><th>{{ _('Tip legatura') }}</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for l in legaturi_taskuri %}
+                <tr>
+                    <td><code>{{ l.task.cod_extern or l.task.id }}</code></td>
+                    <td>{{ l.task.denumire[:60] }}</td>
+                    <td><span class="badge" style="font-size: 0.7rem;">{{ l.tip_legatura }}</span></td>
+                    <td>
+                        <form method="POST" action="{{ url_for('contracte.revendicare_link_sterge', rev_id=revendicare.id, tip='task', link_id=l.id) }}" style="display:inline;"
+                              onsubmit="return confirm('{{ _('Sterge aceasta legatura?') }}');">
+                            <button type="submit" class="btn btn-sm btn-outline" style="color: var(--danger);"><i class="fa-solid fa-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}<p style="color: var(--text-muted); margin: 0;">{{ _('Nicio legatura cu taskuri program.') }}</p>{% endif %}
+    </div>
+</div>
+
+<!-- Legaturi M:N cantitati -->
+<div class="card-panel">
+    <div class="card-panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3><i class="fa-solid fa-table-cells"></i> {{ _('Cantitati legate') }} ({{ legaturi_cantitati|length }})</h3>
+        <a href="{{ url_for('contracte.revendicare_link_cantitate', id=revendicare.id) }}" class="btn btn-sm btn-outline">
+            <i class="fa-solid fa-plus"></i> {{ _('Adauga') }}
+        </a>
+    </div>
+    <div class="card-panel-body">
+        {% if legaturi_cantitati %}
+        <table class="table" style="width: 100%; font-size: 0.85rem;">
+            <thead>
+                <tr><th>{{ _('Pozitie BoQ') }}</th><th>{{ _('Perioada') }}</th><th>{{ _('Cantitate') }}</th><th>{{ _('Validat') }}</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for l in legaturi_cantitati %}
+                <tr>
+                    <td><code>{{ l.cantitate.pozitie_boq.cod_articol if l.cantitate.pozitie_boq else '?' }}</code></td>
+                    <td>{{ l.cantitate.an }}-{{ '%02d'|format(l.cantitate.luna) }}</td>
+                    <td style="font-variant-numeric: tabular-nums;">{{ l.cantitate.cantitate_executata }}</td>
+                    <td>
+                        {% if l.cantitate.validat %}<i class="fa-solid fa-check-circle" style="color: var(--success);"></i>{% else %}<i class="fa-regular fa-circle" style="color: var(--text-muted);"></i>{% endif %}
+                    </td>
+                    <td>
+                        <form method="POST" action="{{ url_for('contracte.revendicare_link_sterge', rev_id=revendicare.id, tip='cantitate', link_id=l.id) }}" style="display:inline;"
+                              onsubmit="return confirm('{{ _('Sterge aceasta legatura?') }}');">
+                            <button type="submit" class="btn btn-sm btn-outline" style="color: var(--danger);"><i class="fa-solid fa-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}<p style="color: var(--text-muted); margin: 0;">{{ _('Nicio legatura cu cantitati executate.') }}</p>{% endif %}
+    </div>
+</div>
+{% endblock %}

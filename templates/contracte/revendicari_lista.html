@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Revendicari') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.lista') }}">{{ _('Contracte') }}</a>
+<span>/</span>
+<span class="active">{{ _('Revendicari') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-gavel" style="color: var(--primary);"></i>
+        {{ _('Revendicari (Claims)') }}
+    </h2>
+    <a href="{{ url_for('contracte.revendicare_nou') }}" class="btn btn-primary">
+        <i class="fa-solid fa-plus"></i> {{ _('Revendicare noua') }}
+    </a>
+</div>
+
+<form method="GET" class="card-panel" style="margin-bottom: 16px; padding: 12px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 2fr auto; gap: 10px; align-items: end;">
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Proiect') }}</label>
+            <select name="proiect" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for p in proiecte %}
+                <option value="{{ p.id }}" {% if proiect_filtru == p.id %}selected{% endif %}>{{ p.cod_proiect }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Tip') }}</label>
+            <select name="tip" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for cod, label in tipuri %}
+                <option value="{{ cod }}" {% if tip_filtru == cod %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Status') }}</label>
+            <select name="status" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for cod, label in statuses %}
+                <option value="{{ cod }}" {% if status_filtru == cod %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Cautare') }}</label>
+            <input type="text" name="cautare" value="{{ cautare }}" class="form-control" placeholder="{{ _('Nr, descriere...') }}">
+        </div>
+        <div><button type="submit" class="btn btn-primary"><i class="fa-solid fa-filter"></i></button></div>
+    </div>
+</form>
+
+{% if revendicari %}
+<div class="card-panel" style="padding: 0;">
+    <table class="table" style="width: 100%;">
+        <thead>
+            <tr style="background: var(--bg-elevated);">
+                <th style="text-align: left; padding: 10px;">{{ _('Numar') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Data') }}</th>
+                <th style="text-align: left; padding: 10px;">{{ _('Tip') }}</th>
+                <th style="text-align: right; padding: 10px;">{{ _('Valoare') }}</th>
+                <th style="text-align: right; padding: 10px;">{{ _('Zile preg.') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Conflicte') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Status') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Actiuni') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in revendicari %}
+            {% set cc = conflicte_count.get(r.id, {'total': 0, 'critical': 0, 'warning': 0, 'info': 0}) %}
+            <tr style="border-top: 1px solid var(--border);">
+                <td style="padding: 10px; font-family: monospace; font-weight: 600;">{{ r.numar_revendicare }}</td>
+                <td style="padding: 10px; text-align: center;">{{ r.data_emitere }}</td>
+                <td style="padding: 10px;"><span class="badge" style="font-size: 0.7rem;">{{ r.tip }}</span></td>
+                <td style="padding: 10px; text-align: right; font-variant-numeric: tabular-nums;">
+                    {% if r.valoare_solicitata %}{{ '%.2f'|format(r.valoare_solicitata) }} RON{% else %}-{% endif %}
+                </td>
+                <td style="padding: 10px; text-align: right; font-variant-numeric: tabular-nums;">
+                    {% if r.zile_prelungire_solicitate %}{{ r.zile_prelungire_solicitate }} z{% else %}-{% endif %}
+                </td>
+                <td style="padding: 10px; text-align: center;">
+                    {% if cc.critical > 0 %}
+                    <span class="badge" style="background: var(--danger); color: white;" title="{{ cc.critical }} critical">⚠ {{ cc.total }}</span>
+                    {% elif cc.warning > 0 %}
+                    <span class="badge" style="background: var(--warning); color: white;" title="{{ cc.warning }} warning">⚠ {{ cc.total }}</span>
+                    {% elif cc.total > 0 %}
+                    <span class="badge" style="background: var(--bg-elevated);">{{ cc.total }}</span>
+                    {% else %}
+                    <span style="color: var(--success);"><i class="fa-solid fa-check"></i></span>
+                    {% endif %}
+                </td>
+                <td style="padding: 10px; text-align: center;">
+                    {% if r.status == 'draft' %}<span class="badge">{{ _('Draft') }}</span>
+                    {% elif r.status == 'emisa' %}<span class="badge" style="background: var(--warning); color: white;">{{ _('Emisa') }}</span>
+                    {% elif r.status == 'in_analiza' %}<span class="badge" style="background: var(--primary); color: white;">{{ _('In analiza') }}</span>
+                    {% elif r.status == 'negociere' %}<span class="badge" style="background: var(--primary); color: white;">{{ _('Negociere') }}</span>
+                    {% elif r.status == 'aprobata' %}<span class="badge" style="background: var(--success); color: white;">{{ _('Aprobata') }}</span>
+                    {% elif r.status == 'respinsa' %}<span class="badge" style="background: var(--danger); color: white;">{{ _('Respinsa') }}</span>
+                    {% else %}<span class="badge">{{ r.status }}</span>{% endif %}
+                </td>
+                <td style="padding: 10px; text-align: center;">
+                    <a href="{{ url_for('contracte.revendicare_detalii', id=r.id) }}" class="btn btn-sm btn-outline"><i class="fa-solid fa-eye"></i></a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card-panel" style="text-align: center; padding: 60px 20px;">
+    <i class="fa-solid fa-gavel" style="font-size: 4rem; color: var(--text-muted); opacity: 0.3;"></i>
+    <h3 style="margin-top: 20px; color: var(--text-muted);">{{ _('Nicio revendicare inregistrata') }}</h3>
+    <a href="{{ url_for('contracte.revendicare_nou') }}" class="btn btn-primary" style="margin-top: 12px;">
+        <i class="fa-solid fa-plus"></i> {{ _('Revendicare noua') }}
+    </a>
+</div>
+{% endif %}
+{% endblock %}
