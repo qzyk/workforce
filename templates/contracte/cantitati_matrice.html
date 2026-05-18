@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Cantitati lunare') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.lista') }}">{{ _('Contracte') }}</a>
+<span>/</span>
+{% if oferta.contract %}
+<a href="{{ url_for('contracte.detalii', id=oferta.contract.id) }}">{{ oferta.contract.nr_contract }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.oferta_detalii', oferta_id=oferta.id) }}">{{ _('Oferta') }} v{{ oferta.versiune }}</a>
+<span>/</span>
+{% endif %}
+<span class="active">{{ _('Cantitati lunare') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-table-cells" style="color: var(--primary);"></i>
+            {{ _('Cantitati lunare') }}
+        </h2>
+        <div style="color: var(--text-muted); margin-top: 4px; font-size: 0.85rem;">
+            {{ _('Oferta') }} v{{ oferta.versiune }} • {{ _('Pozitii afisate') }}: <strong>{{ pagination.items|length }}</strong> / {{ pagination.total }}
+        </div>
+    </div>
+</div>
+
+<!-- Filtre + selector luna/an -->
+<form method="GET" class="card-panel" style="margin-bottom: 16px; padding: 12px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1.5fr 1.5fr 2fr auto; gap: 10px; align-items: end;">
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('An') }}</label>
+            <input type="number" name="an" value="{{ an }}" min="2020" max="2050" class="form-control">
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Luna') }}</label>
+            <select name="luna" class="form-select">
+                {% for n, label in luni_choices %}
+                <option value="{{ n }}" {% if luna == n %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Capitol') }}</label>
+            <select name="capitol" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for c in capitole %}
+                <option value="{{ c }}" {% if capitol == c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Categorie') }}</label>
+            <select name="categorie" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for c in categorii_disponibile %}
+                <option value="{{ c }}" {% if categorie == c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Cautare') }}</label>
+            <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="{{ _('Cod sau denumire...') }}">
+        </div>
+        <div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-filter"></i>
+            </button>
+        </div>
+    </div>
+</form>
+
+<!-- Form bulk save -->
+{% if pozitii %}
+<form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+    <div class="card-panel" style="padding: 0;">
+        <table class="table" style="width: 100%; font-size: 0.85rem;">
+            <thead>
+                <tr style="background: var(--bg-elevated);">
+                    <th style="text-align: left; padding: 8px;">{{ _('Cod') }}</th>
+                    <th style="text-align: left; padding: 8px;">{{ _('Capitol') }}</th>
+                    <th style="text-align: left; padding: 8px;">{{ _('Denumire') }}</th>
+                    <th style="text-align: center; padding: 8px;">UM</th>
+                    <th style="text-align: right; padding: 8px;">{{ _('Cant. oferta') }}</th>
+                    <th style="text-align: right; padding: 8px;">{{ _('Pret') }}</th>
+                    <th style="text-align: right; padding: 8px; background: rgba(201,169,97,0.15);">{{ _('Cant. luna') }}</th>
+                    <th style="text-align: left; padding: 8px;">{{ _('Note') }}</th>
+                    <th style="text-align: center; padding: 8px;">{{ _('Status') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in pozitii %}
+                {% set cant_existent = cantitati_existente.get(p.id) %}
+                <tr style="border-top: 1px solid var(--border);">
+                    <td style="padding: 6px; font-family: monospace; font-weight: 600;">{{ p.cod_articol }}</td>
+                    <td style="padding: 6px; color: var(--text-muted); font-size: 0.75rem;">{{ p.cod_capitol or '-' }}</td>
+                    <td style="padding: 6px;">{{ p.denumire[:60] }}{% if p.denumire|length > 60 %}...{% endif %}</td>
+                    <td style="padding: 6px; text-align: center;">{{ p.um }}</td>
+                    <td style="padding: 6px; text-align: right; font-variant-numeric: tabular-nums;">{{ '%.2f'|format(p.cantitate_oferta) }}</td>
+                    <td style="padding: 6px; text-align: right; font-variant-numeric: tabular-nums;">{{ '%.2f'|format(p.pret_unitar) }}</td>
+                    <td style="padding: 4px; background: rgba(201,169,97,0.05);">
+                        <input type="number" step="0.0001" min="0"
+                               name="cantitate_{{ p.id }}"
+                               value="{{ cant_existent.cantitate_executata if cant_existent else '' }}"
+                               class="form-control" style="text-align: right; padding: 4px;">
+                    </td>
+                    <td style="padding: 4px;">
+                        <input type="text" name="note_{{ p.id }}"
+                               value="{{ cant_existent.note if cant_existent and cant_existent.note else '' }}"
+                               class="form-control" style="padding: 4px; font-size: 0.8rem;"
+                               placeholder="{{ _('Note...') }}">
+                    </td>
+                    <td style="padding: 6px; text-align: center;">
+                        {% if cant_existent %}
+                            {% if cant_existent.validat %}
+                            <span class="badge" style="background: var(--success); color: white; font-size: 0.7rem;">{{ _('Validat') }}</span>
+                            {% else %}
+                            <form method="POST" action="{{ url_for('contracte.cantitate_valideaza', cantitate_id=cant_existent.id) }}" style="display:inline;">
+                                <button type="submit" class="btn btn-sm btn-outline" style="font-size: 0.7rem;" title="{{ _('Valideaza') }}">
+                                    <i class="fa-solid fa-check"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        {% else %}
+                            <span style="color: var(--text-muted); font-size: 0.7rem;">{{ _('Neinregistrat') }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Actiuni + paginare -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px;">
+        <div>
+            {% if pagination.pages > 1 %}
+            <div style="display: flex; gap: 6px; align-items: center;">
+                {% if pagination.has_prev %}
+                <a href="?an={{ an }}&luna={{ luna }}&capitol={{ capitol }}&categorie={{ categorie }}&q={{ q }}&page={{ pagination.prev_num }}" class="btn btn-sm btn-outline"><i class="fa-solid fa-chevron-left"></i></a>
+                {% endif %}
+                <span style="color: var(--text-muted); font-size: 0.85rem;">{{ _('Pagina') }} {{ pagination.page }} / {{ pagination.pages }}</span>
+                {% if pagination.has_next %}
+                <a href="?an={{ an }}&luna={{ luna }}&capitol={{ capitol }}&categorie={{ categorie }}&q={{ q }}&page={{ pagination.next_num }}" class="btn btn-sm btn-outline"><i class="fa-solid fa-chevron-right"></i></a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-save"></i> {{ _('Salveaza cantitati luna') }} {{ luna }}/{{ an }}
+        </button>
+    </div>
+</form>
+{% else %}
+<div class="card-panel" style="text-align: center; padding: 40px 20px;">
+    <p style="color: var(--text-muted); margin: 0;">{{ _('Nicio pozitie pentru filtrele alese.') }}</p>
+</div>
+{% endif %}
+{% endblock %}

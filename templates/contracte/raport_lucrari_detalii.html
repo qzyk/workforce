@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Raport') }} {{ luna_text }} {{ raport.an }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.lista') }}">{{ _('Proiecte') }}</a>
+<span>/</span>
+{% if raport.proiect %}
+<a href="{{ url_for('proiecte.detalii', id=raport.proiect.id) }}">{{ raport.proiect.cod_proiect }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.rapoarte_lucrari_lista', proiect_id=raport.proiect.id) }}">{{ _('Rapoarte') }}</a>
+<span>/</span>
+{% endif %}
+<span class="active">{{ luna_text }} {{ raport.an }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-clipboard-check" style="color: var(--primary);"></i>
+            {{ _('Raport lunar lucrari') }} - {{ luna_text }} {{ raport.an }}
+        </h2>
+        <div style="color: var(--text-muted); margin-top: 4px; font-size: 0.85rem;">
+            {% if raport.proiect %}{{ _('Proiect') }}: <strong>{{ raport.proiect.cod_proiect }} - {{ raport.proiect.nume }}</strong>{% endif %}
+            • {{ _('Intocmit') }}: {{ raport.data_intocmire }}
+        </div>
+    </div>
+    <a href="{{ url_for('contracte.raport_lucrari_genereaza', proiect_id=raport.proiect_id) }}?an={{ raport.an }}&luna={{ raport.luna }}"
+       class="btn btn-outline">
+        <i class="fa-solid fa-rotate-right"></i> {{ _('Regenereaza') }}
+    </a>
+</div>
+
+<!-- Sumar carduri -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px;">
+    <div class="card-panel" style="padding: 16px; text-align: center;">
+        <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">{{ _('Ore manopera') }}</div>
+        <div style="font-size: 2rem; font-weight: 600; color: var(--primary); font-variant-numeric: tabular-nums;">
+            {% if raport.ore_totale_manopera %}{{ '%.1f'|format(raport.ore_totale_manopera) }}{% else %}0{% endif %}
+        </div>
+        <div style="font-size: 0.75rem; color: var(--text-muted);">h</div>
+    </div>
+    <div class="card-panel" style="padding: 16px; text-align: center;">
+        <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">{{ _('Taskuri acoperite') }}</div>
+        <div style="font-size: 2rem; font-weight: 600; color: var(--primary);">
+            {{ taskuri_details|length }}
+        </div>
+    </div>
+</div>
+
+<!-- Progres descriere -->
+{% if raport.progres_descriere %}
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-file-lines"></i> {{ _('Progres descriere') }}</h3>
+    </div>
+    <div class="card-panel-body">
+        <pre style="white-space: pre-wrap; font-family: inherit; margin: 0; color: var(--text);">{{ raport.progres_descriere }}</pre>
+    </div>
+</div>
+{% endif %}
+
+<!-- Taskuri acoperite -->
+{% if taskuri_details %}
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-list-check"></i> {{ _('Taskuri din Program acoperite in aceasta luna') }} ({{ taskuri_details|length }})</h3>
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        <table class="table" style="width: 100%; font-size: 0.85rem;">
+            <thead>
+                <tr style="background: var(--bg-elevated);">
+                    <th style="text-align: left; padding: 8px;">{{ _('Cod') }}</th>
+                    <th style="text-align: left; padding: 8px;">{{ _('Denumire') }}</th>
+                    <th style="text-align: center; padding: 8px;">{{ _('Start') }}</th>
+                    <th style="text-align: center; padding: 8px;">{{ _('Finish') }}</th>
+                    <th style="text-align: right; padding: 8px;">{{ _('Realizare') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in taskuri_details %}
+                <tr style="border-top: 1px solid var(--border);">
+                    <td style="padding: 6px; font-family: monospace;">{{ t.cod_extern }}</td>
+                    <td style="padding: 6px;">{{ t.denumire }}</td>
+                    <td style="padding: 6px; text-align: center;">{{ t.data_start or '-' }}</td>
+                    <td style="padding: 6px; text-align: center;">{{ t.data_sfarsit or '-' }}</td>
+                    <td style="padding: 6px; text-align: right;">
+                        {% if t.procent_realizare is not none %}{{ '%.0f'|format(t.procent_realizare) }}%{% else %}-{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card-panel" style="text-align: center; padding: 30px 20px;">
+    <p style="color: var(--text-muted); margin: 0;">
+        {{ _('Niciun task din Program de referinta nu se intersecteaza cu aceasta luna.') }}
+    </p>
+</div>
+{% endif %}
+{% endblock %}

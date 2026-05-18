@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Situatii lunare') }} - {{ contract.nr_contract }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.lista') }}">{{ _('Contracte') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.detalii', id=contract.id) }}">{{ contract.nr_contract }}</a>
+<span>/</span>
+<span class="active">{{ _('Situatii lunare') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-chart-column" style="color: var(--primary);"></i>
+        {{ _('Situatii lunare') }} - {{ contract.nr_contract }}
+    </h2>
+    <a href="{{ url_for('contracte.situatie_nou', contract_id=contract.id) }}" class="btn btn-primary">
+        <i class="fa-solid fa-plus"></i> {{ _('Situatie noua') }}
+    </a>
+</div>
+
+{% if situatii %}
+<div class="card-panel">
+    <table class="table" style="width: 100%;">
+        <thead>
+            <tr style="background: var(--bg-elevated);">
+                <th style="text-align: left; padding: 10px;">{{ _('Perioada') }}</th>
+                <th style="text-align: left; padding: 10px;">{{ _('Numar') }}</th>
+                <th style="text-align: right; padding: 10px;">{{ _('Valoare luna') }}</th>
+                <th style="text-align: right; padding: 10px;">{{ _('Cumulat la zi') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Avans') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Status') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Actiuni') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in situatii %}
+            <tr style="border-top: 1px solid var(--border);">
+                <td style="padding: 10px; font-weight: 600;">
+                    {{ luni_ro.get(s.luna, s.luna) }} {{ s.an }}
+                </td>
+                <td style="padding: 10px; font-family: monospace;">{{ s.numar_situatie or '-' }}</td>
+                <td style="padding: 10px; text-align: right; font-variant-numeric: tabular-nums;">
+                    {% if s.valoare_totala_luna %}{{ '%.2f'|format(s.valoare_totala_luna) }} RON{% else %}-{% endif %}
+                </td>
+                <td style="padding: 10px; text-align: right; font-variant-numeric: tabular-nums;">
+                    {% if s.valoare_cumulat_la_zi %}{{ '%.2f'|format(s.valoare_cumulat_la_zi) }} RON{% else %}-{% endif %}
+                </td>
+                <td style="padding: 10px; text-align: center; font-weight: 600;">
+                    {% if s.procent_avans_total %}{{ '%.2f'|format(s.procent_avans_total) }}%{% else %}-{% endif %}
+                </td>
+                <td style="padding: 10px; text-align: center;">
+                    {% if s.status == 'draft' %}
+                        <span class="badge">{{ _('Draft') }}</span>
+                    {% elif s.status == 'emisa' %}
+                        <span class="badge" style="background: var(--warning); color: white;">{{ _('Emisa') }}</span>
+                    {% elif s.status == 'aprobata_beneficiar' %}
+                        <span class="badge" style="background: var(--success); color: white;">{{ _('Aprobata beneficiar') }}</span>
+                    {% elif s.status == 'platita' %}
+                        <span class="badge" style="background: var(--primary); color: white;">{{ _('Platita') }}</span>
+                    {% elif s.status == 'respinsa' %}
+                        <span class="badge" style="background: var(--danger); color: white;">{{ _('Respinsa') }}</span>
+                    {% else %}
+                        <span class="badge">{{ s.status }}</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 10px; text-align: center;">
+                    <a href="{{ url_for('contracte.situatie_detalii', situatie_id=s.id) }}"
+                       class="btn btn-sm btn-outline"><i class="fa-solid fa-eye"></i></a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card-panel" style="text-align: center; padding: 60px 20px;">
+    <i class="fa-solid fa-chart-column" style="font-size: 4rem; color: var(--text-muted); opacity: 0.3;"></i>
+    <h3 style="margin-top: 20px; color: var(--text-muted);">{{ _('Nicio situatie inregistrata') }}</h3>
+    <p style="color: var(--text-muted);">
+        {{ _('Genereaza prima situatie din cantitatile executate validate ale unei luni.') }}
+    </p>
+    <a href="{{ url_for('contracte.situatie_nou', contract_id=contract.id) }}" class="btn btn-primary" style="margin-top: 12px;">
+        <i class="fa-solid fa-plus"></i> {{ _('Situatie noua') }}
+    </a>
+</div>
+{% endif %}
+{% endblock %}

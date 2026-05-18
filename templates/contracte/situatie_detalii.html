@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Situatie') }} {{ luna_text }} {{ situatie.an }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.lista') }}">{{ _('Contracte') }}</a>
+<span>/</span>
+{% if data.contract %}
+<a href="{{ url_for('contracte.detalii', id=data.contract.id) }}">{{ data.contract.nr_contract }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.situatii_lista', contract_id=data.contract.id) }}">{{ _('Situatii') }}</a>
+<span>/</span>
+{% endif %}
+<span class="active">{{ luna_text }} {{ situatie.an }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-chart-column" style="color: var(--primary);"></i>
+            {{ _('Situatie lunara') }} - {{ luna_text }} {{ situatie.an }}
+            {% if situatie.numar_situatie %}
+            <span class="badge" style="margin-left: 8px; font-family: monospace;">{{ situatie.numar_situatie }}</span>
+            {% endif %}
+        </h2>
+        <div style="color: var(--text-muted); margin-top: 4px; font-size: 0.85rem;">
+            {% if data.contract %}{{ _('Contract') }}: <strong>{{ data.contract.nr_contract }}</strong>{% endif %}
+            {% if data.proiect %} • {{ _('Proiect') }}: {{ data.proiect.cod_proiect }} - {{ data.proiect.nume }}{% endif %}
+        </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('contracte.situatie_export_xlsx', situatie_id=situatie.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-file-excel"></i> Excel
+        </a>
+        <a href="{{ url_for('contracte.situatie_export_pdf', situatie_id=situatie.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-file-pdf"></i> PDF
+        </a>
+    </div>
+</div>
+
+<!-- Sumar carduri -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
+    <div class="card-panel" style="padding: 12px; text-align: center;">
+        <div style="font-size: 0.8rem; color: var(--text-muted);">{{ _('Valoare luna') }}</div>
+        <div style="font-size: 1.4rem; font-weight: 600; color: var(--primary); font-variant-numeric: tabular-nums;">
+            {{ '%.2f'|format(situatie.valoare_totala_luna or 0) }} RON
+        </div>
+    </div>
+    <div class="card-panel" style="padding: 12px; text-align: center;">
+        <div style="font-size: 0.8rem; color: var(--text-muted);">{{ _('Cumulat la zi') }}</div>
+        <div style="font-size: 1.4rem; font-weight: 600; color: var(--primary); font-variant-numeric: tabular-nums;">
+            {{ '%.2f'|format(situatie.valoare_cumulat_la_zi or 0) }} RON
+        </div>
+    </div>
+    <div class="card-panel" style="padding: 12px; text-align: center;">
+        <div style="font-size: 0.8rem; color: var(--text-muted);">{{ _('Avans total') }}</div>
+        <div style="font-size: 1.4rem; font-weight: 600; color: var(--success); font-variant-numeric: tabular-nums;">
+            {{ '%.2f'|format(situatie.procent_avans_total or 0) }}%
+        </div>
+    </div>
+    <div class="card-panel" style="padding: 12px; text-align: center;">
+        <div style="font-size: 0.8rem; color: var(--text-muted);">{{ _('Status') }}</div>
+        <div style="font-size: 1.0rem; font-weight: 600; margin-top: 8px;">
+            {% if situatie.status == 'draft' %}
+                <span class="badge">{{ _('Draft') }}</span>
+            {% elif situatie.status == 'emisa' %}
+                <span class="badge" style="background: var(--warning); color: white;">{{ _('Emisa') }}</span>
+            {% elif situatie.status == 'aprobata_beneficiar' %}
+                <span class="badge" style="background: var(--success); color: white;">{{ _('Aprobata') }}</span>
+            {% elif situatie.status == 'platita' %}
+                <span class="badge" style="background: var(--primary); color: white;">{{ _('Platita') }}</span>
+            {% elif situatie.status == 'respinsa' %}
+                <span class="badge" style="background: var(--danger); color: white;">{{ _('Respinsa') }}</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Workflow status -->
+{% if transitions %}
+<div class="card-panel" style="margin-bottom: 16px;">
+    <div class="card-panel-body" style="display: flex; align-items: center; gap: 12px;">
+        <span style="color: var(--text-muted); font-size: 0.85rem;">{{ _('Tranzitii valide') }}:</span>
+        {% for next_status in transitions %}
+        <form method="POST" action="{{ url_for('contracte.situatie_schimba_status', situatie_id=situatie.id) }}" style="display:inline;">
+            <input type="hidden" name="nou_status" value="{{ next_status }}" />
+            <button type="submit" class="btn btn-sm btn-outline"
+                    onclick="return confirm('{{ _('Sigur treci la status') }} {{ next_status }}?');">
+                <i class="fa-solid fa-arrow-right"></i> {{ next_status }}
+            </button>
+        </form>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Tabel pozitii -->
+{% if data.rows %}
+<div class="card-panel">
+    <table class="table" style="width: 100%; font-size: 0.82rem;">
+        <thead>
+            <tr style="background: var(--bg-elevated);">
+                <th style="text-align: left; padding: 8px;">{{ _('Cod') }}</th>
+                <th style="text-align: left; padding: 8px;">{{ _('Capitol') }}</th>
+                <th style="text-align: left; padding: 8px;">{{ _('Denumire') }}</th>
+                <th style="text-align: center; padding: 8px;">UM</th>
+                <th style="text-align: right; padding: 8px;">{{ _('Cant. oferta') }}</th>
+                <th style="text-align: right; padding: 8px;">{{ _('Pret unit.') }}</th>
+                <th style="text-align: right; padding: 8px;">{{ _('Val. oferta') }}</th>
+                <th style="text-align: right; padding: 8px; background: rgba(201,169,97,0.15);">{{ _('Cant. luna') }}</th>
+                <th style="text-align: right; padding: 8px; background: rgba(201,169,97,0.15);">{{ _('Val. luna') }}</th>
+                <th style="text-align: right; padding: 8px;">{{ _('Cant. cumul.') }}</th>
+                <th style="text-align: right; padding: 8px;">{{ _('Val. cumul.') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data.rows %}
+            {% if row.cant_luna > 0 or row.cant_cumul > 0 %}
+            <tr style="border-top: 1px solid var(--border);">
+                <td style="padding: 6px; font-family: monospace; font-weight: 600;">{{ row.cod_articol }}</td>
+                <td style="padding: 6px; color: var(--text-muted); font-size: 0.75rem;">{{ row.cod_capitol }}</td>
+                <td style="padding: 6px;">{{ row.denumire[:50] }}{% if row.denumire|length > 50 %}...{% endif %}</td>
+                <td style="padding: 6px; text-align: center;">{{ row.um }}</td>
+                <td style="padding: 6px; text-align: right; font-variant-numeric: tabular-nums;">{{ '%.2f'|format(row.cant_oferta) }}</td>
+                <td style="padding: 6px; text-align: right; font-variant-numeric: tabular-nums;">{{ '%.2f'|format(row.pret_unitar) }}</td>
+                <td style="padding: 6px; text-align: right; font-variant-numeric: tabular-nums;">{{ '%.2f'|format(row.val_oferta) }}</td>
+                <td style="padding: 6px; text-align: right; font-variant-numeric: tabular-nums; background: rgba(201,169,97,0.05);">{{ '%.2f'|format(row.cant_luna) }}</td>
+                <td style="padding: 6px; text-align: right; font-variant-numeric: tabular-nums; background: rgba(201,169,97,0.05); font-weight: 600;">{{ '%.2f'|format(row.val_luna) }}</td>
+                <td style="padding: 6px; text-align: right; font-variant-numeric: tabular-nums;">{{ '%.2f'|format(row.cant_cumul) }}</td>
+                <td style="padding: 6px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600;">{{ '%.2f'|format(row.val_cumul) }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<p style="color: var(--text-muted); font-size: 0.82rem; margin-top: 12px;">
+    <i class="fa-solid fa-info-circle"></i> {{ _('Afiseaza doar pozitiile cu activitate (cant. luna sau cumulat). Totalurile includ toate pozitiile.') }}
+</p>
+{% else %}
+<div class="card-panel" style="text-align: center; padding: 40px 20px;">
+    <p style="color: var(--text-muted); margin: 0;">{{ _('Nicio pozitie BoQ in oferta asociata.') }}</p>
+</div>
+{% endif %}
+{% endblock %}

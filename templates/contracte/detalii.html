@@ -31,7 +31,15 @@
         </div>
         {% endif %}
     </div>
-    <div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <a href="{{ url_for('contracte.situatii_lista', contract_id=contract.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-chart-column"></i> {{ _('Situatii lunare') }}
+        </a>
+        {% if contract.proiect %}
+        <a href="{{ url_for('contracte.rapoarte_lucrari_lista', proiect_id=contract.proiect.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-clipboard-check"></i> {{ _('Rapoarte lunare') }}
+        </a>
+        {% endif %}
         <a href="{{ url_for('contracte.formular_editeaza', id=contract.id) }}" class="btn btn-primary">
             <i class="fa-solid fa-pen"></i> {{ _('Editeaza') }}
         </a>
@@ -271,7 +279,10 @@
                     </td>
                     <td><code style="font-size: 0.78rem;">{{ o.sursa_import }}</code></td>
                     <td>{{ o.pozitii.count() }}</td>
-                    <td><a href="{{ url_for('contracte.oferta_detalii', oferta_id=o.id) }}" class="btn btn-sm btn-outline"><i class="fa-solid fa-eye"></i></a></td>
+                    <td style="white-space: nowrap;">
+                        <a href="{{ url_for('contracte.oferta_detalii', oferta_id=o.id) }}" class="btn btn-sm btn-outline" title="{{ _('Detalii') }}"><i class="fa-solid fa-eye"></i></a>
+                        <a href="{{ url_for('contracte.oferta_cantitati', oferta_id=o.id) }}" class="btn btn-sm btn-outline" title="{{ _('Cantitati lunare') }}"><i class="fa-solid fa-table-cells"></i></a>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>

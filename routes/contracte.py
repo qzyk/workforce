@@ -28,10 +28,16 @@ from werkzeug.utils import secure_filename
 from models import (
     db, Proiect, Contract, TermenContract, ProcesVerbal, Utilizator,
     ProgramReferinta, TaskProgram, OfertaContract, PozitieBoQ,
+    CantitateExecutataLunara, SituatieLunara, RaportLucrariProiect,
 )
 from forms.contract_forms import (
     ContractForm, TermenContractForm, ProcesVerbalForm,
     parse_participanti_text, format_participanti_text,
+)
+from forms.cantitate_forms import CantitateLunaraForm, parse_bulk_cantitati
+from forms.situatie_forms import (
+    SituatieLunaraForm, SchimbaStatusSituatieForm, RaportLucrariForm,
+    LUNI_CHOICES,
 )
 import services.audit as audit_svc
 from services.feature_flags import is_enabled
@@ -39,6 +45,10 @@ from services.parsers import (
     MSProjectXMLParser, EDevizeXMLParser, EDevizePDFParser,
     ExcelBoQParser, ParseError,
 )
+from services.situatii import (
+    genereaza_situatie, export_situatie_xlsx, export_situatie_pdf, LUNI_RO,
+)
+from services.rapoarte_lucrari import genereaza_raport_lucrari
 
 
 ALLOWED_EXT_MSPROJECT = {'xml'}
@@ -831,3 +841,416 @@ def oferta_detalii(oferta_id):
         totals[p.categorie] = totals.get(p.categorie, Decimal('0')) + Decimal(str(val))
     return render_template('contracte/oferta_detalii.html',
                            oferta=oferta, pozitii=pozitii, totals=totals)
+
+
+# ============================================================
+# FAZA 12 - CANTITATI EXECUTATE LUNARE (matrice editabila)
+# ============================================================
+
+@contracte_bp.route('/oferta/<int:oferta_id>/cantitati', methods=['GET', 'POST'])
+@login_required
+def oferta_cantitati(oferta_id):
+    """
+    Matrice editabila cantitati executate lunar pentru o oferta.
+
+    GET cu ?an=2026&luna=3&capitol=...&q=...&page=1 - lista filtrate
+    POST cu hidden fields cantitate_<pid>, note_<pid> - bulk save
+    """
+    oferta = OfertaContract.query.get_or_404(oferta_id)
+    # Parametri filtrare / paginare
+    today = date.today()
+    an = request.args.get('an', type=int) or today.year
+    luna = request.args.get('luna', type=int) or today.month
+    capitol = (request.args.get('capitol') or '').strip()
+    categorie = (request.args.get('categorie') or '').strip()
+    q = (request.args.get('q') or '').strip()
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+
+    if request.method == 'POST':
+        # Bulk save cantitati
+        bulk = parse_bulk_cantitati(request.form)
+        count_created = 0
+        count_updated = 0
+        for entry in bulk:
+            pid = entry['pozitie_boq_id']
+            # Validez ca pozitia apartine ofertei (evit injectii)
+            pz = PozitieBoQ.query.filter_by(id=pid, oferta_id=oferta.id).first()
+            if pz is None:
+                continue
+            existing = CantitateExecutataLunara.query.filter_by(
+                pozitie_boq_id=pid, an=an, luna=luna
+            ).first()
+            cant_valoare = entry['cantitate_executata']
+            pret = pz.pret_unitar or Decimal('0')
+            val_calc = cant_valoare * pret
+            if existing is None:
+                c = CantitateExecutataLunara(
+                    pozitie_boq_id=pid, proiect_id=pz.proiect_id,
+                    an=an, luna=luna,
+                    cantitate_executata=cant_valoare,
+                    valoare_calculata=val_calc,
+                    note=entry.get('note'),
+                    inregistrat_de_id=current_user.id,
+                )
+                db.session.add(c)
+                db.session.flush()
+                audit_svc.log_create('cantitate_executata_lunara', c.id, new_values={
+                    'pozitie_boq_id': pid, 'an': an, 'luna': luna,
+                    'cantitate': str(cant_valoare),
+                })
+                count_created += 1
+            else:
+                before = audit_svc.snapshot(existing, ['cantitate_executata', 'note'])
+                existing.cantitate_executata = cant_valoare
+                existing.valoare_calculata = val_calc
+                if entry.get('note'):
+                    existing.note = entry['note']
+                # Reset validare daca admin schimba cantitate
+                if existing.validat:
+                    existing.validat = False
+                    existing.validat_de_id = None
+                    existing.data_validare = None
+                audit_svc.log_update('cantitate_executata_lunara', existing.id,
+                                     before, audit_svc.snapshot(existing, ['cantitate_executata', 'note']))
+                count_updated += 1
+        db.session.commit()
+        flash(
+            f'{count_created} cantitati noi + {count_updated} actualizate '
+            f'pentru {LUNI_RO.get(luna, luna)} {an}.',
+            'success',
+        )
+        # Redirect cu aceleasi filtre
+        return redirect(url_for(
+            'contracte.oferta_cantitati', oferta_id=oferta.id,
+            an=an, luna=luna, capitol=capitol, categorie=categorie, q=q, page=page,
+        ))
+
+    # GET - construiesc query
+    query = PozitieBoQ.query.filter_by(oferta_id=oferta.id)
+    if capitol:
+        query = query.filter(PozitieBoQ.cod_capitol == capitol)
+    if categorie:
+        query = query.filter(PozitieBoQ.categorie == categorie)
+    if q:
+        query = query.filter(
+            db.or_(
+                PozitieBoQ.cod_articol.ilike(f'%{q}%'),
+                PozitieBoQ.denumire.ilike(f'%{q}%'),
+            )
+        )
+    query = query.order_by(PozitieBoQ.cod_capitol, PozitieBoQ.ordine)
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    pozitii = pagination.items
+
+    # Cantitati deja inregistrate pentru luna (mapate pe pozitie_boq_id)
+    cantitati_existente = {}
+    if pozitii:
+        for c in CantitateExecutataLunara.query.filter(
+            CantitateExecutataLunara.pozitie_boq_id.in_([p.id for p in pozitii]),
+            CantitateExecutataLunara.an == an,
+            CantitateExecutataLunara.luna == luna,
+        ).all():
+            cantitati_existente[c.pozitie_boq_id] = c
+
+    # Capitole + categorii distincte pentru filtre dropdown
+    capitole_distincte = [
+        c[0] for c in db.session.query(PozitieBoQ.cod_capitol).filter(
+            PozitieBoQ.oferta_id == oferta.id,
+            PozitieBoQ.cod_capitol.isnot(None),
+        ).distinct().order_by(PozitieBoQ.cod_capitol).all()
+        if c[0]
+    ]
+    categorii = [c[0] for c, in zip(*[(['materiale', 'manopera', 'utilaje', 'transport', 'mixt'],)])]
+
+    return render_template(
+        'contracte/cantitati_matrice.html',
+        oferta=oferta, pozitii=pozitii, pagination=pagination,
+        cantitati_existente=cantitati_existente,
+        an=an, luna=luna, capitol=capitol, categorie=categorie, q=q,
+        luni_choices=LUNI_CHOICES,
+        capitole=capitole_distincte,
+        categorii_disponibile=['materiale', 'manopera', 'utilaje', 'transport', 'mixt'],
+    )
+
+
+@contracte_bp.route('/cantitate/<int:cantitate_id>/valideaza', methods=['POST'])
+@login_required
+def cantitate_valideaza(cantitate_id):
+    """Manager valideaza o cantitate. Doar adminii / managerii."""
+    if current_user.rol not in ('admin', 'manager'):
+        flash('Doar managerii pot valida cantitati.', 'danger')
+        return redirect(request.referrer or url_for('contracte.lista'))
+    c = CantitateExecutataLunara.query.get_or_404(cantitate_id)
+    if c.validat:
+        flash('Cantitate deja validata.', 'info')
+        return redirect(request.referrer or url_for('contracte.lista'))
+    before = audit_svc.snapshot(c, ['validat', 'validat_de_id'])
+    c.validat = True
+    c.validat_de_id = current_user.id
+    c.data_validare = datetime.utcnow()
+    audit_svc.log_update('cantitate_executata_lunara', c.id, before,
+                         audit_svc.snapshot(c, ['validat', 'validat_de_id']))
+    db.session.commit()
+    flash(f'Cantitate validata (poz {c.pozitie_boq_id}, '
+          f'{LUNI_RO.get(c.luna, c.luna)} {c.an}).', 'success')
+    return redirect(request.referrer or url_for('contracte.lista'))
+
+
+@contracte_bp.route('/cantitate/<int:cantitate_id>/sterge', methods=['POST'])
+@login_required
+def cantitate_sterge(cantitate_id):
+    """Sterge o cantitate (doar daca nu e legata de o situatie emisa)."""
+    c = CantitateExecutataLunara.query.get_or_404(cantitate_id)
+    pid = c.pozitie_boq_id
+    try:
+        audit_svc.log_delete('cantitate_executata_lunara', c.id, old_values={
+            'pozitie_boq_id': pid, 'an': c.an, 'luna': c.luna,
+            'cantitate': str(c.cantitate_executata),
+        })
+        db.session.delete(c)
+        db.session.commit()
+        flash('Cantitate stearsa.', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la stergere: {e}', 'danger')
+    return redirect(request.referrer or url_for('contracte.lista'))
+
+
+# ============================================================
+# FAZA 12 - SITUATII LUNARE
+# ============================================================
+
+@contracte_bp.route('/<int:contract_id>/situatii')
+@login_required
+def situatii_lista(contract_id):
+    """Lista situatii lunare pentru un contract."""
+    contract = Contract.query.get_or_404(contract_id)
+    situatii = SituatieLunara.query.filter_by(
+        contract_id=contract.id
+    ).order_by(SituatieLunara.an.desc(), SituatieLunara.luna.desc()).all()
+    return render_template('contracte/situatii_lista.html',
+                           contract=contract, situatii=situatii,
+                           luni_ro=LUNI_RO)
+
+
+@contracte_bp.route('/<int:contract_id>/situatie/nou', methods=['GET', 'POST'])
+@login_required
+def situatie_nou(contract_id):
+    """Genereaza o situatie lunara noua din cantitati validate."""
+    contract = Contract.query.get_or_404(contract_id)
+    form = SituatieLunaraForm()
+    if request.method == 'GET':
+        # Preset luna/an din URL daca prezent
+        preset_an = request.args.get('an', type=int)
+        preset_luna = request.args.get('luna', type=int)
+        if preset_an: form.an.data = preset_an
+        if preset_luna: form.luna.data = preset_luna
+        if not form.an.data:
+            form.an.data = date.today().year
+        if not form.luna.data:
+            form.luna.data = date.today().month
+        if not form.status.data:
+            form.status.data = 'draft'
+
+    if form.validate_on_submit():
+        an = form.an.data
+        luna = form.luna.data
+        # Verifica daca exista deja o situatie pentru (proiect, an, luna)
+        existing = SituatieLunara.query.filter_by(
+            proiect_id=contract.proiect_id, an=an, luna=luna,
+        ).first()
+        try:
+            situatie = genereaza_situatie(contract.id, an, luna, current_user.id)
+            # Aplic numar + status (override din form)
+            if form.numar_situatie.data:
+                situatie.numar_situatie = form.numar_situatie.data.strip()
+            if form.status.data:
+                situatie.status = form.status.data
+            if form.data_emitere.data:
+                situatie.data_emitere = form.data_emitere.data
+            audit_svc.log_create(
+                'situatie_lunara', situatie.id,
+                new_values={
+                    'contract_id': contract.id, 'an': an, 'luna': luna,
+                    'valoare_luna': str(situatie.valoare_totala_luna or 0),
+                },
+            )
+            db.session.commit()
+            action = 'actualizata' if existing else 'creata'
+            flash(
+                f'Situatie {action}: {LUNI_RO.get(luna, luna)} {an}, '
+                f'valoare luna {situatie.valoare_totala_luna or 0:.2f} RON.',
+                'success',
+            )
+            return redirect(url_for('contracte.situatie_detalii',
+                                     situatie_id=situatie.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare la generare: {e}', 'danger')
+
+    return render_template('contracte/situatie_formular.html',
+                           form=form, contract=contract, situatie=None)
+
+
+@contracte_bp.route('/situatie/<int:situatie_id>')
+@login_required
+def situatie_detalii(situatie_id):
+    """Detalii situatie cu tabel pozitii, totaluri, butoane export + status."""
+    from services.situatii import _get_situatie_data
+    situatie = SituatieLunara.query.get_or_404(situatie_id)
+    data = _get_situatie_data(situatie)
+    # Status transitions valide (workflow simplu)
+    transitions = {
+        'draft': ['emisa'],
+        'emisa': ['aprobata_beneficiar', 'respinsa'],
+        'aprobata_beneficiar': ['platita'],
+        'platita': [],
+        'respinsa': ['draft'],
+    }
+    return render_template('contracte/situatie_detalii.html',
+                           situatie=situatie, data=data,
+                           luna_text=data['luna_text'],
+                           transitions=transitions.get(situatie.status, []),
+                           statuses=SituatieLunara.STATUSES)
+
+
+@contracte_bp.route('/situatie/<int:situatie_id>/status', methods=['POST'])
+@login_required
+def situatie_schimba_status(situatie_id):
+    """Schimba statusul unei situatii (workflow draft->emisa->aprobata->platita)."""
+    situatie = SituatieLunara.query.get_or_404(situatie_id)
+    nou_status = (request.form.get('nou_status') or '').strip()
+    valid_statuses = {s[0] for s in SituatieLunara.STATUSES}
+    if nou_status not in valid_statuses:
+        flash(f'Status invalid: {nou_status}', 'danger')
+        return redirect(url_for('contracte.situatie_detalii', situatie_id=situatie.id))
+    before = audit_svc.snapshot(situatie, ['status'])
+    vechi_status = situatie.status
+    situatie.status = nou_status
+    if nou_status == 'aprobata_beneficiar':
+        situatie.aprobat_de_id = current_user.id
+        situatie.data_aprobare = datetime.utcnow()
+    audit_svc.log_update('situatie_lunara', situatie.id, before,
+                         audit_svc.snapshot(situatie, ['status']))
+    db.session.commit()
+    flash(f'Status schimbat: {vechi_status} -> {nou_status}', 'success')
+    return redirect(url_for('contracte.situatie_detalii', situatie_id=situatie.id))
+
+
+@contracte_bp.route('/situatie/<int:situatie_id>/export/xlsx')
+@login_required
+def situatie_export_xlsx(situatie_id):
+    """Export Excel pentru situatie lunara."""
+    from flask import send_file
+    try:
+        path = export_situatie_xlsx(situatie_id)
+    except Exception as e:
+        flash(f'Eroare export Excel: {e}', 'danger')
+        return redirect(url_for('contracte.situatie_detalii', situatie_id=situatie_id))
+    return send_file(path, as_attachment=True,
+                     download_name=os.path.basename(path),
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@contracte_bp.route('/situatie/<int:situatie_id>/export/pdf')
+@login_required
+def situatie_export_pdf(situatie_id):
+    """Export PDF pentru situatie lunara."""
+    from flask import send_file
+    try:
+        path = export_situatie_pdf(situatie_id)
+    except Exception as e:
+        flash(f'Eroare export PDF: {e}', 'danger')
+        return redirect(url_for('contracte.situatie_detalii', situatie_id=situatie_id))
+    return send_file(path, as_attachment=True,
+                     download_name=os.path.basename(path),
+                     mimetype='application/pdf')
+
+
+# ============================================================
+# FAZA 12 - RAPOARTE LUCRARI PROIECT (aggregator)
+# ============================================================
+
+@contracte_bp.route('/proiect/<int:proiect_id>/rapoarte-lucrari')
+@login_required
+def rapoarte_lucrari_lista(proiect_id):
+    """Lista rapoarte lunare pentru un proiect."""
+    proiect = Proiect.query.get_or_404(proiect_id)
+    rapoarte = RaportLucrariProiect.query.filter_by(
+        proiect_id=proiect_id
+    ).order_by(RaportLucrariProiect.an.desc(),
+               RaportLucrariProiect.luna.desc()).all()
+    return render_template('contracte/rapoarte_lucrari_lista.html',
+                           proiect=proiect, rapoarte=rapoarte,
+                           luni_ro=LUNI_RO)
+
+
+@contracte_bp.route('/proiect/<int:proiect_id>/raport-lucrari/genereaza',
+                    methods=['GET', 'POST'])
+@login_required
+def raport_lucrari_genereaza(proiect_id):
+    """Genereaza un raport lunar agregator (Pontaj + Activitati + Taskuri)."""
+    proiect = Proiect.query.get_or_404(proiect_id)
+    form = RaportLucrariForm()
+    if request.method == 'GET':
+        form.an.data = date.today().year
+        form.luna.data = date.today().month
+
+    if form.validate_on_submit():
+        try:
+            raport = genereaza_raport_lucrari(
+                proiect_id, form.an.data, form.luna.data, current_user.id
+            )
+            # Permit override descriere manual
+            if form.progres_descriere.data:
+                manual = form.progres_descriere.data.strip()
+                auto = (raport.progres_descriere or '').strip()
+                raport.progres_descriere = (
+                    f'{manual}\n\n--- Auto-extras din activitati ---\n{auto}'
+                    if auto else manual
+                )
+            audit_svc.log_create('raport_lucrari_proiect', raport.id, new_values={
+                'proiect_id': proiect_id, 'an': form.an.data, 'luna': form.luna.data,
+                'ore_totale_manopera': str(raport.ore_totale_manopera or 0),
+            })
+            db.session.commit()
+            flash(
+                f'Raport generat: {LUNI_RO.get(raport.luna, raport.luna)} {raport.an}, '
+                f'{raport.ore_totale_manopera or 0:.1f} ore manopera, '
+                f'{len(raport.taskuri_acoperite)} taskuri acoperite.',
+                'success',
+            )
+            return redirect(url_for('contracte.raport_lucrari_detalii',
+                                     raport_id=raport.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare la generare raport: {e}', 'danger')
+
+    return render_template('contracte/raport_lucrari_formular.html',
+                           form=form, proiect=proiect)
+
+
+@contracte_bp.route('/raport-lucrari/<int:raport_id>')
+@login_required
+def raport_lucrari_detalii(raport_id):
+    """Detalii raport lunar."""
+    raport = RaportLucrariProiect.query.get_or_404(raport_id)
+    # Imbogatesc cu numele taskurilor (cautam in TaskProgram)
+    taskuri_acoperite_details = []
+    if raport.taskuri_acoperite:
+        for cod in raport.taskuri_acoperite:
+            t = TaskProgram.query.filter(
+                TaskProgram.proiect_id == raport.proiect_id,
+                TaskProgram.cod_extern == cod,
+            ).first()
+            taskuri_acoperite_details.append({
+                'cod_extern': cod,
+                'denumire': t.denumire if t else '(task nereperat)',
+                'data_start': t.data_start_planificat if t else None,
+                'data_sfarsit': t.data_sfarsit_planificat if t else None,
+                'procent_realizare': t.procent_realizare if t else None,
+            })
+    return render_template('contracte/raport_lucrari_detalii.html',
+                           raport=raport, luna_text=LUNI_RO.get(raport.luna, raport.luna),
+                           taskuri_details=taskuri_acoperite_details)

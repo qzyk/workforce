@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Genereaza raport lunar') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.lista') }}">{{ _('Proiecte') }}</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.detalii', id=proiect.id) }}">{{ proiect.cod_proiect }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.rapoarte_lucrari_lista', proiect_id=proiect.id) }}">{{ _('Rapoarte') }}</a>
+<span>/</span>
+<span class="active">{{ _('Nou') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 700px; margin: 0 auto;">
+    <h2 style="margin-bottom: 8px;">
+        <i class="fa-solid fa-clipboard-check" style="color: var(--primary);"></i>
+        {{ _('Genereaza raport lunar lucrari') }}
+    </h2>
+    <p style="color: var(--text-muted); margin-bottom: 20px;">
+        {{ _('Proiect') }}: <strong>{{ proiect.cod_proiect }} - {{ proiect.nume }}</strong>
+    </p>
+
+    <div class="card-panel" style="background: rgba(201, 169, 97, 0.08); border-left: 4px solid var(--primary);">
+        <div class="card-panel-body">
+            <p style="margin: 0;">
+                <i class="fa-solid fa-info-circle" style="color: var(--primary);"></i>
+                {{ _('Raportul agregheaza datele din 3 surse pentru luna aleasa') }}:
+            </p>
+            <ul style="margin: 8px 0 0 24px; font-size: 0.85rem; color: var(--text-muted);">
+                <li>{{ _('Pontaj') }}: ore totale manopera (preferential cele cu status="aprobat")</li>
+                <li>{{ _('RaportActivitate') }}: descrierile activitatilor lunare/saptamanale</li>
+                <li>{{ _('TaskProgram') }}: taskurile a caror durata se intersecteaza cu luna</li>
+            </ul>
+        </div>
+    </div>
+
+    <form method="POST" novalidate>
+        {{ form.hidden_tag() }}
+        <div class="card-panel">
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('An') }} <span class="text-danger">*</span></label>
+                        {{ form.an(class_="form-control", type="number", min="2020", max="2050") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Luna') }} <span class="text-danger">*</span></label>
+                        {{ form.luna(class_="form-select") }}
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">{{ _('Progres descriere (manual - se adauga la cele auto-extrase)') }}</label>
+                    {{ form.progres_descriere(class_="form-control", rows="3",
+                                              placeholder=_('Optional: descriere manuala progres luna...')) }}
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+            <a href="{{ url_for('contracte.rapoarte_lucrari_lista', proiect_id=proiect.id) }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> {{ _('Anulare') }}
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-gears"></i> {{ _('Genereaza') }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
