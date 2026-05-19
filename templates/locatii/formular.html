@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Editeaza locatie') if locatie else _('Locatie noua') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block extra_css %}
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.0.0/mapbox-gl.css" rel="stylesheet">
+<style>
+  #pick-map {
+    width: 100%;
+    height: 380px;
+    border-radius: 10px;
+    border: 1px solid rgba(201, 169, 97, 0.3);
+  }
+  .pick-marker {
+    width: 30px; height: 30px;
+    background: linear-gradient(135deg, #E0BB6E, #C9A961, #A8893D);
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    border: 2px solid #0B1426;
+    cursor: grab;
+    box-shadow: 0 3px 8px rgba(11, 20, 38, 0.4);
+  }
+  .geocode-status {
+    font-size: 0.82rem; padding: 6px 10px; border-radius: 6px;
+    display: none;
+  }
+  .geocode-status.show { display: inline-block; }
+  .geocode-status.success { background: rgba(76, 175, 80, 0.15); color: var(--success); }
+  .geocode-status.error { background: rgba(244, 67, 54, 0.15); color: var(--danger); }
+  .geocode-status.loading { background: rgba(201, 169, 97, 0.15); color: var(--primary); }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.lista') }}">{{ _('Proiecte') }}</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.detalii', id=proiect.id) }}">{{ proiect.cod_proiect }}</a>
+<span>/</span>
+<a href="{{ url_for('locatii.lista', proiect_id=proiect.id) }}">{{ _('Locatii') }}</a>
+<span>/</span>
+<span class="active">{{ _('Editeaza') if locatie else _('Nou') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 1000px; margin: 0 auto;">
+    <h2 style="margin-bottom: 8px;">
+        <i class="fa-solid fa-{{ 'pen' if locatie else 'plus' }}" style="color: var(--primary);"></i>
+        {{ _('Editeaza locatie') if locatie else _('Locatie noua') }}
+    </h2>
+    <p style="color: var(--text-muted); margin-bottom: 20px;">
+        {{ _('Proiect') }}: <strong>{{ proiect.cod_proiect }} - {{ proiect.nume }}</strong>
+    </p>
+
+    <form method="POST" novalidate>
+        {{ form.hidden_tag() }}
+        {% if locatie %}{{ form.locatie_id(value=locatie.id) }}{% endif %}
+
+        <!-- Identificare -->
+        <div class="card-panel">
+            <div class="card-panel-header"><h3><i class="fa-solid fa-id-card"></i> {{ _('Identificare') }}</h3></div>
+            <div class="card-panel-body">
+                <div class="form-group">
+                    <label class="form-label">{{ _('Nume locatie') }} <span class="text-danger">*</span></label>
+                    {{ form.nume(class_="form-control", placeholder=_('Ex: Santier Strada Stefan cel Mare')) }}
+                    {% if form.nume.errors %}<div class="field-error">{{ form.nume.errors[0] }}</div>{% endif %}
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Tip') }}</label>
+                        {{ form.tip(class_="form-select") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Status') }}</label>
+                        {{ form.status(class_="form-select") }}
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">{{ _('Descriere') }}</label>
+                    {{ form.descriere(class_="form-control", rows="2") }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Adresa + Geocoding -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-location-dot"></i> {{ _('Adresa') }}</h3>
+            </div>
+            <div class="card-panel-body">
+                <div class="form-group">
+                    <label class="form-label">{{ _('Adresa') }}</label>
+                    {{ form.adresa_text(class_="form-control", id="adresa-input",
+                                        placeholder=_('Ex: Strada Stefan cel Mare 15')) }}
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Judet') }}</label>
+                        {{ form.judet(class_="form-control", id="judet-input") }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Localitate') }}</label>
+                        {{ form.localitate(class_="form-control", id="localitate-input") }}
+                    </div>
+                </div>
+                {% if geocoding_disponibil %}
+                <div style="display: flex; gap: 12px; align-items: center; margin-top: 8px;">
+                    <button type="button" class="btn btn-outline" id="btn-geocode">
+                        <i class="fa-solid fa-magnifying-glass-location"></i>
+                        {{ _('Cauta coordonate din adresa') }}
+                    </button>
+                    <span id="geocode-status" class="geocode-status"></span>
+                </div>
+                <div class="form-group" style="margin-top: 12px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        {{ form.geocodeaza() }}
+                        <span>{{ _('Geocodeaza automat adresa la salvare (server-side)') }}</span>
+                    </label>
+                </div>
+                {% else %}
+                <div style="background: rgba(255, 152, 0, 0.1); border-left: 3px solid var(--warning);
+                            padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; margin-top: 8px;">
+                    <i class="fa-solid fa-circle-info" style="color: var(--warning);"></i>
+                    {{ _('Geocodarea automata e indisponibila (lipseste MAPBOX_PUBLIC_TOKEN / MAPBOX_SECRET_TOKEN). Introdu coordonatele manual sau click pe harta.') }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Coordonate manuale + click-on-map -->
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-crosshairs"></i> {{ _('Coordonate') }}</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Latitudine') }}</label>
+                        {{ form.latitudine(class_="form-control", id="lat-input",
+                                           step="0.000001", placeholder="44.426800") }}
+                        {% if form.latitudine.errors %}<div class="field-error">{{ form.latitudine.errors[0] }}</div>{% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Longitudine') }}</label>
+                        {{ form.longitudine(class_="form-control", id="lng-input",
+                                            step="0.000001", placeholder="26.102500") }}
+                        {% if form.longitudine.errors %}<div class="field-error">{{ form.longitudine.errors[0] }}</div>{% endif %}
+                    </div>
+                </div>
+                {% if mapbox_public_token %}
+                <p style="color: var(--text-muted); font-size: 0.82rem; margin: 12px 0 8px;">
+                    <i class="fa-solid fa-hand-pointer"></i>
+                    {{ _('Click pe harta pentru a seta coordonatele') }}
+                </p>
+                <div id="pick-map"></div>
+                {% else %}
+                <p style="color: var(--text-muted); font-size: 0.82rem; margin: 0;">
+                    <i class="fa-solid fa-circle-info"></i>
+                    {{ _('Harta interactiva e indisponibila fara MAPBOX_PUBLIC_TOKEN.') }}
+                </p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+            <a href="{{ url_for('locatii.lista', proiect_id=proiect.id) }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> {{ _('Anulare') }}
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-save"></i> {{ _('Salveaza') }}
+            </button>
+        </div>
+    </form>
+</div>
+
+{% if mapbox_public_token %}
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.0.0/mapbox-gl.js"></script>
+<script>
+(function() {
+    mapboxgl.accessToken = {{ mapbox_public_token|tojson }};
+
+    var latInput = document.getElementById('lat-input');
+    var lngInput = document.getElementById('lng-input');
+    var initLat = parseFloat(latInput.value) || 45.9432;
+    var initLng = parseFloat(lngInput.value) || 25.0094;
+    var hasInit = !!latInput.value && !!lngInput.value;
+
+    var map = new mapboxgl.Map({
+        container: 'pick-map',
+        style: 'mapbox://styles/mapbox/light-v11',
+        center: [initLng, initLat],
+        zoom: hasInit ? 14 : 6,
+    });
+    map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+    var markerEl = document.createElement('div');
+    markerEl.className = 'pick-marker';
+    var marker = new mapboxgl.Marker({element: markerEl, draggable: true});
+
+    function setMarker(lng, lat) {
+        marker.setLngLat([lng, lat]).addTo(map);
+        latInput.value = lat.toFixed(6);
+        lngInput.value = lng.toFixed(6);
+    }
+
+    if (hasInit) {
+        setMarker(initLng, initLat);
+    }
+
+    // Click pe harta -> set coordonate (per cerinta: doar coordonate, no reverse geocoding)
+    map.on('click', function(e) {
+        setMarker(e.lngLat.lng, e.lngLat.lat);
+    });
+
+    // Drag marker -> update coordonate
+    marker.on('dragend', function() {
+        var ll = marker.getLngLat();
+        latInput.value = ll.lat.toFixed(6);
+        lngInput.value = ll.lng.toFixed(6);
+    });
+
+    // === Buton geocoding (server-side via /locatii/api/geocode) ===
+    var btnGeo = document.getElementById('btn-geocode');
+    var statusEl = document.getElementById('geocode-status');
+    if (btnGeo) {
+        btnGeo.addEventListener('click', function() {
+            var adresa = (document.getElementById('adresa-input').value || '').trim();
+            if (!adresa) {
+                showStatus('error', 'Introdu o adresa pentru geocoding.');
+                return;
+            }
+            showStatus('loading', 'Cautare...');
+            fetch({{ url_for('locatii.api_geocode')|tojson }}, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    adresa: adresa,
+                    judet: (document.getElementById('judet-input').value || '').trim(),
+                    localitate: (document.getElementById('localitate-input').value || '').trim(),
+                }),
+            })
+            .then(function(r) { return r.json().then(function(d) { return {status: r.status, data: d}; }); })
+            .then(function(res) {
+                if (res.status === 200 && res.data.lat && res.data.lng) {
+                    setMarker(res.data.lng, res.data.lat);
+                    map.flyTo({center: [res.data.lng, res.data.lat], zoom: 15, duration: 1000});
+                    showStatus('success', '✓ ' + (res.data.normalized_address || 'Coordonate setate'));
+                } else if (res.status === 404) {
+                    showStatus('error', 'Niciun rezultat pentru aceasta adresa.');
+                } else if (res.status === 503) {
+                    showStatus('error', 'Geocoding nu e configurat pe server.');
+                } else {
+                    showStatus('error', res.data.message || 'Eroare necunoscuta.');
+                }
+            })
+            .catch(function(err) {
+                showStatus('error', 'Eroare de retea: ' + err.message);
+            });
+        });
+    }
+
+    function showStatus(kind, msg) {
+        statusEl.textContent = msg;
+        statusEl.className = 'geocode-status show ' + kind;
+        if (kind === 'success') {
+            setTimeout(function() { statusEl.classList.remove('show'); }, 5000);
+        }
+    }
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -98,8 +98,9 @@ def test_upgrade_downgrade_upgrade_roundtrip(fresh_db):
     assert FAZA9_TABLES.issubset(_table_names(fresh_db))
 
 
-def test_alembic_current_at_0009_after_upgrade(fresh_db):
-    assert _alembic(fresh_db, 'upgrade', 'head').returncode == 0
+def test_alembic_current_at_0009_after_explicit_upgrade(fresh_db):
+    """Upgrade explicit la 0009 (NU head, pentru a fi stabil cand se adauga 0010+)."""
+    assert _alembic(fresh_db, 'upgrade', '0009_contract_controls').returncode == 0
     r = _alembic(fresh_db, 'current')
     assert r.returncode == 0
     assert '0009_contract_controls' in r.stdout, (

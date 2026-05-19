@@ -4062,3 +4062,104 @@ class ReguliNotificareProiect(db.Model):
                 f'{self.tip_eveniment} email={self.email_activ} app={self.in_app_activ}>')
 
 
+# ============================================================
+# LOCATII PROIECT (Mapbox integration)
+#
+# Locatii generice per proiect (santiere, birouri, depozite) cu
+# coordonate geografice + geocoding server-side. Paralel cu Santier
+# (BIM site) - acolo e ierarhia BIM, aici e punctul de lucru simplu.
+# Strict aditiv: zero touch pe Santier sau alte tabele existente.
+# ============================================================
+
+class LocatieProiect(db.Model):
+    """
+    Locatie generica per proiect cu coordonate Mapbox.
+
+    Distinct fata de Santier (BIM site cu cladiri/niveluri/spatii) -
+    aici stocam puncte de lucru simple: santier temporar, birou,
+    depozit, alt punct relevant pentru proiect.
+
+    Coordonatele pot fi setate manual sau via geocoding server-side
+    (services/geocoding.py cu Mapbox Geocoding API + token secret).
+    """
+    __tablename__ = 'locatii_proiect'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'),
+                          nullable=True, index=True)
+
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)
+
+    nume = db.Column(db.String(200), nullable=False)
+    descriere = db.Column(db.Text, nullable=True)
+
+    tip = db.Column(db.String(20), nullable=False, default='santier', index=True)
+    status = db.Column(db.String(20), nullable=False, default='activ', index=True)
+
+    # Coordonate WGS84 (latitude -90..90, longitude -180..180)
+    # Numeric 9,6 = precizie ~10cm la ecuator
+    latitudine = db.Column(db.Numeric(9, 6), nullable=True)
+    longitudine = db.Column(db.Numeric(9, 6), nullable=True)
+
+    # Adresa text input + adresa normalizata de la Mapbox
+    adresa_text = db.Column(db.String(500), nullable=True)
+    adresa_normalizata = db.Column(db.String(500), nullable=True)
+    judet = db.Column(db.String(100), nullable=True)
+    localitate = db.Column(db.String(200), nullable=True)
+
+    geocoded_at = db.Column(db.DateTime, nullable=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'),
+                            nullable=True)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('locatii', lazy='dynamic'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    TIPURI = [
+        ('santier',  'Santier'),
+        ('birou',    'Birou'),
+        ('depozit',  'Depozit'),
+        ('altul',    'Altul'),
+    ]
+    STATUSES = [
+        ('activ',    'Activ'),
+        ('inactiv',  'Inactiv'),
+    ]
+
+    __table_args__ = (
+        db.Index('ix_locatie_proiect_status', 'proiect_id', 'status'),
+        db.Index('ix_locatie_proiect_tip',    'proiect_id', 'tip'),
+        db.Index('ix_locatie_coord',          'latitudine', 'longitudine'),
+    )
+
+    @property
+    def are_coordonate(self) -> bool:
+        return self.latitudine is not None and self.longitudine is not None
+
+    def to_geojson_feature(self) -> dict:
+        """Serializare GeoJSON Feature pentru harti Mapbox."""
+        if not self.are_coordonate:
+            return None
+        return {
+            'type': 'Feature',
+            'geometry': {
+                'type': 'Point',
+                'coordinates': [float(self.longitudine), float(self.latitudine)],
+            },
+            'properties': {
+                'id': self.id,
+                'nume': self.nume,
+                'tip': self.tip,
+                'status': self.status,
+                'adresa': self.adresa_normalizata or self.adresa_text or '',
+                'descriere': self.descriere or '',
+            },
+        }
+
+    def __repr__(self):
+        return (f'<LocatieProiect {self.nume} proiect={self.proiect_id} '
+                f'{self.tip} {self.status}>')
+
+

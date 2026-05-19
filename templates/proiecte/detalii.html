@@ -37,6 +37,9 @@
         <a href="{{ url_for('doc_proiecte.index', proiect_id=proiect.id) }}" class="btn btn-primary">
             <i class="fa-solid fa-folder-open"></i> Documente Proiect
         </a>
+        <a href="{{ url_for('locatii.lista', proiect_id=proiect.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-map-location-dot"></i> Locatii
+        </a>
         <a href="{{ url_for('proiecte.raport', id=proiect.id) }}" class="btn btn-outline">
             <i class="fa-solid fa-file-lines"></i> Raport
         </a>

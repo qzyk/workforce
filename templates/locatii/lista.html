@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Locatii proiect') }} - {{ proiect.cod_proiect }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block extra_css %}
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.0.0/mapbox-gl.css" rel="stylesheet">
+<style>
+  /* Mapbox custom Edifico branding */
+  .mapboxgl-popup {
+    max-width: 320px;
+  }
+  .mapboxgl-popup-content {
+    background: #0B1426;
+    color: #F5F1E8;
+    border-radius: 8px;
+    padding: 14px 18px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    font-family: 'Inter', -apple-system, sans-serif;
+  }
+  .mapboxgl-popup-content h4 {
+    margin: 0 0 6px 0;
+    color: #C9A961;
+    font-family: 'Cinzel', serif;
+    font-size: 1.05rem;
+  }
+  .mapboxgl-popup-content p {
+    margin: 4px 0;
+    font-size: 0.85rem;
+    color: rgba(245, 241, 232, 0.85);
+  }
+  .mapboxgl-popup-tip {
+    border-top-color: #0B1426 !important;
+    border-bottom-color: #0B1426 !important;
+  }
+  .mapboxgl-popup-close-button {
+    color: #C9A961;
+    font-size: 1.2rem;
+    padding: 4px 8px;
+  }
+  /* Marker custom champagne gold cu icon */
+  .edifico-marker {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, #E0BB6E 0%, #C9A961 50%, #A8893D 100%);
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    border: 2px solid #0B1426;
+    cursor: pointer;
+    box-shadow: 0 3px 8px rgba(11, 20, 38, 0.4);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .edifico-marker i {
+    transform: rotate(45deg);
+    color: #0B1426;
+    font-size: 0.9rem;
+  }
+  .edifico-marker.tip-birou { background: linear-gradient(135deg, #6B8CAE, #3B5876); }
+  .edifico-marker.tip-birou i { color: #F5F1E8; }
+  .edifico-marker.tip-depozit { background: linear-gradient(135deg, #8B7355, #5D4E37); }
+  .edifico-marker.tip-depozit i { color: #F5F1E8; }
+  .edifico-marker.tip-altul { background: linear-gradient(135deg, #7A7A7A, #4A4A4A); }
+  .edifico-marker.tip-altul i { color: #F5F1E8; }
+  .edifico-marker.status-inactiv {
+    opacity: 0.4;
+    filter: grayscale(60%);
+  }
+  /* Controls cu accent gold */
+  .mapboxgl-ctrl-group button:hover {
+    background-color: rgba(201, 169, 97, 0.15);
+  }
+  #edifico-map {
+    width: 100%;
+    height: 520px;
+    border-radius: 12px;
+    border: 1px solid rgba(201, 169, 97, 0.25);
+    box-shadow: 0 4px 16px rgba(11, 20, 38, 0.1);
+  }
+  .map-no-token-warn {
+    height: 520px;
+    background: linear-gradient(135deg, #F5F1E8, #E8DECC);
+    border: 1px dashed rgba(201, 169, 97, 0.5);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column;
+    color: #0B1426;
+    text-align: center; padding: 40px;
+  }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.lista') }}">{{ _('Proiecte') }}</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.detalii', id=proiect.id) }}">{{ proiect.cod_proiect }}</a>
+<span>/</span>
+<span class="active">{{ _('Locatii') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-map-location-dot" style="color: var(--primary);"></i>
+            {{ _('Locatii proiect') }} - {{ proiect.nume }}
+        </h2>
+        <div style="color: var(--text-muted); margin-top: 4px; font-size: 0.85rem;">
+            {{ proiect.cod_proiect }} • {{ _('Total locatii') }}: <strong>{{ locatii|length }}</strong>
+            • {{ _('Cu coordonate') }}: <strong>{{ locatii|selectattr('are_coordonate')|list|length }}</strong>
+        </div>
+    </div>
+    <a href="{{ url_for('locatii.nou', proiect_id=proiect.id) }}" class="btn btn-primary">
+        <i class="fa-solid fa-plus"></i> {{ _('Adauga locatie') }}
+    </a>
+</div>
+
+<!-- Filtre -->
+<form method="GET" class="card-panel" style="margin-bottom: 16px; padding: 12px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end;">
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Tip') }}</label>
+            <select name="tip" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for cod, label in tipuri %}
+                <option value="{{ cod }}" {% if tip_filtru == cod %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">{{ _('Status') }}</label>
+            <select name="status" class="form-select">
+                <option value="">{{ _('Toate') }}</option>
+                {% for cod, label in statuses %}
+                <option value="{{ cod }}" {% if status_filtru == cod %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div><button type="submit" class="btn btn-primary"><i class="fa-solid fa-filter"></i></button></div>
+    </div>
+</form>
+
+<!-- HARTĂ -->
+<div class="card-panel" style="margin-bottom: 16px; padding: 12px;">
+    {% if mapbox_public_token %}
+    <div id="edifico-map"></div>
+    {% else %}
+    <div class="map-no-token-warn">
+        <i class="fa-solid fa-triangle-exclamation" style="font-size: 2.5rem; color: var(--warning); margin-bottom: 12px;"></i>
+        <h3 style="margin: 0 0 8px 0;">{{ _('Mapbox token nu e configurat') }}</h3>
+        <p style="margin: 0; max-width: 400px; font-size: 0.9rem;">
+            {{ _('Pentru a vedea harta, seteaza variabila de mediu') }}
+            <code style="background: #fff; padding: 2px 6px; border-radius: 4px;">MAPBOX_PUBLIC_TOKEN</code>
+            {{ _('cu un token public Mapbox (pk.*).') }}
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- TABEL locatii -->
+{% if locatii %}
+<div class="card-panel">
+    <table class="table" style="width: 100%; font-size: 0.88rem;">
+        <thead>
+            <tr style="background: var(--bg-elevated);">
+                <th style="text-align: left; padding: 10px;">{{ _('Nume') }}</th>
+                <th style="text-align: left; padding: 10px;">{{ _('Tip') }}</th>
+                <th style="text-align: left; padding: 10px;">{{ _('Adresa') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Coordonate') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Status') }}</th>
+                <th style="text-align: center; padding: 10px;">{{ _('Actiuni') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for l in locatii %}
+            <tr style="border-top: 1px solid var(--border);">
+                <td style="padding: 10px; font-weight: 600;">{{ l.nume }}</td>
+                <td style="padding: 10px;"><span class="badge" style="font-size: 0.7rem;">{{ l.tip }}</span></td>
+                <td style="padding: 10px; color: var(--text-muted); font-size: 0.82rem;">
+                    {{ l.adresa_normalizata or l.adresa_text or '-' }}
+                </td>
+                <td style="padding: 10px; text-align: center; font-family: monospace; font-size: 0.78rem;">
+                    {% if l.are_coordonate %}
+                    {{ '%.4f'|format(l.latitudine) }}, {{ '%.4f'|format(l.longitudine) }}
+                    {% else %}
+                    <span style="color: var(--text-muted);">{{ _('Fara') }}</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 10px; text-align: center;">
+                    {% if l.status == 'activ' %}
+                        <span class="badge" style="background: var(--success); color: white;">{{ _('Activ') }}</span>
+                    {% else %}
+                        <span class="badge">{{ _('Inactiv') }}</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 10px; text-align: center; white-space: nowrap;">
+                    <a href="{{ url_for('locatii.editeaza', id=l.id) }}"
+                       class="btn btn-sm btn-outline" title="{{ _('Editeaza') }}">
+                        <i class="fa-solid fa-pen"></i>
+                    </a>
+                    <form method="POST" action="{{ url_for('locatii.sterge', id=l.id) }}"
+                          style="display: inline;"
+                          onsubmit="return confirm('{{ _('Sigur stergi aceasta locatie?') }}');">
+                        <button type="submit" class="btn btn-sm btn-outline" style="color: var(--danger);">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card-panel" style="text-align: center; padding: 50px 20px;">
+    <i class="fa-solid fa-map-location-dot" style="font-size: 3.5rem; color: var(--text-muted); opacity: 0.3;"></i>
+    <h3 style="margin-top: 16px; color: var(--text-muted);">{{ _('Nicio locatie inregistrata') }}</h3>
+    <a href="{{ url_for('locatii.nou', proiect_id=proiect.id) }}" class="btn btn-primary" style="margin-top: 12px;">
+        <i class="fa-solid fa-plus"></i> {{ _('Adauga prima locatie') }}
+    </a>
+</div>
+{% endif %}
+
+{% if mapbox_public_token %}
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.0.0/mapbox-gl.js"></script>
+<script>
+(function() {
+    mapboxgl.accessToken = {{ mapbox_public_token|tojson }};
+
+    var map = new mapboxgl.Map({
+        container: 'edifico-map',
+        // Style "light" pentru paleta Edifico cream/gold
+        style: 'mapbox://styles/mapbox/light-v11',
+        center: [25.0094, 45.9432],  // centrul Romaniei default
+        zoom: 6,
+    });
+
+    map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+
+    // Locatiile din server
+    var locatii = [
+        {% for l in locatii %}{% if l.are_coordonate %}
+        {
+            id: {{ l.id }},
+            nume: {{ l.nume|tojson }},
+            tip: {{ l.tip|tojson }},
+            status: {{ l.status|tojson }},
+            adresa: {{ (l.adresa_normalizata or l.adresa_text or '')|tojson }},
+            descriere: {{ (l.descriere or '')|tojson }},
+            lat: {{ l.latitudine|float }},
+            lng: {{ l.longitudine|float }},
+            edit_url: {{ url_for('locatii.editeaza', id=l.id)|tojson }},
+        },
+        {% endif %}{% endfor %}
+    ];
+
+    var bounds = new mapboxgl.LngLatBounds();
+    var has_any = false;
+
+    locatii.forEach(function(loc) {
+        var el = document.createElement('div');
+        el.className = 'edifico-marker tip-' + loc.tip + ' status-' + loc.status;
+
+        var icon = document.createElement('i');
+        icon.className = 'fa-solid ' + (
+            loc.tip === 'birou' ? 'fa-building' :
+            loc.tip === 'depozit' ? 'fa-warehouse' :
+            loc.tip === 'altul' ? 'fa-map-pin' :
+            'fa-helmet-safety'  // santier
+        );
+        el.appendChild(icon);
+
+        var popup = new mapboxgl.Popup({offset: 25, closeButton: true})
+            .setHTML(
+                '<h4>' + escapeHtml(loc.nume) + '</h4>' +
+                '<p><strong>Tip:</strong> ' + loc.tip + ' / <strong>Status:</strong> ' + loc.status + '</p>' +
+                (loc.adresa ? '<p><i class="fa-solid fa-location-dot"></i> ' + escapeHtml(loc.adresa) + '</p>' : '') +
+                (loc.descriere ? '<p style="font-size:0.78rem; opacity: 0.8;">' + escapeHtml(loc.descriere) + '</p>' : '') +
+                '<p style="margin-top: 8px;"><a href="' + loc.edit_url + '" style="color: #C9A961; text-decoration: underline;">' +
+                'Editeaza locatia →</a></p>'
+            );
+
+        new mapboxgl.Marker(el)
+            .setLngLat([loc.lng, loc.lat])
+            .setPopup(popup)
+            .addTo(map);
+
+        bounds.extend([loc.lng, loc.lat]);
+        has_any = true;
+    });
+
+    if (has_any) {
+        map.fitBounds(bounds, {padding: 60, maxZoom: 14, duration: 800});
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text || '';
+        return div.innerHTML;
+    }
+})();
+</script>
+{% endif %}
+{% endblock %}
