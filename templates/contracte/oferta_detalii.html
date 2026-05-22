@@ -32,6 +32,9 @@
             {% endif %}
         </div>
     </div>
+    <a href="{{ url_for('contracte.oferta_pricing', oferta_id=oferta.id) }}" class="btn btn-primary">
+        <i class="fa-solid fa-wand-magic-sparkles"></i> {{ _('Auto-pricing') }}
+    </a>
 </div>
 
 <!-- Totals pe categorii -->

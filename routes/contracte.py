@@ -20,7 +20,7 @@ from decimal import Decimal
 
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request, abort,
-    current_app,
+    current_app, jsonify,
 )
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
@@ -30,7 +30,7 @@ from models import (
     ProgramReferinta, TaskProgram, OfertaContract, PozitieBoQ,
     CantitateExecutataLunara, SituatieLunara, RaportLucrariProiect,
     Corespondenta, Revendicare, RevendicareTermen, RevendicareTask,
-    RevendicareCantitate, TermenUrmarit,
+    RevendicareCantitate, TermenUrmarit, TarifCategorie,
 )
 from forms.contract_forms import (
     ContractForm, TermenContractForm, ProcesVerbalForm,
@@ -63,6 +63,7 @@ from services.termen_urmarit import (
     creeaza_termen_din_corespondenta, sterge_termen_din_corespondenta,
 )
 from services.conflict_revendicare import detecta_conflicte, numara_conflicte
+from services import deviz_pricing
 from services.notificari_app import (
     marcheaza_citita, marcheaza_toate_citite, count_necitite, lista_notificari,
 )
@@ -1982,3 +1983,143 @@ def regula_notificare_sterge(id):
         flash(f'Eroare: {e}', 'danger')
     return redirect(url_for('contracte.reguli_notificare_lista',
                              proiect_id=proiect_id))
+
+
+# ============================================================
+# AUTO-PRICING DEVIZE (distribuire total global pe pozitii BoQ)
+# ============================================================
+
+@contracte_bp.route('/oferta/<int:oferta_id>/pricing/preview')
+@login_required
+def oferta_pricing_preview(oferta_id):
+    """JSON dry-run clasificare (distributie categorii + Diverse) - fara persist."""
+    oferta = OfertaContract.query.get_or_404(oferta_id)
+    rez = deviz_pricing.dry_run_clasificare(oferta)
+    return jsonify(rez)
+
+
+@contracte_bp.route('/oferta/<int:oferta_id>/pricing', methods=['GET', 'POST'])
+@login_required
+def oferta_pricing(oferta_id):
+    """
+    Wizard auto-pricing: clasifica pozitiile + distribuie un total global
+    fara TVA, ponderat (cantitate x tarif x factor). Σ pozitii == total.
+    """
+    oferta = OfertaContract.query.get_or_404(oferta_id)
+    contract = oferta.contract
+    # Asigur tarife default seed-uite
+    if TarifCategorie.query.filter_by(proiect_id=None).count() == 0:
+        deviz_pricing.seed_tarife_default()
+
+    if request.method == 'POST':
+        try:
+            total_global = Decimal(str(request.form.get('total_global', '0')).replace(',', '.'))
+            procent_material = Decimal(str(request.form.get('procent_material', '65')).replace(',', '.')) / 100
+            seed = request.form.get('seed', type=int) or 42
+            if total_global <= 0:
+                flash('Totalul global trebuie sa fie pozitiv.', 'danger')
+                return redirect(url_for('contracte.oferta_pricing', oferta_id=oferta.id))
+
+            tarife = deviz_pricing.get_tarife_efective(oferta.proiect_id)
+            stats = deviz_pricing.aplica_pricing(
+                oferta, total_global, tarife=tarife,
+                procent_material=procent_material, seed=seed,
+            )
+            audit_svc.log_update('oferta_contract', oferta.id,
+                                 {'pricing': 'before'},
+                                 {'pricing': 'applied', 'total': str(total_global),
+                                  'pozitii': stats.get('pozitii_pretuite', 0)})
+            db.session.commit()
+            flash(
+                f'Pricing aplicat: {stats["pozitii_pretuite"]} pozitii pretuite, '
+                f'total {total_global:,.2f} RON fara TVA '
+                f'(diferenta reconciliere: {stats["diferenta"]:.2f}).',
+                'success',
+            )
+            return redirect(url_for('contracte.oferta_detalii', oferta_id=oferta.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare la pricing: {e}', 'danger')
+
+    # GET: dry-run + total sugerat
+    dry = deviz_pricing.dry_run_clasificare(oferta)
+    tarife = deviz_pricing.get_tarife_efective(oferta.proiect_id)
+    total_sug = deviz_pricing.total_sugerat(oferta, tarife)
+    return render_template(
+        'contracte/oferta_pricing.html',
+        oferta=oferta, contract=contract, dry=dry,
+        total_sugerat=total_sug,
+    )
+
+
+@contracte_bp.route('/proiect/<int:proiect_id>/tarife')
+@login_required
+def tarife_lista(proiect_id):
+    """Matrice editabila tarife per disciplina (global default + override proiect)."""
+    proiect = Proiect.query.get_or_404(proiect_id)
+    if TarifCategorie.query.filter_by(proiect_id=None).count() == 0:
+        deviz_pricing.seed_tarife_default()
+    # Tarife efective: global default + override proiect, grupate pe disciplina
+    tarife = TarifCategorie.query.filter(
+        db.or_(TarifCategorie.proiect_id.is_(None),
+               TarifCategorie.proiect_id == proiect_id)
+    ).order_by(TarifCategorie.disciplina, TarifCategorie.categorie_lucrare).all()
+    # Override-urile proiectului (set de chei (disc, cat))
+    overrides = {
+        (t.disciplina, t.categorie_lucrare)
+        for t in tarife if t.proiect_id == proiect_id
+    }
+    # Construiesc lista efectiva: override are prioritate
+    efective = {}
+    for t in tarife:
+        key = (t.disciplina, t.categorie_lucrare)
+        if t.proiect_id == proiect_id:
+            efective[key] = t  # override
+        elif key not in efective:
+            efective[key] = t  # global (doar daca nu exista override)
+    # Grupez pe disciplina
+    grupat = {}
+    for (disc, cat), t in sorted(efective.items()):
+        grupat.setdefault(disc, []).append({
+            'categorie': cat, 'tarif': t.tarif_baza,
+            'este_override': (disc, cat) in overrides,
+        })
+    return render_template('contracte/tarife_lista.html',
+                           proiect=proiect, grupat=grupat,
+                           discipline=dict(TarifCategorie.DISCIPLINE))
+
+
+@contracte_bp.route('/proiect/<int:proiect_id>/tarife/salveaza', methods=['POST'])
+@login_required
+def tarife_salveaza(proiect_id):
+    """Bulk save tarife override per proiect (chei: tarif_<disc>__<cat>)."""
+    proiect = Proiect.query.get_or_404(proiect_id)
+    count = 0
+    for key, raw in request.form.items():
+        if not key.startswith('tarif_'):
+            continue
+        if not raw or not str(raw).strip():
+            continue
+        try:
+            disc_cat = key[len('tarif_'):]
+            disc, cat = disc_cat.split('__', 1)
+            val = Decimal(str(raw).strip().replace(',', '.'))
+        except (ValueError, TypeError):
+            continue
+        if val < 0:
+            continue
+        # Upsert override pe proiect
+        t = TarifCategorie.query.filter_by(
+            proiect_id=proiect_id, disciplina=disc, categorie_lucrare=cat
+        ).first()
+        if t is None:
+            t = TarifCategorie(proiect_id=proiect_id, disciplina=disc,
+                               categorie_lucrare=cat, tarif_baza=val,
+                               creat_de_id=current_user.id)
+            db.session.add(t)
+        else:
+            t.tarif_baza = val
+        count += 1
+    db.session.commit()
+    flash(f'{count} tarife salvate pentru acest proiect.', 'success')
+    return redirect(url_for('contracte.tarife_lista', proiect_id=proiect_id))

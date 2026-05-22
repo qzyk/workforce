@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Tarife pe categorie') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.detalii', id=proiect.id) }}">{{ proiect.cod_proiect }}</a>
+<span>/</span>
+<span class="active">{{ _('Tarife') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 1000px; margin: 0 auto;">
+    <h2 style="margin-bottom: 8px;">
+        <i class="fa-solid fa-sliders" style="color: var(--primary);"></i>
+        {{ _('Tarife pe categorie de lucrare') }}
+    </h2>
+    <p style="color: var(--text-muted); margin-bottom: 20px;">
+        {{ _('Proiect') }}: <strong>{{ proiect.cod_proiect }} - {{ proiect.nume }}</strong>.
+        {{ _('Aceste tarife (lei/UM orientativ) ponderează distribuția la auto-pricing. Editarile se salveaza ca override pe proiect.') }}
+    </p>
+
+    <form method="POST" action="{{ url_for('contracte.tarife_salveaza', proiect_id=proiect.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        {% for disc, items in grupat.items() %}
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-layer-group"></i> {{ discipline.get(disc, disc) }}</h3>
+            </div>
+            <div class="card-panel-body" style="padding: 0;">
+                <table class="table" style="width: 100%; font-size: 0.88rem;">
+                    <thead>
+                        <tr style="background: var(--bg-elevated);">
+                            <th style="text-align: left; padding: 8px;">{{ _('Categorie lucrare') }}</th>
+                            <th style="text-align: right; padding: 8px; width: 200px;">{{ _('Tarif baza (lei/UM)') }}</th>
+                            <th style="text-align: center; padding: 8px; width: 100px;">{{ _('Sursa') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for it in items %}
+                        <tr style="border-top: 1px solid var(--border);">
+                            <td style="padding: 6px;">{{ it.categorie }}</td>
+                            <td style="padding: 4px;">
+                                <input type="number" step="0.0001" min="0"
+                                       name="tarif_{{ disc }}__{{ it.categorie }}"
+                                       value="{{ it.tarif }}"
+                                       class="form-control" style="text-align: right; padding: 4px;">
+                            </td>
+                            <td style="padding: 6px; text-align: center;">
+                                {% if it.este_override %}
+                                <span class="badge" style="background: var(--primary); color: white; font-size: 0.7rem;">{{ _('Proiect') }}</span>
+                                {% else %}
+                                <span class="badge" style="font-size: 0.7rem;">{{ _('Global') }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endfor %}
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+            <a href="{{ url_for('proiecte.detalii', id=proiect.id) }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> {{ _('Inapoi') }}
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-save"></i> {{ _('Salveaza tarife (override proiect)') }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

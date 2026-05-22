@@ -3410,6 +3410,13 @@ class PozitieBoQ(db.Model):
     categorie = db.Column(db.String(20), nullable=False, default='mixt', index=True)
     ordine = db.Column(db.Integer, nullable=False, default=0)
 
+    # Auto-pricing devize (categoria de LUCRARE, distinct de `categorie`=tip cost)
+    # ex: 'terasamente', 'beton', 'armatura', 'cofraje' - cu tarif per categorie.
+    # Atribuit de services/deviz_pricing.py (keyword classifier), editabil.
+    categorie_lucrare = db.Column(db.String(60), nullable=True, index=True)
+    # Factorul aleator folosit la ultima distributie (transparenta/reproducere)
+    factor_aleator = db.Column(db.Numeric(6, 4), nullable=True)
+
     # Hook optional catre BIMCostItem (Faza 5)
     bim_cost_item_id = db.Column(db.Integer, db.ForeignKey('bim_cost_items.id'),
                                  nullable=True, index=True)
@@ -4161,5 +4168,68 @@ class LocatieProiect(db.Model):
     def __repr__(self):
         return (f'<LocatieProiect {self.nume} proiect={self.proiect_id} '
                 f'{self.tip} {self.status}>')
+
+
+# ============================================================
+# TARIF CATEGORIE (Auto-pricing devize)
+#
+# Tarif de baza per categorie de lucrare, folosit la distribuirea unui
+# total global pe pozitiile dintr-o oferta (metoda validata pondere =
+# cantitate x tarif x factor). proiect_id NULL = tarif global default;
+# proiect_id setat = override per proiect.
+# ============================================================
+
+class TarifCategorie(db.Model):
+    """
+    Tarif de baza per (disciplina, categorie_lucrare) pentru auto-pricing.
+
+    Folosit de services/deviz_pricing.py: pondere pozitie = cantitate x
+    tarif_baza x factor_aleator. Tarifele sunt EDITABILE din UI.
+
+    proiect_id == None  -> tarif global default (seed la prima rulare)
+    proiect_id == <id>   -> override specific proiectului
+    """
+    __tablename__ = 'tarife_categorie'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'),
+                          nullable=True, index=True)
+
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=True, index=True)
+
+    disciplina = db.Column(db.String(40), nullable=False, index=True)
+    categorie_lucrare = db.Column(db.String(60), nullable=False)
+    tarif_baza = db.Column(db.Numeric(14, 4), nullable=False, default=0)
+    um_referinta = db.Column(db.String(20), nullable=True)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'),
+                            nullable=True)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('tarife_categorie', lazy='dynamic'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    DISCIPLINE = [
+        ('structural',  'Structural / Rezistenta'),
+        ('arhitectura', 'Arhitectura'),
+        ('electrice',   'Instalatii electrice'),
+        ('hvac',        'HVAC / Termice / Ventilatii'),
+        ('sanitare',    'Instalatii sanitare'),
+        ('drumuri',     'Drumuri / Terasamente exterioare'),
+        ('organizare',  'Organizare de santier'),
+        ('general',     'General / Diverse'),
+    ]
+
+    __table_args__ = (
+        db.UniqueConstraint('proiect_id', 'disciplina', 'categorie_lucrare',
+                            name='uix_tarif_proiect_disc_cat'),
+        db.Index('ix_tarif_disc_cat', 'disciplina', 'categorie_lucrare'),
+    )
+
+    def __repr__(self):
+        scope = f'proiect={self.proiect_id}' if self.proiect_id else 'global'
+        return (f'<TarifCategorie {self.disciplina}/{self.categorie_lucrare} '
+                f'{self.tarif_baza} {scope}>')
 
 

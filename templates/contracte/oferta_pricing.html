@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Auto-pricing oferta') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.lista') }}">{{ _('Contracte') }}</a>
+<span>/</span>
+{% if contract %}
+<a href="{{ url_for('contracte.detalii', id=contract.id) }}">{{ contract.nr_contract }}</a>
+<span>/</span>
+<a href="{{ url_for('contracte.oferta_detalii', oferta_id=oferta.id) }}">{{ _('Oferta') }} v{{ oferta.versiune }}</a>
+<span>/</span>
+{% endif %}
+<span class="active">{{ _('Auto-pricing') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+    <h2 style="margin-bottom: 8px;">
+        <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--primary);"></i>
+        {{ _('Auto-pricing deviz') }} - {{ _('Oferta') }} v{{ oferta.versiune }}
+    </h2>
+    <p style="color: var(--text-muted); margin-bottom: 20px;">
+        {{ _('Distribuie un total global pe toate pozitiile, ponderat cu cantitate x tarif x factor. Suma pozitiilor = totalul exact.') }}
+    </p>
+
+    <!-- Preview clasificare -->
+    <div class="card-panel">
+        <div class="card-panel-header">
+            <h3><i class="fa-solid fa-tags"></i> {{ _('Clasificare categorii lucrare') }}</h3>
+        </div>
+        <div class="card-panel-body">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-bottom: 12px;">
+                <div class="card-panel" style="padding: 10px; text-align: center;">
+                    <div style="font-size: 0.78rem; color: var(--text-muted);">{{ _('Total pozitii') }}</div>
+                    <div style="font-size: 1.5rem; font-weight: 600;">{{ dry.total_pozitii }}</div>
+                </div>
+                <div class="card-panel" style="padding: 10px; text-align: center;">
+                    <div style="font-size: 0.78rem; color: var(--text-muted);">{{ _('Categorii distincte') }}</div>
+                    <div style="font-size: 1.5rem; font-weight: 600; color: var(--primary);">{{ dry.distributie|length }}</div>
+                </div>
+                <div class="card-panel" style="padding: 10px; text-align: center;">
+                    <div style="font-size: 0.78rem; color: var(--text-muted);">{{ _('Neclasificate (Diverse)') }}</div>
+                    <div style="font-size: 1.5rem; font-weight: 600; color: {{ 'var(--success)' if dry.procent_diverse < 5 else 'var(--warning)' }};">
+                        {{ dry.procent_diverse }}%
+                    </div>
+                </div>
+            </div>
+
+            <details>
+                <summary style="cursor: pointer; color: var(--primary); font-size: 0.88rem;">
+                    {{ _('Vezi distributia pe categorii') }} ({{ dry.distributie|length }})
+                </summary>
+                <table class="table" style="width: 100%; font-size: 0.82rem; margin-top: 10px;">
+                    <thead><tr><th>{{ _('Categorie lucrare') }}</th><th style="text-align:right;">{{ _('Nr. pozitii') }}</th></tr></thead>
+                    <tbody>
+                        {% for cat, n in dry.distributie.items() %}
+                        <tr {% if cat.startswith('diverse') %}style="color: var(--warning);"{% endif %}>
+                            <td>{{ cat }}</td>
+                            <td style="text-align: right;">{{ n }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </details>
+
+            {% if dry.diverse %}
+            <details style="margin-top: 8px;">
+                <summary style="cursor: pointer; color: var(--warning); font-size: 0.88rem;">
+                    {{ _('Pozitii neclasificate') }} ({{ dry.diverse|length }})
+                </summary>
+                <ul style="margin: 8px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">
+                    {% for d in dry.diverse[:20] %}
+                    <li>[{{ d.cod }}] ({{ d.um }}) {{ d.denumire }}</li>
+                    {% endfor %}
+                </ul>
+            </details>
+            {% endif %}
+
+            <p style="margin: 12px 0 0 0; font-size: 0.82rem;">
+                <a href="{{ url_for('contracte.tarife_lista', proiect_id=oferta.proiect_id) }}">
+                    <i class="fa-solid fa-sliders"></i> {{ _('Ajusteaza tarifele pe categorie') }}
+                </a>
+            </p>
+        </div>
+    </div>
+
+    <!-- Form pricing -->
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-coins"></i> {{ _('Parametri pricing') }}</h3>
+            </div>
+            <div class="card-panel-body">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Total global fara TVA (RON)') }} <span class="text-danger">*</span></label>
+                        <input type="number" name="total_global" step="0.01" min="0"
+                               value="{{ total_sugerat }}" class="form-control" required>
+                        <small style="color: var(--text-muted);">
+                            {{ _('Sugerat (din tarife)') }}: {{ '%.2f'|format(total_sugerat) }} RON
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('% Material') }}</label>
+                        <input type="number" name="procent_material" step="1" min="0" max="100"
+                               value="65" class="form-control">
+                        <small style="color: var(--text-muted);">{{ _('Restul = manopera') }}</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">{{ _('Seed factor') }}</label>
+                        <input type="number" name="seed" value="42" class="form-control">
+                        <small style="color: var(--text-muted);">{{ _('Pentru reproducere') }}</small>
+                    </div>
+                </div>
+                <div style="background: rgba(201, 169, 97, 0.08); border-left: 3px solid var(--primary);
+                            padding: 10px 14px; border-radius: 6px; font-size: 0.82rem; margin-top: 8px;">
+                    <i class="fa-solid fa-circle-info" style="color: var(--primary);"></i>
+                    {{ _('Pozitiile sunt FARA TVA. Preturile existente vor fi suprascrise. Suma pozitiilor va fi egala cu totalul global (reconciliere automata).') }}
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+            <a href="{{ url_for('contracte.oferta_detalii', oferta_id=oferta.id) }}" class="btn btn-outline">
+                <i class="fa-solid fa-xmark"></i> {{ _('Anulare') }}
+            </a>
+            <button type="submit" class="btn btn-primary"
+                    onclick="return confirm('{{ _('Aplici pricing? Preturile existente vor fi suprascrise.') }}');">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> {{ _('Aplica pricing') }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
