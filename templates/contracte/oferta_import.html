@@ -25,7 +25,7 @@
         <div class="card-panel-body">
             <p style="margin: 0;">
                 <i class="fa-solid fa-info-circle" style="color: var(--primary);"></i>
-                {{ _('Suportat: eDevize PDF (Formular F3), eDevize XML, Excel XLSX cu structura BoQ standard.') }}
+                {{ _('Suportat: eDevize PDF (Formular F3), eDevize XML, Excel (.xlsx / .xls) cu detectie automata a structurii (header + coloane + multi-sheet).') }}
             </p>
             <p style="margin: 8px 0 0 0; color: var(--text-muted); font-size: 0.85rem;">
                 {{ _('PDF - exportul direct din eDevize (paginile Formular F3 sunt parsate automat).') }}
@@ -46,14 +46,14 @@
                         <option value="auto">{{ _('Auto-detect dupa extensie') }}</option>
                         <option value="edevize_pdf">eDevize PDF (Formular F3)</option>
                         <option value="edevize_xml">eDevize XML</option>
-                        <option value="excel_xlsx">Excel XLSX</option>
+                        <option value="excel_xlsx">Excel (.xlsx / .xls)</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label class="form-label">{{ _('Fisier') }} <span class="text-danger">*</span></label>
-                    <input type="file" name="fisier" accept=".xml,.xlsx,.pdf" class="form-control" required>
+                    <input type="file" name="fisier" accept=".xml,.xlsx,.xls,.pdf" class="form-control" required>
                     <small style="color: var(--text-muted);">
-                        {{ _('Acceptat: .pdf, .xml, .xlsx. Marime maxima: 25MB.') }}
+                        {{ _('Acceptat: .pdf, .xml, .xlsx, .xls. Marime maxima: 25MB.') }}
                     </small>
                 </div>
             </div>

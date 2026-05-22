@@ -9,6 +9,7 @@ ExcelBoQParser primeste fisierul XLSX construit programatic in test
 (evitam binari committed in repo).
 """
 
+import os
 from decimal import Decimal
 from pathlib import Path
 
@@ -205,14 +206,15 @@ class TestExcelBoQParser:
 
     def test_correct_entity_count(self, boq_xlsx):
         r = ExcelBoQParser().parse(str(boq_xlsx))
-        # 4 valide (B01-001, B01-002, B02-001, B03-001).
-        # B02-002 are UM lipsa -> skip cu warning.
+        # Parser-ul robust (cu auto-detect) e mai TOLERANT: include si
+        # B02-002 cu UM lipsa (default 'buc' + warning), nu il pierde.
+        # 5 articole: B01-001, B01-002, B02-001, B02-002, B03-001.
         # Randul gol -> skip silent.
-        assert len(r.entities) == 4
+        assert len(r.entities) == 5
 
     def test_warnings_for_invalid_rows(self, boq_xlsx):
         r = ExcelBoQParser().parse(str(boq_xlsx))
-        # 2 warnings: 1 pentru UM lipsa, 1 pentru categorie necunoscuta
+        # >=2 warnings: UM lipsa (B02-002) + categorie necunoscuta (B03-001)
         assert len(r.warnings) >= 2
 
     def test_invalid_category_falls_back_to_mixt(self, boq_xlsx):
@@ -228,12 +230,107 @@ class TestExcelBoQParser:
 
     def test_ordine_assigned(self, boq_xlsx):
         r = ExcelBoQParser().parse(str(boq_xlsx))
-        # Ordinea ar trebui sa fie incrementala
+        # Ordinea incrementala (5 articole acum)
         ordini = [e['ordine'] for e in r.entities]
-        assert ordini == [1, 2, 3, 4]
+        assert ordini == [1, 2, 3, 4, 5]
 
     def test_corrupt_xlsx_raises(self, tmp_path):
         bad = tmp_path / 'bad.xlsx'
         bad.write_bytes(b'not a real xlsx file')
         with pytest.raises(ParseError):
             ExcelBoQParser().parse(str(bad))
+
+    def test_auto_detect_header_not_on_row_1(self, tmp_path):
+        """Header pe rand 4 (cu antet deasupra) -> auto-detectie."""
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(['PROIECT TEST'])           # R1 antet
+        ws.append([])                          # R2 gol
+        ws.append(['Lista cantitati'])         # R3 subtitlu
+        ws.append(['Nr.', 'DENUMIRE', 'U.M.', 'CANTITATE', 'PRET UNITAR'])  # R4 HEADER
+        ws.append(['1', 'Grupa A'])            # R5 grup (fara UM)
+        ws.append(['1.1', 'Beton C25/30', 'mc', '50', '650'])
+        ws.append(['1.2', 'Armatura', 'kg', '1200', '6'])
+        path = tmp_path / 'header_row4.xlsx'
+        wb.save(path)
+
+        r = ExcelBoQParser().parse(str(path))
+        assert not r.has_errors, f'Errors: {r.errors}'
+        assert len(r.entities) == 2
+        by_cod = {e['cod_articol']: e for e in r.entities}
+        assert by_cod['1.1']['denumire'] == 'Beton C25/30'
+        assert by_cod['1.1']['cod_capitol'] == 'Grupa A'  # grupul mostenit
+
+    def test_multi_sheet_skips_empty(self, tmp_path):
+        """Multi-sheet: primul sheet gol (title), al doilea cu date."""
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws1 = wb.active
+        ws1.title = 'TITLE PAGE'
+        ws1.append(['Doar antet, fara tabel'])
+        ws2 = wb.create_sheet('Obiect 1')
+        ws2.append(['Nr.', 'DENUMIRE', 'U.M.', 'CANTITATE'])
+        ws2.append(['1', 'Sapatura', 'mc', '100'])
+        ws2.append(['2', 'Beton', 'mc', '50'])
+        path = tmp_path / 'multi.xlsx'
+        wb.save(path)
+
+        r = ExcelBoQParser().parse(str(path))
+        assert len(r.entities) == 2
+        # Un singur sheet procesat (TITLE PAGE skip)
+        assert len(r.stats['sheets_procesate']) == 1
+        assert r.stats['sheets_procesate'][0]['sheet'] == 'Obiect 1'
+
+    def test_skip_note_rows(self, tmp_path):
+        """Randurile NOTE/NOTES nu sunt articole."""
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(['Nr.', 'DENUMIRE', 'U.M.', 'CANTITATE'])
+        ws.append(['1', 'Beton', 'mc', '50'])
+        ws.append(['NOTE /NOTES', None, None, None])  # nota -> skip
+        ws.append(['TOTAL', None, None, None])         # total -> skip
+        path = tmp_path / 'note.xlsx'
+        wb.save(path)
+
+        r = ExcelBoQParser().parse(str(path))
+        assert len(r.entities) == 1
+        assert r.entities[0]['denumire'] == 'Beton'
+
+
+REAL_XLS_PATH = os.path.expanduser(
+    '~/Downloads/PT DE Hala Campina/02.Rezistenta/Parti scrise/Editabil/'
+    '2404_AEN_PTh+DE_STR_PS_09_00-Liste cantitati.xls'
+)
+
+
+@pytest.mark.skipif(not os.path.exists(REAL_XLS_PATH),
+                    reason='Fisier .xls real Hala Campina absent - test optional')
+class TestExcelBoQParserRealXLS:
+    """Test pe deviz .xls real (Hala Campina) - confirma parser pe format binar."""
+
+    def test_parses_real_xls(self):
+        r = ExcelBoQParser().parse(REAL_XLS_PATH)
+        assert not r.has_errors, f'Errors: {r.errors}'
+        # 6 sheet-uri cu date (al 7-lea TITLE PAGE skip); ~76 articole reale
+        # (randurile NOTE/TOTAL excluse corect)
+        assert len(r.entities) >= 70
+
+    def test_real_xls_multi_sheet(self):
+        r = ExcelBoQParser().parse(REAL_XLS_PATH)
+        # Minim 5 sheet-uri obiect procesate
+        assert len(r.stats['sheets_procesate']) >= 5
+
+    def test_real_xls_capitole_din_grupe(self):
+        r = ExcelBoQParser().parse(REAL_XLS_PATH)
+        capitole = {e['cod_capitol'] for e in r.entities if e['cod_capitol']}
+        # Grupele Infrastructura / Suprastructura detectate ca cod_capitol
+        assert any('frastructura' in (c or '').lower() for c in capitole)
+
+    def test_real_xls_material_in_denumire(self):
+        r = ExcelBoQParser().parse(REAL_XLS_PATH)
+        # Materialul (C25/30, S500C) prefixat in denumire
+        cu_material = [e for e in r.entities
+                       if '(' in e['denumire'] and ')' in e['denumire']]
+        assert len(cu_material) > 5

@@ -72,7 +72,7 @@ from models import NotificareApp, ReguliNotificareProiect
 
 
 ALLOWED_EXT_MSPROJECT = {'xml'}
-ALLOWED_EXT_OFERTA = {'xml', 'xlsx', 'pdf'}
+ALLOWED_EXT_OFERTA = {'xml', 'xlsx', 'xls', 'pdf'}
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB hard limit per file
 
 
