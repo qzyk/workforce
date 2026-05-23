@@ -64,6 +64,8 @@ from services.termen_urmarit import (
 )
 from services.conflict_revendicare import detecta_conflicte, numara_conflicte
 from services import deviz_pricing
+from services import centralizator
+from forms.clasificare_forms import parse_bulk_categorii
 from services.notificari_app import (
     marcheaza_citita, marcheaza_toate_citite, count_necitite, lista_notificari,
 )
@@ -2123,3 +2125,126 @@ def tarife_salveaza(proiect_id):
     db.session.commit()
     flash(f'{count} tarife salvate pentru acest proiect.', 'success')
     return redirect(url_for('contracte.tarife_lista', proiect_id=proiect_id))
+
+
+# ============================================================
+# CLASIFICARE PROIECT + CENTRALIZATOR + DEVIZ GENERAL
+# ============================================================
+
+@contracte_bp.route('/proiect/<int:proiect_id>/clasifica-oferte', methods=['POST'])
+@login_required
+def clasifica_oferte_proiect(proiect_id):
+    """Clasifica toate ofertele proiectului (bulk). Protejeaza editarile manuale."""
+    proiect = Proiect.query.get_or_404(proiect_id)
+    # doar_neclasificate din form (default True - nu suprascrie manualul)
+    forteaza = request.form.get('forteaza') == '1'
+    try:
+        raport = centralizator.clasifica_proiect(
+            proiect.id, doar_neclasificate=not forteaza)
+        audit_svc.log('classify', 'proiect', proiect.id, new_values={
+            'oferte': raport['oferte'], 'pozitii': raport['pozitii'],
+            'forteaza': forteaza,
+        }, commit=True)
+        flash(
+            f'Clasificare completa: {raport["oferte"]} oferte, '
+            f'{raport["pozitii"]} pozitii. '
+            f'{len(raport["distributie"])} categorii distincte.',
+            'success',
+        )
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la clasificare: {e}', 'danger')
+    return redirect(url_for('contracte.centralizator_proiect', proiect_id=proiect.id))
+
+
+@contracte_bp.route('/oferta/<int:oferta_id>/clasificare-manuala', methods=['GET', 'POST'])
+@login_required
+def clasificare_manuala(oferta_id):
+    """Matrice editabila categorie_lucrare per pozitie (override manual)."""
+    oferta = OfertaContract.query.get_or_404(oferta_id)
+    doar_diverse = request.args.get('doar_diverse') == '1'
+
+    if request.method == 'POST':
+        categorii = parse_bulk_categorii(request.form)
+        modificate = 0
+        for pid, cat in categorii.items():
+            pz = PozitieBoQ.query.filter_by(id=pid, oferta_id=oferta.id).first()
+            if pz is None:
+                continue
+            if (pz.categorie_lucrare or '') != cat:
+                pz.categorie_lucrare = cat
+                modificate += 1
+        if modificate:
+            db.session.commit()
+        flash(f'{modificate} pozitii reclasificate manual.', 'success')
+        return redirect(url_for('contracte.clasificare_manuala',
+                                oferta_id=oferta.id, doar_diverse=request.args.get('doar_diverse', '')))
+
+    query = PozitieBoQ.query.filter_by(oferta_id=oferta.id)
+    if doar_diverse:
+        query = query.filter(
+            db.or_(
+                PozitieBoQ.categorie_lucrare.is_(None),
+                PozitieBoQ.categorie_lucrare.like('diverse%'),
+                PozitieBoQ.categorie_lucrare == 'neclasificat',
+            )
+        )
+    pozitii = query.order_by(PozitieBoQ.ordine).all()
+    return render_template(
+        'contracte/clasificare_manuala.html',
+        oferta=oferta, pozitii=pozitii, doar_diverse=doar_diverse,
+        categorii_disponibile=deviz_pricing.toate_categoriile_flat(),
+    )
+
+
+@contracte_bp.route('/proiect/<int:proiect_id>/centralizator')
+@login_required
+def centralizator_proiect(proiect_id):
+    """Centralizator: agregare toate ofertele pe disciplina -> categorie."""
+    proiect = Proiect.query.get_or_404(proiect_id)
+    data = centralizator.genereaza_centralizator(proiect.id)
+    dry = centralizator.dry_run_proiect(proiect.id)
+    return render_template(
+        'contracte/centralizator.html',
+        proiect=proiect, data=data, dry=dry,
+    )
+
+
+@contracte_bp.route('/proiect/<int:proiect_id>/centralizator/export')
+@login_required
+def centralizator_export(proiect_id):
+    from flask import send_file
+    try:
+        path = centralizator.export_centralizator_xlsx(proiect_id)
+    except Exception as e:
+        flash(f'Eroare export: {e}', 'danger')
+        return redirect(url_for('contracte.centralizator_proiect', proiect_id=proiect_id))
+    return send_file(path, as_attachment=True, download_name=os.path.basename(path),
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@contracte_bp.route('/proiect/<int:proiect_id>/deviz-general')
+@login_required
+def deviz_general_proiect(proiect_id):
+    """Deviz General: consolidare pe capitole HG907/2016 + TVA."""
+    proiect = Proiect.query.get_or_404(proiect_id)
+    cota = request.args.get('cota_tva', type=float) or 21
+    data = centralizator.genereaza_deviz_general(proiect.id, cota_tva=cota)
+    return render_template(
+        'contracte/deviz_general.html',
+        proiect=proiect, data=data, cota_tva=cota,
+    )
+
+
+@contracte_bp.route('/proiect/<int:proiect_id>/deviz-general/export')
+@login_required
+def deviz_general_export(proiect_id):
+    from flask import send_file
+    cota = request.args.get('cota_tva', type=float) or 21
+    try:
+        path = centralizator.export_deviz_general_xlsx(proiect_id, cota_tva=cota)
+    except Exception as e:
+        flash(f'Eroare export: {e}', 'danger')
+        return redirect(url_for('contracte.deviz_general_proiect', proiect_id=proiect_id))
+    return send_file(path, as_attachment=True, download_name=os.path.basename(path),
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

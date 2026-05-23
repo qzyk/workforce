@@ -788,6 +788,46 @@ TRANSLATIONS = {
         {'en': 'Only if email sending is active. One per line.'},
     'Export DOCX': {'en': 'Export DOCX'},
     'Export PDF': {'en': 'Export PDF'},
+
+    # === Clasificare proiect + Centralizator + Deviz general ===
+    'Clasificare manuala': {'en': 'Manual classification'},
+    'Clasifica ofertele': {'en': 'Classify offers'},
+    'Clasifica automat pozitiile neclasificate': {'en': 'Auto-classify unclassified positions'},
+    'Categorie lucrare': {'en': 'Work category'},
+    'Salveaza clasificarile': {'en': 'Save classifications'},
+    'Doar diverse / neclasificate': {'en': 'Only misc / unclassified'},
+    'doar neclasificate / diverse': {'en': 'only unclassified / misc'},
+    'Arata toate': {'en': 'Show all'},
+    '-- neclasificat --': {'en': '-- unclassified --'},
+    'custom': {'en': 'custom'},
+    'Editeaza categoria de lucrare pentru pozitiile clasificate gresit sau "diverse". Editarile manuale NU sunt suprascrise la re-clasificarea automata.':
+        {'en': 'Edit work category for misclassified or "misc" positions. Manual edits are NOT overwritten by auto-classification.'},
+    'Nicio pozitie neclasificata - toate au categorie!': {'en': 'No unclassified position - all categorized!'},
+    'Centralizator': {'en': 'Summary'},
+    'Deviz general': {'en': 'General estimate'},
+    'Toate devizele proiectului': {'en': 'All project estimates'},
+    'Total general': {'en': 'Grand total'},
+    'Disciplina / Categorie': {'en': 'Discipline / Category'},
+    'Nr. pozitii': {'en': 'No. positions'},
+    'Valoare (fara TVA)': {'en': 'Value (excl. VAT)'},
+    'Pondere': {'en': 'Weight'},
+    'TOTAL GENERAL (fara TVA)': {'en': 'GRAND TOTAL (excl. VAT)'},
+    'Nicio oferta in proiect': {'en': 'No offer in project'},
+    'Importa devize la contractele proiectului, apoi revino aici.':
+        {'en': 'Import estimates to the project contracts, then come back here.'},
+    'din pozitii sunt neclasificate (diverse). Recomandare: ruleaza "Clasifica ofertele", apoi corecteaza manual restul.':
+        {'en': 'of positions are unclassified (misc). Recommendation: run "Classify offers", then fix the rest manually.'},
+    'Consolidare pe capitole HG907/2016': {'en': 'Consolidation by HG907/2016 chapters'},
+    'Cap.': {'en': 'Ch.'},
+    'Denumire capitol': {'en': 'Chapter name'},
+    'Cota TVA': {'en': 'VAT rate'},
+    'TOTAL (fara TVA)': {'en': 'TOTAL (excl. VAT)'},
+    'TVA': {'en': 'VAT'},
+    'TOTAL (cu TVA)': {'en': 'TOTAL (incl. VAT)'},
+    'Pozitiile sunt fara TVA; TVA se aplica la total (standard RO). Capitolele urmeaza HG907/2016: disciplinele tehnice -> 4.1 Constructii si instalatii, organizarea -> 5.1.1.':
+        {'en': 'Positions exclude VAT; VAT applied to total (RO standard). Chapters follow HG907/2016: technical disciplines -> 4.1 Construction, site-org -> 5.1.1.'},
+    'Nicio oferta cu preturi in proiect.': {'en': 'No priced offer in project.'},
+    'Aplica': {'en': 'Apply'},
 }
 
 

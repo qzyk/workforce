@@ -40,6 +40,12 @@
         <a href="{{ url_for('locatii.lista', proiect_id=proiect.id) }}" class="btn btn-outline">
             <i class="fa-solid fa-map-location-dot"></i> Locatii
         </a>
+        <a href="{{ url_for('contracte.centralizator_proiect', proiect_id=proiect.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-layer-group"></i> Centralizator
+        </a>
+        <a href="{{ url_for('contracte.deviz_general_proiect', proiect_id=proiect.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-file-invoice"></i> Deviz general
+        </a>
         <a href="{{ url_for('proiecte.raport', id=proiect.id) }}" class="btn btn-outline">
             <i class="fa-solid fa-file-lines"></i> Raport
         </a>

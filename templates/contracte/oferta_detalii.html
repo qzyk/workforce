@@ -32,9 +32,14 @@
             {% endif %}
         </div>
     </div>
-    <a href="{{ url_for('contracte.oferta_pricing', oferta_id=oferta.id) }}" class="btn btn-primary">
-        <i class="fa-solid fa-wand-magic-sparkles"></i> {{ _('Auto-pricing') }}
-    </a>
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('contracte.clasificare_manuala', oferta_id=oferta.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-tags"></i> {{ _('Clasificare manuala') }}
+        </a>
+        <a href="{{ url_for('contracte.oferta_pricing', oferta_id=oferta.id) }}" class="btn btn-primary">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> {{ _('Auto-pricing') }}
+        </a>
+    </div>
 </div>
 
 <!-- Totals pe categorii -->

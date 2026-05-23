@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Centralizator') }} - {{ proiect.cod_proiect }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.lista') }}">{{ _('Proiecte') }}</a>
+<span>/</span>
+<a href="{{ url_for('proiecte.detalii', id=proiect.id) }}">{{ proiect.cod_proiect }}</a>
+<span>/</span>
+<span class="active">{{ _('Centralizator') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin: 0;">
+            <i class="fa-solid fa-layer-group" style="color: var(--primary);"></i>
+            {{ _('Centralizator') }} - {{ proiect.nume }}
+        </h2>
+        <div style="color: var(--text-muted); margin-top: 4px; font-size: 0.85rem;">
+            {{ _('Toate devizele proiectului') }} • {{ _('Pozitii') }}: <strong>{{ data.nr_pozitii }}</strong>
+            • {{ _('Total general') }}: <strong>{{ '{:,.2f}'.format(data.total_general) }} RON</strong>
+        </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+        <form method="POST" action="{{ url_for('contracte.clasifica_oferte_proiect', proiect_id=proiect.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button type="submit" class="btn btn-outline" title="{{ _('Clasifica automat pozitiile neclasificate') }}">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> {{ _('Clasifica ofertele') }}
+            </button>
+        </form>
+        <a href="{{ url_for('contracte.centralizator_export', proiect_id=proiect.id) }}" class="btn btn-outline">
+            <i class="fa-solid fa-file-excel"></i> Excel
+        </a>
+        <a href="{{ url_for('contracte.deviz_general_proiect', proiect_id=proiect.id) }}" class="btn btn-primary">
+            <i class="fa-solid fa-file-invoice"></i> {{ _('Deviz general') }}
+        </a>
+    </div>
+</div>
+
+<!-- Validare clasificare (dry-run) -->
+{% if dry.procent_diverse > 5 %}
+<div class="card-panel" style="border-left: 4px solid var(--warning); margin-bottom: 16px;">
+    <div class="card-panel-body" style="font-size: 0.85rem;">
+        <i class="fa-solid fa-triangle-exclamation" style="color: var(--warning);"></i>
+        <strong>{{ '%.1f'|format(dry.procent_diverse) }}%</strong>
+        {{ _('din pozitii sunt neclasificate (diverse). Recomandare: ruleaza "Clasifica ofertele", apoi corecteaza manual restul.') }}
+        ({{ dry.diverse|length }} {{ _('pozitii') }})
+    </div>
+</div>
+{% endif %}
+
+{% if data.grupe %}
+<div class="card-panel">
+    <table class="table" style="width: 100%;">
+        <thead>
+            <tr style="background: var(--bg-elevated);">
+                <th style="text-align: left; padding: 10px;">{{ _('Disciplina / Categorie') }}</th>
+                <th style="text-align: right; padding: 10px;">{{ _('Nr. pozitii') }}</th>
+                <th style="text-align: right; padding: 10px;">{{ _('Valoare (fara TVA)') }}</th>
+                <th style="text-align: right; padding: 10px;">{{ _('Pondere') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for grup in data.grupe %}
+            <tr style="border-top: 2px solid var(--primary); background: rgba(201,169,97,0.08);">
+                <td style="padding: 10px; font-weight: 700; text-transform: uppercase;">{{ grup.disciplina }}</td>
+                <td></td>
+                <td style="padding: 10px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums;">
+                    {{ '{:,.2f}'.format(grup.subtotal) }}
+                </td>
+                <td style="padding: 10px; text-align: right; font-weight: 700;">
+                    {% if data.total_general > 0 %}{{ '%.1f'|format(grup.subtotal / data.total_general * 100) }}%{% endif %}
+                </td>
+            </tr>
+            {% for cat in grup.categorii %}
+            <tr style="border-top: 1px solid var(--border);">
+                <td style="padding: 6px 6px 6px 28px; color: var(--text-muted);">{{ cat.categorie }}</td>
+                <td style="padding: 6px; text-align: right;">{{ cat.nr }}</td>
+                <td style="padding: 6px; text-align: right; font-variant-numeric: tabular-nums;">{{ '{:,.2f}'.format(cat.valoare) }}</td>
+                <td></td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+            <tr style="border-top: 3px solid var(--primary); background: var(--bg-elevated);">
+                <td style="padding: 12px; font-weight: 700; font-size: 1.05rem;">{{ _('TOTAL GENERAL (fara TVA)') }}</td>
+                <td style="padding: 12px; text-align: right; font-weight: 700;">{{ data.nr_pozitii }}</td>
+                <td style="padding: 12px; text-align: right; font-weight: 700; font-size: 1.05rem; color: var(--primary); font-variant-numeric: tabular-nums;">
+                    {{ '{:,.2f}'.format(data.total_general) }} RON
+                </td>
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card-panel" style="text-align: center; padding: 50px 20px;">
+    <i class="fa-solid fa-layer-group" style="font-size: 3.5rem; color: var(--text-muted); opacity: 0.3;"></i>
+    <h3 style="margin-top: 16px; color: var(--text-muted);">{{ _('Nicio oferta in proiect') }}</h3>
+    <p style="color: var(--text-muted);">{{ _('Importa devize la contractele proiectului, apoi revino aici.') }}</p>
+</div>
+{% endif %}
+{% endblock %}

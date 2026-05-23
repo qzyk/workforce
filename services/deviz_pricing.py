@@ -243,18 +243,31 @@ def clasifica_pozitie(denumire: str, cod: Optional[str] = None,
     return 'diverse'
 
 
-def clasifica_oferta(oferta: OfertaContract, commit: bool = True) -> dict:
+def clasifica_oferta(oferta: OfertaContract, commit: bool = True,
+                     doar_neclasificate: bool = False) -> dict:
     """
     Atribuie categorie_lucrare la toate pozitiile ofertei.
 
     Implementeaza idem carry-forward: randurile 'idem' mostenesc categoria
     ultimului rand real (non-idem). Returneaza stats {categorie: count}.
+
+    Args:
+        doar_neclasificate: daca True, NU re-clasifica pozitiile care au
+            deja o categorie_lucrare setata (protejeaza editarile manuale +
+            clasificarile anterioare). Carry-forward 'idem' tine cont de
+            categoria existenta a randului real precedent.
     """
     pozitii = oferta.pozitii.order_by(PozitieBoQ.ordine).all()
     ultima_categorie = None
     stats: dict[str, int] = {}
 
     for p in pozitii:
+        existenta = (p.categorie_lucrare or '').strip()
+        if doar_neclasificate and existenta:
+            # Pastram categoria existenta (manual sau auto anterioara)
+            ultima_categorie = existenta
+            stats[existenta] = stats.get(existenta, 0) + 1
+            continue
         disc = deduce_disciplina(p.cod_capitol)
         if _IDEM_RE.match(p.denumire or '') and ultima_categorie:
             # idem -> carry-forward
@@ -523,3 +536,28 @@ def aplica_pricing(
         'pozitii_zero_cant': pozitii_zero,
         'suma_pondere': suma_pondere,
     }
+
+
+def categorii_cunoscute() -> dict[str, list[str]]:
+    """
+    Returneaza {disciplina: [categorii_lucrare]} pentru dropdown-uri UI
+    (clasificare manuala). Include 'diverse' ca optiune generica.
+    """
+    out: dict[str, list[str]] = {}
+    for disc, reguli in _CLASIFICATOR.items():
+        cats = [cat for cat, _kw in reguli]
+        cats.append('diverse')
+        out[disc] = cats
+    # Asigur ca toate disciplinele din DISCIPLINE au cel putin 'diverse'
+    for disc in DISCIPLINE:
+        out.setdefault(disc, ['diverse'])
+    return out
+
+
+def toate_categoriile_flat() -> list[str]:
+    """Lista plata, unica si sortata, a tuturor categoriilor de lucrare."""
+    s: set[str] = {'diverse'}
+    for reguli in _CLASIFICATOR.values():
+        for cat, _kw in reguli:
+            s.add(cat)
+    return sorted(s)
