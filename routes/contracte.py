@@ -52,7 +52,7 @@ from forms.reguli_notificare_forms import (
 import services.audit as audit_svc
 from services.feature_flags import is_enabled
 from services.parsers import (
-    MSProjectXMLParser, EDevizeXMLParser, EDevizePDFParser,
+    MSProjectXMLParser, MSProjectMPPParser, EDevizeXMLParser, EDevizePDFParser,
     ExcelBoQParser, ParseError,
 )
 from services.situatii import (
@@ -73,7 +73,7 @@ from services.pv_generator import genereaza_pv_docx, genereaza_pv_pdf
 from models import NotificareApp, ReguliNotificareProiect
 
 
-ALLOWED_EXT_MSPROJECT = {'xml'}
+ALLOWED_EXT_MSPROJECT = {'xml', 'mpp'}
 ALLOWED_EXT_OFERTA = {'xml', 'xlsx', 'xls', 'pdf'}
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB hard limit per file
 
@@ -598,11 +598,13 @@ def program_import(contract_id):
             return render_template('contracte/program_import.html',
                                    contract=contract)
 
-        parser = MSProjectXMLParser()
+        # Dispatch parser dupa extensie: .mpp (binar, via MPXJ) vs .xml
+        ext = file_path.rsplit('.', 1)[-1].lower()
+        parser = MSProjectMPPParser() if ext == 'mpp' else MSProjectXMLParser()
         try:
             result = parser.parse(file_path)
         except ParseError as e:
-            flash(f'Eroare parsare XML: {e}', 'danger')
+            flash(f'Eroare parsare program ({ext}): {e}', 'danger')
             return render_template('contracte/program_import.html',
                                    contract=contract)
 
@@ -684,7 +686,7 @@ def program_import(contract_id):
             db.session.commit()
             flash(
                 f'Program v{program.versiune} importat: '
-                f'{len(tasks_buffer)} taskuri din MS Project XML. '
+                f'{len(tasks_buffer)} taskuri din MS Project ({ext.upper()}). '
                 f'Warnings: {len(result.warnings)}.',
                 'success',
             )

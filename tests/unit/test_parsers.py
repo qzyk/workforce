@@ -17,7 +17,7 @@ import openpyxl
 import pytest
 
 from services.parsers import (
-    MSProjectXMLParser, EDevizeXMLParser, ExcelBoQParser,
+    MSProjectXMLParser, MSProjectMPPParser, EDevizeXMLParser, ExcelBoQParser,
     ParseError, ParseResult,
 )
 
@@ -334,3 +334,73 @@ class TestExcelBoQParserRealXLS:
         cu_material = [e for e in r.entities
                        if '(' in e['denumire'] and ')' in e['denumire']]
         assert len(cu_material) > 5
+
+
+# ============================================================
+# MSProjectMPPParser (.mpp binar via MPXJ/JVM)
+# ============================================================
+
+REAL_MPP_PATH = os.path.expanduser('~/Downloads/GRAFIC TURDA-.mpp')
+
+
+def _mpp_toolchain_ok() -> bool:
+    """True daca jpype + jar-uri MPXJ + un JVM sunt disponibile local."""
+    try:
+        import jpype  # noqa: F401
+    except ImportError:
+        return False
+    from services.parsers.msproject_mpp_parser import (
+        _mpxj_jars, _resolve_jvm_path,
+    )
+    if not _mpxj_jars():
+        return False
+    lib, _ = _resolve_jvm_path()
+    return bool(lib)
+
+
+class TestMSProjectMPPParserUnit:
+    """Teste fara JVM: importabilitate + erori grafioase (nu pornesc JVM)."""
+
+    def test_importable_and_sursa_cod(self):
+        # Modulul trebuie importabil chiar daca jpype/JDK lipsesc (import lazy).
+        assert MSProjectMPPParser.SURSA_COD == 'msproject_mpp'
+
+    def test_missing_file_raises_parse_error(self):
+        # Verificarea de existenta ruleaza INAINTE de pornirea JVM.
+        with pytest.raises(ParseError):
+            MSProjectMPPParser().parse('/nu/exista/plan.mpp')
+
+
+@pytest.mark.skipif(
+    not (os.path.exists(REAL_MPP_PATH) and _mpp_toolchain_ok()),
+    reason='Fisier .mpp real sau toolchain MPXJ/JVM absent - test optional',
+)
+class TestMSProjectMPPParserReal:
+    """Test pe .mpp real (GRAFIC TURDA) via MPXJ -> MSPDI -> XML parser."""
+
+    def test_parses_real_mpp(self):
+        r = MSProjectMPPParser().parse(REAL_MPP_PATH)
+        assert not r.has_errors, f'Errors: {r.errors}'
+        assert r.sursa == 'msproject_mpp'
+        # GRAFIC TURDA: ~208 taskuri
+        assert len(r.entities) > 100
+
+    def test_via_chain_metadata(self):
+        r = MSProjectMPPParser().parse(REAL_MPP_PATH)
+        assert r.stats.get('format_sursa') == 'mpp'
+        assert 'mspdi' in r.stats.get('via', '')
+        # Namespace MSPDI standard (reutilizat de XML parser)
+        assert r.stats.get('namespace') == 'http://schemas.microsoft.com/project'
+
+    def test_entities_have_required_fields(self):
+        r = MSProjectMPPParser().parse(REAL_MPP_PATH)
+        e = r.entities[0]
+        for k in ('cod_extern', 'denumire', 'nivel_ierarhie',
+                  'data_start_planificat', 'data_sfarsit_planificat',
+                  'tip_task', 'procent_realizare'):
+            assert k in e, f'Camp lipsa: {k}'
+
+    def test_project_name_artifact_removed(self):
+        """MSPDI writer pune 'project.xml' ca Name; trebuie suprascris."""
+        r = MSProjectMPPParser().parse(REAL_MPP_PATH)
+        assert r.stats.get('project_name') != 'project.xml'

@@ -9,6 +9,7 @@ Verifica flux end-to-end: upload -> parser -> DB write -> audit.
 """
 
 import io
+import os
 from datetime import date
 from pathlib import Path
 
@@ -17,6 +18,20 @@ import pytest
 
 
 FIXTURES_DIR = Path(__file__).parent.parent / 'fixtures' / 'imports'
+
+REAL_MPP_PATH = os.path.expanduser('~/Downloads/GRAFIC TURDA-.mpp')
+
+
+def _mpp_toolchain_ok() -> bool:
+    """True daca jpype + jar-uri MPXJ + un JVM sunt disponibile local."""
+    try:
+        import jpype  # noqa: F401
+    except ImportError:
+        return False
+    from services.parsers.msproject_mpp_parser import (
+        _mpxj_jars, _resolve_jvm_path,
+    )
+    return bool(_mpxj_jars()) and bool(_resolve_jvm_path()[0])
 
 
 @pytest.fixture
@@ -147,6 +162,33 @@ class TestProgramImport:
         # Trebuie raspuns 200 cu mesaj flash (nu crash, nu redirect)
         assert r.status_code == 200
         assert b'nepermisa' in r.data or b'Anulare' in r.data
+
+    @pytest.mark.skipif(
+        not (os.path.exists(REAL_MPP_PATH) and _mpp_toolchain_ok()),
+        reason='Fisier .mpp real sau toolchain MPXJ/JVM absent - test optional',
+    )
+    def test_upload_real_mpp_creates_program(
+        self, app, authenticated_client, flag_on, contract_f11
+    ):
+        """Upload .mpp real -> MPXJ -> MSPDI -> program + taskuri + audit."""
+        from models import ProgramReferinta, TaskProgram
+        with open(REAL_MPP_PATH, 'rb') as f:
+            mpp_bytes = f.read()
+        r = authenticated_client.post(
+            f'/contracte/{contract_f11["contract_id"]}/program/import',
+            data={'fisier': (io.BytesIO(mpp_bytes), 'GRAFIC TURDA-.mpp')},
+            content_type='multipart/form-data',
+            follow_redirects=False,
+        )
+        assert r.status_code in (302, 303), f'Status {r.status_code}, data: {r.data[:500]}'
+        with app.app_context():
+            prog = ProgramReferinta.query.filter_by(
+                contract_id=contract_f11['contract_id'],
+                sursa_import='msproject_mpp',
+            ).first()
+            assert prog is not None
+            tasks = TaskProgram.query.filter_by(program_id=prog.id).all()
+            assert len(tasks) > 100  # GRAFIC TURDA ~208 taskuri
 
     def test_flag_msp_off_blocks_import(
         self, app, authenticated_client, contract_f11

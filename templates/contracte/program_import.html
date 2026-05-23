@@ -15,7 +15,7 @@
 <div style="max-width: 800px; margin: 0 auto;">
     <h2 style="margin-bottom: 8px;">
         <i class="fa-solid fa-file-import" style="color: var(--primary);"></i>
-        {{ _('Import program de referinta (MS Project XML)') }}
+        {{ _('Import program de referinta (MS Project XML / MPP)') }}
     </h2>
     <p style="color: var(--text-muted); margin-bottom: 20px;">
         {{ _('Contract') }}: <strong>{{ contract.nr_contract }}</strong>
@@ -25,7 +25,7 @@
         <div class="card-panel-body">
             <p style="margin: 0;">
                 <i class="fa-solid fa-info-circle" style="color: var(--primary);"></i>
-                {{ _('Exporta planul din MS Project ca XML') }}:
+                {{ _('Incarca planul direct ca .mpp (binar MS Project) sau exporta-l ca XML') }}:
                 <strong>{{ _('File → Save As → Save as type: XML Format (*.xml)') }}</strong>.
             </p>
             <p style="margin: 8px 0 0 0; color: var(--text-muted); font-size: 0.85rem;">
@@ -40,10 +40,10 @@
         <div class="card-panel">
             <div class="card-panel-body">
                 <div class="form-group">
-                    <label class="form-label">{{ _('Fisier MS Project XML') }} <span class="text-danger">*</span></label>
-                    <input type="file" name="fisier" accept=".xml" class="form-control" required>
+                    <label class="form-label">{{ _('Fisier MS Project (.mpp sau .xml)') }} <span class="text-danger">*</span></label>
+                    <input type="file" name="fisier" accept=".mpp,.xml" class="form-control" required>
                     <small style="color: var(--text-muted);">
-                        {{ _('Doar .xml. Marime maxima: 25MB.') }}
+                        {{ _('.mpp (binar) sau .xml. Marime maxima: 25MB.') }}
                     </small>
                 </div>
             </div>
