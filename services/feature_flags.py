@@ -62,6 +62,8 @@ KNOWN_FLAGS: dict[str, str] = {
     'controale-contract': 'Modul Contract Controls (contracte, termene, oferte, situatii, revendicari, PV)',
     'controale-contract-import-msproject': 'Activeaza import MS Project XML in programe referinta',
     'controale-contract-notificari-email': 'Activeaza trimitere email pentru alertele de termen (in plus de in-app)',
+    # Flota auto
+    'masini-calculator-consum': 'Calculator consum combustibil pe harta (ruta A-B-C-D -> litri)',
 }
 
 

@@ -3,6 +3,7 @@ EDIFICO WORKFORCE - Routes Masini (Flota Auto)
 Modul complet de gestiune masini de serviciu si atribuire angajati.
 """
 
+import json
 import os
 from datetime import datetime, date, timedelta
 from functools import wraps
@@ -14,6 +15,8 @@ from models import (
     db, Masina, DocumentMasina, AtribuireMasina, ConducereMasina,
     DefectiuneMasina, Angajat, Proiect
 )
+from services.feature_flags import is_enabled
+from services import rute_consum
 
 masini_bp = Blueprint('masini', __name__, url_prefix='/masini')
 
@@ -163,7 +166,8 @@ def fisa(id):
         conduceri=conduceri, defectiuni=defectiuni,
         total_km_luna=total_km_luna, total_combustibil=total_combustibil,
         total_cost_combustibil=total_cost_combustibil,
-        luna=luna, an=an, proiecte=proiecte, angajati=angajati)
+        luna=luna, an=an, proiecte=proiecte, angajati=angajati,
+        calc_consum_enabled=is_enabled('masini-calculator-consum'))
 
 
 # ============================================================
@@ -406,6 +410,112 @@ def adauga_conducere(id):
     db.session.commit()
     flash('Inregistrare foaie de parcurs adaugata cu succes.', 'success')
     return redirect(url_for('masini.fisa', id=id))
+
+
+# ============================================================
+# CALCULATOR CONSUM COMBUSTIBIL (ruta pe harta -> litri)
+# ============================================================
+
+@masini_bp.route('/<int:id>/calcul-consum', methods=['POST'])
+@login_required
+def calcul_consum(id):
+    """
+    Calculeaza distanta A->B->(C,D) via Mapbox Directions + litri consumati.
+    Body JSON: {
+        waypoints: [[lng,lat], ...],   # 2..4 puncte
+        consum_mediu: float | null,    # override optional (daca masina nu are)
+        salveaza: bool,                # daca True, scrie o ConducereMasina
+        data: 'YYYY-MM-DD', angajat_id, proiect_id, scop, ruta_text  # pentru salvare
+    }
+    Returneaza JSON {distanta_km, durata_min, consum_mediu, litri, [salvat, conducere_id]}.
+    """
+    if not is_enabled('masini-calculator-consum'):
+        return jsonify({'error': 'not_enabled',
+                        'message': 'Calculatorul de consum nu e activ (flag masini-calculator-consum).'}), 403
+
+    masina = Masina.query.get_or_404(id)
+
+    if not rute_consum.is_configured():
+        return jsonify({'error': 'not_configured',
+                        'message': 'MAPBOX_PUBLIC_TOKEN / MAPBOX_SECRET_TOKEN nu sunt setate.'}), 503
+
+    data = request.get_json(silent=True) or {}
+
+    # Validare waypoints
+    pts = []
+    for w in (data.get('waypoints') or []):
+        try:
+            pts.append((float(w[0]), float(w[1])))
+        except (TypeError, ValueError, IndexError):
+            continue
+    if len(pts) < 2:
+        return jsonify({'error': 'invalid_waypoints', 'message': 'Minim 2 puncte (A si B).'}), 400
+    pts = pts[:4]
+
+    # Consum mediu: al masinii sau override manual
+    consum_mediu = masina.consum_mediu
+    override = data.get('consum_mediu')
+    if override not in (None, ''):
+        try:
+            consum_mediu = float(override)
+        except (TypeError, ValueError):
+            pass
+    if not consum_mediu or float(consum_mediu) <= 0:
+        return jsonify({'error': 'no_consum',
+                        'message': 'Masina nu are consum mediu setat. Introdu manual L/100km.'}), 400
+
+    rez = rute_consum.calculeaza_distanta(pts)
+    if not rez:
+        return jsonify({'error': 'directions_failed',
+                        'message': 'Nu am putut calcula ruta (Mapbox Directions).'}), 502
+
+    distanta_km = rez['distanta_km']
+    litri = rute_consum.calcul_consum(consum_mediu, distanta_km)
+
+    raspuns = {
+        'distanta_km': distanta_km,
+        'durata_min': rez.get('durata_min'),
+        'consum_mediu': float(consum_mediu),
+        'litri': float(litri) if litri is not None else None,
+    }
+
+    # Salvare optionala ca o inregistrare in foaia de parcurs
+    if data.get('salveaza'):
+        angajat_id = data.get('angajat_id') or masina.angajat_responsabil_id
+        if not angajat_id:
+            return jsonify({**raspuns, 'salvat': False,
+                            'message': 'Lipseste angajatul pentru salvare.'}), 400
+        try:
+            data_zi = datetime.strptime((data.get('data') or '').strip(), '%Y-%m-%d').date()
+        except ValueError:
+            data_zi = date.today()
+
+        km_start = masina.km_bord or 0
+        km_sfarsit = km_start + int(round(distanta_km))
+        ruta_text = (data.get('ruta_text') or '').strip() or \
+            ' -> '.join(f'{lng:.4f},{lat:.4f}' for lng, lat in pts)
+
+        conducere = ConducereMasina(
+            masina_id=masina.id,
+            angajat_id=int(angajat_id),
+            proiect_id=int(data['proiect_id']) if data.get('proiect_id') else masina.proiect_id,
+            data=data_zi,
+            km_start=km_start,
+            km_sfarsit=km_sfarsit,
+            ruta=ruta_text[:300],
+            scop=(data.get('scop') or '').strip() or None,
+            distanta_km=distanta_km,
+            combustibil_consumat=float(litri) if litri is not None else None,
+            waypoints_json=json.dumps(pts),
+        )
+        db.session.add(conducere)
+        if km_sfarsit > (masina.km_bord or 0):
+            masina.km_bord = km_sfarsit
+        db.session.commit()
+        raspuns['salvat'] = True
+        raspuns['conducere_id'] = conducere.id
+
+    return jsonify(raspuns)
 
 
 # ============================================================

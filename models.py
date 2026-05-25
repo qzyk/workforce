@@ -1160,9 +1160,13 @@ class ConducereMasina(db.Model):
     km_sfarsit = db.Column(db.Integer)
     ruta = db.Column(db.String(300))  # ex: Bucuresti -> Ploiesti -> Bucuresti
     scop = db.Column(db.String(200))
-    combustibil_alimentat = db.Column(db.Numeric(6, 2))  # litri
+    combustibil_alimentat = db.Column(db.Numeric(6, 2))  # litri (alimentat la pompa)
     cost_combustibil = db.Column(db.Numeric(8, 2))
     observatii = db.Column(db.Text)
+    # Calculator consum (ruta pe harta -> distanta Directions -> litri = consum_mediu x km/100)
+    distanta_km = db.Column(db.Numeric(7, 2))  # distanta calculata pe harta (drum real)
+    combustibil_consumat = db.Column(db.Numeric(7, 2))  # litri CONSUMATI (calculati), nu alimentati
+    waypoints_json = db.Column(db.Text)  # JSON [[lng,lat], ...] pentru A/B/C/D (reincarcare ruta)
     data_creare = db.Column(db.DateTime, default=datetime.utcnow)
 
     angajat = db.relationship('Angajat', backref=db.backref('conduceri_masini', lazy='dynamic'))

@@ -7,6 +7,9 @@
 {% endblock %}
 
 {% block extra_css %}
+{% if calc_consum_enabled and mapbox_public_token %}
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.0.0/mapbox-gl.css" rel="stylesheet">
+{% endif %}
 <style>
 .car-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
 .car-header-left { display: flex; align-items: center; gap: 16px; }
@@ -47,6 +50,16 @@
 .foaie-stat { background: var(--gray-50); border-radius: 8px; padding: 12px; text-align: center; }
 .foaie-stat-value { font-size: 1.3rem; font-weight: 800; color: var(--primary); }
 .foaie-stat-label { font-size: 0.72rem; color: var(--gray-500); font-weight: 600; text-transform: uppercase; }
+
+/* Calculator consum */
+#calc-map { width: 100%; height: 420px; border-radius: 12px; border: 1px solid var(--gray-200); }
+.calc-no-token { height: 200px; background: var(--gray-50); border: 1px dashed var(--gray-300); border-radius: 12px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 30px; color: var(--gray-600); }
+.calc-wp-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.calc-wp-badge { width: 26px; height: 26px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.8rem; flex-shrink: 0; }
+.calc-wp-row input { flex: 1; }
+.calc-result { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-top: 14px; }
+.calc-result .foaie-stat-value { color: var(--primary); }
+.calc-litri { color: #2E7D32 !important; }
 </style>
 {% endblock %}
 
@@ -96,6 +109,9 @@
     <button class="tab-btn" onclick="switchTab('documente')"><i class="fa-solid fa-file-contract"></i> Documente <span style="background: var(--gray-200); padding: 1px 6px; border-radius: 8px; font-size: 0.72rem;">{{ documente|length }}</span></button>
     <button class="tab-btn" onclick="switchTab('atribuiri')"><i class="fa-solid fa-users"></i> Atribuiri <span style="background: var(--gray-200); padding: 1px 6px; border-radius: 8px; font-size: 0.72rem;">{{ atribuiri|length }}</span></button>
     <button class="tab-btn" onclick="switchTab('foaie')"><i class="fa-solid fa-road"></i> Foaie Parcurs</button>
+    {% if calc_consum_enabled %}
+    <button class="tab-btn" onclick="switchTab('calculator')"><i class="fa-solid fa-gas-pump"></i> Calculator Consum</button>
+    {% endif %}
     <button class="tab-btn" onclick="switchTab('defectiuni')"><i class="fa-solid fa-wrench"></i> Defectiuni <span style="background: var(--gray-200); padding: 1px 6px; border-radius: 8px; font-size: 0.72rem;">{{ defectiuni|length }}</span></button>
     <button class="tab-btn" onclick="switchTab('actiuni')"><i class="fa-solid fa-gears"></i> Actiuni</button>
 </div>
@@ -289,6 +305,91 @@
         </div>
     </div>
 </div>
+
+{% if calc_consum_enabled %}
+<!-- Tab: Calculator Consum -->
+<div class="tab-pane" id="tab-calculator">
+    {% if not mapbox_public_token %}
+    <div class="calc-no-token">
+        <div>
+            <i class="fa-solid fa-triangle-exclamation" style="font-size:2rem;color:var(--warning);"></i>
+            <h3 style="margin:10px 0 4px;">Mapbox token nu e configurat</h3>
+            <p style="margin:0;font-size:0.88rem;">Seteaza <code>MAPBOX_PUBLIC_TOKEN</code> in WSGI ca sa folosesti calculatorul.</p>
+        </div>
+    </div>
+    {% else %}
+    <div style="display:grid;grid-template-columns:340px 1fr;gap:18px;align-items:start;">
+        <!-- Controale -->
+        <div>
+            <h3 style="margin:0 0 6px;font-size:1rem;"><i class="fa-solid fa-route" style="color:var(--primary);"></i> Ruta zilei</h3>
+            <p style="font-size:0.8rem;color:var(--gray-500);margin:0 0 12px;">
+                Click pe harta pentru a aseza punctele (A, B, optional C, D) sau cauta dupa adresa. Pin-urile se pot trage.
+            </p>
+            <div id="calc-waypoints">
+                {% for lbl in ['A', 'B', 'C', 'D'] %}
+                <div class="calc-wp-row" data-wp="{{ loop.index0 }}">
+                    <span class="calc-wp-badge">{{ lbl }}</span>
+                    <input type="text" class="form-control calc-addr" placeholder="Adresa {{ lbl }}{% if loop.index0 > 1 %} (optional){% endif %}">
+                    <button type="button" class="btn btn-sm btn-outline calc-geo" title="Cauta adresa"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+                {% endfor %}
+            </div>
+            <div style="margin:6px 0 14px;">
+                <button type="button" id="calc-reset" class="btn btn-sm btn-outline"><i class="fa-solid fa-eraser"></i> Reseteaza</button>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Consum mediu (L/100km)</label>
+                <input type="number" step="0.1" min="0" id="calc-consum-mediu" class="form-control"
+                       value="{{ masina.consum_mediu or '' }}" placeholder="ex: 7.5">
+                {% if not masina.consum_mediu %}
+                <small style="color:var(--warning);">Masina nu are consum mediu setat - introdu unul aici.</small>
+                {% endif %}
+            </div>
+
+            <button type="button" id="calc-run" class="btn btn-primary" style="width:100%;">
+                <i class="fa-solid fa-calculator"></i> Calculeaza consumul
+            </button>
+            <div id="calc-status" style="margin-top:10px;font-size:0.85rem;min-height:18px;"></div>
+
+            <!-- Rezultat -->
+            <div id="calc-result-box" style="display:none;">
+                <div class="calc-result">
+                    <div class="foaie-stat"><div class="foaie-stat-value" id="calc-km">-</div><div class="foaie-stat-label">km parcursi</div></div>
+                    <div class="foaie-stat"><div class="foaie-stat-value calc-litri" id="calc-litri">-</div><div class="foaie-stat-label">litri consumati</div></div>
+                    <div class="foaie-stat"><div class="foaie-stat-value" id="calc-durata">-</div><div class="foaie-stat-label">durata (min)</div></div>
+                </div>
+                <div style="margin-top:14px;border-top:1px solid var(--gray-100);padding-top:12px;">
+                    <h4 style="margin:0 0 8px;font-size:0.9rem;">Salveaza in foaia de parcurs (optional)</h4>
+                    <div class="form-group"><label class="form-label">Data</label><input type="date" id="calc-data" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}"></div>
+                    <div class="form-group"><label class="form-label">Sofer</label>
+                        <select id="calc-angajat" class="form-select">
+                            <option value="">- alege -</option>
+                            {% for a in angajati %}<option value="{{ a.id }}" {% if a.id == masina.angajat_responsabil_id %}selected{% endif %}>{{ a.nume }} {{ a.prenume }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group"><label class="form-label">Proiect (optional)</label>
+                        <select id="calc-proiect" class="form-select">
+                            <option value="">-</option>
+                            {% for p in proiecte %}<option value="{{ p.id }}" {% if p.id == masina.proiect_id %}selected{% endif %}>{{ p.cod_proiect }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group"><label class="form-label">Scop (optional)</label><input type="text" id="calc-scop" class="form-control" placeholder="ex: transport materiale"></div>
+                    <button type="button" id="calc-save" class="btn btn-outline" style="width:100%;"><i class="fa-solid fa-floppy-disk"></i> Salveaza in foaia de parcurs</button>
+                </div>
+            </div>
+        </div>
+        <!-- Harta -->
+        <div>
+            <div id="calc-map"></div>
+            <p style="font-size:0.78rem;color:var(--gray-500);margin-top:6px;">
+                Ruta se deseneaza pe sosea (Mapbox Directions). Distanta finala e recalculata pe server la apasarea „Calculeaza".
+            </p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
 
 <!-- Tab 5: Defectiuni -->
 <div class="tab-pane" id="tab-defectiuni">
@@ -526,6 +627,7 @@ function switchTab(name) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
     event.target.closest('.tab-btn').classList.add('active');
+    if (name === 'calculator') { window.dispatchEvent(new Event('calc-tab-shown')); }
 }
 function showModal(id) { document.getElementById(id).classList.add('show'); }
 function hideModal(id) { document.getElementById(id).classList.remove('show'); }
@@ -534,4 +636,178 @@ document.querySelectorAll('.modal-overlay').forEach(m => {
     m.addEventListener('click', function(e) { if (e.target === this) this.classList.remove('show'); });
 });
 </script>
+
+{% if calc_consum_enabled and mapbox_public_token %}
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.0.0/mapbox-gl.js"></script>
+<script>
+(function() {
+    mapboxgl.accessToken = {{ mapbox_public_token|tojson }};
+    var CSRF = {{ csrf_token()|tojson }};
+    var GEO_URL = {{ url_for('locatii.api_geocode')|tojson }};
+    var CALC_URL = {{ url_for('masini.calcul_consum', id=masina.id)|tojson }};
+    var LABELS = ['A', 'B', 'C', 'D'];
+
+    var map = null;
+    var slots = [null, null, null, null];  // {lng, lat, marker}
+
+    function initMap() {
+        if (map) { map.resize(); return; }
+        map = new mapboxgl.Map({
+            container: 'calc-map', style: 'mapbox://styles/mapbox/light-v11',
+            center: [25.0094, 45.9432], zoom: 6,
+        });
+        map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+        map.on('click', function(e) { setSlotByClick(e.lngLat.lng, e.lngLat.lat); });
+    }
+
+    function firstEmpty() { for (var i = 0; i < 4; i++) { if (!slots[i]) return i; } return -1; }
+    function activePoints() { return slots.filter(Boolean).map(function(s) { return [s.lng, s.lat]; }); }
+
+    function setSlotByClick(lng, lat) {
+        var i = firstEmpty();
+        if (i < 0) i = 3;
+        setSlot(i, lng, lat);
+    }
+
+    function setSlot(i, lng, lat) {
+        if (slots[i] && slots[i].marker) slots[i].marker.remove();
+        var el = document.createElement('div');
+        el.className = 'calc-wp-badge';
+        el.style.width = '30px'; el.style.height = '30px'; el.style.cursor = 'grab';
+        el.textContent = LABELS[i];
+        var marker = new mapboxgl.Marker({ element: el, draggable: true })
+            .setLngLat([lng, lat]).addTo(map);
+        marker.on('dragend', function() {
+            var p = marker.getLngLat(); slots[i].lng = p.lng; slots[i].lat = p.lat; redraw();
+        });
+        slots[i] = { lng: lng, lat: lat, marker: marker };
+        redraw();
+    }
+
+    function redraw() {
+        var pts = activePoints();
+        if (pts.length >= 2) drawRoute(pts); else clearRoute();
+        var b = new mapboxgl.LngLatBounds();
+        if (!pts.length) return;
+        pts.forEach(function(p) { b.extend(p); });
+        if (pts.length === 1) map.flyTo({ center: pts[0], zoom: 12 });
+        else map.fitBounds(b, { padding: 70, maxZoom: 14, duration: 600 });
+    }
+
+    function drawRoute(pts) {
+        var coords = pts.map(function(p) { return p[0] + ',' + p[1]; }).join(';');
+        var url = 'https://api.mapbox.com/directions/v5/mapbox/driving/' + encodeURIComponent(coords)
+            + '?geometries=geojson&overview=full&access_token=' + mapboxgl.accessToken;
+        fetch(url).then(function(r) { return r.json(); }).then(function(d) {
+            if (!d.routes || !d.routes.length) { clearRoute(); return; }
+            var km = (d.routes[0].distance / 1000).toFixed(2);
+            setStatus('Previzualizare ruta: ' + km + ' km (apasa Calculeaza pentru litri)', '');
+            var data = { type: 'Feature', geometry: d.routes[0].geometry };
+            var src = map.getSource('calc-route');
+            if (src) { src.setData(data); }
+            else {
+                map.addSource('calc-route', { type: 'geojson', data: data });
+                map.addLayer({
+                    id: 'calc-route-line', type: 'line', source: 'calc-route',
+                    layout: { 'line-join': 'round', 'line-cap': 'round' },
+                    paint: { 'line-color': '#C9A961', 'line-width': 5, 'line-opacity': 0.85 },
+                });
+            }
+        }).catch(function() { clearRoute(); });
+    }
+
+    function clearRoute() {
+        if (map.getLayer('calc-route-line')) map.removeLayer('calc-route-line');
+        if (map.getSource('calc-route')) map.removeSource('calc-route');
+    }
+
+    function setStatus(msg, kind) {
+        var el = document.getElementById('calc-status'); if (!el) return;
+        el.textContent = msg || '';
+        el.style.color = kind === 'err' ? 'var(--danger)' : (kind === 'ok' ? 'var(--success)' : 'var(--gray-600)');
+    }
+
+    function postCalc(body, onok) {
+        fetch(CALC_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify(body),
+        }).then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+          .then(function(res) { if (!res.ok) { setStatus(res.j.message || 'Eroare', 'err'); return; } onok(res.j); })
+          .catch(function() { setStatus('Eroare retea', 'err'); });
+    }
+
+    // Geocoding per rand (refoloseste endpoint-ul Locatii)
+    document.querySelectorAll('.calc-geo').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var row = btn.closest('.calc-wp-row');
+            var i = parseInt(row.getAttribute('data-wp'), 10);
+            var adresa = row.querySelector('.calc-addr').value.trim();
+            if (!adresa) { setStatus('Scrie o adresa pentru ' + LABELS[i], 'err'); return; }
+            setStatus('Caut adresa ' + LABELS[i] + '...');
+            fetch(GEO_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({ adresa: adresa }),
+            }).then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+              .then(function(res) {
+                  if (!res.ok) { setStatus(res.j.message || 'Adresa negasita', 'err'); return; }
+                  setSlot(i, res.j.lng, res.j.lat);
+                  row.querySelector('.calc-addr').value = res.j.normalized_address || adresa;
+                  setStatus(LABELS[i] + ' setat.', 'ok');
+              }).catch(function() { setStatus('Eroare geocoding', 'err'); });
+        });
+    });
+
+    document.getElementById('calc-reset').addEventListener('click', function() {
+        slots.forEach(function(s) { if (s && s.marker) s.marker.remove(); });
+        slots = [null, null, null, null];
+        document.querySelectorAll('.calc-addr').forEach(function(i) { i.value = ''; });
+        clearRoute(); setStatus('');
+        document.getElementById('calc-result-box').style.display = 'none';
+    });
+
+    document.getElementById('calc-run').addEventListener('click', function() {
+        var pts = activePoints();
+        if (pts.length < 2) { setStatus('Alege minim 2 puncte (A si B).', 'err'); return; }
+        setStatus('Calculez...');
+        postCalc({ waypoints: pts, consum_mediu: document.getElementById('calc-consum-mediu').value, salveaza: false },
+            function(res) {
+                document.getElementById('calc-km').textContent = res.distanta_km;
+                document.getElementById('calc-litri').textContent = (res.litri != null ? res.litri : '-') + ' l';
+                document.getElementById('calc-durata').textContent = res.durata_min != null ? res.durata_min : '-';
+                document.getElementById('calc-result-box').style.display = 'block';
+                setStatus('Consum: ' + res.litri + ' litri pentru ' + res.distanta_km + ' km.', 'ok');
+            });
+    });
+
+    document.getElementById('calc-save').addEventListener('click', function() {
+        var pts = activePoints();
+        if (pts.length < 2) { setStatus('Alege minim 2 puncte.', 'err'); return; }
+        var addrs = [];
+        document.querySelectorAll('.calc-wp-row').forEach(function(row) {
+            var i = parseInt(row.getAttribute('data-wp'), 10);
+            if (slots[i]) addrs.push(row.querySelector('.calc-addr').value.trim() || LABELS[i]);
+        });
+        setStatus('Salvez...');
+        postCalc({
+            waypoints: pts, consum_mediu: document.getElementById('calc-consum-mediu').value, salveaza: true,
+            data: document.getElementById('calc-data').value,
+            angajat_id: document.getElementById('calc-angajat').value,
+            proiect_id: document.getElementById('calc-proiect').value,
+            scop: document.getElementById('calc-scop').value,
+            ruta_text: addrs.join(' -> '),
+        }, function(res) {
+            if (res.salvat) setStatus('Salvat in foaia de parcurs (#' + res.conducere_id + '). Reincarca pagina ca sa apara in tabel.', 'ok');
+            else setStatus(res.message || 'Nu s-a salvat', 'err');
+        });
+    });
+
+    window.addEventListener('calc-tab-shown', function() {
+        initMap();
+        setTimeout(function() { if (map) map.resize(); }, 200);
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}
