@@ -1,0 +1,56 @@
+# Edifico - stack per client (Faza 1): app + Postgres, in spatele proxy-ului Traefik.
+# Porneste intai proxy-ul partajat (docker/proxy) + reteaua edifico-proxy.
+# Vezi docker/README.md.
+name: edifico-${CLIENT_SLUG:-client}
+
+services:
+  app:
+    build: .
+    image: edifico:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Sub compose DB = Postgres (suprascrie DATABASE_URL din .env)
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-edifico}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-edifico}
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=edifico-proxy
+      - traefik.http.routers.${CLIENT_SLUG:-client}.rule=Host(`${CLIENT_DOMAIN}`)
+      - traefik.http.routers.${CLIENT_SLUG:-client}.entrypoints=websecure
+      - traefik.http.routers.${CLIENT_SLUG:-client}.tls.certresolver=le
+      - traefik.http.services.${CLIENT_SLUG:-client}.loadbalancer.server.port=8000
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-edifico}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-edifico}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-edifico} -d ${POSTGRES_DB:-edifico}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+networks:
+  internal:
+  proxy:
+    external: true
+    name: edifico-proxy
+
+volumes:
+  uploads:
+  pgdata:

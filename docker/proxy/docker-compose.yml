@@ -1,0 +1,43 @@
+# Proxy partajat Traefik - ruleaza O SINGURA DATA pe host.
+# Rutează fiecare CLIENT_DOMAIN catre containerul lui + TLS automat (Let's Encrypt).
+#
+# Setup:
+#   docker network create edifico-proxy
+#   cp docker/proxy/.env.example docker/proxy/.env   # completeaza ACME_EMAIL
+#   docker compose -f docker/proxy/docker-compose.yml up -d
+name: edifico-proxy
+
+services:
+  traefik:
+    image: traefik:v3.1
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=edifico-proxy
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # redirect HTTP -> HTTPS
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      # Let's Encrypt (HTTP-01 challenge)
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - edifico-proxy
+
+networks:
+  edifico-proxy:
+    external: true
+    name: edifico-proxy
+
+volumes:
+  letsencrypt:

@@ -14,7 +14,7 @@ cp .env.example .env
 python -c "import secrets; print(secrets.token_hex(32))"   # pt. SECRET_KEY
 ```
 
-## Run (SQLite pe volum — cel mai simplu)
+## Run — opțiunea A: standalone, SQLite (Faza 0, cel mai simplu)
 ```bash
 docker run -d --name edifico-client1 \
   --env-file .env \
@@ -24,6 +24,27 @@ docker run -d --name edifico-client1 \
   edifico:latest
 ```
 Aplicația: http://localhost:8000 · login cu `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+
+## Run — opțiunea B: docker-compose, Postgres + TLS (Faza 1, recomandat în prod)
+
+**Pas 1 — proxy partajat Traefik (o singură dată pe host):**
+```bash
+docker network create edifico-proxy
+cp docker/proxy/.env.example docker/proxy/.env      # completează ACME_EMAIL
+docker compose -f docker/proxy/docker-compose.yml up -d
+```
+
+**Pas 2 — stack per client:**
+```bash
+cp .env.example .env
+# completează: CLIENT_SLUG, CLIENT_DOMAIN, POSTGRES_PASSWORD, SECRET_KEY, ADMIN_*, FEATURE_FLAGS
+docker compose up -d --build
+```
+Traefik rutează `CLIENT_DOMAIN` → containerul clientului și emite automat certificat Let's Encrypt. Sub compose, `DATABASE_URL` e construit automat din `POSTGRES_*` (Postgres), nu din linia SQLite.
+
+**Alt client** = alt director cu propriul `.env` (alt `CLIENT_SLUG` + `CLIENT_DOMAIN`) → `docker compose up -d`. Volume + DB izolate per proiect compose.
+
+> DNS: `CLIENT_DOMAIN` trebuie să pointeze (A/CNAME) către IP-ul hostului înainte ca Let's Encrypt să emită certificatul.
 
 ## Ce face la pornire (`docker/entrypoint.sh` → `scripts/docker_init.py`)
 1. **Schema DB** — DB nou: `create_all` + `alembic stamp head`; DB existent: `alembic upgrade head` + `create_all`. Idempotent.
@@ -38,6 +59,7 @@ FEATURE_FLAGS=controale-contract,controale-contract-import-msproject,bim-viewer-
 ```
 
 ## Note
-- **Postgres** recomandat la trafic mai mare (Faza 1, docker-compose). SQLite-file e ok pentru clienți mici.
+- **Postgres** recomandat la trafic mai mare (compose, opțiunea B). SQLite-file e ok pentru clienți mici.
 - **PA rămâne neatins** — acest setup e paralel, pentru livrare la alți clienți.
-- Următorii pași: Faza 1 (docker-compose: app + Postgres + proxy TLS) și Faza 2 (provisioning per subdomeniu).
+- **APScheduler:** `WORKERS=1` (implicit) ca să nu pornească scheduler-e duplicate. Pentru trafic mare, Faza 3 extrage scheduler-ul într-un container separat și crește workers.
+- Următorul pas: **Faza 2** — script `provision_client.sh <slug> <domeniu>` care generează `.env` + pornește stack-ul, plus backup automat per client.
