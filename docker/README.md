@@ -58,8 +58,26 @@ Setezi în `.env` ce a cumpărat clientul, ex:
 FEATURE_FLAGS=controale-contract,controale-contract-import-msproject,bim-viewer-3d,bim-clash-detection
 ```
 
+## Provisioning + backup (Faza 2)
+
+**Client nou într-o comandă** (generează `clients/<slug>/.env` cu secrete unice + pornește stack-ul):
+```bash
+./scripts/provision_client.sh acme acme.edifico.space controale-contract,bim-viewer-3d
+```
+Afișează la final URL-ul, emailul de admin și **parola generată** (notează-o). Alt client = alt slug/domeniu. `clients/` e în `.gitignore` (conține secrete) — nu se comite.
+
+**Backup** (dump Postgres + arhivă uploads, retenție 14, offsite opțional):
+```bash
+./scripts/backup_client.sh acme          # un client
+./scripts/backup_all.sh                  # toți (pentru cron)
+```
+Cron zilnic + offsite (rclone):
+```bash
+0 3 * * * cd /home/edifico/workforce && RCLONE_REMOTE=b2:edifico-backups ./scripts/backup_all.sh >> backups/cron.log 2>&1
+```
+
 ## Note
 - **Postgres** recomandat la trafic mai mare (compose, opțiunea B). SQLite-file e ok pentru clienți mici.
 - **PA rămâne neatins** — acest setup e paralel, pentru livrare la alți clienți.
 - **APScheduler:** `WORKERS=1` (implicit) ca să nu pornească scheduler-e duplicate. Pentru trafic mare, Faza 3 extrage scheduler-ul într-un container separat și crește workers.
-- Următorul pas: **Faza 2** — script `provision_client.sh <slug> <domeniu>` care generează `.env` + pornește stack-ul, plus backup automat per client.
+- Următorul pas opțional: **Faza 3** — observabilitate (Sentry/uptime), update etapizat al imaginii, scheduler separat.

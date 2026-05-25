@@ -16,3 +16,7 @@ htmlcov/
 ~$*.pptx
 ~$*.docx
 ~$*.xlsx
+
+# Docker per-client (secrete!) + fisiere .env reale (NU .env.example)
+.env
+clients/

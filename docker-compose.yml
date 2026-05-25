@@ -8,10 +8,21 @@ services:
     build: .
     image: edifico:latest
     restart: unless-stopped
-    env_file: .env
+    # Config via interpolare (din .env implicit sau --env-file clients/<slug>/.env).
+    # Asa, provisioning-ul per client (Faza 2) doar schimba --env-file.
     environment:
-      # Sub compose DB = Postgres (suprascrie DATABASE_URL din .env)
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-edifico}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-edifico}
+      SECRET_KEY: ${SECRET_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_NUME: ${ADMIN_NUME:-Admin}
+      ADMIN_PRENUME: ${ADMIN_PRENUME:-Client}
+      FEATURE_FLAGS: ${FEATURE_FLAGS:-}
+      MAPBOX_PUBLIC_TOKEN: ${MAPBOX_PUBLIC_TOKEN:-}
+      MAPBOX_SECRET_TOKEN: ${MAPBOX_SECRET_TOKEN:-}
+      PORT: ${PORT:-8000}
+      WORKERS: ${WORKERS:-1}
+      THREADS: ${THREADS:-8}
     volumes:
       - uploads:/app/uploads
     depends_on:
