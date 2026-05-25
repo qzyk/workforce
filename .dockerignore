@@ -1,0 +1,48 @@
+# Git / VCS
+.git
+.gitignore
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Medii virtuale
+.venv/
+venv/
+env/
+
+# Baze de date locale (NU le baga in imagine!)
+*.db
+*.sqlite
+*.sqlite3
+database/
+instance/
+
+# Date runtime (vin din volume, nu din imagine)
+uploads/
+exports/
+backups/
+
+# Secrete / config local
+.env
+.env.*
+!.env.example
+
+# Teste (nu sunt necesare in imaginea de productie)
+tests/
+htmlcov/
+.coverage
+.coverage.*
+
+# Unelte / IDE / OS
+.claude/
+.vscode/
+.idea/
+.DS_Store
+
+# Node (daca apare vreodata)
+node_modules/
