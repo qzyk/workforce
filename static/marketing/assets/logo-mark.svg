@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Edifico">
+  <rect width="120" height="120" rx="22" fill="#0B5FA5"></rect>
+  <g stroke="rgba(255,255,255,0.28)" stroke-width="1.5" fill="none" stroke-linecap="square">
+    <path d="M8,14 V8 H14"></path>
+    <path d="M106,8 H112 V14"></path>
+    <path d="M8,106 V112 H14"></path>
+    <path d="M106,112 H112 V106"></path>
+  </g>
+  <g fill="#FFFFFF">
+    <rect x="32" y="34" width="14" height="52" rx="2"></rect>
+    <rect x="32" y="34" width="56" height="14" rx="2"></rect>
+    <rect x="32" y="55" width="42" height="10" rx="2"></rect>
+    <rect x="32" y="72" width="56" height="14" rx="2"></rect>
+  </g>
+  <circle cx="100" cy="96" r="6" fill="#F29C1F"></circle>
+  <circle cx="100" cy="96" r="1.6" fill="#0B5FA5"></circle>
+</svg>

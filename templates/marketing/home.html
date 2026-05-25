@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edifico — O platformă, toate șantierele tale</title>
+<meta name="description" content="Edifico unifică operațiunile echipei, colaborarea BIM și controlul contractelor într-o singură aplicație. De la planificare la execuție.">
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='marketing/assets/favicon.svg') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='marketing/colors_and_type.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='marketing/marketing.css') }}">
+</head>
+<body>
+
+<!-- ============================================================
+     NAVBAR (scheme-1)
+     ============================================================ -->
+<header class="navbar">
+  <div class="navbar__inner">
+    <a href="{{ url_for('marketing.home') }}" class="navbar__logo">
+      <img src="{{ url_for('static', filename='marketing/assets/logo-mark.svg') }}" alt="" class="navbar__logo-mark">
+      <span class="navbar__logo-text">Edifico</span>
+    </a>
+    <nav class="navbar__links">
+      <a href="{{ url_for('marketing.home') }}">Acasă</a>
+      <a href="#platforma">Platformă</a>
+      <a href="#solutii">Soluții</a>
+      <div class="dropdown">
+        <button class="dropdown__trigger" type="button">
+          Resurse
+          <svg class="dropdown__chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div class="dropdown__menu">
+          <a href="#">Documentație</a>
+          <a href="#">Blog</a>
+          <a href="#">Suport</a>
+        </div>
+      </div>
+    </nav>
+    <div class="navbar__cta">
+      <a href="{{ url_for('auth.login') }}" class="btn btn--secondary btn--sm">Conectare</a>
+      <a href="{{ url_for('auth.login') }}" class="btn btn--primary btn--sm">Încercare</a>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================
+     HERO (scheme-1) — full-bleed video
+     ============================================================ -->
+<section class="section hero scheme-1" data-screen-label="01 Hero">
+  <div class="hero__video">
+    <video src="{{ url_for('static', filename='marketing/assets/hero-video.mp4') }}" autoplay muted loop playsinline poster="{{ url_for('static', filename='marketing/assets/photo-aerial-site.jpg') }}"></video>
+  </div>
+  <div class="hero__content">
+    <span class="hero__eyebrow"><span class="dot"></span>Edifico · Platforma de management construcții</span>
+    <h1>O platformă, toate șantierele tale</h1>
+    <p class="hero__lede">Edifico unifică operațiunile echipei, colaborarea BIM și controlul contractelor într-o singură aplicație. De la planificare la execuție — fără să sari între unelte.</p>
+    <div class="hero__cta">
+      <a href="{{ url_for('auth.login') }}" class="btn btn--primary">Programează demo</a>
+      <a href="#platforma" class="btn btn--secondary">Înțelege mai mult</a>
+    </div>
+    <div class="hero__meta">
+      <div><strong>4–8 sapt.</strong> implementare medie</div>
+      <div><strong>70%</strong> reducere timp rapoarte</div>
+      <div><strong>100%</strong> vizibilitate șantier</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     STATEMENT (scheme-2) — header-64 with engineer backdrop
+     ============================================================ -->
+<section class="section statement statement--photo scheme-2" data-screen-label="02 Statement">
+  <div class="statement__bg"><img src="{{ url_for('static', filename='marketing/assets/photo-engineer-pointing.jpg') }}" alt=""></div>
+  <div class="container statement__inner">
+    <h1>Construit pentru construcții</h1>
+    <p>Platformă premium de management care transformă modul în care lucrează echipele</p>
+  </div>
+</section>
+
+<!-- ============================================================
+     FEATURES (scheme-2) — layout-522
+     ============================================================ -->
+<section class="section features scheme-2" id="platforma" data-screen-label="03 Features">
+  <div class="container">
+    <div class="features__head">
+      <p class="eyebrow">Capabilități</p>
+      <h2>Funcționalități care contează</h2>
+      <p>Toate instrumentele necesare într-un singur loc</p>
+    </div>
+    <div class="features__grid">
+
+      <div class="features__card features__card--lg">
+        <div class="bg"><img src="{{ url_for('static', filename='marketing/assets/photo-team-review.jpg') }}" alt=""></div>
+        <div class="content">
+          <p class="eyebrow">Echipă</p>
+          <h3 style="margin-bottom: 1.25rem;">Gestionează forța de muncă cu ușurință</h3>
+          <p>Alocări de proiecte, foi de timp, istoric de realocări și rapoarte de prezență în timp real. Echipa ta rămâne conectată și productivă.</p>
+          <div class="actions" style="display:flex; gap:1rem; flex-wrap:wrap;">
+            <a href="{{ url_for('auth.login') }}" class="btn btn--secondary">Detalii</a>
+            <button class="btn btn--link">Săgeată
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="features__card">
+        <div class="bg"><img src="{{ url_for('static', filename='marketing/assets/photo-bim-hologram.jpg') }}" alt=""></div>
+        <div class="content">
+          <h3 style="font-size: var(--text-h5); margin-bottom: 0.5rem;">BIM și colaborare</h3>
+          <p>Vizualizare 3D, mediu de date comun și detecție clash</p>
+          <div class="actions">
+            <button class="btn btn--link">Săgeată
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="features__card">
+        <div class="bg"><img src="{{ url_for('static', filename='marketing/assets/photo-office-planning.jpg') }}" alt=""></div>
+        <div class="content">
+          <h3 style="font-size: var(--text-h5); margin-bottom: 0.5rem;">Contracte și control</h3>
+          <p>Gestionează termene, facturi și corespondență cu ușurință</p>
+          <div class="actions">
+            <button class="btn btn--link">Săgeată
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     MOBILE (scheme-1) — companion app showcase
+     ============================================================ -->
+<section class="section mobile scheme-1" id="solutii" data-screen-label="04 Mobile">
+  <div class="container mobile__grid">
+    <div class="mobile__copy">
+      <p class="eyebrow">Aplicație mobilă</p>
+      <h2>Toată echipa, în buzunar</h2>
+      <p>Aplicația mobilă Edifico ține fiecare șef de echipă conectat la datele de pe șantier. Pontaje rapide cu scanare QR, prezența zilnică în timp real și progresul fiecărui obiectiv — direct pe telefon.</p>
+      <div class="actions" style="display:flex; gap:1rem; flex-wrap:wrap; margin-top:2rem;">
+        <a href="{{ url_for('auth.login') }}" class="btn btn--primary">Descarcă aplicația</a>
+        <a href="#platforma" class="btn btn--secondary">Vezi capabilitățile</a>
+      </div>
+    </div>
+    <div class="mobile__media">
+      <img src="{{ url_for('static', filename='marketing/assets/photo-mobile-app.jpg') }}" alt="Aplicația mobilă Edifico">
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     STATS (scheme-2) — stats-38
+     ============================================================ -->
+<section class="section stats scheme-2" data-screen-label="04 Stats">
+  <div class="container">
+    <div class="stats__head">
+      <div>
+        <h3>Echipele care folosesc Edifico lucrează mai eficient</h3>
+      </div>
+      <div>
+        <p>Datele vorbesc. Platformele care funcționează lasă urme măsurabile în modul în care oamenii lucrează și cum se termină proiectele.</p>
+      </div>
+    </div>
+    <div class="stats__grid">
+      <div class="card stat-card">
+        <h3 style="font-size: var(--text-h6);">Reducere timp rapoarte</h3>
+        <p class="number">70%</p>
+        <div class="divider"></div>
+        <p class="stat-caption">Documentația se generează automat din date vii</p>
+      </div>
+      <div class="card stat-card">
+        <h3 style="font-size: var(--text-h6);">Vizibilitate șantier</h3>
+        <p class="number">100%</p>
+        <div class="divider"></div>
+        <p class="stat-caption">Fiecare șantier, fiecare echipă, o singură vedere</p>
+      </div>
+      <div class="card stat-card">
+        <h3 style="font-size: var(--text-h6);">Rezolvare clash</h3>
+        <p class="number">85%</p>
+        <div class="divider"></div>
+        <p class="stat-caption">Conflictele BIM se detectează și se raportează automat</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     CTA (scheme-2) — cta-31
+     ============================================================ -->
+<section class="section cta scheme-2" data-screen-label="05 CTA">
+  <div class="container">
+    <div class="cta__head">
+      <h2>Gata să vezi cum funcționează</h2>
+      <p>Programează o demonstrație. Arătăm cum Edifico transformă operațiunile tale.</p>
+      <div class="actions">
+        <a href="{{ url_for('auth.login') }}" class="btn btn--primary">Programează demo</a>
+        <a href="{{ url_for('auth.login') }}" class="btn btn--secondary">Contactează</a>
+      </div>
+    </div>
+    <div class="cta__media">
+      <img src="{{ url_for('static', filename='marketing/assets/photo-boardroom.jpg') }}" alt="">
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     FAQ (scheme-2) — faq-06
+     ============================================================ -->
+<section class="section faq scheme-2" data-screen-label="06 FAQ">
+  <div class="container">
+    <div class="faq__grid">
+      <div class="faq__intro">
+        <h2>Întrebări</h2>
+        <p>Răspunsuri la ceea ce echipele noastre aud cel mai des</p>
+        <div class="actions">
+          <a href="{{ url_for('auth.login') }}" class="btn btn--secondary">Contact</a>
+        </div>
+      </div>
+      <div class="faq__list">
+
+        <div class="faq__item" data-open="true">
+          <button class="faq__trigger" onclick="toggleFaq(this)">
+            <span>Ce este Edifico exact?</span>
+            <span class="plus">+</span>
+          </button>
+          <div class="faq__content">
+            Edifico este o platformă de management pentru construcții care unește operațiunile echipei, colaborarea BIM și controlul contractelor într-o singură aplicație web. Se instalează pe serverele tale, nu în cloud-ul cuiva. O folosești pe desktop sau pe mobil ca PWA.
+          </div>
+        </div>
+
+        <div class="faq__item">
+          <button class="faq__trigger" onclick="toggleFaq(this)">
+            <span>Cât timp durează implementarea?</span>
+            <span class="plus">+</span>
+          </button>
+          <div class="faq__content">
+            Depinde de mărimea echipei și complexitatea datelor tale. Majoritatea implementărilor durează patru până la opt săptămâni. Echipa noastră se mișcă repede și ține pasul cu ritmul tău.
+          </div>
+        </div>
+
+        <div class="faq__item">
+          <button class="faq__trigger" onclick="toggleFaq(this)">
+            <span>Pot importa datele existente?</span>
+            <span class="plus">+</span>
+          </button>
+          <div class="faq__content">
+            Da. Importăm din MS Project, eDevize, Excel și alte formate standard. Datele tale nu rămân blocate în sistemul vechi. Vin cu tine în Edifico.
+          </div>
+        </div>
+
+        <div class="faq__item">
+          <button class="faq__trigger" onclick="toggleFaq(this)">
+            <span>Cum funcționează clash-detection?</span>
+            <span class="plus">+</span>
+          </button>
+          <div class="faq__content">
+            Motorul de reguli analizează modelul BIM 3D și detectează conflicte geometrice automat. Raportele se generează în timp real. Problemele apar pe tabloul de bord înainte ca echipa să ajungă pe șantier.
+          </div>
+        </div>
+
+        <div class="faq__item">
+          <button class="faq__trigger" onclick="toggleFaq(this)">
+            <span>Ce se întâmplă cu datele mele?</span>
+            <span class="plus">+</span>
+          </button>
+          <div class="faq__content">
+            Rămân pe serverele tale. Noi nu le accesăm, nu le stocăm, nu le vândem. Audit logging complet înregistrează cine a văzut ce și când. Controlul total este al tău.
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     FOOTER (scheme-2) — footer-06
+     ============================================================ -->
+<footer class="section--tight section scheme-2" data-screen-label="07 Footer">
+  <div class="container">
+    <div class="footer__newsletter">
+      <div>
+        <h3>Rămâi informat</h3>
+        <p>Noutăți și actualizări direct în inbox</p>
+      </div>
+      <div>
+        <form onsubmit="event.preventDefault();">
+          <input type="email" placeholder="Adresa ta de email">
+          <button type="submit" class="btn btn--secondary btn--sm">Abonează</button>
+          <p class="legal">Prin abonare accepți politica de confidențialitate</p>
+        </form>
+      </div>
+    </div>
+    <div class="footer__columns">
+      <div class="footer__col">
+        <h4>Platformă</h4>
+        <ul>
+          <li><a href="#platforma">Caracteristici</a></li>
+          <li><a href="#">Integrări</a></li>
+          <li><a href="#">Securitate</a></li>
+          <li><a href="#">Performanță</a></li>
+          <li><a href="#">Documentație</a></li>
+        </ul>
+      </div>
+      <div class="footer__col">
+        <h4>Soluții</h4>
+        <ul>
+          <li><a href="#solutii">Pentru echipe</a></li>
+          <li><a href="#">Pentru proiecte</a></li>
+          <li><a href="#">Pentru contracte</a></li>
+          <li><a href="#">Pentru BIM</a></li>
+          <li><a href="#">Cazuri de succes</a></li>
+        </ul>
+      </div>
+      <div class="footer__col">
+        <h4>Companie</h4>
+        <ul>
+          <li><a href="#">Despre noi</a></li>
+          <li><a href="#">Blog</a></li>
+          <li><a href="#">Cariere</a></li>
+          <li><a href="#">Contact</a></li>
+          <li><a href="#">Comunitate</a></li>
+        </ul>
+      </div>
+      <div class="footer__col">
+        <h4>Resurse</h4>
+        <ul>
+          <li><a href="#">Ghid utilizator</a></li>
+          <li><a href="#">Tutoriale video</a></li>
+          <li><a href="#">Webinare</a></li>
+          <li><a href="#">Suport tehnic</a></li>
+          <li><a href="#">API Edifico</a></li>
+        </ul>
+      </div>
+      <div class="footer__col">
+        <h4>Juridic</h4>
+        <ul>
+          <li><a href="#">Termeni de utilizare</a></li>
+          <li><a href="#">Confidențialitate</a></li>
+          <li><a href="#">Cookies</a></li>
+          <li><a href="#">GDPR</a></li>
+          <li><a href="#">Status sistem</a></li>
+        </ul>
+      </div>
+      <div class="footer__col">
+        <h4>Urmărire</h4>
+        <ul>
+          <li><a href="#">LinkedIn</a></li>
+          <li><a href="#">Twitter</a></li>
+          <li><a href="#">GitHub</a></li>
+          <li><a href="#">YouTube</a></li>
+          <li><a href="#">Contact vânzări</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer__bottom">
+      <a href="{{ url_for('marketing.home') }}" class="footer__brand">
+        <img src="{{ url_for('static', filename='marketing/assets/logo-mark.svg') }}" alt="" class="footer__brand-mark">
+        <span class="footer__brand-text">Edifico</span>
+      </a>
+      <p>© 2026 Edifico. Toate drepturile rezervate.</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+function toggleFaq(btn) {
+  const item = btn.parentElement;
+  const open = item.getAttribute('data-open') === 'true';
+  item.setAttribute('data-open', open ? 'false' : 'true');
+}
+</script>
+
+</body>
+</html>

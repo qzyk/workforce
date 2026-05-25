@@ -19,9 +19,15 @@ ZILE_SAPTAMANA_RO = ['Luni', 'Marti', 'Miercuri', 'Joi', 'Vineri', 'Sambata', 'D
 
 @dashboard_bp.route('/')
 @dashboard_bp.route('/dashboard')
-@login_required
 def index():
-    """Dashboard principal cu toate statisticile."""
+    """Dashboard principal cu toate statisticile.
+
+    Vizitatorii nelogati pe / sunt trimisi la pagina publica de prezentare.
+    Utilizatorii autentificati vad dashboard-ul normal.
+    """
+    if not current_user.is_authenticated:
+        return redirect(url_for('marketing.home'))
+
     today = date.today()
     luna_start = today.replace(day=1)
 

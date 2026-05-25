@@ -74,6 +74,7 @@ def create_app(config_name='default'):
     from routes.tenants import tenants_bp
     from routes.contracte import contracte_bp  # Faza 10 - gated pe flag 'controale-contract'
     from routes.locatii import locatii_bp  # Locatii proiect cu Mapbox
+    from routes.marketing import marketing_bp  # Pagina publica de prezentare /home
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -90,6 +91,7 @@ def create_app(config_name='default'):
     app.register_blueprint(tenants_bp)
     app.register_blueprint(contracte_bp, url_prefix='/contracte')
     app.register_blueprint(locatii_bp, url_prefix='/locatii')
+    app.register_blueprint(marketing_bp)
 
     # Context processor pentru token Mapbox public (vizibil in template-uri).
     # Token-ul public e safe sa apara in HTML (asta e flow-ul Mapbox standard).

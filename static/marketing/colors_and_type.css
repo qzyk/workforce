@@ -1,0 +1,288 @@
+/* ============================================================
+   EDIFICO — Design Tokens
+   Colors + Typography (Marketing + Workforce App)
+   ============================================================ */
+
+/* ---------- Fonts ---------- */
+@font-face {
+  font-family: "Questrial";
+  src: url("./fonts/questrial-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Noto Serif";
+  src: url("./fonts/noto-serif-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Noto Serif";
+  src: url("./fonts/noto-serif-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Noto Serif";
+  src: url("./fonts/noto-serif-600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Noto Serif";
+  src: url("./fonts/noto-serif-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Inter is loaded by the Workforce app from Google Fonts (no woff2 in source). */
+
+:root {
+  /* ============================================================
+     CORE COLOR TOKENS — Marketing site (DESIGN.md)
+     Dark theme. Neutral palette + 4 chromatic palettes.
+     ============================================================ */
+
+  /* Neutral scale */
+  --color-white: #ffffff;
+  --color-neutral-lightest: #f2f2f2;   /* shade-1 */
+  --color-neutral-lighter: #d9d9d9;    /* shade-2 */
+  --color-neutral-light: #b4b3b4;      /* shade-3 */
+  --color-neutral: #828183;            /* shade-4 */
+  --color-neutral-dark: #504e52;       /* shade-5 */
+  --color-neutral-darker: #1e1c20;     /* shade-6 — used as scheme-3 background */
+  --color-neutral-darkest: #060308;    /* shade-7 — used as scheme-2 background */
+
+  /* Tory Blue — primary chromatic, brand accent */
+  --color-tory-blue-lightest: #e6eff6;
+  --color-tory-blue-lighter: #cedfed;
+  --color-tory-blue-light: #548fc0;
+  --color-tory-blue: #0b5fa5;
+  --color-tory-blue-dark: #084c84;
+  --color-tory-blue-darker: #042642;
+  --color-tory-blue-darkest: #031c31;  /* scheme-1 background */
+
+  /* Carrot Orange — warm accent */
+  --color-carrot-orange-lightest: #fdf5e8;
+  --color-carrot-orange-lighter: #fcebd2;
+  --color-carrot-orange-light: #f5b962;
+  --color-carrot-orange: #f29c1f;
+  --color-carrot-orange-dark: #c17c18;
+  --color-carrot-orange-darker: #603e0c;
+  --color-carrot-orange-darkest: #482e09;
+
+  /* Sea Green — success / positive accent */
+  --color-sea-green-lightest: #eaf3ee;
+  --color-sea-green-lighter: #d5e8dd;
+  --color-sea-green-light: #6cb089;
+  --color-sea-green: #2e8f57;
+  --color-sea-green-dark: #247245;
+  --color-sea-green-darker: #123922;
+  --color-sea-green-darkest: #0d2a1a;
+
+  /* Royal Purple — categorical accent */
+  --color-royal-purple-lightest: #f1ebf4;
+  --color-royal-purple-lighter: #e4d8ea;
+  --color-royal-purple-light: #a177b8;
+  --color-royal-purple: #7a3e9a;
+  --color-royal-purple-dark: #61317b;
+  --color-royal-purple-darker: #30183d;
+  --color-royal-purple-darkest: #24122e;
+
+  /* Alpha utilities (mixed on demand in Tailwind source) */
+  --color-white-10: rgba(255, 255, 255, 0.10);
+  --color-white-20: rgba(255, 255, 255, 0.20);
+  --color-white-30: rgba(255, 255, 255, 0.30);
+  --color-white-50: rgba(255, 255, 255, 0.50);
+  --color-black-10: rgba(0, 0, 0, 0.10);
+  --color-black-20: rgba(0, 0, 0, 0.20);
+  --color-black-50: rgba(0, 0, 0, 0.50);
+
+  /* ============================================================
+     SEMANTIC TOKENS — Marketing
+     Default scheme = scheme-1 (Tory Blue Darkest)
+     ============================================================ */
+  --bg: var(--color-tory-blue-darkest);
+  --bg-card: var(--color-tory-blue-darker);
+  --fg: var(--color-white);
+  --fg-muted: rgba(255, 255, 255, 0.72);
+  --border: rgba(255, 255, 255, 0.20);
+  --accent: var(--color-carrot-orange); /* used sparingly — almost never in default schemes */
+
+  /* ============================================================
+     CORE COLOR TOKENS — Workforce app (Innova Workforce v2.0)
+     Light theme, sidebar layout, status colors
+     ============================================================ */
+  --wf-primary: #1a237e;
+  --wf-primary-light: #283593;
+  --wf-primary-dark: #0d1642;
+  --wf-secondary: #f57c00;          /* same family as Edifico carrot-orange */
+  --wf-secondary-light: #ff9800;
+  --wf-success: #2e7d32;            /* same family as sea-green */
+  --wf-success-light: #43a047;
+  --wf-danger: #c62828;
+  --wf-danger-light: #e53935;
+  --wf-warning: #f57c00;
+  --wf-info: #0277bd;
+
+  --wf-gray-50: #fafafa;
+  --wf-gray-100: #f5f5f5;
+  --wf-gray-200: #eeeeee;
+  --wf-gray-300: #e0e0e0;
+  --wf-gray-400: #bdbdbd;
+  --wf-gray-500: #9e9e9e;
+  --wf-gray-600: #757575;
+  --wf-gray-700: #616161;
+  --wf-gray-800: #424242;
+  --wf-gray-900: #212121;
+  --wf-bg: #f0f2f5;
+
+  /* ============================================================
+     TYPE TOKENS
+     Headings: Questrial 400
+     Body:     Noto Serif (Marketing) / Inter 300-800 (Workforce)
+     Weights are NOT a way to add emphasis on the marketing site —
+     the heading face only ships at 400.
+     ============================================================ */
+  --font-display: "Questrial", system-ui, sans-serif;
+  --font-body: "Noto Serif", Georgia, serif;
+  --font-app: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Marketing scale — mobile first (≥ 992px upgrades via @media) */
+  --text-h1: 3rem;       --text-h1-lh: 1.1;
+  --text-h2: 2.75rem;    --text-h2-lh: 1.2;
+  --text-h3: 2rem;       --text-h3-lh: 1.2;
+  --text-h4: 1.5rem;     --text-h4-lh: 1.2;
+  --text-h5: 1.25rem;    --text-h5-lh: 1.2;
+  --text-h6: 1.125rem;   --text-h6-lh: 1.2;
+  --text-large: 1.125rem;  --text-large-lh: 1.6;
+  --text-medium: 1rem;     --text-medium-lh: 1.6;
+  --text-regular: 0.875rem;--text-regular-lh: 1.6;
+  --text-small: 0.75rem;   --text-small-lh: 1.6;
+  --text-tiny: 0.625rem;   --text-tiny-lh: 1.6;
+  --letter-tight: 0.01em;  /* All headings have +1% tracking */
+
+  /* App scale (Workforce) — much denser */
+  --app-text-xs:  10px;
+  --app-text-sm:  11px;
+  --app-text-md:  12px;
+  --app-text-base:13px;     /* body default */
+  --app-text-lg:  14px;
+  --app-text-xl:  15px;
+  --app-text-2xl: 18px;
+  --app-text-3xl: 22px;
+  --app-text-4xl: 28px;
+
+  /* ============================================================
+     RADII / SHADOWS / SPACING
+     ============================================================ */
+  --radius-button: 0.75rem;     /* 12px — "bubble" UI */
+  --radius-card: 1rem;          /* 16px — flat card style */
+  --radius-form: 0.75rem;
+  --radius-badge: 0.75rem;
+  --radius-image: 1rem;
+  --radius-checkbox: 0.25rem;
+
+  --radius-app: 10px;           /* Workforce app card radius */
+  --radius-app-sm: 6px;
+  --radius-pill: 999px;
+
+  /* The Edifico button signature: a 5px hard offset shadow that
+     "depresses" on hover to 2px (translateY 3px). Borrow this any
+     time you build a custom CTA — it's the brand's strongest motion
+     gesture. Direction matches the gravity vector (always below). */
+  --shadow-btn-default: 0 5px 0 0 var(--color-tory-blue-dark);
+  --shadow-btn-default-hover: 0 2px 0 0 var(--color-tory-blue-dark);
+  --shadow-btn-alt: 0 5px 0 0 var(--color-neutral-lighter);
+  --shadow-btn-alt-hover: 0 2px 0 0 var(--color-neutral-lighter);
+  --shadow-btn-secondary: 0 5px 0 0 var(--color-white-20);
+  --shadow-btn-secondary-hover: 0 2px 0 0 var(--color-white-20);
+
+  /* App shadows are soft and modest — drop only */
+  --shadow-app-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-app-md: 0 4px 12px rgba(0,0,0,0.10);
+  --shadow-app-lg: 0 8px 30px rgba(0,0,0,0.12);
+
+  /* Spacing — Marketing uses px-[5%] py-{16,24,28} on sections */
+  --space-section-y: 4rem;       /* mobile */
+  --space-section-y-md: 6rem;
+  --space-section-y-lg: 7rem;
+  --space-gutter-x: 5%;          /* horizontal page gutter */
+  --container-max: 80rem;        /* xxl */
+
+  /* Workforce app: 24px page padding, 20px card padding */
+  --space-app-page: 24px;
+  --space-app-card: 20px;
+  --space-app-gap: 20px;
+  --sidebar-w: 260px;
+  --header-h: 60px;
+
+  /* Motion */
+  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+  --transition-app: all 0.25s ease;
+}
+
+/* ============================================================
+   SEMANTIC HEADING / BODY DEFAULTS
+   Apply ".edifico" to a root to use marketing styles.
+   Apply ".workforce" to use the app styles.
+   ============================================================ */
+.edifico,
+.edifico * {
+  font-family: var(--font-body);
+}
+.edifico h1, .edifico h2, .edifico h3,
+.edifico h4, .edifico h5, .edifico h6 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: var(--letter-tight);
+}
+.edifico h1 { font-size: var(--text-h1); line-height: var(--text-h1-lh); }
+.edifico h2 { font-size: var(--text-h2); line-height: var(--text-h2-lh); }
+.edifico h3 { font-size: var(--text-h3); line-height: var(--text-h3-lh); }
+.edifico h4 { font-size: var(--text-h4); line-height: var(--text-h4-lh); }
+.edifico h5 { font-size: var(--text-h5); line-height: var(--text-h5-lh); }
+.edifico h6 { font-size: var(--text-h6); line-height: var(--text-h6-lh); }
+.edifico p  { font-size: var(--text-medium); line-height: var(--text-medium-lh); }
+
+@media (min-width: 992px) {
+  :root {
+    --text-h1: 5.25rem;
+    --text-h2: 3.75rem;
+    --text-h3: 3rem;
+    --text-h4: 2.5rem;
+    --text-h5: 2rem;
+    --text-h6: 1.625rem;
+    --text-large: 1.625rem;
+    --text-medium: 1.25rem;
+    --text-regular: 1.125rem;
+    --text-small: 1rem;
+    --text-tiny: 0.75rem;
+  }
+}
+
+.workforce,
+.workforce * {
+  font-family: var(--font-app);
+}
+.workforce {
+  font-size: var(--app-text-lg);
+  line-height: 1.5;
+  color: var(--wf-gray-800);
+  background: var(--wf-bg);
+}
+
+/* ============================================================
+   COLOR SCHEMES (Marketing) — set on a section to flip palette
+   ============================================================ */
+.scheme-1 { --bg: var(--color-tory-blue-darkest);  --bg-card: var(--color-tory-blue-darker);  --fg: var(--color-white); --border: var(--color-white-20); background: var(--bg); color: var(--fg); }
+.scheme-2 { --bg: var(--color-neutral-darkest);    --bg-card: var(--color-neutral-darker);    --fg: var(--color-white); --border: var(--color-white-20); background: var(--bg); color: var(--fg); }
+.scheme-3 { --bg: var(--color-neutral-darker);     --bg-card: var(--color-neutral-darkest);   --fg: var(--color-white); --border: var(--color-white-20); background: var(--bg); color: var(--fg); }
