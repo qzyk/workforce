@@ -48,7 +48,10 @@
      ============================================================ -->
 <section class="section hero scheme-1" data-screen-label="01 Hero">
   <div class="hero__video">
-    <video src="{{ url_for('static', filename='marketing/assets/hero-video.mp4') }}" autoplay muted loop playsinline poster="{{ url_for('static', filename='marketing/assets/photo-aerial-site.jpg') }}"></video>
+    <video autoplay muted loop playsinline preload="auto"
+           poster="{{ url_for('static', filename='marketing/assets/photo-aerial-site.jpg') }}">
+      <source src="{{ url_for('static', filename='marketing/assets/hero-video.mp4') }}" type="video/mp4">
+    </video>
   </div>
   <div class="hero__content">
     <span class="hero__eyebrow"><span class="dot"></span>Edifico · Platforma de management construcții</span>
@@ -375,6 +378,30 @@ function toggleFaq(btn) {
   const open = item.getAttribute('data-open') === 'true';
   item.setAttribute('data-open', open ? 'false' : 'true');
 }
+
+// Autoplay robust pentru videoul hero: unele browsere ignora atributul
+// `autoplay`, asa ca fortam muted + play() cu fallback pe prima interactiune.
+(function () {
+  var v = document.querySelector('.hero__video video');
+  if (!v) return;
+  v.muted = true; v.defaultMuted = true;
+  v.setAttribute('muted', '');
+  v.setAttribute('playsinline', '');
+  function tryPlay() {
+    var p = v.play();
+    if (p && typeof p.catch === 'function') p.catch(function () {});
+  }
+  tryPlay();
+  v.addEventListener('loadeddata', tryPlay);
+  v.addEventListener('canplay', tryPlay);
+  // Daca browserul blocheaza autoplay, porneste la prima interactiune.
+  ['click', 'touchstart', 'keydown', 'scroll'].forEach(function (ev) {
+    window.addEventListener(ev, tryPlay, { once: true, passive: true });
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) tryPlay();
+  });
+})();
 </script>
 
 </body>

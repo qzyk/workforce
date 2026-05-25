@@ -21,6 +21,14 @@ class TestMarketingHome:
         assert b'faq__item' in body                # FAQ
         assert b'footer__columns' in body          # footer
 
+    def test_video_autoplay_markup(self, client):
+        """Videoul hero are atributele de autoplay + source mp4 + nudge JS."""
+        body = client.get('/home').get_data(as_text=True)
+        assert 'autoplay' in body and 'muted' in body and 'playsinline' in body
+        assert '<source' in body and 'type="video/mp4"' in body
+        assert 'hero-video.mp4' in body
+        assert '.play()' in body  # nudge-ul JS de autoplay
+
     def test_home_link_login_wired(self, client):
         """Butoanele Conectare/Incercare duc la /auth/login."""
         r = client.get('/home')
