@@ -76,8 +76,26 @@ Cron zilnic + offsite (rclone):
 0 3 * * * cd /home/edifico/workforce && RCLONE_REMOTE=b2:edifico-backups ./scripts/backup_all.sh >> backups/cron.log 2>&1
 ```
 
+## Operare (Faza 3)
+
+**Health & uptime:** `GET /healthz` (public, verifică app + DB, fără login) →
+`{"status":"ok","db":"ok"}`. Folosit de healthcheck-ul Docker + monitor extern
+(UptimeRobot etc.). Pune-l pe fiecare `CLIENT_DOMAIN/healthz`.
+
+**Sentry (opțional):** setează `SENTRY_DSN` (+ `SENTRY_ENV`) în `.env` →
+erorile se raportează automat. Fără DSN, inactiv. Lib-ul e deja în imagine.
+
+**Scheduler separat:** web-ul rulează cu `RUN_SCHEDULER=0`; un serviciu
+`scheduler` dedicat rulează job-urile (un singur loc). Astfel poți crește
+`WORKERS` în web fără job-uri duplicate. `docker compose up -d` pornește ambele.
+
+**Update etapizat** (rebuild + canary + restul, cu verificare /healthz):
+```bash
+./scripts/update_all.sh acme     # 'acme' = canary; verifica health înainte de rest
+./scripts/update_all.sh          # fără canary: actualizează toți
+```
+
 ## Note
 - **Postgres** recomandat la trafic mai mare (compose, opțiunea B). SQLite-file e ok pentru clienți mici.
 - **PA rămâne neatins** — acest setup e paralel, pentru livrare la alți clienți.
-- **APScheduler:** `WORKERS=1` (implicit) ca să nu pornească scheduler-e duplicate. Pentru trafic mare, Faza 3 extrage scheduler-ul într-un container separat și crește workers.
-- Următorul pas opțional: **Faza 3** — observabilitate (Sentry/uptime), update etapizat al imaginii, scheduler separat.
+- Pentru `WORKERS>1` în web: scheduler-ul e deja separat (Faza 3), deci e sigur.

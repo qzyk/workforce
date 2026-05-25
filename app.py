@@ -38,6 +38,24 @@ def create_app(config_name='default'):
     app = Flask(__name__)
     app.config.from_object(config[config_name])
 
+    # Sentry (optional, Faza 3): activ doar daca SENTRY_DSN e setat.
+    # Graceful daca lib-ul lipseste sau init-ul esueaza.
+    _sentry_dsn = os.environ.get('SENTRY_DSN', '').strip()
+    if _sentry_dsn:
+        try:
+            import sentry_sdk
+            from sentry_sdk.integrations.flask import FlaskIntegration
+            sentry_sdk.init(
+                dsn=_sentry_dsn,
+                integrations=[FlaskIntegration()],
+                traces_sample_rate=float(os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0') or 0),
+                environment=os.environ.get('SENTRY_ENV', 'production'),
+                send_default_pii=False,
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning('Sentry init a esuat (graceful): %s', e)
+
     # Initializare extensii
     db.init_app(app)
     csrf = CSRFProtect(app)
@@ -714,11 +732,32 @@ def create_app(config_name='default'):
         click.echo(f'[OK] Job notificari rulat: {stats}')
 
     # --------------------------------------------------------
-    # APScheduler register (Faza 14)
+    # HEALTHCHECK (Faza 3) - pentru proxy + monitoare uptime
     # --------------------------------------------------------
+    @app.route('/healthz')
+    def healthz():
+        """Health rapid: confirma ca app-ul + DB raspund (fara login)."""
+        from flask import jsonify
+        from sqlalchemy import text
+        try:
+            db.session.execute(text('SELECT 1'))
+            return jsonify({'status': 'ok', 'db': 'ok'}), 200
+        except Exception as e:
+            return jsonify({'status': 'degraded', 'db': str(e)[:120]}), 503
+
+    # --------------------------------------------------------
+    # APScheduler register (Faza 14) - gated (Faza 3)
+    # --------------------------------------------------------
+    # RUN_SCHEDULER=0 dezactiveaza scheduler-ul in container-ele web, ca sa poata
+    # avea WORKERS>1 fara job-uri duplicate; un container 'scheduler' dedicat il
+    # ruleaza separat (RUN_SCHEDULER=1). Default '1' => comportament neschimbat (PA).
     try:
-        from services.notificari_job import init_scheduler
-        init_scheduler(app)
+        if os.environ.get('RUN_SCHEDULER', '1') == '1':
+            from services.notificari_job import init_scheduler
+            init_scheduler(app)
+        else:
+            import logging
+            logging.getLogger(__name__).info('APScheduler dezactivat (RUN_SCHEDULER=0)')
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(

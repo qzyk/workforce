@@ -19,7 +19,7 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt \
-    && pip install "gunicorn>=21.2" "psycopg2-binary>=2.9"
+    && pip install "gunicorn>=21.2" "psycopg2-binary>=2.9" "sentry-sdk[flask]>=2.0"
 
 # Codul aplicatiei
 COPY . .
@@ -32,9 +32,8 @@ VOLUME ["/app/data", "/app/uploads"]
 
 EXPOSE 8000
 
-# Healthcheck pe o ruta publica (login). NB: /home exista doar dupa merge-ul
-# branch-ului de marketing; pe baza curenta /auth/login e ruta publica sigura.
+# Healthcheck pe /healthz (verifica app + DB, fara login). Faza 3.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
-  CMD curl -fsS "http://localhost:${PORT:-8000}/auth/login" || exit 1
+  CMD curl -fsS "http://localhost:${PORT:-8000}/healthz" || exit 1
 
 ENTRYPOINT ["docker/entrypoint.sh"]
