@@ -10,7 +10,7 @@
  * Versiune: bump cand schimbi assets statice ca clienti sa updateze cache-ul.
  */
 
-const CACHE_VERSION = 'edifico-v1';
+const CACHE_VERSION = 'edifico-v2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const OFFLINE_URL = '/offline';
@@ -129,14 +129,18 @@ async function networkFirstWithOfflineFallback(request) {
     const cached = await cache.match(request);
     if (cached) return cached;
 
-    // Pentru navigation requests, fallback la pagina offline
-    if (request.mode === 'navigate') {
+    // Pagina offline DOAR daca browserul confirma ca chiar nu avem net.
+    // Altfel (server lent/eroare, ex: parsing IFC mare), lasam eroarea reala
+    // sa se vada - evitam "Nu am internet" inselator cand utilizatorul e online.
+    if (request.mode === 'navigate' && self.navigator && self.navigator.onLine === false) {
       const offlineCache = await caches.open(STATIC_CACHE);
       const offlinePage = await offlineCache.match(OFFLINE_URL);
       if (offlinePage) return offlinePage;
     }
 
-    return new Response('Offline', { status: 503, statusText: 'Offline' });
+    // Re-aruncam eroarea ca browserul sa-si afiseze pagina lui (cod HTTP real,
+    // "ERR_CONNECTION_TIMED_OUT", etc.) - mai informativ decat un 503 generic.
+    throw err;
   }
 }
 
