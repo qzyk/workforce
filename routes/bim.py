@@ -50,6 +50,7 @@ from services import realtime as rt_svc
 from services import presence as presence_svc
 from services import cantitati_bim
 from services import pricing_bim
+from services import planificare_bim
 from services import rbac as rbac_svc
 from services import api_tokens as tokens_svc
 from services import cobie_export as cobie_svc
@@ -2340,3 +2341,27 @@ def preturi_catalog():
     preturi = PretReferinta.query.filter_by(tenant_id=None).order_by(
         PretReferinta.categorie_lucrare, PretReferinta.um).all()
     return render_template('bim/preturi.html', preturi=preturi)
+
+
+@bim_bp.route('/santier/<int:santier_id>/genereaza-program', methods=['POST'])
+@login_required
+@manager_or_admin
+def genereaza_program(santier_id):
+    """Planificare automata a executiei (gated pe flag bim-auto-planning)."""
+    if not ff_svc.is_enabled('bim-auto-planning'):
+        flash('Planificarea automata e dezactivata. Activeaza bim-auto-planning.', 'warning')
+        return redirect(url_for('bim.dashboard'))
+    Santier.query.get_or_404(santier_id)
+    data_str = (request.form.get('data_start') or '').strip()
+    try:
+        data_start = datetime.strptime(data_str, '%Y-%m-%d').date() if data_str else date.today()
+    except ValueError:
+        data_start = date.today()
+    res = planificare_bim.genereaza_program(santier_id, data_start, current_user)
+    if res['status'] != 'ok':
+        flash(res['mesaj'], 'danger')
+    else:
+        flash(f"Program generat: {res['nr_taskuri']} taskuri in {res['nr_grupuri']} grupuri, "
+              f"executie {res['data_start']} -> {res['data_final']} "
+              f"({res['durata_zile_calendaristice']} zile calendaristice).", 'success')
+    return redirect(url_for('bim.dashboard'))

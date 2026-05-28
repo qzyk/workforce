@@ -4264,3 +4264,28 @@ class PretReferinta(db.Model):
                 f'{self.pret_unitar} RON {self.an_referinta}>')
 
 
+class NormaProductivitate(db.Model):
+    """
+    Norma de productivitate per categorie de lucrare, pentru planificarea
+    automata a executiei: randament = cantitate executata / echipa / zi.
+    tenant_id == None -> norme globale (seed default), altfel override per tenant.
+    """
+    __tablename__ = 'norme_productivitate'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    categorie_lucrare = db.Column(db.String(60), nullable=False, index=True)
+    um = db.Column(db.String(20), nullable=False)
+    randament_zi = db.Column(db.Numeric(12, 3), nullable=False, default=10)  # cantitate/echipa/zi
+    echipe_default = db.Column(db.Integer, default=1)
+    data_actualizare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'categorie_lucrare', name='uix_norma_tenant_cat'),
+    )
+
+    def __repr__(self):
+        return (f'<NormaProductivitate {self.categorie_lucrare} '
+                f'{self.randament_zi}/{self.um}/zi>')
+
+
