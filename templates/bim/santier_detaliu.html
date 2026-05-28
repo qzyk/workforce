@@ -103,4 +103,42 @@
         {% endif %}
     </div>
 </div>
+
+<!-- Auto-pricing & planificare (Faza 2-3) -->
+<div class="card-panel" style="margin-top:16px;">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-pricing &amp; planificare</h3></div>
+    <div class="card-panel-body" style="padding:18px; display:flex; flex-direction:column; gap:14px;">
+        <p style="margin:0; font-size:0.85rem; color:var(--gray-500);">
+            Din elementele IFC importate: calculeaza cantitatile, genereaza preturi de piata 2026 si planifica automat executia.
+        </p>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+            <form method="POST" action="{{ url_for('bim.calcul_cantitati', santier_id=santier.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline"><i class="fa-solid fa-ruler-combined"></i> 1. Calculeaza cantitati</button>
+            </form>
+            {% if feature_enabled('bim-auto-pricing') %}
+            <form method="POST" action="{{ url_for('bim.genereaza_preturi', santier_id=santier.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-coins"></i> 2. Genereaza preturi 2026</button>
+            </form>
+            {% endif %}
+            {% if feature_enabled('bim-auto-planning') %}
+            <form method="POST" action="{{ url_for('bim.genereaza_program', santier_id=santier.id) }}" style="display:flex; gap:6px; align-items:flex-end;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div>
+                    <label style="display:block; font-size:0.72rem; color:var(--gray-500);">Data start</label>
+                    <input type="date" name="data_start" class="form-control" style="width:150px;">
+                </div>
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-calendar-days"></i> 3. Planifica executia</button>
+            </form>
+            {% endif %}
+            <a href="{{ url_for('bim.preturi_catalog') }}" class="btn btn-outline"><i class="fa-solid fa-tags"></i> Catalog preturi</a>
+        </div>
+        {% if not feature_enabled('bim-auto-pricing') or not feature_enabled('bim-auto-planning') %}
+        <p style="margin:0; font-size:0.78rem; color:var(--warning);">
+            <i class="fa-solid fa-triangle-exclamation"></i> Activeaza flag-urile <code>bim-auto-pricing</code> / <code>bim-auto-planning</code> pentru optiunile dezactivate.
+        </p>
+        {% endif %}
+    </div>
+</div>
 {% endblock %}

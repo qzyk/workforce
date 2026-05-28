@@ -81,6 +81,21 @@ class TestPricingRoutes:
         assert r.status_code == 200
         assert b'beton' in r.data
 
+    def test_santier_page_arata_panoul(self, app, authenticated_client):
+        """Pagina santier randeaza panoul auto-pricing (url_for-uri valide)."""
+        from models import db, Santier
+        from services.feature_flags import set_flag
+        with app.app_context():
+            s = Santier(cod='PRJ-UI', nume='UI'); db.session.add(s); db.session.commit()
+            sid = s.id
+            set_flag('bim-auto-pricing', True, commit=True)
+            set_flag('bim-auto-planning', True, commit=True)
+        r = authenticated_client.get(f'/bim/santier/{sid}')
+        assert r.status_code == 200
+        assert b'Auto-pricing' in r.data
+        assert b'genereaza-preturi' in r.data
+        assert b'genereaza-program' in r.data
+
     def test_genereaza_flag_off_redirect(self, app, authenticated_client):
         from models import db, Santier
         with app.app_context():
