@@ -1646,16 +1646,21 @@ def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
 
 
 # === STILURI XLSX (cu paleta consistenta) ===
-COLOR_PRIMARY = '1A237E'     # albastru EDIFICO
-COLOR_TITLE_RED = 'C62828'   # rosu titlu
-COLOR_HEADER_BG = '283593'   # albastru header
-COLOR_HEADER_FG = 'FFFFFF'   # text alb pe header
-COLOR_SAT_BG = 'FFE0B2'      # portocaliu deschis pentru sambata
-COLOR_SUN_BG = 'FFCCBC'      # portocaliu mai inchis pentru duminica
-COLOR_HOLIDAY_BG = 'FFF59D'  # galben pentru sarbatoare
-COLOR_ZEBRA_BG = 'F5F7FA'    # gri foarte deschis pentru randuri zebra
-COLOR_TOTAL_BG = 'C5CAE9'    # albastru deschis pentru totaluri
-COLOR_BORDER = '90A4AE'
+# Paleta Edifico (premium): navy obsidian + champagne gold + cream
+COLOR_NAVY = '0B1426'        # navy obsidian - titluri, header luna, total
+COLOR_GOLD = 'C9A961'        # champagne gold - accente, text pe navy
+COLOR_PRIMARY = '0B1426'     # border accent (navy)
+COLOR_TITLE_RED = '0B1426'   # (nume pastrat) titlu raport -> navy
+COLOR_HEADER_BG = '0B1426'   # header luna: fundal navy
+COLOR_HEADER_FG = 'C9A961'   # text gold pe navy
+COLOR_COLHDR_BG = 'C9A961'   # header coloane: fundal gold
+COLOR_TEXT = '2B2B2B'        # text celule (gri inchis, lizibil)
+COLOR_SAT_BG = 'EFE7D2'      # gold-tint deschis (sambata)
+COLOR_SUN_BG = 'E6D9BC'      # gold-tint cald (duminica)
+COLOR_HOLIDAY_BG = 'F3E1B0'  # gold soft (sarbatoare)
+COLOR_ZEBRA_BG = 'F5F1E8'    # cream (zebra / hartie)
+COLOR_TOTAL_BG = '0B1426'    # navy (total) cu text gold
+COLOR_BORDER = 'D8CBA8'      # gold-grey deschis (border)
 
 
 def _stiluri_xlsx():
@@ -1664,21 +1669,22 @@ def _stiluri_xlsx():
     thin = Side(style='thin', color=COLOR_BORDER)
     medium = Side(style='medium', color=COLOR_PRIMARY)
     return {
-        'titlu_font': Font(name='Calibri', size=14, bold=True, color=COLOR_TITLE_RED),
-        'subtitlu_font': Font(name='Calibri', size=10, italic=True, color='546E7A'),
-        'nume_font': Font(name='Calibri', size=12, bold=True, color='1A237E'),
-        'luna_font': Font(name='Calibri', size=11, bold=True, color=COLOR_HEADER_FG),
-        'saptamana_font': Font(name='Calibri', size=10, bold=True, color='37474F'),
-        'cell_font': Font(name='Calibri', size=10),
-        'cell_font_bold': Font(name='Calibri', size=10, bold=True),
-        'sat_font': Font(name='Calibri', size=10, bold=True, color='E65100'),
-        'sun_font': Font(name='Calibri', size=10, bold=True, color='BF360C'),
-        'header_font': Font(name='Calibri', size=10, bold=True, color=COLOR_HEADER_FG),
-        'total_font': Font(name='Calibri', size=10, bold=True, color='1A237E'),
+        'titlu_font': Font(name='Calibri', size=16, bold=True, color=COLOR_NAVY),
+        'subtitlu_font': Font(name='Calibri', size=10, italic=True, color='7A7A7A'),
+        'nume_font': Font(name='Calibri', size=12, bold=True, color=COLOR_NAVY),
+        'luna_font': Font(name='Calibri', size=11, bold=True, color=COLOR_GOLD),
+        'saptamana_font': Font(name='Calibri', size=10, bold=True, color=COLOR_NAVY),
+        'cell_font': Font(name='Calibri', size=10, color=COLOR_TEXT),
+        'cell_font_bold': Font(name='Calibri', size=10, bold=True, color=COLOR_NAVY),
+        'sat_font': Font(name='Calibri', size=10, bold=True, color=COLOR_NAVY),
+        'sun_font': Font(name='Calibri', size=10, bold=True, color=COLOR_NAVY),
+        'header_font': Font(name='Calibri', size=10, bold=True, color=COLOR_NAVY),
+        'total_font': Font(name='Calibri', size=10, bold=True, color=COLOR_GOLD),
         'sat_fill': PatternFill(start_color=COLOR_SAT_BG, end_color=COLOR_SAT_BG, fill_type='solid'),
         'sun_fill': PatternFill(start_color=COLOR_SUN_BG, end_color=COLOR_SUN_BG, fill_type='solid'),
         'holiday_fill': PatternFill(start_color=COLOR_HOLIDAY_BG, end_color=COLOR_HOLIDAY_BG, fill_type='solid'),
         'header_fill': PatternFill(start_color=COLOR_HEADER_BG, end_color=COLOR_HEADER_BG, fill_type='solid'),
+        'colhdr_fill': PatternFill(start_color=COLOR_COLHDR_BG, end_color=COLOR_COLHDR_BG, fill_type='solid'),
         'zebra_fill': PatternFill(start_color=COLOR_ZEBRA_BG, end_color=COLOR_ZEBRA_BG, fill_type='solid'),
         'total_fill': PatternFill(start_color=COLOR_TOTAL_BG, end_color=COLOR_TOTAL_BG, fill_type='solid'),
         'border_thin': Border(left=thin, right=thin, top=thin, bottom=thin),
@@ -1736,7 +1742,7 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
     for col_idx, h in enumerate(headers, start=2):
         c = ws.cell(row=header_row, column=col_idx, value=h)
         c.font = S['header_font']
-        c.fill = S['header_fill']
+        c.fill = S['colhdr_fill']
         c.alignment = S['align_center']
         c.border = S['border_thin']
     ws.row_dimensions[header_row].height = 22
