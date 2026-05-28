@@ -1694,22 +1694,66 @@ def _stiluri_xlsx():
     }
 
 
+def _info_zile(angajat_id, zile):
+    """
+    Per-zi: {data: {'proiecte': [coduri], 'ore': float, 'activitati': [texte]}}.
+    Proiectul + orele + activitatea principala/detaliata vin din rapoartele
+    ZILNICE pe acea data; proiectul din rapoartele saptamanale/lunare se aplica
+    pe zilele acoperite (daca nu exista deja din zilnic).
+    """
+    if not zile:
+        return {}
+    prima, ultima = min(zile), max(zile)
+    info = {z: {'proiecte': [], 'ore': 0.0, 'activitati': []} for z in zile}
+
+    for a in RaportActivitate.query.filter(
+        RaportActivitate.angajat_id == angajat_id,
+        RaportActivitate.tip_activitate == 'zilnica',
+        RaportActivitate.data >= prima, RaportActivitate.data <= ultima,
+    ).all():
+        if a.data not in info:
+            continue
+        cod = a.proiect.cod_proiect if a.proiect else None
+        if cod and cod not in info[a.data]['proiecte']:
+            info[a.data]['proiecte'].append(cod)
+        if a.ore_lucrate:
+            try:
+                info[a.data]['ore'] += float(a.ore_lucrate)
+            except (TypeError, ValueError):
+                pass
+        t = (a.activitate_principala or '').strip()
+        det = (a.activitate_detaliata or '').strip()
+        if det and det not in t:
+            t = (t + ' - ' + det).strip(' -')
+        if t:
+            info[a.data]['activitati'].append(t)
+
+    # Proiectul rapoartelor span (saptamanal/lunar) pe zilele acoperite
+    for a in RaportActivitate.query.filter(
+        RaportActivitate.angajat_id == angajat_id,
+        RaportActivitate.tip_activitate.in_(['saptamanala', 'lunara']),
+    ).all():
+        cod = a.proiect.cod_proiect if a.proiect else None
+        if not cod:
+            continue
+        ds = a.data or prima
+        df = a.data_sfarsit or ultima
+        for z in zile:
+            if ds <= z <= df and cod not in info[z]['proiecte']:
+                info[z]['proiecte'].append(cod)
+    return info
+
+
 def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zile_extra=None):
     """
-    Adauga o sectiune luna in worksheet, incepand cu randul start_row.
-    Returneaza randul urmator dupa sectiune (gol pentru spatiu).
-    Structura per luna:
-      - Rand titlu luna (B:E merged) cu nume luna + an
-      - Rand de tabel cu coloanele Saptamana | Zi | Data | Activitati
-      - Saptamani grupate (B = nume luna merged, C = saptamana, D = zile, E = activitati)
-      - Rand TOTAL la final
+    Adauga o sectiune luna. Coloane: B=Luna | C=Saptamana | D=Data |
+    E=Proiect | F=Ore | G=Activitati desfasurate (cu activitatea principala).
     """
     if zile_extra is None:
         zile_extra = _zile_extra_lucrate_pentru_angajat(angajat.id, an, luna)
 
     luna_text = LUNI_RO[luna].capitalize()
 
-    # Sarbatori legale in luna
     sarbatori = set()
     for s in SarbatoareLegala.query.filter_by(an=an).all():
         if s.data.month == luna:
@@ -1717,28 +1761,27 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
 
     saptamani = _saptamani_din_luna(an, luna, sarbatori, zile_extra)
     if not saptamani:
-        # Daca nu sunt zile lucratoare in luna, lasam un placeholder
-        ws.merge_cells(start_row=start_row, start_column=2, end_row=start_row, end_column=5)
+        ws.merge_cells(start_row=start_row, start_column=2, end_row=start_row, end_column=7)
         c = ws.cell(row=start_row, column=2, value=f'{luna_text} {an} — Nicio zi lucratoare')
         c.font = S['subtitlu_font']
         c.alignment = S['align_center']
         return start_row + 2
 
     # === Header luna (rand titlu) ===
-    ws.merge_cells(start_row=start_row, start_column=2, end_row=start_row, end_column=5)
+    ws.merge_cells(start_row=start_row, start_column=2, end_row=start_row, end_column=7)
     titlu_cell = ws.cell(row=start_row, column=2, value=f'{luna_text.upper()} {an}')
     titlu_cell.font = S['luna_font']
     titlu_cell.fill = S['header_fill']
     titlu_cell.alignment = S['align_center']
     titlu_cell.border = S['border_thin']
-    for col in range(2, 6):
+    for col in range(2, 8):
         ws.cell(row=start_row, column=col).fill = S['header_fill']
         ws.cell(row=start_row, column=col).border = S['border_thin']
     ws.row_dimensions[start_row].height = 24
 
     # === Rand header coloane ===
     header_row = start_row + 1
-    headers = ['Luna', 'Saptamana', 'Data', 'Activitati desfasurate']
+    headers = ['Luna', 'Saptamana', 'Data', 'Proiect', 'Ore', 'Activitati desfasurate']
     for col_idx, h in enumerate(headers, start=2):
         c = ws.cell(row=header_row, column=col_idx, value=h)
         c.font = S['header_font']
@@ -1747,7 +1790,6 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
         c.border = S['border_thin']
     ws.row_dimensions[header_row].height = 22
 
-    # === Saptamani ===
     current_row = header_row + 1
     primul_rand_sapt = current_row
     ultimul_rand_sapt = None
@@ -1762,7 +1804,13 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
         ultimul_rand_sapt = er
         zebra = (idx_sapt % 2 == 1)
 
-        # Coloana C: numele sapt
+        info_zi = _info_zile(angajat.id, zile)
+        detalii_per_zi = _detalii_pe_zi_pentru_saptamana(angajat.id, zile, luna, an)
+        texte_general = _activitati_pentru_saptamana(angajat.id, zile, luna, an)
+        # Avem continut per-zi? (activitati zilnice sau detalii pe zi)
+        are_per_zi = bool(detalii_per_zi) or any(info_zi[z]['activitati'] for z in zile)
+
+        # Coloana C: numele saptamanii (merged)
         if nr_zile > 1:
             ws.merge_cells(start_row=sr, start_column=3, end_row=er, end_column=3)
         c_cell = ws.cell(row=sr, column=3, value=f'Saptamana {sapt_idx}\n(S{iso_week})')
@@ -1770,82 +1818,75 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
         c_cell.alignment = S['align_center']
         c_cell.border = S['border_thin']
 
-        # Coloana E: activitati
-        # Detalii per zi (din detalii_pe_zi) - daca exista, dezmerge E si afiseaza per zi
-        detalii_per_zi = _detalii_pe_zi_pentru_saptamana(angajat.id, zile, luna, an)
-        texte_general = _activitati_pentru_saptamana(angajat.id, zile, luna, an)
-
-        if detalii_per_zi:
-            # NU merg E - fiecare zi primeste textul propriu
-            for off, zi in enumerate(zile):
-                r = sr + off
-                txt = detalii_per_zi.get(zi, '')
-                e_cell = ws.cell(row=r, column=5, value=txt)
-                e_cell.font = S['cell_font']
-                e_cell.alignment = S['align_left']
-                e_cell.border = S['border_thin']
-            # Daca avem si activitati saptamanale fara detalii_pe_zi -> NU le adaugam
-            # (deja sunt excluse din _activitati_pentru_saptamana cand au detalii_pe_zi)
-            # Daca exista activitati zilnice extra, le adaugam la celula corespunzatoare
-            if texte_general:
-                # Le punem la prima zi disponibila daca nu sunt deja in detalii
-                pass
-        else:
-            # Comportament clasic: E merged cu lista concatenata
+        # Coloana G (activitati): merged pe saptamana DOAR daca nu avem continut per-zi
+        if not are_per_zi:
             if nr_zile > 1:
-                ws.merge_cells(start_row=sr, start_column=5, end_row=er, end_column=5)
-            texte = texte_general
-            text_e = '\n• '.join(texte) if texte else '—'
-            if texte:
-                text_e = '• ' + text_e
-            e_cell = ws.cell(row=sr, column=5, value=text_e)
-            e_cell.font = S['cell_font']
-            e_cell.alignment = S['align_left']
-            e_cell.border = S['border_thin']
+                ws.merge_cells(start_row=sr, start_column=7, end_row=er, end_column=7)
+            text_g = ('• ' + '\n• '.join(texte_general)) if texte_general else '—'
+            g_cell = ws.cell(row=sr, column=7, value=text_g)
+            g_cell.font = S['cell_font']
+            g_cell.alignment = S['align_left']
+            g_cell.border = S['border_thin']
 
-        # Calculeaza ore in saptamana din activitati zilnice
-        ore_sapt = 0.0
-        for a in RaportActivitate.query.filter(
-            RaportActivitate.angajat_id == angajat.id,
-            RaportActivitate.tip_activitate == 'zilnica',
-            RaportActivitate.data >= min(zile),
-            RaportActivitate.data <= max(zile),
-            RaportActivitate.ore_lucrate.isnot(None),
-        ).all():
-            try:
-                ore_sapt += float(a.ore_lucrate)
-            except (TypeError, ValueError):
-                pass
-        total_ore += ore_sapt
+        total_ore += sum(info_zi[z]['ore'] for z in zile)
 
-        # Populare zile (coloana D)
+        # Randuri per zi: D=data, E=proiect, F=ore, G=activitate (daca per-zi)
         for off, zi in enumerate(zile):
             r = sr + off
+            total_zile_lucrate += 1
+            ws.row_dimensions[r].height = 16.5
+
+            # Fill-ul zilei (dupa tip)
+            if zi in sarbatori:
+                fill, font_zi = S['holiday_fill'], S['cell_font_bold']
+            elif zi.weekday() == 5:
+                fill, font_zi = S['sat_fill'], S['sat_font']
+            elif zi.weekday() == 6:
+                fill, font_zi = S['sun_fill'], S['sun_font']
+            elif zebra:
+                fill, font_zi = S['zebra_fill'], S['cell_font']
+            else:
+                fill, font_zi = None, S['cell_font']
+
+            # D: data
             d_cell = ws.cell(row=r, column=4, value=zi)
             d_cell.number_format = 'dd mmm. (ddd)'
             d_cell.alignment = S['align_center']
             d_cell.border = S['border_thin']
-            ws.row_dimensions[r].height = 16.5
-            total_zile_lucrate += 1
+            d_cell.font = font_zi
+            if fill:
+                d_cell.fill = fill
 
-            # Coloreaza dupa tip
-            if zi in sarbatori:
-                d_cell.fill = S['holiday_fill']
-                d_cell.font = S['cell_font_bold']
-            elif zi.weekday() == 5:  # sambata
-                d_cell.fill = S['sat_fill']
-                d_cell.font = S['sat_font']
-            elif zi.weekday() == 6:  # duminica
-                d_cell.fill = S['sun_fill']
-                d_cell.font = S['sun_font']
-            elif zebra:
-                d_cell.fill = S['zebra_fill']
-                d_cell.font = S['cell_font']
+            # E: proiect(e)
+            e_cell = ws.cell(row=r, column=5, value=', '.join(info_zi[zi]['proiecte']) or '—')
+            e_cell.font = S['cell_font']
+            e_cell.alignment = S['align_center']
+            e_cell.border = S['border_thin']
+            if fill:
+                e_cell.fill = fill
+
+            # F: ore
+            ore_zi = info_zi[zi]['ore']
+            f_cell = ws.cell(row=r, column=6, value=(round(ore_zi, 1) if ore_zi else None))
+            f_cell.alignment = S['align_center']
+            f_cell.border = S['border_thin']
+            f_cell.font = S['cell_font']
+            if fill:
+                f_cell.fill = fill
+
+            # G: activitate pe zi (daca avem continut per-zi)
+            if are_per_zi:
+                parts = list(info_zi[zi]['activitati'])
+                d_extra = detalii_per_zi.get(zi)
+                if d_extra:
+                    parts.append(d_extra)
+                txt = ('• ' + '\n• '.join(parts)) if parts else ''
+                g_cell = ws.cell(row=r, column=7, value=txt)
+                g_cell.font = S['cell_font']
+                g_cell.alignment = S['align_left']
+                g_cell.border = S['border_thin']
             else:
-                d_cell.font = S['cell_font']
-
-            ws.cell(row=r, column=3).border = S['border_thin']
-            ws.cell(row=r, column=5).border = S['border_thin']
+                ws.cell(row=r, column=7).border = S['border_thin']
 
         current_row = er + 1
 
@@ -1861,29 +1902,25 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
         for r in range(primul_rand_sapt, ultimul_rand_sapt + 1):
             ws.cell(row=r, column=2).border = S['border_thin']
 
-    # === Rand total luna ===
+    # === Rand total luna === (B:C label | D zile | F ore)
     total_row = (ultimul_rand_sapt or current_row) + 1
     ws.merge_cells(start_row=total_row, start_column=2, end_row=total_row, end_column=3)
+    for col in range(2, 8):
+        cell = ws.cell(row=total_row, column=col)
+        cell.fill = S['total_fill']
+        cell.border = S['border_thin']
     t1 = ws.cell(row=total_row, column=2, value=f'TOTAL {luna_text.upper()}')
     t1.font = S['total_font']
-    t1.fill = S['total_fill']
     t1.alignment = S['align_center']
-    t1.border = S['border_thin']
-    for col in (3,):
-        ws.cell(row=total_row, column=col).fill = S['total_fill']
 
     t2 = ws.cell(row=total_row, column=4, value=f'{total_zile_lucrate} zile')
     t2.font = S['total_font']
-    t2.fill = S['total_fill']
     t2.alignment = S['align_center']
-    t2.border = S['border_thin']
 
-    t3_text = f'{total_ore:.1f} ore lucrate' if total_ore > 0 else 'Total ore: nespecificat'
-    t3 = ws.cell(row=total_row, column=5, value=t3_text)
+    t3 = ws.cell(row=total_row, column=6,
+                 value=(f'{total_ore:.1f} ore' if total_ore > 0 else '—'))
     t3.font = S['total_font']
-    t3.fill = S['total_fill']
     t3.alignment = S['align_center']
-    t3.border = S['border_thin']
     ws.row_dimensions[total_row].height = 22
 
     return total_row + 2  # 1 rand gol intre luni
@@ -1915,12 +1952,14 @@ def _construieste_sheet_angajat(wb, angajat, perioade, company_short, sheet_inde
     else:
         ws = wb.create_sheet(title=final_title)
 
-    # Latimi coloane optimizate
+    # Latimi coloane optimizate (B=Luna C=Sapt D=Data E=Proiect F=Ore G=Activitati)
     ws.column_dimensions['A'].width = 4.0
-    ws.column_dimensions['B'].width = 16.0
-    ws.column_dimensions['C'].width = 18.0
-    ws.column_dimensions['D'].width = 18.0
-    ws.column_dimensions['E'].width = 60.0
+    ws.column_dimensions['B'].width = 14.0
+    ws.column_dimensions['C'].width = 15.0
+    ws.column_dimensions['D'].width = 16.0
+    ws.column_dimensions['E'].width = 22.0
+    ws.column_dimensions['F'].width = 8.0
+    ws.column_dimensions['G'].width = 55.0
 
     # === Rand 2: Titlu mare cu numele firmei + perioada ===
     if perioade:
@@ -1933,26 +1972,26 @@ def _construieste_sheet_angajat(wb, angajat, perioade, company_short, sheet_inde
     else:
         perioada_text = ''
 
-    ws.merge_cells('B2:E2')
+    ws.merge_cells('B2:G2')
     titlu_cell = ws.cell(row=2, column=2, value=f'RAPORT DE ACTIVITATE {company_short.upper()}')
     titlu_cell.font = S['titlu_font']
     titlu_cell.alignment = S['align_center']
     ws.row_dimensions[2].height = 28
 
-    ws.merge_cells('B3:E3')
+    ws.merge_cells('B3:G3')
     sub_cell = ws.cell(row=3, column=2, value=perioada_text)
     sub_cell.font = S['subtitlu_font']
     sub_cell.alignment = S['align_center']
     ws.row_dimensions[3].height = 18
 
     # === Rand 5: Numele angajatului ===
-    ws.merge_cells('B5:E5')
+    ws.merge_cells('B5:G5')
     nume_cell = ws.cell(row=5, column=2, value=f'Angajat: {angajat.nume_complet}    |    Functie: {angajat.functie}')
     nume_cell.font = S['nume_font']
     nume_cell.alignment = S['align_center']
     nume_cell.fill = S['zebra_fill']
     nume_cell.border = S['border_thin']
-    for col in range(2, 6):
+    for col in range(2, 8):
         ws.cell(row=5, column=col).fill = S['zebra_fill']
         ws.cell(row=5, column=col).border = S['border_thin']
     ws.row_dimensions[5].height = 24
