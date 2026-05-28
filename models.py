@@ -4234,3 +4234,33 @@ class TarifCategorie(db.Model):
                 f'{self.tarif_baza} {scope}>')
 
 
+class PretReferinta(db.Model):
+    """
+    Pret de referinta de piata (RON, nivel 2026) per (categorie_lucrare, um),
+    pentru auto-pricing al elementelor BIM. Catalog EDITABIL din UI.
+
+    NU e feed live - valori curate, actualizabile (buletine preturi / liste furnizori).
+    tenant_id == None -> catalog global (seed default); altfel override per tenant.
+    """
+    __tablename__ = 'preturi_referinta'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    categorie_lucrare = db.Column(db.String(60), nullable=False, index=True)
+    um = db.Column(db.String(20), nullable=False)  # mc, kg, mp, m, buc
+    pret_unitar = db.Column(db.Numeric(14, 2), nullable=False, default=0)  # RON, nivel 2026
+    material = db.Column(db.String(120), nullable=True)  # optional, rafineaza (ex C25/30)
+    sursa = db.Column(db.String(120), nullable=True)
+    an_referinta = db.Column(db.Integer, default=2026)
+    data_actualizare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'categorie_lucrare', 'um',
+                            name='uix_pret_tenant_cat_um'),
+    )
+
+    def __repr__(self):
+        return (f'<PretReferinta {self.categorie_lucrare}/{self.um} '
+                f'{self.pret_unitar} RON {self.an_referinta}>')
+
+

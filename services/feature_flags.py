@@ -58,6 +58,9 @@ KNOWN_FLAGS: dict[str, str] = {
     'bim-cobie-export': 'Export COBie',
     'bim-bcf-full': 'Import/Export BCF 2.1/3.0 complet',
     'bim-public-api': 'API publica versionata cu tokens',
+    # Auto-pricing & planning din IFC
+    'bim-auto-pricing': 'Generare automata preturi (catalog referinta 2026) pe elementele BIM',
+    'bim-auto-planning': 'Planificare automata a perioadei de executie din elementele BIM',
     # Faza 9 - Contract & Project Controls
     'controale-contract': 'Modul Contract Controls (contracte, termene, oferte, situatii, revendicari, PV)',
     'controale-contract-import-msproject': 'Activeaza import MS Project XML in programe referinta',

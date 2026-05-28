@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Catalog preturi referinta 2026 - EDIFICO{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item active">Catalog preturi 2026</li>
+{% endblock %}
+
+{% block content %}
+<h2 style="margin:0 0 6px;"><i class="fa-solid fa-tags" style="color:var(--primary);"></i> Catalog preturi de referinta (RON, 2026)</h2>
+<p style="color:var(--gray-500); margin:0 0 18px; font-size:0.88rem;">
+    Valori orientative de piata, <strong>editabile</strong>. Folosite la „Generează prețuri" pe elementele BIM
+    (cantitate × preț pe categorie/UM). Nu e feed live - actualizează din buletine de prețuri / liste furnizori.
+</p>
+
+<div class="card-panel">
+    <table class="data-table" style="width:100%;">
+        <thead>
+            <tr>
+                <th style="text-align:left;">Categorie lucrare</th>
+                <th>UM</th>
+                <th style="text-align:right;">Pret unitar (RON)</th>
+                <th>An</th>
+                <th>Sursa</th>
+                <th>Actualizare</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in preturi %}
+            <tr>
+                <td style="text-align:left; font-weight:600;">{{ p.categorie_lucrare }}</td>
+                <td style="text-align:center;">{{ p.um }}</td>
+                <td style="text-align:right;">
+                    <form method="POST" style="display:inline-flex; gap:6px; align-items:center; justify-content:flex-end;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="id" value="{{ p.id }}">
+                        <input type="number" step="0.01" min="0" name="pret_unitar"
+                               value="{{ '%.2f'|format(p.pret_unitar) }}"
+                               style="width:110px; text-align:right;" class="form-control">
+                        <button type="submit" class="btn btn-sm btn-outline" title="Salveaza"><i class="fa-solid fa-check"></i></button>
+                    </form>
+                </td>
+                <td style="text-align:center;">{{ p.an_referinta }}</td>
+                <td style="font-size:0.8rem; color:var(--gray-500);">{{ p.sursa or '-' }}</td>
+                <td style="font-size:0.8rem; color:var(--gray-500);">{{ p.data_actualizare.strftime('%Y-%m-%d') if p.data_actualizare else '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -48,6 +48,8 @@ from services import iot_ingest as iot_ingest_svc
 from services import iot_query as iot_query_svc
 from services import realtime as rt_svc
 from services import presence as presence_svc
+from services import cantitati_bim
+from services import pricing_bim
 from services import rbac as rbac_svc
 from services import api_tokens as tokens_svc
 from services import cobie_export as cobie_svc
@@ -2272,3 +2274,69 @@ def bim_diagnostics():
                            python_executable=sys.executable,
                            python_version=sys.version,
                            flag_status=flag_status)
+
+
+# ============================================================
+# AUTO-PRICING & CANTITATI (Faza 2) - elemente BIM -> preturi 2026
+# ============================================================
+
+@bim_bp.route('/santier/<int:santier_id>/calcul-cantitati', methods=['POST'])
+@login_required
+@manager_or_admin
+def calcul_cantitati(santier_id):
+    """Extrage cantitati (Qto/geometric) pentru modelele IFC ale santierului."""
+    Santier.query.get_or_404(santier_id)
+    modele = ModelBIM.query.filter_by(santier_id=santier_id, tip='ifc').filter(
+        ModelBIM.fisier_path.isnot(None)).all()
+    if not modele:
+        flash('Niciun model IFC cu fisier pe acest santier.', 'warning')
+        return redirect(url_for('bim.dashboard'))
+    tot = {'din_qto': 0, 'din_geom': 0, 'fara': 0}
+    for m in modele:
+        r = cantitati_bim.extrage_cantitati(m.id)
+        for k in tot:
+            tot[k] += r.get('stats', {}).get(k, 0)
+    flash(f"Cantitati: {tot['din_geom']} geometric, {tot['din_qto']} Qto, "
+          f"{tot['fara']} fara. Pentru modele mari ruleaza "
+          f"scripts/calcul_cantitati.py offline.", 'success')
+    return redirect(url_for('bim.dashboard'))
+
+
+@bim_bp.route('/santier/<int:santier_id>/genereaza-preturi', methods=['POST'])
+@login_required
+@manager_or_admin
+def genereaza_preturi(santier_id):
+    """Auto-pricing 2026 pe elementele cu cantitate (gated pe flag)."""
+    if not ff_svc.is_enabled('bim-auto-pricing'):
+        flash('Auto-pricing dezactivat. Activeaza flag-ul bim-auto-pricing.', 'warning')
+        return redirect(url_for('bim.dashboard'))
+    Santier.query.get_or_404(santier_id)
+    res = pricing_bim.genereaza_preturi_santier(santier_id, current_user)
+    if res['status'] != 'ok':
+        flash(res['mesaj'], 'danger')
+    else:
+        flash(f"Preturi 2026: {res['nr_pretuite']} elemente, "
+              f"{res['total_fara_tva']:.0f} lei fara TVA / "
+              f"{res['total_cu_tva']:.0f} lei cu TVA {res['cota_tva']}% "
+              f"({res['fara_pret']} fara pret).", 'success')
+    return redirect(url_for('bim.dashboard'))
+
+
+@bim_bp.route('/preturi', methods=['GET', 'POST'])
+@login_required
+@manager_or_admin
+def preturi_catalog():
+    """Catalog preturi de referinta 2026 (editabil)."""
+    from models import PretReferinta
+    pricing_bim.seed_catalog(tenant_id=None)  # idempotent
+    if request.method == 'POST':
+        pr = PretReferinta.query.get_or_404(request.form.get('id', type=int))
+        pret = request.form.get('pret_unitar', type=float)
+        if pret is not None and pret >= 0:
+            pr.pret_unitar = pret
+            db.session.commit()
+            flash(f'Pret actualizat: {pr.categorie_lucrare}/{pr.um} = {pret:.2f} RON.', 'success')
+        return redirect(url_for('bim.preturi_catalog'))
+    preturi = PretReferinta.query.filter_by(tenant_id=None).order_by(
+        PretReferinta.categorie_lucrare, PretReferinta.um).all()
+    return render_template('bim/preturi.html', preturi=preturi)
