@@ -1444,6 +1444,7 @@ class ElementBIM(db.Model):
     # Geometrie / dimensiuni (optional)
     cantitate = db.Column(db.Numeric(12, 3))
     unitate_masura = db.Column(db.String(20))  # ml, mp, mc, buc, kg
+    material = db.Column(db.String(120), nullable=True, index=True)  # ex: Beton C25/30, S355, BST500s
 
     # Identificator IFC (cheie de unicitate cross-system)
     ifc_global_id = db.Column(db.String(100), nullable=True, index=True)

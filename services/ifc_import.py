@@ -53,6 +53,36 @@ def is_available():
         return False
 
 
+def material_name(inst):
+    """
+    Rezolva un nume de material (string) pentru un element IFC.
+    Acopera IfcMaterial, IfcMaterialLayerSetUsage/Set, IfcMaterialList.
+    Returneaza None daca nu se poate determina. Best-effort, fara exceptii.
+    """
+    try:
+        import ifcopenshell.util.element as ue
+        mat = ue.get_material(inst)
+    except Exception:
+        return None
+    if mat is None:
+        return None
+    try:
+        if mat.is_a('IfcMaterial'):
+            return (mat.Name or None)
+        if mat.is_a('IfcMaterialLayerSetUsage'):
+            mat = mat.ForLayerSet
+        if mat.is_a('IfcMaterialLayerSet'):
+            names = [l.Material.Name for l in (mat.MaterialLayers or [])
+                     if getattr(l, 'Material', None) and l.Material.Name]
+            return (', '.join(dict.fromkeys(names)) or None) if names else None
+        if mat.is_a('IfcMaterialList'):
+            names = [m.Name for m in (mat.Materials or []) if getattr(m, 'Name', None)]
+            return (', '.join(dict.fromkeys(names)) or None) if names else None
+        return getattr(mat, 'Name', None)
+    except Exception:
+        return None
+
+
 def detection_info():
     """
     Returneaza informatii detaliate despre detectia ifcopenshell.
@@ -273,6 +303,7 @@ def import_ifc(file_path, santier_id=None, dry_run=False):
             nume=inst.Name or '',
             tip_element=our_type,
             ifc_global_id=guid,
+            material=(material_name(inst) or None),
             status='proiectat',
         )
         if not dry_run:
