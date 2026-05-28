@@ -240,25 +240,29 @@ def import_ifc(file_path, santier_id=None, dry_run=False):
     # exista, altfel fallback pe numele clasei IFC (ex. IfcMember -> 'member').
     element_by_guid = {}
     seen_guids = set()
-    existing_guids = set()
+    existing_by_guid = {}
     if not dry_run:
-        existing_guids = {
-            g for (g,) in db.session.query(ElementBIM.ifc_global_id)
-            .filter(ElementBIM.ifc_global_id.isnot(None)).all()
-        }
+        # Preincarcam elementele existente: la re-import le (re)legam de structura
+        # (vindeca orfanii dintr-un import vechi), fara sa le recream.
+        for _el in ElementBIM.query.filter(ElementBIM.ifc_global_id.isnot(None)).all():
+            existing_by_guid[_el.ifc_global_id] = _el
     try:
         elemente_ifc = ifc.by_type('IfcElement')
     except Exception:
         elemente_ifc = []
     for inst in elemente_ifc:
         guid = getattr(inst, 'GlobalId', None)
-        if not guid or guid in seen_guids or guid in existing_guids:
-            statistici['elemente_skipped'] += 1
+        if not guid or guid in seen_guids:
             continue
         # Sarim peste goluri (IfcOpeningElement etc.) - nu-s elemente fizice reale
         if inst.is_a('IfcFeatureElement'):
             continue
         seen_guids.add(guid)
+        if guid in existing_by_guid:
+            # Exista deja: il luam pentru (re)legare spatiala, nu-l recream.
+            element_by_guid[guid] = existing_by_guid[guid]
+            statistici['elemente_skipped'] += 1
+            continue
         klass = inst.is_a()
         our_type = IFC_TYPE_MAP.get(klass)
         if not our_type:

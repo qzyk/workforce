@@ -27,6 +27,25 @@ class TestIfcSpatialLinking:
             # stat de legare expus
             assert res['statistici'].get('elemente_legate', 0) >= 1
 
+    def test_reimport_releaga_orfanii_fara_duplicate(self, app):
+        """Re-import: nu duplica elementele + re-leaga orfanii (date vechi)."""
+        from services import ifc_import
+        from models import db, ElementBIM
+        with app.app_context():
+            ifc_import.import_ifc(str(MINIMAL))
+            n1 = ElementBIM.query.count()
+            # simulez date vechi orfane
+            for e in ElementBIM.query.all():
+                e.cladire_id = None
+                e.nivel_id = None
+                e.spatiu_id = None
+            db.session.commit()
+            # re-import
+            ifc_import.import_ifc(str(MINIMAL))
+            assert ElementBIM.query.count() == n1, 're-importul a duplicat elemente'
+            pereti = [e for e in ElementBIM.query.all() if e.tip_element == 'wall']
+            assert any(p.nivel_id for p in pereti), 're-importul nu a re-legat peretele'
+
     def test_dryrun_nu_scrie_dar_numara(self, app):
         from services import ifc_import
         from models import ElementBIM
