@@ -164,6 +164,11 @@ def import_ifc(file_path, santier_id=None, dry_run=False):
                 db.session.flush()
             statistici['santiere_create'] += 1
 
+    # Harti GlobalId -> obiectul nostru (pentru legarea elementelor de structura)
+    cladire_by_guid = {}
+    nivel_by_guid = {}
+    spatiu_by_guid = {}
+
     # IfcBuilding
     for ifc_building in ifc.by_type('IfcBuilding'):
         c_cod = (ifc_building.Name or f'BLD-{ifc_building.GlobalId[:8]}').strip()[:50]
@@ -181,6 +186,7 @@ def import_ifc(file_path, santier_id=None, dry_run=False):
             statistici['cladiri_create'] += 1
         elif not dry_run and cladire.santier_id is None:
             cladire.santier_id = santier.id
+        cladire_by_guid[ifc_building.GlobalId] = cladire
 
         # IfcBuildingStorey - referinta la cladire prin IsDecomposedBy/RelatedObjects
         for rel in (ifc_building.IsDecomposedBy or []):
@@ -207,6 +213,7 @@ def import_ifc(file_path, santier_id=None, dry_run=False):
                         db.session.add(nivel)
                         db.session.flush()
                     statistici['niveluri_create'] += 1
+                nivel_by_guid[storey.GlobalId] = nivel
 
                 # IfcSpace
                 for rel2 in (storey.IsDecomposedBy or []):
@@ -226,30 +233,88 @@ def import_ifc(file_path, santier_id=None, dry_run=False):
                                 db.session.add(spatiu)
                                 db.session.flush()
                             statistici['spatii_create'] += 1
+                        spatiu_by_guid[sp.GlobalId] = spatiu
 
-    # Elemente fizice (parcurgem direct, nu via spatial structure)
-    for ifc_type, our_type in IFC_TYPE_MAP.items():
-        try:
-            instances = ifc.by_type(ifc_type)
-        except Exception:
+    # Elemente fizice: capturam TOATE subtipurile IfcElement (nu doar maparea),
+    # ca sa nu pierdem elemente structurale/MEP/proxy. tip_element din mapa daca
+    # exista, altfel fallback pe numele clasei IFC (ex. IfcMember -> 'member').
+    element_by_guid = {}
+    seen_guids = set()
+    existing_guids = set()
+    if not dry_run:
+        existing_guids = {
+            g for (g,) in db.session.query(ElementBIM.ifc_global_id)
+            .filter(ElementBIM.ifc_global_id.isnot(None)).all()
+        }
+    try:
+        elemente_ifc = ifc.by_type('IfcElement')
+    except Exception:
+        elemente_ifc = []
+    for inst in elemente_ifc:
+        guid = getattr(inst, 'GlobalId', None)
+        if not guid or guid in seen_guids or guid in existing_guids:
+            statistici['elemente_skipped'] += 1
             continue
-        for inst in instances:
-            existing = ElementBIM.query.filter_by(ifc_global_id=inst.GlobalId).first()
-            if existing:
-                statistici['elemente_skipped'] += 1
-                continue
+        # Sarim peste goluri (IfcOpeningElement etc.) - nu-s elemente fizice reale
+        if inst.is_a('IfcFeatureElement'):
+            continue
+        seen_guids.add(guid)
+        klass = inst.is_a()
+        our_type = IFC_TYPE_MAP.get(klass)
+        if not our_type:
+            our_type = (klass[3:] if klass.startswith('Ifc') else klass).lower()[:40]
+        cod = (inst.Name or f'{our_type.upper()}-{guid[:6]}').strip()[:100]
+        element = ElementBIM(
+            cod=cod,
+            nume=inst.Name or '',
+            tip_element=our_type,
+            ifc_global_id=guid,
+            status='proiectat',
+        )
+        if not dry_run:
+            db.session.add(element)
+        statistici['elemente_create'] += 1
+        element_by_guid[guid] = element
 
-            cod = (inst.Name or f'{our_type.upper()}-{inst.GlobalId[:6]}').strip()[:100]
-            element = ElementBIM(
-                cod=cod,
-                nume=inst.Name or '',
-                tip_element=our_type,
-                ifc_global_id=inst.GlobalId,
-                status='proiectat',
-            )
-            if not dry_run:
-                db.session.add(element)
-            statistici['elemente_create'] += 1
+    # Legare elemente -> structura spatiala (IfcRelContainedInSpatialStructure).
+    # Fara asta, elementele raman orfane si 4D/5D/clash (care filtreaza pe
+    # cladire_id) nu le vad.
+    statistici['elemente_legate'] = 0
+    if not dry_run:
+        db.session.flush()  # elementele primesc id-uri
+        try:
+            rels = ifc.by_type('IfcRelContainedInSpatialStructure')
+        except Exception:
+            rels = []
+        for rel in rels:
+            struct = getattr(rel, 'RelatingStructure', None)
+            if struct is None:
+                continue
+            sguid = struct.GlobalId
+            nivel_id = spatiu_id = cladire_id = None
+            if struct.is_a('IfcBuildingStorey'):
+                nv = nivel_by_guid.get(sguid)
+                if nv:
+                    nivel_id, cladire_id = nv.id, nv.cladire_id
+            elif struct.is_a('IfcSpace'):
+                sp = spatiu_by_guid.get(sguid)
+                if sp:
+                    spatiu_id, nivel_id = sp.id, sp.nivel_id
+            elif struct.is_a('IfcBuilding'):
+                cl = cladire_by_guid.get(sguid)
+                if cl:
+                    cladire_id = cl.id
+            for el_inst in (rel.RelatedElements or []):
+                elem = element_by_guid.get(getattr(el_inst, 'GlobalId', None))
+                if elem is None:
+                    continue
+                if cladire_id is not None:
+                    elem.cladire_id = cladire_id
+                if nivel_id is not None:
+                    elem.nivel_id = nivel_id
+                if spatiu_id is not None:
+                    elem.spatiu_id = spatiu_id
+                statistici['elemente_legate'] += 1
 
     if not dry_run:
         try:

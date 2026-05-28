@@ -44,7 +44,7 @@ class Config:
     # Upload fisiere
     UPLOAD_FOLDER = os.path.join(basedir, 'uploads')
     EXPORT_FOLDER = os.path.join(basedir, 'exports')
-    MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB
+    MAX_CONTENT_LENGTH = 250 * 1024 * 1024  # 250MB (modele IFC mari, ex. 58MB+)
 
     # Extensii permise
     ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'docx', 'xlsx'}

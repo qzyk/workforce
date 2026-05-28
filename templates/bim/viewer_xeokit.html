@@ -73,7 +73,9 @@
 // xeokit-sdk via ES Modules CDN (jsDelivr).
 // Incarcare on-demand, nu blocheaza pagina daca nu e disponibil.
 const CDN = 'https://cdn.jsdelivr.net/npm/@xeokit/xeokit-sdk@2.6.78/dist/xeokit-sdk.es.min.js';
-const WEB_IFC_WASM_DIR = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.50/';
+const WEB_IFC_VER = '0.0.50';
+const WEB_IFC_API_CDN = `https://cdn.jsdelivr.net/npm/web-ifc@${WEB_IFC_VER}/web-ifc-api.js`;
+const WEB_IFC_WASM_DIR = `https://cdn.jsdelivr.net/npm/web-ifc@${WEB_IFC_VER}/`;
 
 const container = document.getElementById('xvContainer');
 const canvas = document.getElementById('xvCanvas');
@@ -134,9 +136,16 @@ function showError(msg, detail) {
     setProgress(50, 'Incarc loader IFC (web-ifc)...');
     let ifcLoader;
     try {
-        ifcLoader = new WebIFCLoaderPlugin(viewer, { wasmPath: WEB_IFC_WASM_DIR });
+        // xeokit-sdk 2.6.x: WebIFCLoaderPlugin necesita o instanta web-ifc
+        // (modulul WebIFC + un IfcAPI initializat), NU doar wasmPath.
+        const WebIFC = await import(WEB_IFC_API_CDN);
+        const IfcAPI = new WebIFC.IfcAPI();
+        IfcAPI.SetWasmPath(WEB_IFC_WASM_DIR);
+        await IfcAPI.Init();
+        ifcLoader = new WebIFCLoaderPlugin(viewer, { WebIFC, IfcAPI });
     } catch (err) {
-        showError('Initializare WebIFCLoader a esuat', err.message);
+        console.error('WebIFCLoader init failed', err);
+        showError('Initializare WebIFCLoader a esuat', err.message || 'web-ifc nu a putut fi initializat (verifica CDN / WASM).');
         return;
     }
 
