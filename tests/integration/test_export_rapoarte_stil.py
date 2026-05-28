@@ -50,9 +50,9 @@ def test_export_continut_proiect_ore_activitate(app, authenticated_client):
     from models import db, Angajat, Proiect, RaportActivitate
     today = date.today()
     with app.app_context():
-        p = Proiect.query.filter_by(cod_proiect='RA-PRJ').first()
+        p = Proiect.query.filter_by(cod_proiect='RA-COD').first()
         if not p:
-            p = Proiect(cod_proiect='RA-PRJ', nume='Proiect Raport',
+            p = Proiect(cod_proiect='RA-COD', nume='Reabilitare Spital Tulcea',
                         data_start=date(2026, 1, 1), status='activ')
             db.session.add(p); db.session.commit()
         a = Angajat.query.filter_by(cnp='1991010101010').first()
@@ -67,7 +67,7 @@ def test_export_continut_proiect_ore_activitate(app, authenticated_client):
                                                 tip_activitate='zilnica').first():
             db.session.add(RaportActivitate(
                 angajat_id=a.id, proiect_id=p.id, data=zi, tip_activitate='zilnica',
-                activitate_principala='Montaj armatura fundatii', ore_lucrate=8,
+                activitate_principala='Montaj armatura fundatii (etaj 4)', ore_lucrate=8,
                 status='aprobat'))
             db.session.commit()
         aid = a.id
@@ -76,15 +76,27 @@ def test_export_continut_proiect_ore_activitate(app, authenticated_client):
     r = authenticated_client.get(f'/activitati/export?angajat_id={aid}&luna={luna}')
     assert r.status_code == 200
     wb = load_workbook(io.BytesIO(r.data))
-    vals = []
+    blob = []
+    col_e = []   # Proiect
+    col_g = []   # Activitati desfasurate
     for ws in wb.worksheets:
-        for row in ws.iter_rows(values_only=True):
-            for v in row:
-                if v is not None:
-                    vals.append(str(v))
-    blob = ' | '.join(vals)
-    assert 'Proiect' in blob                  # header coloana noua
-    assert 'Ore' in blob                      # header coloana noua
-    assert 'RA-PRJ' in blob                   # proiectul pe zi
-    assert 'Montaj armatura fundatii' in blob  # activitatea principala
-    assert '8' in blob                        # orele lucrate
+        for row in ws.iter_rows():
+            for c in row:
+                if c.value is None:
+                    continue
+                blob.append(str(c.value))
+                if c.column == 5:
+                    col_e.append(str(c.value))
+                if c.column == 7:
+                    col_g.append(str(c.value))
+    blob = ' | '.join(blob)
+    e_txt = ' | '.join(col_e)
+    g_txt = ' | '.join(col_g)
+    assert 'Proiect' in blob                          # header coloana
+    assert 'Ore' in blob                              # header coloana
+    assert 'Reabilitare Spital Tulcea' in e_txt       # NUMELE proiectului, nu codul
+    assert 'RA-COD' not in blob                       # codul nu apare nicaieri
+    assert 'Montaj armatura fundatii' in g_txt        # activitatea principala
+    assert 'etaj 4' in g_txt                          # continutul parantezei pastrat
+    assert '(' not in g_txt and ')' not in g_txt      # fara paranteze in activitati
+    assert '•' not in g_txt                      # fara bullet

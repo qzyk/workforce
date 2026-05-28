@@ -1639,7 +1639,8 @@ def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
             if a.activitate_detaliata:
                 detalii = a.activitate_detaliata.strip()
                 if detalii and detalii not in t:
-                    t = t + (' - ' + detalii if t else detalii)
+                    t = t + ('\n' + detalii if t else detalii)
+            t = _curata_activitate(t)
             if t:
                 texte.append(t)
     return texte
@@ -1694,12 +1695,40 @@ def _stiluri_xlsx():
     }
 
 
+def _curata_activitate(text):
+    """
+    Text activitate curat pentru export: fara bullet '•', fara marcatori de lista
+    ('- ', '– ', '* ') la inceput de rand, fara paranteze/paranteze patrate (se
+    scot doar caracterele, continutul ramane). Punctuatia normala se pastreaza.
+    """
+    import re
+    if not text:
+        return ''
+    linii = []
+    for raw in str(text).replace('•', ' ').splitlines():
+        s = re.sub(r'^[\-–—•\*·]+\s*', '', raw.strip()).strip()
+        if s:
+            linii.append(s)
+    txt = '\n'.join(linii)
+    for ch in '()[]':
+        txt = txt.replace(ch, '')
+    txt = re.sub(r'[ \t]{2,}', ' ', txt)
+    return txt.strip()
+
+
+def _nume_proiect(a):
+    """Numele proiectului (nu codul), trunchiat la 60 caractere."""
+    if not a or not a.proiect or not a.proiect.nume:
+        return None
+    return a.proiect.nume.strip()[:60]
+
+
 def _info_zile(angajat_id, zile):
     """
-    Per-zi: {data: {'proiecte': [coduri], 'ore': float, 'activitati': [texte]}}.
-    Proiectul + orele + activitatea principala/detaliata vin din rapoartele
-    ZILNICE pe acea data; proiectul din rapoartele saptamanale/lunare se aplica
-    pe zilele acoperite (daca nu exista deja din zilnic).
+    Per-zi: {data: {'proiecte': [nume], 'ore': float, 'activitati': [texte]}}.
+    Proiectul (NUMELE) + orele + activitatea principala/detaliata vin din
+    rapoartele ZILNICE pe acea data; numele proiectului din rapoartele
+    saptamanale/lunare se aplica pe zilele acoperite.
     """
     if not zile:
         return {}
@@ -1713,9 +1742,9 @@ def _info_zile(angajat_id, zile):
     ).all():
         if a.data not in info:
             continue
-        cod = a.proiect.cod_proiect if a.proiect else None
-        if cod and cod not in info[a.data]['proiecte']:
-            info[a.data]['proiecte'].append(cod)
+        proj = _nume_proiect(a)
+        if proj and proj not in info[a.data]['proiecte']:
+            info[a.data]['proiecte'].append(proj)
         if a.ore_lucrate:
             try:
                 info[a.data]['ore'] += float(a.ore_lucrate)
@@ -1724,23 +1753,24 @@ def _info_zile(angajat_id, zile):
         t = (a.activitate_principala or '').strip()
         det = (a.activitate_detaliata or '').strip()
         if det and det not in t:
-            t = (t + ' - ' + det).strip(' -')
+            t = (t + '\n' + det).strip()
+        t = _curata_activitate(t)
         if t:
             info[a.data]['activitati'].append(t)
 
-    # Proiectul rapoartelor span (saptamanal/lunar) pe zilele acoperite
+    # Numele proiectului din rapoartele span (saptamanal/lunar) pe zilele acoperite
     for a in RaportActivitate.query.filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate.in_(['saptamanala', 'lunara']),
     ).all():
-        cod = a.proiect.cod_proiect if a.proiect else None
-        if not cod:
+        proj = _nume_proiect(a)
+        if not proj:
             continue
         ds = a.data or prima
         df = a.data_sfarsit or ultima
         for z in zile:
-            if ds <= z <= df and cod not in info[z]['proiecte']:
-                info[z]['proiecte'].append(cod)
+            if ds <= z <= df and proj not in info[z]['proiecte']:
+                info[z]['proiecte'].append(proj)
     return info
 
 
@@ -1822,7 +1852,7 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
         if not are_per_zi:
             if nr_zile > 1:
                 ws.merge_cells(start_row=sr, start_column=7, end_row=er, end_column=7)
-            text_g = ('• ' + '\n• '.join(texte_general)) if texte_general else '—'
+            text_g = '\n'.join(texte_general) if texte_general else '—'
             g_cell = ws.cell(row=sr, column=7, value=text_g)
             g_cell.font = S['cell_font']
             g_cell.alignment = S['align_left']
@@ -1877,10 +1907,10 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
             # G: activitate pe zi (daca avem continut per-zi)
             if are_per_zi:
                 parts = list(info_zi[zi]['activitati'])
-                d_extra = detalii_per_zi.get(zi)
+                d_extra = _curata_activitate(detalii_per_zi.get(zi))
                 if d_extra:
                     parts.append(d_extra)
-                txt = ('• ' + '\n• '.join(parts)) if parts else ''
+                txt = '\n'.join(parts) if parts else ''
                 g_cell = ws.cell(row=r, column=7, value=txt)
                 g_cell.font = S['cell_font']
                 g_cell.alignment = S['align_left']
