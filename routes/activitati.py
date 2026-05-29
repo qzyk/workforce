@@ -1591,14 +1591,10 @@ def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
         RaportActivitate.data <= ultima_zi,
     ).all()
 
-    # Weekly: same iso week sau interval suprapus, EXCLUS cele cu detalii_pe_zi
+    # Weekly: same iso week sau interval suprapus (activitatea = principala+detaliata)
     weekly = RaportActivitate.query.filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate == 'saptamanala',
-        db.or_(
-            RaportActivitate.detalii_pe_zi.is_(None),
-            RaportActivitate.detalii_pe_zi == '',
-        ),
         db.or_(
             RaportActivitate.numar_saptamana == iso_week,
             db.and_(
@@ -1611,14 +1607,10 @@ def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
         ),
     ).all()
 
-    # Monthly: aceeasi luna_an, EXCLUS cele cu detalii_pe_zi
+    # Monthly: aceeasi luna_an (activitatea = principala+detaliata)
     monthly = RaportActivitate.query.filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate == 'lunara',
-        db.or_(
-            RaportActivitate.detalii_pe_zi.is_(None),
-            RaportActivitate.detalii_pe_zi == '',
-        ),
         db.or_(
             RaportActivitate.luna_an == luna_an,
             db.and_(
@@ -1723,18 +1715,38 @@ def _nume_proiect(a):
     return a.proiect.nume.strip()[:60]
 
 
+ZILE_RO_SCURT = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du']
+LUNI_RO_SCURT = ['', 'ian', 'feb', 'mar', 'apr', 'mai', 'iun',
+                 'iul', 'aug', 'sep', 'oct', 'nov', 'dec']
+
+
+def _data_ro(zi):
+    """Data in romana, fara engleza si fara paranteze. Ex: 'Lu 05 ian'."""
+    return f'{ZILE_RO_SCURT[zi.weekday()]} {zi.day:02d} {LUNI_RO_SCURT[zi.month]}'
+
+
+def _activitate_text(a):
+    """Mereu: activitate principala + activitate detaliata (daca exista), curatat."""
+    t = (a.activitate_principala or '').strip()
+    det = (a.activitate_detaliata or '').strip()
+    if det and det not in t:
+        t = (t + '\n' + det).strip()
+    return _curata_activitate(t)
+
+
 def _info_zile(angajat_id, zile):
     """
-    Per-zi: {data: {'proiecte': [nume], 'ore': float, 'activitati': [texte]}}.
-    Proiectul (NUMELE) + orele + activitatea principala/detaliata vin din
-    rapoartele ZILNICE pe acea data; numele proiectului din rapoartele
-    saptamanale/lunare se aplica pe zilele acoperite.
+    Per-zi: {data: {'proiect': nume|None, 'ore': float, 'activitati': [texte]}}.
+    Proiectul = cel SELECTAT in ziua respectiva (raportul zilnic pe acea data);
+    daca ziua n-are raport zilnic, se completeaza cu proiectul raportului
+    saptamanal/lunar care o acopera. Activitatea = principala + detaliata.
     """
     if not zile:
         return {}
     prima, ultima = min(zile), max(zile)
-    info = {z: {'proiecte': [], 'ore': 0.0, 'activitati': []} for z in zile}
+    info = {z: {'proiect': None, 'ore': 0.0, 'activitati': []} for z in zile}
 
+    # 1. ZILNICE - proiectul selectat in ziua respectiva (prioritar)
     for a in RaportActivitate.query.filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate == 'zilnica',
@@ -1742,23 +1754,18 @@ def _info_zile(angajat_id, zile):
     ).all():
         if a.data not in info:
             continue
-        proj = _nume_proiect(a)
-        if proj and proj not in info[a.data]['proiecte']:
-            info[a.data]['proiecte'].append(proj)
+        if info[a.data]['proiect'] is None:
+            info[a.data]['proiect'] = _nume_proiect(a)
         if a.ore_lucrate:
             try:
                 info[a.data]['ore'] += float(a.ore_lucrate)
             except (TypeError, ValueError):
                 pass
-        t = (a.activitate_principala or '').strip()
-        det = (a.activitate_detaliata or '').strip()
-        if det and det not in t:
-            t = (t + '\n' + det).strip()
-        t = _curata_activitate(t)
-        if t:
+        t = _activitate_text(a)
+        if t and t not in info[a.data]['activitati']:
             info[a.data]['activitati'].append(t)
 
-    # Numele proiectului din rapoartele span (saptamanal/lunar) pe zilele acoperite
+    # 2. SPAN (saptamanal/lunar) - completeaza DOAR proiectul pe zilele fara zilnic
     for a in RaportActivitate.query.filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate.in_(['saptamanala', 'lunara']),
@@ -1769,8 +1776,8 @@ def _info_zile(angajat_id, zile):
         ds = a.data or prima
         df = a.data_sfarsit or ultima
         for z in zile:
-            if ds <= z <= df and proj not in info[z]['proiecte']:
-                info[z]['proiecte'].append(proj)
+            if ds <= z <= df and info[z]['proiect'] is None:
+                info[z]['proiect'] = proj
     return info
 
 
@@ -1835,10 +1842,9 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
         zebra = (idx_sapt % 2 == 1)
 
         info_zi = _info_zile(angajat.id, zile)
-        detalii_per_zi = _detalii_pe_zi_pentru_saptamana(angajat.id, zile, luna, an)
         texte_general = _activitati_pentru_saptamana(angajat.id, zile, luna, an)
-        # Avem continut per-zi? (activitati zilnice sau detalii pe zi)
-        are_per_zi = bool(detalii_per_zi) or any(info_zi[z]['activitati'] for z in zile)
+        # Avem activitati zilnice (principala+detaliata) per zi?
+        are_per_zi = any(info_zi[z]['activitati'] for z in zile)
 
         # Coloana C: numele saptamanii (merged)
         if nr_zile > 1:
@@ -1878,17 +1884,16 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
             else:
                 fill, font_zi = None, S['cell_font']
 
-            # D: data
-            d_cell = ws.cell(row=r, column=4, value=zi)
-            d_cell.number_format = 'dd mmm. (ddd)'
+            # D: data (in romana, ca text - fara engleza/paranteze)
+            d_cell = ws.cell(row=r, column=4, value=_data_ro(zi))
             d_cell.alignment = S['align_center']
             d_cell.border = S['border_thin']
             d_cell.font = font_zi
             if fill:
                 d_cell.fill = fill
 
-            # E: proiect(e)
-            e_cell = ws.cell(row=r, column=5, value=', '.join(info_zi[zi]['proiecte']) or '—')
+            # E: proiectul selectat in ziua respectiva
+            e_cell = ws.cell(row=r, column=5, value=info_zi[zi]['proiect'] or '—')
             e_cell.font = S['cell_font']
             e_cell.alignment = S['align_center']
             e_cell.border = S['border_thin']
@@ -1904,12 +1909,9 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
             if fill:
                 f_cell.fill = fill
 
-            # G: activitate pe zi (daca avem continut per-zi)
+            # G: activitate pe zi = activitate principala + detaliata
             if are_per_zi:
                 parts = list(info_zi[zi]['activitati'])
-                d_extra = _curata_activitate(detalii_per_zi.get(zi))
-                if d_extra:
-                    parts.append(d_extra)
                 txt = '\n'.join(parts) if parts else ''
                 g_cell = ws.cell(row=r, column=7, value=txt)
                 g_cell.font = S['cell_font']

@@ -75,8 +75,10 @@ def test_export_continut_proiect_ore_activitate(app, authenticated_client):
     luna = today.strftime('%Y-%m')
     r = authenticated_client.get(f'/activitati/export?angajat_id={aid}&luna={luna}')
     assert r.status_code == 200
+    from routes.activitati import LUNI_RO_SCURT
     wb = load_workbook(io.BytesIO(r.data))
     blob = []
+    col_d = []   # Data
     col_e = []   # Proiect
     col_g = []   # Activitati desfasurate
     for ws in wb.worksheets:
@@ -85,11 +87,14 @@ def test_export_continut_proiect_ore_activitate(app, authenticated_client):
                 if c.value is None:
                     continue
                 blob.append(str(c.value))
+                if c.column == 4:
+                    col_d.append(str(c.value))
                 if c.column == 5:
                     col_e.append(str(c.value))
                 if c.column == 7:
                     col_g.append(str(c.value))
     blob = ' | '.join(blob)
+    d_txt = ' | '.join(col_d)
     e_txt = ' | '.join(col_e)
     g_txt = ' | '.join(col_g)
     assert 'Proiect' in blob                          # header coloana
@@ -99,4 +104,9 @@ def test_export_continut_proiect_ore_activitate(app, authenticated_client):
     assert 'Montaj armatura fundatii' in g_txt        # activitatea principala
     assert 'etaj 4' in g_txt                          # continutul parantezei pastrat
     assert '(' not in g_txt and ')' not in g_txt      # fara paranteze in activitati
-    assert '•' not in g_txt                      # fara bullet
+    assert '•' not in g_txt                           # fara bullet
+    # data in romana, fara engleza si fara paranteze
+    assert LUNI_RO_SCURT[today.month] in d_txt        # ex 'ian', 'feb'...
+    assert '(' not in d_txt
+    for eng in ('Jan', 'Feb', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sun'):
+        assert eng not in d_txt
