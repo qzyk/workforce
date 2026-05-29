@@ -110,3 +110,53 @@ def test_export_continut_proiect_ore_activitate(app, authenticated_client):
     assert '(' not in d_txt
     for eng in ('Jan', 'Feb', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sun'):
         assert eng not in d_txt
+
+
+def test_export_detalii_pe_zi_proiect_per_zi(app, authenticated_client):
+    """Raport saptamanal cu detalii_pe_zi: proiect + text + ore DIFERITE pe zi."""
+    import json as _json
+    from models import db, Angajat, Proiect, RaportActivitate
+    with app.app_context():
+        for cod, nume in (('DZ-A', 'Proiect Alfa'), ('DZ-B', 'Proiect Beta')):
+            if not Proiect.query.filter_by(cod_proiect=cod).first():
+                db.session.add(Proiect(cod_proiect=cod, nume=nume,
+                                       data_start=date(2026, 1, 1), status='activ'))
+        db.session.commit()
+        p1 = Proiect.query.filter_by(cod_proiect='DZ-A').first()
+        p2 = Proiect.query.filter_by(cod_proiect='DZ-B').first()
+        a = Angajat.query.filter_by(cnp='1992020202020').first()
+        if not a:
+            a = Angajat(cnp='1992020202020', nume='Detalii', prenume='Zi',
+                        status='activ', data_angajare=date(2020, 1, 1), functie='Inginer')
+            db.session.add(a); db.session.commit()
+        if not RaportActivitate.query.filter_by(angajat_id=a.id,
+                                                tip_activitate='saptamanala').first():
+            det = [
+                {'data': '2026-01-05', 'proiect_id': p1.id, 'text': 'Montaj armatura', 'ore': 8},
+                {'data': '2026-01-06', 'proiect_id': p2.id, 'text': 'Turnare beton', 'ore': 6},
+            ]
+            db.session.add(RaportActivitate(
+                angajat_id=a.id, proiect_id=p1.id, tip_activitate='saptamanala',
+                data=date(2026, 1, 5), data_sfarsit=date(2026, 1, 9), numar_saptamana=2,
+                activitate_principala='Lucrari structura',
+                detalii_pe_zi=_json.dumps(det), status='aprobat'))
+            db.session.commit()
+        aid = a.id
+
+    r = authenticated_client.get(f'/activitati/export?angajat_id={aid}&luna=2026-01')
+    assert r.status_code == 200
+    ws = load_workbook(io.BytesIO(r.data)).worksheets[0]
+    rows = []
+    for row in ws.iter_rows():
+        e = ws.cell(row=row[0].row, column=5).value
+        g = ws.cell(row=row[0].row, column=7).value
+        f = ws.cell(row=row[0].row, column=6).value
+        rows.append((str(e or ''), str(g or ''), f))
+    e_all = ' | '.join(r[0] for r in rows)
+    g_all = ' | '.join(r[1] for r in rows)
+    # proiecte DIFERITE pe zile (din detalii_pe_zi, nu un singur proiect)
+    assert 'Proiect Alfa' in e_all and 'Proiect Beta' in e_all
+    # textul pe zi (din detalii_pe_zi)
+    assert 'Montaj armatura' in g_all and 'Turnare beton' in g_all
+    # orele pe zi
+    assert any(rv[2] in (8, 8.0) for rv in rows) and any(rv[2] in (6, 6.0) for rv in rows)

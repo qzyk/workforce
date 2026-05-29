@@ -1737,16 +1737,64 @@ def _activitate_text(a):
 def _info_zile(angajat_id, zile):
     """
     Per-zi: {data: {'proiect': nume|None, 'ore': float, 'activitati': [texte]}}.
-    Proiectul = cel SELECTAT in ziua respectiva (raportul zilnic pe acea data);
-    daca ziua n-are raport zilnic, se completeaza cu proiectul raportului
-    saptamanal/lunar care o acopera. Activitatea = principala + detaliata.
+
+    Sursa per zi, in ordinea prioritatii:
+      1. DETALII PE ZI (rapoarte saptamanale/lunare cu detalii_pe_zi): proiectul,
+         textul si orele sunt INDIVIDUALE pe fiecare zi -> respecta detaliile pe zi.
+      2. Rapoarte ZILNICE pe acea data: proiect + (principala+detaliata) + ore.
+      3. Rapoarte span FARA detalii_pe_zi: completeaza DOAR proiectul pe zilele
+         acoperite (activitatea lor se afiseaza in celula merged pe saptamana).
     """
     if not zile:
         return {}
     prima, ultima = min(zile), max(zile)
+    zile_set = set(zile)
+    iso_week = prima.isocalendar()[1]
+    luna_an = f'{prima.year:04d}-{prima.month:02d}'
     info = {z: {'proiect': None, 'ore': 0.0, 'activitati': []} for z in zile}
 
-    # 1. ZILNICE - proiectul selectat in ziua respectiva (prioritar)
+    _proj_cache = {}
+
+    def _proj_nume(pid):
+        if pid not in _proj_cache:
+            p = Proiect.query.get(pid)
+            _proj_cache[pid] = (p.nume.strip()[:60] if p and p.nume else None)
+        return _proj_cache[pid]
+
+    # 1. DETALII PE ZI - proiect + text + ore individuale pe fiecare zi
+    for a in RaportActivitate.query.filter(
+        RaportActivitate.angajat_id == angajat_id,
+        RaportActivitate.tip_activitate.in_(['saptamanala', 'lunara']),
+        RaportActivitate.detalii_pe_zi.isnot(None),
+        db.or_(
+            RaportActivitate.numar_saptamana == iso_week,
+            RaportActivitate.luna_an == luna_an,
+            db.and_(
+                RaportActivitate.data <= ultima,
+                db.or_(RaportActivitate.data_sfarsit.is_(None),
+                       RaportActivitate.data_sfarsit >= prima),
+            ),
+        ),
+    ).all():
+        for det in a.detalii_pe_zi_lista:
+            d = det.get('_data_obj')
+            if d not in zile_set:
+                continue
+            pid = det.get('proiect_id')
+            if pid and info[d]['proiect'] is None:
+                nm = _proj_nume(pid)
+                if nm:
+                    info[d]['proiect'] = nm
+            if det.get('ore'):
+                try:
+                    info[d]['ore'] += float(det['ore'])
+                except (TypeError, ValueError):
+                    pass
+            t = _curata_activitate(det.get('text') or '')
+            if t and t not in info[d]['activitati']:
+                info[d]['activitati'].append(t)
+
+    # 2. ZILNICE pe data lor
     for a in RaportActivitate.query.filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate == 'zilnica',
@@ -1765,10 +1813,12 @@ def _info_zile(angajat_id, zile):
         if t and t not in info[a.data]['activitati']:
             info[a.data]['activitati'].append(t)
 
-    # 2. SPAN (saptamanal/lunar) - completeaza DOAR proiectul pe zilele fara zilnic
+    # 3. SPAN fara detalii_pe_zi - completeaza DOAR proiectul pe zilele acoperite
     for a in RaportActivitate.query.filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate.in_(['saptamanala', 'lunara']),
+        db.or_(RaportActivitate.detalii_pe_zi.is_(None),
+               RaportActivitate.detalii_pe_zi == ''),
     ).all():
         proj = _nume_proiect(a)
         if not proj:
