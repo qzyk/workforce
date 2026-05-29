@@ -112,6 +112,54 @@ def test_export_continut_proiect_ore_activitate(app, authenticated_client):
         assert eng not in d_txt
 
 
+def test_export_nume_proiect_complet_si_rand_inalt(app, authenticated_client):
+    """Numele proiectului apare COMPLET (fara trunchiere la 60) + randul e inaltat
+    ca textul wrapuit sa fie vizibil + coloana Proiect e lata."""
+    import json as _json
+    from models import db, Angajat, Proiect, RaportActivitate
+    nume_lung = ('LUCRARI DE INTRETINERE SI REPARATII CURENTE - AMENAJARE SPATII '
+                 'LABORATOR HIPOXIE-HIPOBARISM SI HIPERBARISM CORP B')
+    assert len(nume_lung) > 60
+    with app.app_context():
+        p = Proiect.query.filter_by(cod_proiect='NL-1').first()
+        if not p:
+            p = Proiect(cod_proiect='NL-1', nume=nume_lung,
+                        data_start=date(2026, 1, 1), status='activ')
+            db.session.add(p); db.session.commit()
+        a = Angajat.query.filter_by(cnp='1993030303030').first()
+        if not a:
+            a = Angajat(cnp='1993030303030', nume='Nume', prenume='Lung',
+                        status='activ', data_angajare=date(2020, 1, 1), functie='Inginer')
+            db.session.add(a); db.session.commit()
+        if not RaportActivitate.query.filter_by(angajat_id=a.id,
+                                                tip_activitate='lunara').first():
+            det = [{'data': '2026-01-05', 'proiect_id': p.id, 'text': 'Montaj', 'ore': 8}]
+            db.session.add(RaportActivitate(
+                angajat_id=a.id, proiect_id=p.id, tip_activitate='lunara',
+                data=date(2026, 1, 5), data_sfarsit=date(2026, 1, 5), luna_an='2026-01',
+                activitate_principala='Coordonare',
+                detalii_pe_zi=_json.dumps(det), status='aprobat'))
+            db.session.commit()
+        aid = a.id
+
+    r = authenticated_client.get(f'/activitati/export?angajat_id={aid}&luna=2026-01')
+    assert r.status_code == 200
+    ws = load_workbook(io.BytesIO(r.data)).worksheets[0]
+    full_present = False
+    tall_row = False
+    for row in ws.iter_rows():
+        for c in row:
+            if c.column == 5 and c.value and 'CORP B' in str(c.value):
+                full_present = True
+                assert len(str(c.value)) == len(nume_lung)   # NU trunchiat la 60
+                h = ws.row_dimensions[c.row].height
+                if h and h > 16.5:
+                    tall_row = True
+    assert full_present, 'numele complet al proiectului lipseste din coloana E'
+    assert tall_row, 'randul nu a fost inaltat pentru textul wrapuit'
+    assert ws.column_dimensions['E'].width >= 40, 'coloana Proiect prea ingusta'
+
+
 def test_export_detalii_pe_zi_proiect_per_zi(app, authenticated_client):
     """Raport saptamanal cu detalii_pe_zi: proiect + text + ore DIFERITE pe zi."""
     import json as _json

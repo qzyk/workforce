@@ -1709,10 +1709,10 @@ def _curata_activitate(text):
 
 
 def _nume_proiect(a):
-    """Numele proiectului (nu codul), trunchiat la 60 caractere."""
+    """Numele COMPLET al proiectului (nu codul, fara trunchiere)."""
     if not a or not a.proiect or not a.proiect.nume:
         return None
-    return a.proiect.nume.strip()[:60]
+    return a.proiect.nume.strip()
 
 
 ZILE_RO_SCURT = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du']
@@ -1732,6 +1732,24 @@ def _activitate_text(a):
     if det and det not in t:
         t = (t + '\n' + det).strip()
     return _curata_activitate(t)
+
+
+# Latimi coloane EDIFICO (folosite si la calculul inaltimii randului ca textul
+# wrapuit - in special numele COMPLET de proiect - sa fie integral vizibil).
+EXPORT_COL_W = {'A': 4.0, 'B': 12.0, 'C': 14.0, 'D': 13.0,
+                'E': 46.0, 'F': 8.0, 'G': 42.0}
+
+
+def _wrap_lines(txt, latime_chars):
+    """Cate linii ocupa un text wrapuit intr-o coloana de latimea data (caractere)."""
+    if not txt:
+        return 1
+    latime_chars = max(1, int(latime_chars))
+    total = 0
+    for seg in str(txt).split('\n'):
+        n = len(seg.rstrip())
+        total += max(1, (n + latime_chars - 1) // latime_chars)
+    return max(1, total)
 
 
 def _info_zile(angajat_id, zile):
@@ -1758,7 +1776,7 @@ def _info_zile(angajat_id, zile):
     def _proj_nume(pid):
         if pid not in _proj_cache:
             p = Proiect.query.get(pid)
-            _proj_cache[pid] = (p.nume.strip()[:60] if p and p.nume else None)
+            _proj_cache[pid] = (p.nume.strip() if p and p.nume else None)
         return _proj_cache[pid]
 
     # 1. DETALII PE ZI - proiect + text + ore individuale pe fiecare zi
@@ -1920,7 +1938,20 @@ def _adauga_sectiune_luna(ws, angajat, an, luna, company_short, start_row, S, zi
         for off, zi in enumerate(zile):
             r = sr + off
             total_zile_lucrate += 1
-            ws.row_dimensions[r].height = 16.5
+
+            # Inaltime rand: cat sa incapa numele COMPLET de proiect (col E)
+            # si activitatea (col G) wrapuite, ca textul sa fie integral vizibil.
+            _e_lines = _wrap_lines(info_zi[zi]['proiect'] or '',
+                                   int(EXPORT_COL_W['E']) - 3)
+            if are_per_zi:
+                _g_lines = _wrap_lines('\n'.join(info_zi[zi]['activitati']),
+                                       int(EXPORT_COL_W['G']) - 3)
+            else:
+                _g_tot = _wrap_lines('\n'.join(texte_general) if texte_general else '',
+                                     int(EXPORT_COL_W['G']) - 3)
+                _g_lines = -(-_g_tot // nr_zile)  # cota de linii pe rand (merged)
+            _n = max(_e_lines, _g_lines, 1)
+            ws.row_dimensions[r].height = min(120.0, max(16.5, _n * 15.0))
 
             # Fill-ul zilei (dupa tip)
             if zi in sarbatori:
@@ -2035,13 +2066,10 @@ def _construieste_sheet_angajat(wb, angajat, perioade, company_short, sheet_inde
         ws = wb.create_sheet(title=final_title)
 
     # Latimi coloane optimizate (B=Luna C=Sapt D=Data E=Proiect F=Ore G=Activitati)
-    ws.column_dimensions['A'].width = 4.0
-    ws.column_dimensions['B'].width = 14.0
-    ws.column_dimensions['C'].width = 15.0
-    ws.column_dimensions['D'].width = 16.0
-    ws.column_dimensions['E'].width = 22.0
-    ws.column_dimensions['F'].width = 8.0
-    ws.column_dimensions['G'].width = 55.0
+    # E (Proiect) e lat ca numele COMPLET sa incapa; inaltimea randului se
+    # calculeaza dinamic ca textul wrapuit sa fie integral vizibil.
+    for _col, _w in EXPORT_COL_W.items():
+        ws.column_dimensions[_col].width = _w
 
     # === Rand 2: Titlu mare cu numele firmei + perioada ===
     if perioade:
