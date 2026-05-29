@@ -1,0 +1,13 @@
+{
+  "ordine_categorii": ["TRASARE", "SAPATURA", "SPRIJINIRI", "POZARE_CONDUCTA", "CAMINE", "PROBE", "UMPLUTURA", "REFACERE"],
+  "intra_categorie": "secvential",
+  "relatii": [
+    {"from": "TRASARE", "to": "SAPATURA", "tip": "FS", "decalaj": 0},
+    {"from": "SAPATURA", "to": "SPRIJINIRI", "tip": "SS", "decalaj": 1},
+    {"from": "SAPATURA", "to": "POZARE_CONDUCTA", "tip": "FS", "decalaj": 0},
+    {"from": "POZARE_CONDUCTA", "to": "CAMINE", "tip": "SS", "decalaj": 2},
+    {"from": "POZARE_CONDUCTA", "to": "PROBE", "tip": "FS", "decalaj": 0},
+    {"from": "PROBE", "to": "UMPLUTURA", "tip": "FS", "decalaj": 0},
+    {"from": "UMPLUTURA", "to": "REFACERE", "tip": "FS", "decalaj": 2}
+  ]
+}

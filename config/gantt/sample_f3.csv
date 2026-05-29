@@ -1,0 +1,21 @@
+cod_articol;denumire;um;cantitate;obiect;tronson;categorie
+ART001;Trasare si pichetare traseu retea apa;m;820;Retea apa;Strada Aviatorilor;Terasamente
+ART002;Sapatura mecanizata in teren mijlociu;mc;1240;Retea apa;Strada Aviatorilor;Terasamente
+ART003;Sapatura manuala in spatii limitate;mc;180;Retea apa;Strada Aviatorilor;Terasamente
+ART004;Sprijiniri maluri cu dulapi metalici;mp;640;Retea apa;Strada Aviatorilor;Terasamente
+ART005;Pozare conducta PEHD PE100 De160;m;820;Retea apa;Strada Aviatorilor;Conducte
+ART006;Montaj camin vizitare prefabricat;buc;8;Retea apa;Strada Aviatorilor;Camine
+ART007;Proba de presiune si spalare conducta;m;820;Retea apa;Strada Aviatorilor;Probe
+ART008;Umplutura cu balast compactata in straturi;mc;980;Retea apa;Strada Aviatorilor;Terasamente
+ART009;Refacere sistem rutier din asfalt;mp;660;Retea apa;Strada Aviatorilor;Drumuri
+ART010;Trasare traseu;m;610;Retea apa;Strada Plopilor;Terasamente
+ART011;Sapatura mecanizata;mc;920;Retea apa;Strada Plopilor;Terasamente
+ART012;Pozare conducta PEHD De110;m;610;Retea apa;Strada Plopilor;Conducte
+ART013;Montaj camin vizitare;buc;5;Retea apa;Strada Plopilor;Camine
+ART014;Proba presiune conducta;m;610;Retea apa;Strada Plopilor;Probe
+ART015;Umplutura compactare;mc;700;Retea apa;Strada Plopilor;Terasamente
+ART016;Refacere carosabil asfalt;mp;480;Retea apa;Strada Plopilor;Drumuri
+ART017;Sapatura mecanizata canalizare;mc;1500;Retea canalizare;Strada Garii;Terasamente
+ART018;Montaj teava canalizare PVC SN8 De315;m;540;Retea canalizare;Strada Garii;Conducte
+ART019;Umplutura cu nisip si balast;mc;820;Retea canalizare;Strada Garii;Terasamente
+ART020;Refacere imbracaminte rutiera;mp;430;Retea canalizare;Strada Garii;Drumuri

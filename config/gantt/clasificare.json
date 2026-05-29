@@ -1,0 +1,10 @@
+{
+  "TRASARE": ["trasare", "trasari", "pichetare", "pichetaj"],
+  "SAPATURA": ["sapatura", "sapaturi", "excavare", "excavatie", "decopertare", "sapare", "sapatura mecanizata", "sapatura manuala"],
+  "SPRIJINIRI": ["sprijinire", "sprijiniri", "epuismente", "epuisment"],
+  "POZARE_CONDUCTA": ["pozare conducta", "montaj teava", "montaj conducta", "pozare tub", "pozare tuburi", "montare conducta", "pozare canalizare"],
+  "CAMINE": ["camin", "camine", "camin vizitare", "montaj camin"],
+  "UMPLUTURA": ["umplutura", "umpluturi", "compactare", "strat de balast", "umplere", "reumplere", "strat nisip"],
+  "REFACERE": ["asfalt", "refacere carosabil", "refacere imbracaminte", "covor asfaltic", "refacere", "refacere sistem rutier", "refacere trotuar"],
+  "PROBE": ["proba de presiune", "proba presiune", "spalare conducta", "dezinfectie", "proba etanseitate"]
+}

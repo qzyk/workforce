@@ -129,6 +129,14 @@
                     </ul>
                     {% endif %}
                 </li>
+                {% if feature_enabled('planificare-gantt') %}
+                <li>
+                    <a href="{{ url_for('gantt.index') }}" class="{% if request.endpoint and request.endpoint.startswith('gantt') %}active{% endif %}">
+                        <i class="fa-solid fa-diagram-project"></i>
+                        <span>{{ _('Planificare Gantt') }}</span>
+                    </a>
+                </li>
+                {% endif %}
                 <li>
                     <a href="{{ url_for('bim.dashboard') }}" class="{% if request.endpoint and request.endpoint.startswith('bim') %}active{% endif %}">
                         <i class="fa-solid fa-cubes"></i>

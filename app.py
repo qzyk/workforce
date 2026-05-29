@@ -74,6 +74,7 @@ def create_app(config_name='default'):
     from routes.tenants import tenants_bp
     from routes.contracte import contracte_bp  # Faza 10 - gated pe flag 'controale-contract'
     from routes.locatii import locatii_bp  # Locatii proiect cu Mapbox
+    from routes.gantt import gantt_bp  # Planificare Gantt din F3 (WBS + dependente + export P6/MSP)
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -90,6 +91,7 @@ def create_app(config_name='default'):
     app.register_blueprint(tenants_bp)
     app.register_blueprint(contracte_bp, url_prefix='/contracte')
     app.register_blueprint(locatii_bp, url_prefix='/locatii')
+    app.register_blueprint(gantt_bp)  # url_prefix '/gantt' definit in blueprint
 
     # Context processor pentru token Mapbox public (vizibil in template-uri).
     # Token-ul public e safe sa apara in HTML (asta e flow-ul Mapbox standard).
@@ -152,6 +154,15 @@ def create_app(config_name='default'):
         csrf.exempt(app.view_functions['bim.api_sensors_ingest'])
     except KeyError:
         pass  # Ruta inca neinregistrata (test setup vechi)
+
+    # Exempt CSRF pentru API-ul Gantt (JSON/multipart, consum programatic)
+    for _ep in ('gantt.api_import', 'gantt.api_classify', 'gantt.api_wbs',
+                'gantt.api_dependencies', 'gantt.api_validate', 'gantt.api_export',
+                'gantt.api_pipeline'):
+        try:
+            csrf.exempt(app.view_functions[_ep])
+        except KeyError:
+            pass
 
     # --------------------------------------------------------
     # CONTEXT PROCESSOR - DATE GLOBALE

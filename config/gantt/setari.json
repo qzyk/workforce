@@ -1,0 +1,29 @@
+{
+  "ore_pe_zi": 8,
+  "durata_implicita_zile": 1,
+  "randamente": {
+    "TRASARE": {"randament_zi": 500, "um": "m"},
+    "SAPATURA": {"randament_zi": 200, "um": "mc"},
+    "SPRIJINIRI": {"randament_zi": 300, "um": "mp"},
+    "POZARE_CONDUCTA": {"randament_zi": 120, "um": "m"},
+    "CAMINE": {"randament_zi": 1, "um": "buc"},
+    "UMPLUTURA": {"randament_zi": 250, "um": "mc"},
+    "REFACERE": {"randament_zi": 150, "um": "mp"},
+    "PROBE": {"randament_zi": 300, "um": "m"}
+  },
+  "coloane": {
+    "cod_articol": ["cod_articol", "cod", "articol", "nr", "nr crt", "pozitie"],
+    "denumire": ["denumire", "descriere", "denumirea lucrarii", "lucrare", "denumire articol"],
+    "um": ["um", "u.m.", "unitate", "unitate de masura", "unitatea de masura"],
+    "cantitate": ["cantitate", "cant", "cant.", "qty", "cantitati"],
+    "obiect": ["obiect", "obiectiv", "obiect deviz"],
+    "tronson": ["tronson", "strada", "sector", "zona"],
+    "categorie": ["categorie", "capitol", "categoria de lucrari"]
+  },
+  "sinonime": {
+    "teava": "conducta",
+    "tevi": "conducta",
+    "excavatie": "sapatura",
+    "excavare": "sapatura"
+  }
+}
