@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Preview Export EDIFICO{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('activitati.panou') }}">Activitati</a></li>
+<li class="breadcrumb-item active">Preview export</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.epv-bar { position:sticky; top:0; z-index:20; background:#0B1426; color:#F5F1E8;
+    padding:14px 18px; border-radius:10px; display:flex; justify-content:space-between;
+    align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px;
+    box-shadow:0 4px 16px rgba(0,0,0,0.18); }
+.epv-bar h2 { margin:0; font-size:1.15rem; color:#C9A961; }
+.epv-bar small { color:rgba(245,241,232,0.78); }
+.epv-btn-gold { background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426;
+    border:none; padding:10px 18px; border-radius:8px; font-weight:700; cursor:pointer;
+    text-decoration:none; display:inline-flex; align-items:center; gap:8px; }
+.epv-btn-gold:hover { filter:brightness(1.06); }
+.epv-btn-ghost { background:transparent; color:#F5F1E8; border:1px solid rgba(245,241,232,0.4);
+    padding:10px 16px; border-radius:8px; text-decoration:none; display:inline-flex;
+    align-items:center; gap:8px; }
+.epv-btn-ghost:hover { background:rgba(245,241,232,0.08); }
+.epv-sheet { background:#fff; border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,0.06);
+    margin-bottom:26px; overflow:hidden; border:1px solid #E8E3D5; }
+.epv-sheet-h { background:#0B1426; color:#F5F1E8; padding:13px 18px; }
+.epv-sheet-h strong { color:#C9A961; font-size:1.05rem; }
+.epv-month-title { background:#11203b; color:#C9A961; text-align:center; font-weight:700;
+    letter-spacing:1px; padding:8px; border-top:1px solid #D8CBA8; }
+table.epv { width:100%; border-collapse:collapse; font-size:0.86rem; }
+table.epv th { background:#C9A961; color:#0B1426; padding:8px 10px; text-align:center;
+    border:1px solid #D8CBA8; font-weight:700; }
+table.epv td { padding:6px 10px; border:1px solid #D8CBA8; vertical-align:top; color:#2B2B2B; }
+.epv-data { text-align:center; white-space:nowrap; }
+.epv-proiect { font-weight:600; }
+.epv-ore { text-align:center; white-space:nowrap; }
+.epv-sapt { text-align:center; background:#F5F1E8; font-weight:600; white-space:nowrap; }
+.epv-weekend { background:#EFE7D2; }
+.epv-sarbatoare { background:#F3E1B0; }
+.epv-total td { background:#0B1426; color:#C9A961; font-weight:700; text-align:center; }
+.epv-empty { padding:30px; text-align:center; color:var(--gray-500); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="epv-bar">
+    <div>
+        <h2><i class="fa-solid fa-file-excel"></i> Preview Export EDIFICO</h2>
+        <small>{{ perioada_text }} &middot; {{ sectiuni|length }} angajat(i). Verifica datele inainte de descarcare.</small>
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a href="{{ url_for('activitati.panou') }}" class="epv-btn-ghost"><i class="fa-solid fa-arrow-left"></i> Modifica selectia</a>
+        <a href="{{ url_for('activitati.export_edifico') }}?{{ query_string }}" class="epv-btn-gold"><i class="fa-solid fa-download"></i> Descarca Excel</a>
+    </div>
+</div>
+
+{% for sec in sectiuni %}
+<div class="epv-sheet">
+    <div class="epv-sheet-h">
+        <strong>{{ sec.angajat.nume_complet }}</strong>
+        {% if sec.angajat.functie %}<span style="opacity:0.85;"> &middot; {{ sec.angajat.functie }}</span>{% endif %}
+    </div>
+
+    {% set luni_cu_date = sec.luni | selectattr('saptamani') | list %}
+    {% if not luni_cu_date %}
+    <div class="epv-empty"><i class="fa-solid fa-inbox"></i> Nicio activitate in perioada selectata.</div>
+    {% else %}
+        {% for luna in sec.luni %}
+        {% if luna.saptamani %}
+        <div class="epv-month-title">{{ luna.luna_text|upper }} {{ luna.an }}</div>
+        <table class="epv">
+            <thead>
+                <tr>
+                    <th style="width:130px;">Saptamana</th>
+                    <th style="width:110px;">Data</th>
+                    <th>Proiect</th>
+                    <th style="width:62px;">Ore</th>
+                    <th>Activitati desfasurate</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sapt in luna.saptamani %}
+                    {% for rand in sapt.randuri %}
+                    <tr class="{{ 'epv-sarbatoare' if rand.sarbatoare else ('epv-weekend' if rand.weekend else '') }}">
+                        {% if loop.first %}
+                        <td class="epv-sapt" rowspan="{{ sapt.randuri|length }}">Saptamana {{ sapt.sapt_idx }}<br><small>(S{{ sapt.iso_week }})</small></td>
+                        {% endif %}
+                        <td class="epv-data">{{ rand.data_ro }}</td>
+                        <td class="epv-proiect">{{ rand.proiect }}</td>
+                        <td class="epv-ore">{{ rand.ore if rand.ore is not none else '' }}</td>
+                        {% if sapt.are_per_zi %}
+                        <td>{% for ln in rand.activitati %}{{ ln }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+                        {% elif loop.first %}
+                        <td rowspan="{{ sapt.randuri|length }}">{% for ln in sapt.text_general %}{{ ln }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+                <tr class="epv-total">
+                    <td colspan="2">TOTAL {{ luna.luna_text|upper }}</td>
+                    <td>{{ luna.total_zile }} zile</td>
+                    <td colspan="2">{{ '%.1f'|format(luna.total_ore) }} ore</td>
+                </tr>
+            </tbody>
+        </table>
+        {% endif %}
+        {% endfor %}
+    {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

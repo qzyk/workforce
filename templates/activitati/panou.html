@@ -76,7 +76,7 @@
             <i class="fa-solid fa-file-excel" style="color:var(--success); font-size:1.4rem;"></i>
             <h3 style="margin:0; font-size:1.1rem;">Generare Raport EDIFICO</h3>
         </div>
-        <form method="GET" action="{{ url_for('activitati.export_edifico') }}" id="exportEdificoForm">
+        <form method="GET" action="{{ url_for('activitati.export_edifico_preview') }}" id="exportEdificoForm">
             <input type="hidden" name="luna_start" id="exportLunaStartHidden" value="{{ today.strftime('%Y-%m') }}">
             <input type="hidden" name="luna_end" id="exportLunaEndHidden" value="{{ today.strftime('%Y-%m') }}">
             {% set luni_ro = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'] %}
@@ -149,7 +149,7 @@
                     Anuleaza
                 </button>
                 <button type="submit" class="btn btn-success">
-                    <i class="fa-solid fa-download"></i> Descarca Excel
+                    <i class="fa-solid fa-eye"></i> Previzualizeaza
                 </button>
             </div>
         </form>

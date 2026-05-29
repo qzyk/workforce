@@ -2118,32 +2118,18 @@ def _construieste_sheet_angajat(wb, angajat, perioade, company_short, sheet_inde
     return ws
 
 
-@activitati_bp.route('/raport/edifico')
-@activitati_bp.route('/export')
-@login_required
-def export_edifico():
-    """
-    Export xlsx cu structura EDIFICO exacta:
-    - Un sheet per angajat
-    - Titlu rosu bold "Raport de activitate <COMPANY> - <luna> <an>"
-    - Numele angajatului in B6:E6
-    - Saptamani grupate cu activitati concatenate
+def _pregateste_export_din_args():
+    """Parseaza parametrii comuni (interval luni, angajati, tip) pentru exportul
+    EDIFICO si pentru preview, ca ambele sa foloseasca EXACT aceeasi logica.
 
-    Parametri suportati (query string):
-    - ?angajat_id=X         exporta doar acel angajat
-    - ?luna=YYYY-MM         filtreaza luna (default: luna curenta)
-    - ?tip=zilnica|saptamanala|lunara  filtreaza tip activitati incluse
+    Returneaza (angajati, perioade, p_start, p_end, err) unde err=(mesaj, categorie)
+    daca e o eroare (caller-ul face flash + redirect), altfel None.
     """
-    from openpyxl import Workbook
-
     today = date.today()
 
-    # === Parametri perioada ===
-    # Suporta atat luna_start/luna_end (interval) cat si luna (compat)
     luna_start_param = request.args.get('luna_start', '').strip()
     luna_end_param = request.args.get('luna_end', '').strip()
     luna_param = request.args.get('luna', '').strip()  # legacy
-
     if not luna_start_param and luna_param:
         luna_start_param = luna_param
     if not luna_end_param and luna_param:
@@ -2166,14 +2152,11 @@ def export_edifico():
     p_start = _parse_luna(luna_start_param)
     p_end = _parse_luna(luna_end_param)
     if not p_start or not p_end:
-        flash('Format perioada invalid (folositi YYYY-MM).', 'danger')
-        return redirect(url_for('activitati.panou'))
+        return None, None, None, None, ('Format perioada invalid (folositi YYYY-MM).', 'danger')
 
-    # Asigura ordinea corecta start <= end
     if (p_end[0], p_end[1]) < (p_start[0], p_start[1]):
         p_start, p_end = p_end, p_start
 
-    # Construieste lista de luni in interval
     perioade = []
     cy, cm = p_start
     while (cy, cm) <= (p_end[0], p_end[1]):
@@ -2185,11 +2168,6 @@ def export_edifico():
         if len(perioade) > 36:
             break
 
-    # Pentru compatibilitate cu logica veche (selectia angajatilor cu activitati)
-    an = p_start[0]
-    luna = p_start[1]
-
-    # Suporta atat ?angajat_id=X cat si ?angajat_id=X&angajat_id=Y (multi-select)
     f_angajat_ids_raw = request.args.getlist('angajat_id')
     f_angajat_ids = []
     for v in f_angajat_ids_raw:
@@ -2199,47 +2177,144 @@ def export_edifico():
                 f_angajat_ids.append(n)
         except (ValueError, TypeError):
             continue
-    f_tip = request.args.get('tip', '').strip()  # zilnica/saptamanala/lunara
+    f_tip = request.args.get('tip', '').strip()
 
-    # === Determinare angajati de exportat ===
     operator_angajat = _get_angajat_for_user(current_user)
     if current_user.rol == 'operator':
         if not operator_angajat:
-            flash('Nu sunteti asociat unui angajat.', 'warning')
-            return redirect(url_for('activitati.panou'))
+            return None, None, None, None, ('Nu sunteti asociat unui angajat.', 'warning')
         angajati = [operator_angajat]
     elif f_angajat_ids:
         angajati = Angajat.query.filter(Angajat.id.in_(f_angajat_ids)).order_by(
-            Angajat.nume, Angajat.prenume
-        ).all()
+            Angajat.nume, Angajat.prenume).all()
         if not angajati:
-            flash('Niciunul din angajatii selectati nu exista.', 'danger')
-            return redirect(url_for('activitati.panou'))
+            return None, None, None, None, ('Niciunul din angajatii selectati nu exista.', 'danger')
     else:
-        # Toti angajatii care au activitati in oricare luna din interval
         from calendar import monthrange
         prima_zi = date(p_start[0], p_start[1], 1)
         ultima_zi = date(p_end[0], p_end[1], monthrange(p_end[0], p_end[1])[1])
-
         q = db.session.query(RaportActivitate.angajat_id).filter(
             RaportActivitate.data >= prima_zi,
-            RaportActivitate.data <= ultima_zi,
-        )
+            RaportActivitate.data <= ultima_zi)
         if f_tip in ('zilnica', 'saptamanala', 'lunara'):
             q = q.filter(RaportActivitate.tip_activitate == f_tip)
         angajati_ids = [r[0] for r in q.distinct().all() if r[0]]
         if angajati_ids:
             angajati = Angajat.query.filter(Angajat.id.in_(angajati_ids)).order_by(
-                Angajat.nume, Angajat.prenume
-            ).all()
+                Angajat.nume, Angajat.prenume).all()
         else:
-            # Fallback: toti angajatii activi
             angajati = Angajat.query.filter_by(status='activ').order_by(
-                Angajat.nume, Angajat.prenume
-            ).all()
+                Angajat.nume, Angajat.prenume).all()
 
     if not angajati:
-        flash('Niciun angajat de exportat.', 'warning')
+        return None, None, None, None, ('Niciun angajat de exportat.', 'warning')
+
+    return angajati, perioade, p_start, p_end, None
+
+
+def _date_raport_preview(angajat, perioade):
+    """Construieste datele de preview (HTML) folosind EXACT aceleasi functii ca
+    exportul xlsx (_info_zile, _saptamani_din_luna, _activitati_pentru_saptamana),
+    ca preview-ul sa coincida cu fisierul descarcat. Intoarce o lista de luni:
+    [{luna_text, an, total_zile, total_ore, saptamani:[{sapt_idx, iso_week,
+      are_per_zi, text_general:[...], randuri:[{data_ro, proiect, ore,
+      activitati:[...], weekend, sarbatoare}]}]}].
+    """
+    luni = []
+    for an, luna in perioade:
+        zile_extra = _zile_extra_lucrate_pentru_angajat(angajat.id, an, luna)
+        sarbatori = {s.data for s in SarbatoareLegala.query.filter_by(an=an).all()
+                     if s.data.month == luna}
+        saptamani = _saptamani_din_luna(an, luna, sarbatori, zile_extra)
+        sapt_list = []
+        total_zile = 0
+        total_ore = 0.0
+        for (sapt_idx, iso_week, zile) in saptamani:
+            if not zile:
+                continue
+            info_zi = _info_zile(angajat.id, zile)
+            texte_general = _activitati_pentru_saptamana(angajat.id, zile, luna, an)
+            are_per_zi = any(info_zi[z]['activitati'] for z in zile)
+            randuri = []
+            for zi in zile:
+                total_zile += 1
+                ore_zi = info_zi[zi]['ore']
+                total_ore += ore_zi
+                randuri.append({
+                    'data_ro': _data_ro(zi),
+                    'proiect': info_zi[zi]['proiect'] or '—',
+                    'ore': (round(ore_zi, 1) if ore_zi else None),
+                    'activitati': (list(info_zi[zi]['activitati']) if are_per_zi else []),
+                    'weekend': zi.weekday() >= 5,
+                    'sarbatoare': zi in sarbatori,
+                })
+            sapt_list.append({
+                'sapt_idx': sapt_idx,
+                'iso_week': iso_week,
+                'are_per_zi': are_per_zi,
+                'text_general': (list(texte_general) if texte_general else []),
+                'randuri': randuri,
+            })
+        luni.append({
+            'luna_text': LUNI_RO[luna].capitalize(),
+            'an': an,
+            'total_zile': total_zile,
+            'total_ore': total_ore,
+            'saptamani': sapt_list,
+        })
+    return luni
+
+
+@activitati_bp.route('/raport/edifico/preview')
+@activitati_bp.route('/export/preview')
+@login_required
+def export_edifico_preview():
+    """Preview HTML al raportului EDIFICO inainte de descarcarea xlsx.
+    Foloseste aceiasi parametri si aceeasi logica de date ca exportul real."""
+    angajati, perioade, p_start, p_end, err = _pregateste_export_din_args()
+    if err:
+        flash(err[0], err[1])
+        return redirect(url_for('activitati.panou'))
+
+    company_short, _ = _get_company_name()
+    sectiuni = [{'angajat': a, 'luni': _date_raport_preview(a, perioade)}
+                for a in angajati]
+    if p_start == p_end:
+        perioada_text = f'{LUNI_RO[p_start[1]].capitalize()} {p_start[0]}'
+    else:
+        perioada_text = (f'{LUNI_RO[p_start[1]].capitalize()} {p_start[0]} — '
+                         f'{LUNI_RO[p_end[1]].capitalize()} {p_end[0]}')
+
+    return render_template(
+        'activitati/export_preview.html',
+        sectiuni=sectiuni,
+        company_short=company_short,
+        perioada_text=perioada_text,
+        query_string=request.query_string.decode(),
+    )
+
+
+@activitati_bp.route('/raport/edifico')
+@activitati_bp.route('/export')
+@login_required
+def export_edifico():
+    """
+    Export xlsx cu structura EDIFICO exacta:
+    - Un sheet per angajat
+    - Titlu rosu bold "Raport de activitate <COMPANY> - <luna> <an>"
+    - Numele angajatului in B6:E6
+    - Saptamani grupate cu activitati concatenate
+
+    Parametri suportati (query string):
+    - ?angajat_id=X         exporta doar acel angajat
+    - ?luna=YYYY-MM         filtreaza luna (default: luna curenta)
+    - ?tip=zilnica|saptamanala|lunara  filtreaza tip activitati incluse
+    """
+    from openpyxl import Workbook
+
+    angajati, perioade, p_start, p_end, err = _pregateste_export_din_args()
+    if err:
+        flash(err[0], err[1])
         return redirect(url_for('activitati.panou'))
 
     # === Construire workbook ===

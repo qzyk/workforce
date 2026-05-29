@@ -112,6 +112,53 @@ def test_export_continut_proiect_ore_activitate(app, authenticated_client):
         assert eng not in d_txt
 
 
+def test_export_preview_html_inainte_de_download(app, authenticated_client):
+    """Preview HTML inainte de export: contine datele (proiect per zi) + link de
+    descarcare xlsx cu aceiasi parametri. NU returneaza fisierul direct."""
+    import json as _json
+    from models import db, Angajat, Proiect, RaportActivitate
+    with app.app_context():
+        for cod, nume in (('PV-A', 'Proiect Preview Alfa'),
+                          ('PV-B', 'Proiect Preview Beta')):
+            if not Proiect.query.filter_by(cod_proiect=cod).first():
+                db.session.add(Proiect(cod_proiect=cod, nume=nume,
+                                       data_start=date(2026, 1, 1), status='activ'))
+        db.session.commit()
+        p1 = Proiect.query.filter_by(cod_proiect='PV-A').first()
+        p2 = Proiect.query.filter_by(cod_proiect='PV-B').first()
+        a = Angajat.query.filter_by(cnp='1994040404040').first()
+        if not a:
+            a = Angajat(cnp='1994040404040', nume='Preview', prenume='Test',
+                        status='activ', data_angajare=date(2020, 1, 1), functie='Inginer')
+            db.session.add(a); db.session.commit()
+        if not RaportActivitate.query.filter_by(angajat_id=a.id,
+                                                tip_activitate='lunara').first():
+            det = [
+                {'data': '2026-01-05', 'proiect_id': p1.id, 'text': 'Montaj', 'ore': 8},
+                {'data': '2026-01-06', 'proiect_id': p2.id, 'text': 'Turnare', 'ore': 6},
+            ]
+            db.session.add(RaportActivitate(
+                angajat_id=a.id, proiect_id=p1.id, tip_activitate='lunara',
+                data=date(2026, 1, 5), data_sfarsit=date(2026, 1, 6), luna_an='2026-01',
+                activitate_principala='Coordonare',
+                detalii_pe_zi=_json.dumps(det), status='aprobat'))
+            db.session.commit()
+        aid = a.id
+
+    r = authenticated_client.get(
+        f'/activitati/export/preview?angajat_id={aid}&luna_start=2026-01&luna_end=2026-01')
+    assert r.status_code == 200
+    assert r.data[:2] != b'PK'                          # e HTML, nu xlsx
+    html = r.get_data(as_text=True)
+    assert 'Preview Export EDIFICO' in html
+    assert 'Proiect Preview Alfa' in html               # proiect per zi (din detalii)
+    assert 'Proiect Preview Beta' in html
+    assert 'Lu 05 ian' in html                          # data in romana
+    assert '/activitati/export?' in html                # link spre exportul real
+    assert 'luna_start=2026-01' in html                 # cu aceiasi parametri
+    assert 'Descarca Excel' in html
+
+
 def test_export_nume_proiect_complet_si_rand_inalt(app, authenticated_client):
     """Numele proiectului apare COMPLET (fara trunchiere la 60) + randul e inaltat
     ca textul wrapuit sa fie vizibil + coloana Proiect e lata."""
