@@ -42,11 +42,11 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label class="gz-drop" id="gzDrop">
             <i class="fa-solid fa-file-arrow-up"></i>
-            <div style="margin-top:10px; font-weight:600;">Alege fisierul F3 (.xlsx sau .csv)</div>
+            <div style="margin-top:10px; font-weight:600;">Alege fisierul F3 (.xlsx, .xls sau .csv)</div>
             <div id="gzNume" style="margin-top:6px; color:var(--gray-500); font-size:0.85rem;">
                 Coloane asteptate: cod_articol, denumire, um, cantitate, obiect, tronson, categorie
             </div>
-            <input type="file" name="fisier" id="gzFile" accept=".xlsx,.xls,.csv" style="display:none;" required>
+            <input type="file" name="fisier" id="gzFile" accept=".xlsx,.xlsm,.xls,.csv,.xml" style="display:none;" required>
         </label>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:18px; flex-wrap:wrap; gap:12px;">
             <small style="color:var(--gray-500);">

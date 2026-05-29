@@ -16,7 +16,7 @@ F3 (XLSX/CSV) → import → clasificare tehnologica → durate → WBS → depe
 
 | Pas | Modul | Ce face |
 |-----|-------|---------|
-| Import | `import_engine.py` | citire streaming xlsx/csv, auto-detectie antet, mapare coloane, dedup, validare null |
+| Import | `import_engine.py` | citire streaming xlsx/csv + `.xls` binar (xlrd) + HTML/SpreadsheetML deghizat (detectie pe magic bytes), auto-detectie antet, mapare coloane, dedup, validare null |
 | Clasificare | `clasificare.py` | regex/keyword + fuzzy (difflib), insensibil la diacritice, sinonime, scor de incredere |
 | Durate | `durate.py` | `ceil(cantitate / randament_zi)` per categorie (config), minim 1 zi |
 | WBS | `wbs.py` | Obiect → Tronson → Categorie → Activitate, ID-uri `1.1.2.3`, niveluri 1..4 |

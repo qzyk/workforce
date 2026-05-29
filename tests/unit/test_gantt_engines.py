@@ -67,6 +67,76 @@ def test_import_format_necunoscut():
         import_engine.importa(b'x', '.pdf')
 
 
+# -- detectie format dupa CONTINUT (magic bytes), nu dupa extensie ------------
+_RANDURI_F3 = [
+    ('cod_articol', 'denumire', 'um', 'cantitate', 'obiect', 'tronson', 'categorie'),
+    ('ART001', 'Trasare traseu', 'm', '800', 'Retea apa', 'Strada A', 'Terasamente'),
+    ('ART002', 'Sapatura mecanizata', 'mc', '1200', 'Retea apa', 'Strada A', 'Terasamente'),
+    ('ART003', 'Pozare conducta PEHD', 'm', '800', 'Retea apa', 'Strada A', 'Conducte'),
+]
+
+
+def _xlsx_bytes():
+    from openpyxl import Workbook
+    wb = Workbook(); ws = wb.active
+    for r in _RANDURI_F3:
+        ws.append(list(r))
+    buf = io.BytesIO(); wb.save(buf)
+    return buf.getvalue()
+
+
+def _html_bytes():
+    h = "<html><head><meta charset='utf-8'></head><body><table border='1'>"
+    for r in _RANDURI_F3:
+        h += '<tr>' + ''.join(f'<td>{c}</td>' for c in r) + '</tr>'
+    return (h + '</table></body></html>').encode('utf-8')
+
+
+def _spreadsheetml_bytes():
+    x = ('<?xml version="1.0"?>\n<Workbook '
+         'xmlns="urn:schemas-microsoft-com:office:spreadsheet" '
+         'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'
+         '<Worksheet ss:Name="F3"><Table>')
+    for r in _RANDURI_F3:
+        x += '<Row>' + ''.join(
+            f'<Cell><Data ss:Type="String">{c}</Data></Cell>' for c in r) + '</Row>'
+    return (x + '</Table></Worksheet></Workbook>').encode('utf-8')
+
+
+def test_import_xlsx_real():
+    articole, raport = import_engine.importa(_xlsx_bytes(), '.xlsx')
+    assert raport['nr_articole'] == 3
+    assert articole[0].obiect == 'Retea apa'
+
+
+def test_import_html_deghizat_in_xlsx():
+    # export tipic de la softuri de devize: continut HTML cu extensia .xlsx
+    articole, raport = import_engine.importa(_html_bytes(), '.xlsx')
+    assert raport['nr_articole'] == 3
+    assert articole[1].denumire == 'Sapatura mecanizata'
+    assert articole[1].cantitate == 1200.0
+
+
+def test_import_spreadsheetml_xml():
+    articole, raport = import_engine.importa(_spreadsheetml_bytes(), '.xls')
+    assert raport['nr_articole'] == 3
+    assert articole[2].categorie == 'Conducte'
+
+
+def test_import_xls_binar_fara_continut_da_mesaj_clar():
+    # antet OLE2 valid dar continut bogus -> EroareImport prietenos (nu crash brut)
+    fake_xls = import_engine._MAGIC_OLE2 + b'\x00' * 256
+    with pytest.raises(import_engine.EroareImport) as ei:
+        import_engine.importa(fake_xls, '.xlsx')   # extensia minte, magic spune .xls
+    assert '.xls' in str(ei.value)
+
+
+def test_import_fisier_corupt_mesaj_prietenos():
+    with pytest.raises(import_engine.EroareImport) as ei:
+        import_engine.importa(b'doar text aleator, nu e excel \x00\x01', '.xlsx')
+    assert 'xlsx' in str(ei.value).lower()
+
+
 # ------------------------------------------------------------------ clasificare
 def test_clasificare_exacta_si_diacritice():
     c = Clasificator(cfg.CLASIFICARE_IMPLICITA, cfg.SETARI_IMPLICITE['sinonime'])

@@ -37,7 +37,7 @@ from services.gantt.validare import valideaza
 gantt_bp = Blueprint('gantt', __name__, url_prefix='/gantt')
 
 _DIR_TEMP = os.path.join(tempfile.gettempdir(), 'edifico_gantt')
-_EXT_OK = {'.xlsx', '.xlsm', '.xls', '.csv'}
+_EXT_OK = {'.xlsx', '.xlsm', '.xls', '.csv', '.xml'}
 _motor_cache = None
 
 
