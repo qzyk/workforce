@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}Configurare import Gantt{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('gantt.index') }}">Planificare Gantt (F3)</a></li>
+<li class="breadcrumb-item active">Configurare</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.cf-hero { background:#0B1426; color:#F5F1E8; border-radius:12px; padding:18px 24px; margin-bottom:18px; }
+.cf-hero h2 { margin:0 0 6px; color:#C9A961; font-size:1.3rem; }
+.cf-hero p { margin:0; color:rgba(245,241,232,.82); font-size:.9rem; max-width:840px; }
+.cf-tabs { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+.cf-tab { padding:8px 16px; border-radius:8px; background:#F5F1E8; color:#0B1426; text-decoration:none; font-weight:600; font-size:.88rem; }
+.cf-tab:hover { background:#EFE7D2; }
+.cf-card { background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:20px; box-shadow:0 2px 10px rgba(0,0,0,.05); margin-bottom:20px; }
+.cf-card h3 { margin:0 0 4px; color:#0B1426; font-size:1.08rem; }
+.cf-card .cf-sub { color:var(--gray-500); font-size:.83rem; margin-bottom:14px; }
+.cf-grup { border:1px solid #ECE7DA; border-radius:8px; padding:10px 12px; margin-bottom:10px; }
+.cf-grup-tit { font-weight:700; color:#A8893D; font-size:.82rem; text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px; }
+.cf-chip { display:inline-flex; align-items:center; gap:6px; background:#FBF8F0; border:1px solid #E8E3D5; border-radius:20px; padding:3px 6px 3px 12px; margin:3px 4px 3px 0; font-size:.82rem; }
+.cf-chip form { display:inline; margin:0; }
+.cf-x { border:none; background:transparent; color:#9B2222; cursor:pointer; font-size:.9rem; line-height:1; padding:2px 4px; }
+.cf-x:hover { color:#c00; }
+.cf-add { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; padding-top:10px; border-top:1px dashed #E8E3D5; }
+.cf-add input, .cf-add select { border:1px solid #E8E3D5; border-radius:6px; padding:6px 9px; font-size:.85rem; }
+.cf-add input[type=text] { min-width:160px; }
+.cf-btn { background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; border:none; padding:7px 14px; border-radius:7px; font-weight:700; cursor:pointer; font-size:.85rem; }
+.cf-btn-mic { background:#F5F1E8; color:#0B1426; border:1px solid #E8E3D5; padding:4px 9px; border-radius:6px; cursor:pointer; font-size:.78rem; }
+details.cf-ist { margin-top:8px; }
+details.cf-ist summary { cursor:pointer; color:var(--gray-500); font-size:.82rem; }
+table.cf-tab-prof { width:100%; border-collapse:collapse; font-size:.85rem; }
+table.cf-tab-prof th, table.cf-tab-prof td { border-bottom:1px solid #ECE7DA; padding:8px 10px; text-align:left; vertical-align:middle; }
+table.cf-tab-prof th { background:#F5F1E8; }
+.cf-mono { font-family:ui-monospace,Menlo,monospace; font-size:.78rem; color:var(--gray-600); }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set etichete = {'cod_articol':'Cod articol','denumire':'Denumire','um':'U.M.',
+                   'cantitate':'Cantitate','obiect':'Obiect','tronson':'Tronson/Sectiune',
+                   'categorie':'Categorie'} %}
+
+<div class="cf-hero">
+  <h2><i class="fa-solid fa-sliders"></i> Configurare import Gantt</h2>
+  <p>Reguli pe care motorul le foloseste cand importa fisiere F3. Editarile se aplica imediat
+     (suprascriu valorile implicite din fisierele JSON). Tot ce modifici e inregistrat in audit.</p>
+</div>
+
+<div class="cf-tabs">
+  <a class="cf-tab" href="#sinonime"><i class="fa-solid fa-table-columns"></i> Sinonime coloane</a>
+  <a class="cf-tab" href="#reguli"><i class="fa-solid fa-tags"></i> Reguli clasificare</a>
+  <a class="cf-tab" href="#profiluri"><i class="fa-solid fa-wand-magic-sparkles"></i> Profiluri mapare</a>
+  <a class="cf-tab" href="{{ url_for('gantt.index') }}"><i class="fa-solid fa-arrow-left"></i> Inapoi la upload</a>
+</div>
+
+<!-- ============ SINONIME COLOANE ============ -->
+<div class="cf-card" id="sinonime">
+  <h3>Sinonime coloane</h3>
+  <div class="cf-sub">Cum recunoaste motorul antetul: ce denumiri de coloana inseamna fiecare camp logic.</div>
+
+  {% for camp in campuri %}
+    {% set grup = sin_grup.get(camp) %}
+    <div class="cf-grup">
+      <div class="cf-grup-tit">{{ etichete.get(camp, camp) }}</div>
+      {% if grup and grup.active %}
+        {% for s in grup.active %}
+          <span class="cf-chip">{{ s.sinonim }}
+            <form method="POST" action="{{ url_for('gantt.config_comuta', entitate='sinonim', id_=s.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="cf-x" title="Dezactiveaza"><i class="fa-solid fa-eye-slash"></i></button>
+            </form>
+          </span>
+        {% endfor %}
+      {% else %}
+        <span style="color:var(--gray-400); font-size:.82rem;">— niciun sinonim activ —</span>
+      {% endif %}
+
+      <form class="cf-add" method="POST" action="{{ url_for('gantt.config_sinonim_add') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="camp" value="{{ camp }}">
+        <input type="text" name="sinonim" placeholder="adauga sinonim pentru {{ etichete.get(camp, camp) }}" required>
+        <button class="cf-btn"><i class="fa-solid fa-plus"></i> Adauga</button>
+      </form>
+
+      {% if grup and grup.inactive %}
+        <details class="cf-ist">
+          <summary>Istoric / dezactivate ({{ grup.inactive|length }})</summary>
+          {% for s in grup.inactive %}
+            <span class="cf-chip" style="opacity:.7;">{{ s.sinonim }}
+              <form method="POST" action="{{ url_for('gantt.config_comuta', entitate='sinonim', id_=s.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="cf-btn-mic" title="Reactiveaza"><i class="fa-solid fa-rotate-left"></i></button>
+              </form>
+              <form method="POST" action="{{ url_for('gantt.config_sterge', entitate='sinonim', id_=s.id) }}"
+                    onsubmit="return confirm('Stergi definitiv sinonimul?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="cf-x" title="Sterge definitiv"><i class="fa-solid fa-trash"></i></button>
+              </form>
+            </span>
+          {% endfor %}
+        </details>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+
+<!-- ============ REGULI CLASIFICARE ============ -->
+<div class="cf-card" id="reguli">
+  <h3>Reguli de clasificare</h3>
+  <div class="cf-sub">Cuvinte-cheie (in denumire) sau prefixe de cod articol care duc spre o categorie tehnologica.</div>
+
+  <form class="cf-add" method="POST" action="{{ url_for('gantt.config_regula_add') }}" style="border-top:none; margin-bottom:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="categorie" placeholder="CATEGORIE (ex: IZOLATII)" required>
+    <select name="tip_regula">
+      <option value="cuvant">cuvant-cheie</option>
+      <option value="prefix_cod">prefix cod</option>
+    </select>
+    <input type="text" name="valoare" placeholder="valoare (ex: hidroizolatie / IZ)" required>
+    <input type="number" name="prioritate" value="100" title="prioritate (mic = primul)" style="width:90px;">
+    <button class="cf-btn"><i class="fa-solid fa-plus"></i> Adauga regula</button>
+  </form>
+
+  {% for categorie, grup in reg_grup.items() %}
+    <div class="cf-grup">
+      <div class="cf-grup-tit">{{ categorie }}</div>
+      {% for r in grup.active %}
+        <span class="cf-chip">
+          {% if r.tip_regula == 'prefix_cod' %}<b class="cf-mono">cod:{{ r.valoare }}</b>{% else %}{{ r.valoare }}{% endif %}
+          <span style="color:var(--gray-400); font-size:.72rem;">p{{ r.prioritate }}</span>
+          <form method="POST" action="{{ url_for('gantt.config_comuta', entitate='regula', id_=r.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="cf-x" title="Dezactiveaza"><i class="fa-solid fa-eye-slash"></i></button>
+          </form>
+        </span>
+      {% endfor %}
+      {% if grup.inactive %}
+        <details class="cf-ist">
+          <summary>Istoric / dezactivate ({{ grup.inactive|length }})</summary>
+          {% for r in grup.inactive %}
+            <span class="cf-chip" style="opacity:.7;">
+              {% if r.tip_regula == 'prefix_cod' %}<b class="cf-mono">cod:{{ r.valoare }}</b>{% else %}{{ r.valoare }}{% endif %}
+              <form method="POST" action="{{ url_for('gantt.config_comuta', entitate='regula', id_=r.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="cf-btn-mic" title="Reactiveaza"><i class="fa-solid fa-rotate-left"></i></button>
+              </form>
+              <form method="POST" action="{{ url_for('gantt.config_sterge', entitate='regula', id_=r.id) }}"
+                    onsubmit="return confirm('Stergi definitiv regula?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="cf-x" title="Sterge definitiv"><i class="fa-solid fa-trash"></i></button>
+              </form>
+            </span>
+          {% endfor %}
+        </details>
+      {% endif %}
+    </div>
+  {% else %}
+    <p style="color:var(--gray-500);">Nicio regula. Adauga una mai sus.</p>
+  {% endfor %}
+</div>
+
+<!-- ============ PROFILURI MAPARE ============ -->
+<div class="cf-card" id="profiluri">
+  <h3>Profiluri de mapare</h3>
+  <div class="cf-sub">Mapari invatate din wizard. Se aplica automat la fisiere cu acelasi antet.</div>
+
+  {% if profiluri %}
+    <table class="cf-tab-prof">
+      <thead>
+        <tr><th>Nume</th><th>Mapare</th><th>Antet</th><th>Sursa</th><th>Folosit</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for it in profiluri %}
+          {% set p = it.p %}
+          <tr>
+            <td>
+              <form method="POST" action="{{ url_for('gantt.config_profil_redenumeste', id_=p.id) }}" style="display:flex; gap:6px;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="text" name="nume" value="{{ p.nume }}" style="border:1px solid #E8E3D5; border-radius:6px; padding:4px 7px; font-size:.82rem; min-width:140px;">
+                <button class="cf-btn-mic" title="Redenumeste"><i class="fa-solid fa-check"></i></button>
+              </form>
+            </td>
+            <td class="cf-mono">{{ it.rezumat or '—' }}</td>
+            <td>{{ 'rand ' ~ (it.rand_antet + 1) if it.rand_antet is not none else 'auto' }}</td>
+            <td>{{ p.sursa }}</td>
+            <td>{{ p.nr_utilizari }}×</td>
+            <td>
+              <form method="POST" action="{{ url_for('gantt.config_sterge', entitate='profil', id_=p.id) }}"
+                    onsubmit="return confirm('Stergi profilul {{ p.nume }}?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="cf-x" title="Sterge"><i class="fa-solid fa-trash"></i></button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p style="color:var(--gray-500);">Niciun profil inca. Se creeaza automat cand mapezi un fisier in wizard.</p>
+  {% endif %}
+</div>
+{% endblock %}

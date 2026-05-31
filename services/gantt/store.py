@@ -41,29 +41,33 @@ def _randuri_active(model, tenant_id: Optional[int]):
 # Domenii de configurare (fiecare: DB daca exista, altfel JSON).
 # ---------------------------------------------------------------------------
 def coloane(tenant_id: Optional[int] = None) -> dict:
-    """{camp_logic: [sinonime]} pentru maparea coloanelor de antet."""
+    """{camp_logic: [sinonime]} pentru maparea coloanelor de antet.
+    Fuziune pe camp: campurile cu randuri in DB suprascriu JSON; restul raman pe JSON."""
     from models import GanttSinonimColoana
+    base = dict(cfg.incarca('setari', cfg.SETARI_IMPLICITE).get(
+        'coloane', cfg.SETARI_IMPLICITE['coloane']))
     rows = _randuri_active(GanttSinonimColoana, tenant_id)
     if rows:
-        d: dict = {}
+        db_map: dict = {}
         for r in rows:
-            d.setdefault(r.camp, []).append(r.sinonim)
-        return d
-    return cfg.incarca('setari', cfg.SETARI_IMPLICITE).get(
-        'coloane', cfg.SETARI_IMPLICITE['coloane'])
+            db_map.setdefault(r.camp, []).append(r.sinonim)
+        base.update(db_map)
+    return base
 
 
 def clasificare(tenant_id: Optional[int] = None) -> dict:
-    """{CATEGORIE: [cuvinte-cheie]} pentru clasificare (doar regulile 'cuvant')."""
+    """{CATEGORIE: [cuvinte-cheie]} pentru clasificare (doar regulile 'cuvant').
+    Fuziune pe categorie: categoriile din DB suprascriu JSON; restul raman pe JSON."""
     from models import GanttClasificareRegula
+    base = dict(cfg.incarca('clasificare', cfg.CLASIFICARE_IMPLICITA))
     rows = _randuri_active(GanttClasificareRegula, tenant_id)
     cuvinte = [r for r in rows if r.tip_regula == 'cuvant'] if rows else None
     if cuvinte:
-        d: dict = {}
+        db_map: dict = {}
         for r in sorted(cuvinte, key=lambda x: (x.prioritate, x.id)):
-            d.setdefault(r.categorie, []).append(r.valoare)
-        return d
-    return cfg.incarca('clasificare', cfg.CLASIFICARE_IMPLICITA)
+            db_map.setdefault(r.categorie, []).append(r.valoare)
+        base.update(db_map)
+    return base
 
 
 def reguli_prefix_cod(tenant_id: Optional[int] = None) -> list:
@@ -216,3 +220,145 @@ def marcheaza_utilizare(profil) -> None:
             db.session.rollback()
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Administrare (CRUD pentru pagina /gantt/config). Audit-logat.
+# Returneaza ALL randurile (active + inactive) - spre deosebire de overlay-ul
+# de mai sus, care filtreaza doar activ=True.
+# ---------------------------------------------------------------------------
+def _model_admin(entitate: str):
+    from models import (GanttSinonimColoana, GanttClasificareRegula, GanttProfilMapare)
+    return {'sinonim': GanttSinonimColoana, 'regula': GanttClasificareRegula,
+            'profil': GanttProfilMapare}.get(entitate)
+
+
+def _scope(q, model, tenant_id):
+    from sqlalchemy import or_
+    if tenant_id is not None:
+        return q.filter(or_(model.tenant_id == tenant_id, model.tenant_id.is_(None)))
+    return q.filter(model.tenant_id.is_(None))
+
+
+def _audit(action: str, entity_type: str, entity_id, values: dict) -> None:
+    try:
+        from services import audit
+        audit.log(action, entity_type, entity_id, new_values=values, commit=True)
+    except Exception:
+        pass
+
+
+def lista_sinonime(tenant_id: Optional[int] = None) -> list:
+    from models import GanttSinonimColoana as M
+    return _scope(M.query, M, tenant_id).order_by(M.camp, M.sinonim).all()
+
+
+def lista_reguli(tenant_id: Optional[int] = None) -> list:
+    from models import GanttClasificareRegula as M
+    return _scope(M.query, M, tenant_id).order_by(
+        M.categorie, M.tip_regula, M.prioritate, M.valoare).all()
+
+
+def lista_profiluri(tenant_id: Optional[int] = None) -> list:
+    from models import GanttProfilMapare as M
+    return _scope(M.query, M, tenant_id).order_by(M.nr_utilizari.desc(), M.nume).all()
+
+
+def adauga_sinonim(camp: str, sinonim: str, tenant_id=None, user_id=None):
+    """(row, eroare). Reactiveaza daca exista dezactivat; refuza duplicat activ."""
+    from models import db, GanttSinonimColoana as M
+    camp = (camp or '').strip()
+    sinonim = (sinonim or '').strip()
+    if not camp or not sinonim:
+        return None, 'Camp si sinonim sunt obligatorii.'
+    ex = M.query.filter_by(tenant_id=tenant_id, camp=camp, sinonim=sinonim).first()
+    if ex:
+        if not ex.activ:
+            ex.activ = True
+            db.session.commit()
+            _audit('update', 'gantt_sinonim_coloana', ex.id, {'reactivat': True})
+            return ex, None
+        return ex, 'Sinonimul exista deja.'
+    row = M(camp=camp, sinonim=sinonim, activ=True, tenant_id=tenant_id, creat_de_id=user_id)
+    db.session.add(row)
+    db.session.commit()
+    _audit('create', 'gantt_sinonim_coloana', row.id, {'camp': camp, 'sinonim': sinonim})
+    return row, None
+
+
+def adauga_regula(categorie: str, tip_regula: str, valoare: str, prioritate: int = 100,
+                  tenant_id=None, user_id=None):
+    """(row, eroare). Reactiveaza daca exista dezactivat; refuza duplicat activ."""
+    from models import db, GanttClasificareRegula as M
+    categorie = (categorie or '').strip().upper()
+    tip_regula = (tip_regula or 'cuvant').strip()
+    valoare = (valoare or '').strip()
+    if tip_regula not in ('cuvant', 'prefix_cod'):
+        tip_regula = 'cuvant'
+    if not categorie or not valoare:
+        return None, 'Categorie si valoare sunt obligatorii.'
+    try:
+        prioritate = int(prioritate)
+    except (TypeError, ValueError):
+        prioritate = 100
+    ex = M.query.filter_by(tenant_id=tenant_id, categorie=categorie,
+                           tip_regula=tip_regula, valoare=valoare).first()
+    if ex:
+        if not ex.activ:
+            ex.activ = True
+            ex.prioritate = prioritate
+            db.session.commit()
+            _audit('update', 'gantt_clasificare_regula', ex.id, {'reactivat': True})
+            return ex, None
+        return ex, 'Regula exista deja.'
+    row = M(categorie=categorie, tip_regula=tip_regula, valoare=valoare,
+            prioritate=prioritate, activ=True, tenant_id=tenant_id, creat_de_id=user_id)
+    db.session.add(row)
+    db.session.commit()
+    _audit('create', 'gantt_clasificare_regula', row.id,
+           {'categorie': categorie, 'tip_regula': tip_regula, 'valoare': valoare})
+    return row, None
+
+
+def comuta_activ(entitate: str, id_: int, tenant_id=None):
+    """Comuta flag-ul activ (soft-enable/disable). Intoarce randul sau None."""
+    from models import db
+    M = _model_admin(entitate)
+    if M is None:
+        return None
+    row = db.session.get(M, id_)
+    if not row or not hasattr(row, 'activ'):
+        return None
+    if getattr(row, 'tenant_id', None) not in (None, tenant_id):
+        return None
+    row.activ = not row.activ
+    db.session.commit()
+    _audit('update', M.__tablename__, id_, {'activ': row.activ})
+    return row
+
+
+def sterge_rand(entitate: str, id_: int, tenant_id=None) -> bool:
+    """Sterge definitiv un rand (sinonim/regula/profil). Intoarce True la succes."""
+    from models import db
+    M = _model_admin(entitate)
+    row = db.session.get(M, id_) if M else None
+    if not row:
+        return False
+    if getattr(row, 'tenant_id', None) not in (None, tenant_id):
+        return False
+    tn = M.__tablename__
+    db.session.delete(row)
+    db.session.commit()
+    _audit('delete', tn, id_, {})
+    return True
+
+
+def redenumeste_profil(id_: int, nume: str, tenant_id=None) -> bool:
+    from models import db, GanttProfilMapare as M
+    row = db.session.get(M, id_)
+    if not row or getattr(row, 'tenant_id', None) not in (None, tenant_id):
+        return False
+    row.nume = (nume or row.nume).strip()[:120]
+    db.session.commit()
+    _audit('update', 'gantt_profil_mapare', id_, {'nume': row.nume})
+    return True

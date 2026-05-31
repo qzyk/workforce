@@ -49,6 +49,12 @@ def _motor() -> MotorPlanificare:
     return _motor_cache
 
 
+def _invalideaza_motor():
+    """Forteaza reincarcarea configului la urmatorul import (dupa editari in admin)."""
+    global _motor_cache
+    _motor_cache = None
+
+
 def _curata_temp(varsta_max_s: int = 7200):
     """Sterge fisierele temporare mai vechi de varsta_max_s (best-effort)."""
     try:
@@ -338,6 +344,94 @@ def mapare():
                            harta_inv=harta_inv, nr_coloane=analiza['nr_coloane'],
                            campuri=analiza['campuri'], rand_antet_def=rand_antet_def,
                            nume_fisier=nume_fisier)
+
+
+# ============================================================ ADMIN CONFIG
+@gantt_bp.route('/config')
+@login_required
+def config():
+    """Pagina de administrare: sinonime coloane, reguli clasificare, profiluri mapare."""
+    from collections import OrderedDict
+    tid = getattr(current_user, 'tenant_id', None)
+    campuri = ['cod_articol', 'denumire', 'um', 'cantitate', 'obiect', 'tronson', 'categorie']
+
+    sin_grup = OrderedDict((c, {'active': [], 'inactive': []}) for c in campuri)
+    for s in store.lista_sinonime(tid):
+        g = sin_grup.setdefault(s.camp, {'active': [], 'inactive': []})
+        (g['active'] if s.activ else g['inactive']).append(s)
+
+    reg_grup = OrderedDict()
+    for r in store.lista_reguli(tid):
+        g = reg_grup.setdefault(r.categorie, {'active': [], 'inactive': []})
+        (g['active'] if r.activ else g['inactive']).append(r)
+
+    profiluri = []
+    for p in store.lista_profiluri(tid):
+        col, ra = store.profil_mapare(p)
+        profiluri.append({'p': p, 'rand_antet': ra,
+                          'rezumat': ', '.join(f'{k}→c{v}' for k, v in col.items())})
+
+    return render_template('gantt/config.html', sin_grup=sin_grup, reg_grup=reg_grup,
+                           profiluri=profiluri, campuri=campuri)
+
+
+@gantt_bp.route('/config/sinonim', methods=['POST'])
+@login_required
+def config_sinonim_add():
+    _row, err = store.adauga_sinonim(
+        request.form.get('camp'), request.form.get('sinonim'),
+        tenant_id=getattr(current_user, 'tenant_id', None),
+        user_id=getattr(current_user, 'id', None))
+    _invalideaza_motor()
+    flash(err or 'Sinonim adaugat.', 'warning' if err else 'success')
+    return redirect(url_for('gantt.config') + '#sinonime')
+
+
+@gantt_bp.route('/config/regula', methods=['POST'])
+@login_required
+def config_regula_add():
+    _row, err = store.adauga_regula(
+        request.form.get('categorie'), request.form.get('tip_regula', 'cuvant'),
+        request.form.get('valoare'), request.form.get('prioritate', 100),
+        tenant_id=getattr(current_user, 'tenant_id', None),
+        user_id=getattr(current_user, 'id', None))
+    _invalideaza_motor()
+    flash(err or 'Regula adaugata.', 'warning' if err else 'success')
+    return redirect(url_for('gantt.config') + '#reguli')
+
+
+@gantt_bp.route('/config/<entitate>/<int:id_>/comuta', methods=['POST'])
+@login_required
+def config_comuta(entitate, id_):
+    if entitate not in ('sinonim', 'regula'):
+        abort(404)
+    row = store.comuta_activ(entitate, id_, getattr(current_user, 'tenant_id', None))
+    _invalideaza_motor()
+    flash('Stare actualizata.' if row else 'Nu am gasit randul.',
+          'success' if row else 'warning')
+    return redirect(url_for('gantt.config'))
+
+
+@gantt_bp.route('/config/<entitate>/<int:id_>/sterge', methods=['POST'])
+@login_required
+def config_sterge(entitate, id_):
+    if entitate not in ('sinonim', 'regula', 'profil'):
+        abort(404)
+    ok = store.sterge_rand(entitate, id_, getattr(current_user, 'tenant_id', None))
+    if entitate in ('sinonim', 'regula'):
+        _invalideaza_motor()
+    flash('Sters definitiv.' if ok else 'Nu am gasit randul.', 'success' if ok else 'warning')
+    return redirect(url_for('gantt.config'))
+
+
+@gantt_bp.route('/config/profil/<int:id_>/redenumeste', methods=['POST'])
+@login_required
+def config_profil_redenumeste(id_):
+    ok = store.redenumeste_profil(id_, request.form.get('nume', ''),
+                                  getattr(current_user, 'tenant_id', None))
+    flash('Profil redenumit.' if ok else 'Nu am gasit profilul.',
+          'success' if ok else 'warning')
+    return redirect(url_for('gantt.config') + '#profiluri')
 
 
 # ============================================================ REST API (JSON)
