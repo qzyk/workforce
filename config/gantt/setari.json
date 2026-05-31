@@ -12,13 +12,19 @@
     "PROBE": {"randament_zi": 300, "um": "m"}
   },
   "coloane": {
-    "cod_articol": ["cod_articol", "cod", "articol", "nr", "nr crt", "pozitie"],
-    "denumire": ["denumire", "descriere", "denumirea lucrarii", "lucrare", "denumire articol"],
-    "um": ["um", "u.m.", "unitate", "unitate de masura", "unitatea de masura"],
-    "cantitate": ["cantitate", "cant", "cant.", "qty", "cantitati"],
-    "obiect": ["obiect", "obiectiv", "obiect deviz"],
-    "tronson": ["tronson", "strada", "sector", "zona"],
-    "categorie": ["categorie", "capitol", "categoria de lucrari"]
+    "cod_articol": ["cod_articol", "cod", "articol", "art.", "simbol", "indicativ",
+                    "nr", "nr.", "nr crt", "nr. crt.", "nr.crt", "nr/no", "pozitie",
+                    "poz", "poz."],
+    "denumire": ["denumire", "denumirea", "descriere", "denumirea lucrarii",
+                 "denumirea lucrarilor", "lucrare", "denumire articol", "denumire/ name",
+                 "specificatie", "capitol de lucrari", "capitolul de lucrari"],
+    "um": ["um", "u.m.", "u.m", "u/m", "unitate", "unitate de masura",
+           "unitatea de masura"],
+    "cantitate": ["cantitate", "cantitatea", "cant", "cant.", "qty", "cantitati"],
+    "obiect": ["obiect", "obiectul", "obiectiv", "obiectivul", "obiect deviz",
+               "stadiul fizic"],
+    "tronson": ["tronson", "strada", "sector", "zona", "corp"],
+    "categorie": ["categorie", "categoria de lucrari", "categoria"]
   },
   "sinonime": {
     "teava": "conducta",

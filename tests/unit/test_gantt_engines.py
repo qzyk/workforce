@@ -137,6 +137,71 @@ def test_import_fisier_corupt_mesaj_prietenos():
     assert 'xlsx' in str(ei.value).lower()
 
 
+# -- structura F3 reala: multi-sheet, antet pe rand 4, obiect din nume sheet,
+#    randuri-titlu de sectiune, articole fara cod, randuri NOTA -----------------
+def _xlsx_f3_real():
+    """Construieste un xlsx ca un F3 real de devize (Hala Campina-style)."""
+    from openpyxl import Workbook
+    wb = Workbook()
+    # sheet 1: pagina de titlu, fara tabel -> trebuie sarit
+    ws0 = wb.active
+    ws0.title = 'TITLE PAGE'
+    ws0.append(['PROIECT TEHNIC'])
+    ws0.append(['Beneficiar: X'])
+    ws0.append(['F3 - Lista de cantitati'])
+
+    def _adauga_obiect(ws):
+        ws.append(['Formular F3', '', '', '', ''])          # rand 1: titlu liber
+        ws.append(['Lista cu cantitati de lucrari', '', '', '', ''])  # rand 2
+        ws.append(['', '', '', '', ''])                      # rand 3: gol
+        ws.append(['Nr./No.', 'DENUMIRE/ NAME', 'U.M.', 'CANTITATE', 'PRET UNITAR'])  # rand 4 = antet
+        ws.append(['0', '1', '2', '3', '4'])                 # rand 5: numerotare coloane
+        ws.append(['', 'INSTALATII SANITARE', '', '', ''])   # subtitlu disciplina (col 1)
+        ws.append(['1.', 'HIDRANTI INTERIORI', '', 0, 0])    # titlu sectiune (fara um/cant)
+        ws.append(['1.0', 'Hidrant interior cu furtun', 'set', 7, 0])    # articol
+        ws.append(['2.0', 'Teava din otel zincata', 'm', 50, 0])         # articol
+        ws.append(['', 'idem DN65', 'm', 30, 0])             # articol FARA cod -> AUTO
+        ws.append(['2.', 'OBIECTE SANITARE', '', 0, 0])      # alt titlu sectiune
+        ws.append(['1.0', 'Lavoar portelan', 'buc', 4, 0])   # cod "1.0" se repeta -> dedup
+        ws.append(['NOTA', '', '', '', ''])                  # incepe disclaimerul
+        ws.append(['', 'Orice nume de produs e cu titlu informativ si...', '', '', ''])
+
+    _adauga_obiect(wb.create_sheet('2.1 Obiect 1 - Anexa'))
+    _adauga_obiect(wb.create_sheet('2.3 Obiect 2 - Hala'))
+    buf = io.BytesIO(); wb.save(buf)
+    return buf.getvalue()
+
+
+def test_import_f3_real_multi_sheet():
+    articole, raport = import_engine.importa(_xlsx_f3_real(), '.xlsx')
+    # TITLE PAGE sarit, 2 obiecte procesate
+    assert raport['nr_sheeturi'] == 3
+    assert 'TITLE PAGE' in raport['sheeturi_sarite']
+    # antet gasit pe randul 4 (nu pe primul), coloanele mapate corect
+    assert raport['rand_antet'] == 4
+    assert raport['coloane_mapate']['denumire'] == 'DENUMIRE/ NAME'
+    assert raport['coloane_mapate']['um'] == 'U.M.'
+    # 4 articole reale per sheet x 2 sheet-uri = 8
+    assert raport['nr_articole'] == 8
+    # obiect derivat din numele sheet-ului (fara prefixul "2.1 ")
+    obiecte = {a.obiect for a in articole}
+    assert obiecte == {'Obiect 1 - Anexa', 'Obiect 2 - Hala'}
+
+
+def test_import_f3_real_titlu_articol_si_cod_auto():
+    articole, raport = import_engine.importa(_xlsx_f3_real(), '.xlsx')
+    o1 = [a for a in articole if a.obiect == 'Obiect 1 - Anexa']
+    # articolul fara cod a primit un cod AUTO (nu s-a pierdut)
+    assert any(a.cod_articol.startswith('AUTO') and a.denumire == 'idem DN65' for a in o1)
+    # randul-titlu de sectiune a devenit tronson, nu articol
+    tronsoane = {a.tronson for a in o1}
+    assert 'HIDRANTI INTERIORI' in tronsoane and 'OBIECTE SANITARE' in tronsoane
+    # randul NOTA si disclaimerul de dupa nu au generat articole
+    assert all('titlu informativ' not in a.denumire for a in articole)
+    # cod-ul "1.0" repetat in a doua sectiune a fost dedup-uit, nu pierdut
+    assert raport['nr_duplicate_redenumite'] >= 1
+
+
 # ------------------------------------------------------------------ clasificare
 def test_clasificare_exacta_si_diacritice():
     c = Clasificator(cfg.CLASIFICARE_IMPLICITA, cfg.SETARI_IMPLICITE['sinonime'])
