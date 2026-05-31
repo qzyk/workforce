@@ -1,10 +1,16 @@
 {
+  "DEMONTARI": ["demontare", "demontari", "demontaj", "desfacere", "desfaceri", "demolare", "dezmembrare", "scoatere", "indepartare"],
+  "PROBE": ["proba de presiune", "proba presiune", "proba de etanseitate", "proba etanseitate", "efectuarea probei", "efectuare proba", "etanseitate", "spalarea conductelor", "spalarea", "spalare conducta", "spalare", "dezinfectie", "dezinfectare", "verificare", "punere in functiune"],
+  "OBIECTE_SANITARE": ["instalatie completa", "obiect sanitar", "obiecte sanitare", "lavoar", "vas wc", "vas de wc", "wc", "pisoar", "spalator", "dus", "cabina dus", "cada", "cadita", "chiuveta", "baterie", "rigola", "rigola scurgere", "sifon de pardoseala", "scurgere", "uscator de maini", "dispenser", "accesorii pentru baie", "accesorii baie", "rezervor wc"],
+  "IZOLATII": ["izolatie", "izolatii", "izolare", "hidroizolatie", "hidroizolatii", "termoizolatie", "protectie anticoroziva", "protejare la foc", "protejare antifoc", "banda izolatoare", "banda", "vata minerala", "vata", "armaflex", "cauciuc sintetic", "manson termoizolant"],
+  "APARATURA_AMC": ["termostat", "senzor", "automatizare", "tablou de automatizare", "tablou automatizare", "debitmetru", "contor", "apometru", "regulator", "traductor", "termometru", "presostat"],
+  "TRANSPORT": ["transport moloz", "transport materiale", "transport", "moloz", "incarcare", "descarcare"],
+  "CAMINE": ["camin de vizitare", "camin vizitare", "montaj camin", "camine", "camin"],
+  "POZARE_CONDUCTA": ["pozare conducta", "pozare canalizare", "pozare tuburi", "pozare tub", "montaj teava", "montaj conducta", "montare conducta", "teava din otel", "teava din polipropilena", "teava din cupru", "teava", "tevi", "conducta", "conducte", "tub de protectie", "tub", "tubulatura", "coloana"],
+  "ARMATURI": ["robinet", "robineti", "vana", "vane", "clapeta", "clapete", "obturator", "reductie", "reductor", "adaptor", "racord", "olandez", "fiting", "fitinguri", "mufa", "niplu", "cot", "teu", "flansa", "compensator", "separator", "filtru", "manometru", "hidrant", "colier", "bratara", "piesa de legatura", "piesa de capat", "piesa de trecere", "piesa"],
   "TRASARE": ["trasare", "trasari", "pichetare", "pichetaj"],
-  "SAPATURA": ["sapatura", "sapaturi", "excavare", "excavatie", "decopertare", "sapare", "sapatura mecanizata", "sapatura manuala"],
-  "SPRIJINIRI": ["sprijinire", "sprijiniri", "epuismente", "epuisment"],
-  "POZARE_CONDUCTA": ["pozare conducta", "montaj teava", "montaj conducta", "pozare tub", "pozare tuburi", "montare conducta", "pozare canalizare"],
-  "CAMINE": ["camin", "camine", "camin vizitare", "montaj camin"],
-  "UMPLUTURA": ["umplutura", "umpluturi", "compactare", "strat de balast", "umplere", "reumplere", "strat nisip"],
-  "REFACERE": ["asfalt", "refacere carosabil", "refacere imbracaminte", "covor asfaltic", "refacere", "refacere sistem rutier", "refacere trotuar"],
-  "PROBE": ["proba de presiune", "proba presiune", "spalare conducta", "dezinfectie", "proba etanseitate"]
+  "SAPATURA": ["sapatura mecanizata", "sapatura manuala", "sapatura", "sapaturi", "excavare", "excavatie", "decopertare", "sapare"],
+  "SPRIJINIRI": ["sprijinire", "sprijiniri", "epuismente", "epuisment", "epuizmente"],
+  "UMPLUTURA": ["umplutura", "umpluturi", "strat de balast", "strat nisip", "strat de nisip", "compactare", "umplere", "reumplere"],
+  "REFACERE": ["refacere sistem rutier", "refacere carosabil", "refacere imbracaminte", "refacere trotuar", "covor asfaltic", "asfalt", "refacere"]
 }

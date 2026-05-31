@@ -37,14 +37,15 @@ class MotorPlanificare:
         self.dict_clasificare = clasificare or store.clasificare(tenant_id)
         self.dependinte = dependinte or store.dependinte(tenant_id)
         self.setari = setari or store.setari(tenant_id)
-        self.clasificator = Clasificator(self.dict_clasificare, self.setari.get('sinonime'))
+        self.clasificator = Clasificator(self.dict_clasificare, self.setari.get('sinonime'),
+                                         reguli_prefix=store.reguli_prefix_cod(tenant_id))
 
     # -- pas cu pas (mapeaza endpoint-urile API) --
     def clasifica_articole(self, articole) -> list:
         """Transforma articole F3 -> activitati clasificate (cu durata estimata)."""
         activitati = []
         for i, art in enumerate(articole, start=1):
-            cat, scor = self.clasificator.clasifica(art.denumire)
+            cat, scor = self.clasificator.clasifica(art.denumire, art.cod_articol)
             durata = estimeaza_durata(art.cantitate, cat, self.setari)
             activitati.append(Activitate(
                 id=f'A{i:06d}',

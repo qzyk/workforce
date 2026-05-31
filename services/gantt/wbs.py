@@ -19,11 +19,17 @@ NUME_CATEGORIE = {
     'TRASARE': 'Trasari si pichetaj',
     'SAPATURA': 'Sapaturi',
     'SPRIJINIRI': 'Sprijiniri si epuismente',
-    'POZARE_CONDUCTA': 'Pozare conducta',
+    'POZARE_CONDUCTA': 'Pozare conducta / tevi',
     'CAMINE': 'Camine',
     'UMPLUTURA': 'Umpluturi si compactari',
     'REFACERE': 'Refaceri',
     'PROBE': 'Probe si receptii',
+    'DEMONTARI': 'Demontari si desfaceri',
+    'TRANSPORT': 'Transporturi',
+    'ARMATURI': 'Armaturi si fitinguri',
+    'OBIECTE_SANITARE': 'Obiecte sanitare',
+    'IZOLATII': 'Izolatii si protectii',
+    'APARATURA_AMC': 'Aparatura AMC / automatizari',
 }
 
 

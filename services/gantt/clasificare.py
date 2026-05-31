@@ -20,18 +20,32 @@ from typing import Optional, Tuple
 from .normalizare import normalizeaza
 
 
+def _norm_cod(c) -> str:
+    """Normalizeaza un cod/prefix de articol: fara diacritice, doar litere+cifre, lowercase.
+    'TSA01B01>' -> 'tsa01b01' ; '1.0' -> '10'."""
+    if not c:
+        return ''
+    return re.sub(r'[^a-z0-9]', '', normalizeaza(str(c)))
+
+
 class Clasificator:
     def __init__(self, dictionar: dict, sinonime: Optional[dict] = None,
-                 prag_fuzzy: float = 0.84):
+                 prag_fuzzy: float = 0.84, reguli_prefix: Optional[list] = None):
         """
         Args:
             dictionar: {CATEGORIE: [cuvinte-cheie / expresii]}.
             sinonime: {termen: inlocuire} aplicate inainte de clasificare.
             prag_fuzzy: scor minim pentru a accepta o potrivire fuzzy.
+            reguli_prefix: [(prefix_cod, CATEGORIE, prioritate)] - clasificare pe
+                prefixul codului de articol (indicativ eDevize), incercata PRIMA.
         """
         self.prag_fuzzy = prag_fuzzy
         self.sinonime = [(re.compile(r'\b' + re.escape(normalizeaza(k)) + r'\b'), normalizeaza(v))
                          for k, v in (sinonime or {}).items()]
+        # prefixe normalizate (fara spatii/punctuatie), cele mai lungi primele
+        self.reguli_prefix = sorted(
+            [(_norm_cod(p), cat) for p, cat, _pr in (reguli_prefix or []) if _norm_cod(p)],
+            key=lambda t: -len(t[0]))
         self.categorii: dict[str, list[str]] = {}
         self._patterns: dict[str, list] = {}
         for cat, chei in dictionar.items():
@@ -46,8 +60,24 @@ class Clasificator:
             t = rx.sub(repl, t)
         return t
 
-    def clasifica(self, denumire: str) -> Tuple[Optional[str], float]:
-        """Intoarce (categorie | None, scor_incredere 0..1)."""
+    def _din_prefix(self, cod: str) -> Optional[str]:
+        """Categoria dupa prefixul codului de articol (sau None)."""
+        cn = _norm_cod(cod)
+        if not cn:
+            return None
+        for prefix, cat in self.reguli_prefix:
+            if cn.startswith(prefix):
+                return cat
+        return None
+
+    def clasifica(self, denumire: str, cod: Optional[str] = None) -> Tuple[Optional[str], float]:
+        """Intoarce (categorie | None, scor_incredere 0..1).
+        Daca `cod` are un prefix cunoscut, are prioritate (incredere 1.0)."""
+        # 0. prefix de cod (indicativ) - cea mai sigura sursa
+        cat_prefix = self._din_prefix(cod) if cod else None
+        if cat_prefix:
+            return (cat_prefix, 1.0)
+
         t0 = normalizeaza(denumire)
         if not t0:
             return (None, 0.0)

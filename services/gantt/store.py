@@ -71,14 +71,17 @@ def clasificare(tenant_id: Optional[int] = None) -> dict:
 
 
 def reguli_prefix_cod(tenant_id: Optional[int] = None) -> list:
-    """[(prefix, CATEGORIE, prioritate)] pentru clasificare pe prefix de cod (Faza 3)."""
+    """[(prefix, CATEGORIE, prioritate)] pentru clasificare pe prefix de cod (indicativ).
+    Fuziune: prefixe.json ca baza, randurile 'prefix_cod' din DB suprascriu/adauga."""
+    prefixe = cfg.incarca('prefixe', {}) or {}
+    base = {str(k): v for k, v in prefixe.items() if not str(k).startswith('_')}
     from models import GanttClasificareRegula
     rows = _randuri_active(GanttClasificareRegula, tenant_id)
-    if not rows:
-        return []
-    pref = [r for r in rows if r.tip_regula == 'prefix_cod']
-    return [(r.valoare, r.categorie, r.prioritate)
-            for r in sorted(pref, key=lambda x: (x.prioritate, -len(x.valoare or '')))]
+    if rows:
+        for r in rows:
+            if r.tip_regula == 'prefix_cod' and r.valoare:
+                base[r.valoare] = r.categorie
+    return [(p, c, 100) for p, c in base.items()]
 
 
 def dependinte(tenant_id: Optional[int] = None) -> dict:
@@ -362,3 +365,45 @@ def redenumeste_profil(id_: int, nume: str, tenant_id=None) -> bool:
     db.session.commit()
     _audit('update', 'gantt_profil_mapare', id_, {'nume': row.nume})
     return True
+
+
+def sync_din_json(tenant_id: Optional[int] = None, user_id: Optional[int] = None) -> dict:
+    """Adauga in DB regulile din config/gantt/*.json care LIPSESC (idempotent, doar ADAUGA;
+    nu sterge si nu modifica editarile existente). Necesar dupa update de dictionar pe prod,
+    fiindca overlay-ul foloseste DB-ul cand exista randuri. Intoarce {sinonime, reguli, prefixe}."""
+    from flask import has_app_context
+    if not has_app_context():
+        return {}
+    from models import db, GanttSinonimColoana, GanttClasificareRegula
+    adaugate = {'sinonime': 0, 'reguli': 0, 'prefixe': 0}
+
+    ex_sin = {(s.camp, s.sinonim)
+              for s in GanttSinonimColoana.query.filter_by(tenant_id=tenant_id).all()}
+    for camp, syns in cfg.incarca('setari', cfg.SETARI_IMPLICITE).get('coloane', {}).items():
+        for s in syns:
+            if (camp, s) not in ex_sin:
+                db.session.add(GanttSinonimColoana(camp=camp, sinonim=s, activ=True,
+                               tenant_id=tenant_id, creat_de_id=user_id))
+                ex_sin.add((camp, s)); adaugate['sinonime'] += 1
+
+    ex_cl = {(r.categorie, r.tip_regula, r.valoare)
+             for r in GanttClasificareRegula.query.filter_by(tenant_id=tenant_id).all()}
+    for cat, words in cfg.incarca('clasificare', cfg.CLASIFICARE_IMPLICITA).items():
+        for w in words:
+            if (cat, 'cuvant', w) not in ex_cl:
+                db.session.add(GanttClasificareRegula(categorie=cat, tip_regula='cuvant',
+                               valoare=w, prioritate=100, activ=True,
+                               tenant_id=tenant_id, creat_de_id=user_id))
+                ex_cl.add((cat, 'cuvant', w)); adaugate['reguli'] += 1
+
+    for prefix, cat in (cfg.incarca('prefixe', {}) or {}).items():
+        if str(prefix).startswith('_'):
+            continue
+        if (cat, 'prefix_cod', prefix) not in ex_cl:
+            db.session.add(GanttClasificareRegula(categorie=cat, tip_regula='prefix_cod',
+                           valoare=prefix, prioritate=100, activ=True,
+                           tenant_id=tenant_id, creat_de_id=user_id))
+            ex_cl.add((cat, 'prefix_cod', prefix)); adaugate['prefixe'] += 1
+
+    db.session.commit()
+    return adaugate

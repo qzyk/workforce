@@ -9,7 +9,13 @@
     "CAMINE": {"randament_zi": 1, "um": "buc"},
     "UMPLUTURA": {"randament_zi": 250, "um": "mc"},
     "REFACERE": {"randament_zi": 150, "um": "mp"},
-    "PROBE": {"randament_zi": 300, "um": "m"}
+    "PROBE": {"randament_zi": 300, "um": "m"},
+    "DEMONTARI": {"randament_zi": 100, "um": "m"},
+    "TRANSPORT": {"randament_zi": 50, "um": "to"},
+    "ARMATURI": {"randament_zi": 8, "um": "buc"},
+    "OBIECTE_SANITARE": {"randament_zi": 3, "um": "buc"},
+    "IZOLATII": {"randament_zi": 50, "um": "mp"},
+    "APARATURA_AMC": {"randament_zi": 5, "um": "buc"}
   },
   "coloane": {
     "cod_articol": ["cod_articol", "cod", "articol", "art.", "simbol", "indicativ",

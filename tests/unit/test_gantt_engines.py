@@ -230,6 +230,43 @@ def test_clasificare_neclasificat():
     assert cat is None
 
 
+def test_clasificare_categorii_noi_sanitare():
+    # dictionarul real (config/gantt/clasificare.json) - calibrat pe instalatii sanitare
+    c = Clasificator(cfg.incarca('clasificare', cfg.CLASIFICARE_IMPLICITA),
+                     cfg.incarca('setari', cfg.SETARI_IMPLICITE).get('sinonime'))
+    cazuri = {
+        'Robinet cu obturator sferic Dn15': 'ARMATURI',
+        'Reductie PPR 25-20': 'ARMATURI',
+        'Clapeta de sens': 'ARMATURI',
+        'Hidrant interior cu furtun plat': 'ARMATURI',
+        'Instalatie completa pentru WC': 'OBIECTE_SANITARE',
+        'Vas Pisoar din portelan sanitar': 'OBIECTE_SANITARE',
+        'Protejare la foc a strapungerilor': 'IZOLATII',
+        'Banda izolatoare': 'IZOLATII',
+        'Demontare conducte de canalizare': 'DEMONTARI',
+        'Transport moloz': 'TRANSPORT',
+        'Efectuarea probei de etanseitate': 'PROBE',
+        'Spalarea conductelor de apa': 'PROBE',
+        'Teava din otel zincata inclusiv fitinguri': 'POZARE_CONDUCTA',
+        'Termostat de ambianta': 'APARATURA_AMC',
+    }
+    for d, cat in cazuri.items():
+        assert c.clasifica(d)[0] == cat, d
+
+
+def test_clasificare_prefix_cod():
+    c = Clasificator({'SAPATURA': ['sapatura']},
+                     reguli_prefix=[('TSA', 'SAPATURA', 100),
+                                    ('ACE', 'POZARE_CONDUCTA', 100),
+                                    ('SD', 'OBIECTE_SANITARE', 100)])
+    # prefixul de cod are prioritate, indiferent de denumire
+    assert c.clasifica('text irelevant', 'TSA02B1>') == ('SAPATURA', 1.0)
+    assert c.clasifica('orice', 'ACE10A')[0] == 'POZARE_CONDUCTA'
+    # cod fara prefix cunoscut (ex: numar de rand '1.0') -> cade pe denumire
+    assert c.clasifica('sapatura manuala', '1.0')[0] == 'SAPATURA'
+    assert c.clasifica('necunoscut zzz', '1.0')[0] is None
+
+
 # ---------------------------------------------------------------------- durate
 def test_durata_din_randament():
     setari = cfg.SETARI_IMPLICITE

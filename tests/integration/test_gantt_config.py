@@ -79,3 +79,15 @@ def test_sterge_profil(authenticated_client, app):
     assert r.status_code == 302
     with app.app_context():
         assert GanttProfilMapare.query.get(pid) is None
+
+
+def test_sync_din_json_idempotent(app):
+    from models import GanttClasificareRegula
+    with app.app_context():
+        a1 = store.sync_din_json()
+        assert a1['reguli'] > 0 and a1['prefixe'] > 0      # prima rulare populeaza
+        assert GanttClasificareRegula.query.filter_by(tip_regula='prefix_cod').count() > 0
+        # overlay-ul vede acum prefixele si categoriile noi
+        assert 'IZOLATII' in store.clasificare()
+        a2 = store.sync_din_json()
+        assert a2 == {'sinonime': 0, 'reguli': 0, 'prefixe': 0}  # a doua nu mai adauga
