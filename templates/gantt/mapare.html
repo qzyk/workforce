@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Mapare coloane F3{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('gantt.index') }}">Planificare Gantt (F3)</a></li>
+<li class="breadcrumb-item active">Mapare coloane</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.mz-hero { background:#0B1426; color:#F5F1E8; border-radius:12px; padding:20px 24px; margin-bottom:18px; }
+.mz-hero h2 { margin:0 0 6px; color:#C9A961; font-size:1.3rem; }
+.mz-hero p { margin:0; color:rgba(245,241,232,0.82); max-width:820px; font-size:.9rem; }
+.mz-card { background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:20px; box-shadow:0 2px 10px rgba(0,0,0,0.05); }
+.mz-badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:.78rem; font-weight:700; }
+.mz-sigur { background:#E5F4E8; color:#1B7a34; }
+.mz-partial { background:#FBF1D6; color:#8A6A12; }
+.mz-nesigur { background:#FAE3E3; color:#9B2222; }
+.mz-grid-wrap { overflow-x:auto; border:1px solid #E8E3D5; border-radius:8px; margin-top:6px; }
+table.mz-grid { border-collapse:collapse; font-size:.8rem; min-width:100%; }
+table.mz-grid th, table.mz-grid td { border:1px solid #ECE7DA; padding:5px 8px; white-space:nowrap; max-width:280px; overflow:hidden; text-overflow:ellipsis; }
+table.mz-grid thead th { background:#F5F1E8; position:sticky; top:0; }
+.mz-colsel { width:100%; border:1px solid #C9A961; border-radius:6px; padding:4px; font-size:.78rem; background:#FBF8F0; }
+.mz-rowhdr { background:#FBF8F0; text-align:center; }
+tr.mz-antet td { background:#F3EAD0 !important; font-weight:600; }
+.mz-radio-cell { text-align:center; background:#FAFAF7; }
+.mz-btn-gold { background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; border:none; padding:11px 22px; border-radius:8px; font-weight:700; cursor:pointer; }
+.mz-legend { font-size:.8rem; color:var(--gray-500); margin:10px 0; }
+.mz-opt { margin:12px 0; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+.mz-opt input[type=text] { border:1px solid #E8E3D5; border-radius:6px; padding:7px 10px; min-width:240px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mz-hero">
+    <h2><i class="fa-solid fa-table-columns"></i> Mapeaza coloanele fisierului F3</h2>
+    <p>Nu am putut detecta automat structura lui <b>{{ nume_fisier }}</b>.
+       Spune-ne ce reprezinta fiecare coloana si care e randul de antet.
+       Maparea se <b>salveaza ca profil</b> si se aplica automat data viitoare la fisiere similare.</p>
+</div>
+
+<div class="mz-card">
+  {% if not sheet %}
+    <p>Fisierul nu contine date tabelare lizibile. Reincarca un F3 (.xlsx/.xls/.csv).</p>
+    <a href="{{ url_for('gantt.index') }}" class="mz-btn-gold" style="text-decoration:none;">Inapoi</a>
+  {% else %}
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <div>
+        <b>Foaie:</b> {{ sheet.nume or '(unica)' }}
+        {% if analiza.nr_sheeturi > 1 %}<span style="color:var(--gray-500);">(din {{ analiza.nr_sheeturi }} foi — maparea se aplica la toate)</span>{% endif %}
+      </div>
+      <span class="mz-badge mz-{{ analiza.incredere }}">
+        incredere auto-detectie: {{ analiza.incredere }}
+      </span>
+    </div>
+
+    {% set etichete = {'cod_articol':'Cod articol','denumire':'Denumire','um':'U.M.',
+                       'cantitate':'Cantitate','obiect':'Obiect','tronson':'Tronson/Sectiune',
+                       'categorie':'Categorie'} %}
+
+    <form method="POST" action="{{ url_for('gantt.mapare') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="nr_coloane" value="{{ nr_coloane }}">
+
+      <p class="mz-legend">
+        <i class="fa-solid fa-circle-info"></i>
+        Alege campul fiecarei coloane (sau „ignora"). Bifeaza in stanga <b>randul de antet</b>
+        (randul cu denumirile coloanelor). Articolele incep dupa el.
+      </p>
+
+      <div class="mz-grid-wrap">
+        <table class="mz-grid">
+          <thead>
+            <tr>
+              <th class="mz-rowhdr" title="Randul de antet">antet?</th>
+              {% for i in range(nr_coloane) %}
+                <th>
+                  <select class="mz-colsel" name="col_{{ i }}">
+                    <option value="ignora">— ignora —</option>
+                    {% for c in campuri %}
+                      <option value="{{ c }}" {% if harta_inv.get(i) == c %}selected{% endif %}>
+                        {{ etichete.get(c, c) }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                  <div style="text-align:center; color:var(--gray-500); font-size:.72rem; margin-top:2px;">col {{ i }}</div>
+                </th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for rand in sheet.preview %}
+              <tr class="{% if loop.index0 == rand_antet_def %}mz-antet{% endif %}">
+                <td class="mz-radio-cell">
+                  <input type="radio" name="rand_antet" value="{{ loop.index0 }}"
+                         {% if loop.index0 == rand_antet_def %}checked{% endif %}>
+                </td>
+                {% for i in range(nr_coloane) %}
+                  <td title="{{ rand[i] if i < rand|length else '' }}">{{ rand[i] if i < rand|length else '' }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mz-opt">
+        <label><input type="checkbox" name="salveaza_profil" value="1" checked>
+          Salveaza profilul de mapare</label>
+        <input type="text" name="nume_profil" placeholder="Nume profil (optional)"
+               value="{{ nume_fisier }}">
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; flex-wrap:wrap; gap:10px;">
+        <a href="{{ url_for('gantt.index') }}" style="color:var(--gray-500);">
+          <i class="fa-solid fa-arrow-left"></i> Renunta
+        </a>
+        <button type="submit" class="mz-btn-gold">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> Aplica maparea si genereaza
+        </button>
+      </div>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

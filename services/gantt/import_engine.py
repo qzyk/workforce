@@ -376,8 +376,147 @@ def _val(rand: list, camp: str, harta: dict) -> str:
 # ----------------------------------------------------------------------------
 # Import principal.
 # ----------------------------------------------------------------------------
-def importa(continut: bytes, extensie: str, setari: Optional[dict] = None):
+def _stare_noua() -> dict:
+    """Acumulator partajat intre sheet-uri (dedup global, contoare, avertismente)."""
+    return {'articole': [], 'avertismente': [], 'chei': {}, 'dup': 0, 'ign': 0, 'seq': 0}
+
+
+def _extrage_sheet(randuri: list, idx_antet: int, harta: dict, obiect_sheet: str, st: dict):
+    """Extrage articolele dintr-un sheet (antet pe `idx_antet`, mapare `harta`).
+    Foloseste euristicile F3: rand-articol vs rand-titlu de sectiune, NOTA, total."""
+    sectiune_curenta = ''   # tronson/sectiune din randuri-titlu
+    obiect_titlu = ''       # obiect din randuri-titlu (ex "Obiectul: ...")
+    in_note = False
+
+    start = idx_antet + 1
+    if 0 <= start < len(randuri) and _este_rand_numerotare(randuri[start]):
+        start += 1
+
+    for off in range(max(start, 0), len(randuri)):
+        if in_note:
+            break
+        rand = randuri[off]
+        nr_rand = off + 1
+        if not rand or not any(c is not None and str(c).strip() for c in rand):
+            continue  # rand gol
+
+        den = _val(rand, 'denumire', harta)
+        if not den:
+            st['ign'] += 1
+            if len(st['avertismente']) < 50:
+                st['avertismente'].append(f'{obiect_sheet or "sheet"} rand {nr_rand}: '
+                                          f'fara denumire - ignorat.')
+            continue
+
+        den_norm = normalizeaza(den)
+        if den_norm.startswith('nota') or den_norm.startswith('note') \
+                or den_norm.startswith('observatii'):
+            in_note = True          # disclaimerul de la finalul sheet-ului
+            continue
+        if den_norm.startswith('total') or den_norm.startswith('subtotal') \
+                or den_norm.startswith('valoare totala'):
+            continue                # rand de insumare
+
+        um = _val(rand, 'um', harta)
+        cant_raw = _val(rand, 'cantitate', harta)
+        if not (_um_valida(um) or _are_numar(cant_raw)):
+            # rand-titlu de sectiune (sau paragraf de disclaimer)
+            if len(den) > 80:
+                continue
+            if _clasa_titlu(den_norm) == 'obiect':
+                obiect_titlu = _curata_titlu(den)
+            else:
+                sectiune_curenta = _curata_titlu(den)
+            continue
+
+        # --- rand-articol real ---
+        cod = _val(rand, 'cod_articol', harta)
+        if not cod:
+            st['seq'] += 1
+            cod = f'AUTO{st["seq"]}'
+        cheie = normalizeaza_cheie(cod) or f'auto{nr_rand}'
+        if cheie in st['chei']:
+            st['chei'][cheie] += 1
+            cod = f'{cod}#{st["chei"][cheie] - 1}'
+            st['dup'] += 1
+        else:
+            st['chei'][cheie] = 1
+
+        st['articole'].append(ArticolF3(
+            cod_articol=cod,
+            denumire=den,
+            um=um,
+            cantitate=_to_float(cant_raw),
+            obiect=(_val(rand, 'obiect', harta) or obiect_titlu
+                    or obiect_sheet or '(fara obiect)'),
+            tronson=(_val(rand, 'tronson', harta) or sectiune_curenta
+                     or '(fara tronson)'),
+            categorie=(_val(rand, 'categorie', harta) or sectiune_curenta or ''),
+            rand_sursa=nr_rand,
+        ))
+
+
+def analizeaza(continut: bytes, extensie: str, setari: Optional[dict] = None,
+               max_preview: int = 15) -> dict:
+    """Analizeaza un fisier pentru wizard-ul de mapare: preview + antet detectat,
+    FARA sa arunce daca antetul nu e gasit (spre deosebire de `importa`)."""
+    setari = setari or SETARI_IMPLICITE
+    coloane_cfg = setari.get('coloane', SETARI_IMPLICITE['coloane'])
+    ext = (extensie or '').lower().lstrip('.')
+    try:
+        sheeturi = _citeste_sheeturi(continut, ext)
+    except EroareImport:
+        raise
+    except Exception as e:
+        raise EroareImport(_mesaj_format(continut, e)) from e
+
+    info: list = []
+    nr_ok = 0
+    nr_continut = 0
+    nr_coloane = 0
+    for nume, randuri in sheeturi:
+        are_continut = any(any(c is not None and str(c).strip() for c in r) for r in randuri)
+        if are_continut:
+            nr_continut += 1
+        rez = _gaseste_antet(randuri, coloane_cfg)
+        idx = rez[0] if rez else None
+        harta = dict(rez[1]) if rez else {}
+        if rez:
+            nr_ok += 1
+        antet_celule = ['' if c is None else str(c)
+                        for c in (randuri[idx] if idx is not None and idx < len(randuri)
+                                  else (randuri[0] if randuri else []))]
+        preview = [['' if c is None else str(c) for c in r] for r in randuri[:max_preview]]
+        nr_coloane = max(nr_coloane, len(antet_celule),
+                         max((len(r) for r in randuri[:max_preview]), default=0))
+        complet = all(k in harta for k in ('cod_articol', 'denumire', 'um', 'cantitate'))
+        info.append({
+            'nume': nume, 'obiect': _curata_nume_obiect(nume),
+            'antet_gasit': rez is not None, 'rand_antet': idx, 'harta': harta,
+            'antet_celule': antet_celule, 'preview': preview,
+            'are_continut': are_continut, 'complet': complet,
+        })
+
+    if nr_ok == 0:
+        incredere = 'nesigur'
+    elif nr_ok == nr_continut and all(s['complet'] for s in info if s['antet_gasit']):
+        incredere = 'sigur'
+    else:
+        incredere = 'partial'
+
+    return {
+        'sheeturi': info, 'nr_coloane': nr_coloane, 'campuri': list(coloane_cfg.keys()),
+        'incredere': incredere, 'ok': nr_ok > 0, 'nr_sheeturi': len(sheeturi),
+    }
+
+
+def importa(continut: bytes, extensie: str, setari: Optional[dict] = None,
+            mapare_manuala: Optional[dict] = None, rand_antet_manual: Optional[int] = None):
     """Importa un fisier F3 (toate sheet-urile, antet tolerant).
+
+    Mod AUTO (implicit): detecteaza antetul si maparea pe sheet.
+    Mod MANUAL: daca `mapare_manuala` ({camp: index_coloana}) e dat, se aplica pe
+    toate sheet-urile, cu antetul pe `rand_antet_manual` (0-based, acelasi peste sheet-uri).
 
     Returns:
         (articole: list[ArticolF3], raport: dict cu statistici).
@@ -396,11 +535,10 @@ def importa(continut: bytes, extensie: str, setari: Optional[dict] = None):
     if not sheeturi or all(not randuri for _, randuri in sheeturi):
         raise EroareImport('Fisier gol.')
 
-    articole: list[ArticolF3] = []
-    avertismente: list[str] = []
-    chei_vazute: dict = {}
-    nr_duplicate = 0
-    nr_ignorate = 0
+    manual = bool(mapare_manuala)
+    harta_man = {k: int(v) for k, v in mapare_manuala.items()} if manual else None
+
+    st = _stare_noua()
     nr_randuri_total = 0
     sheeturi_sarite: list = []
     coloane_mapate: Optional[dict] = None
@@ -410,90 +548,38 @@ def importa(continut: bytes, extensie: str, setari: Optional[dict] = None):
         nr_randuri_total += len(randuri)
         if not randuri:
             continue
-        rez = _gaseste_antet(randuri, coloane_cfg)
-        if rez is None:
-            if any(any(c is not None and str(c).strip() for c in r) for r in randuri):
-                sheeturi_sarite.append(_curata_nume_obiect(nume_sheet) or '(sheet)')
-            continue
-        idx_antet, harta = rez
-        if coloane_mapate is None:
-            coloane_mapate = {k: antet_nume(randuri[idx_antet], v) for k, v in harta.items()}
-            rand_antet_global = idx_antet + 1
-
         obiect_sheet = _curata_nume_obiect(nume_sheet)
-        sectiune_curenta = ''   # tronson/sectiune din randuri-titlu
-        obiect_titlu = ''       # obiect din randuri-titlu (ex "Obiectul: ...")
-        in_note = False
 
-        start = idx_antet + 1
-        if start < len(randuri) and _este_rand_numerotare(randuri[start]):
-            start += 1
-
-        for off in range(start, len(randuri)):
-            if in_note:
-                break
-            rand = randuri[off]
-            nr_rand = off + 1
-            if not rand or not any(c is not None and str(c).strip() for c in rand):
-                continue  # rand gol
-
-            den = _val(rand, 'denumire', harta)
-            if not den:
-                nr_ignorate += 1
-                if len(avertismente) < 50:
-                    avertismente.append(f'{obiect_sheet or "sheet"} rand {nr_rand}: '
-                                        f'fara denumire - ignorat.')
+        if manual:
+            idx = int(rand_antet_manual) if rand_antet_manual is not None else 0
+            if idx >= len(randuri):
+                if any(any(c is not None and str(c).strip() for c in r) for r in randuri):
+                    sheeturi_sarite.append(obiect_sheet or '(sheet)')
                 continue
-
-            den_norm = normalizeaza(den)
-            if den_norm.startswith('nota') or den_norm.startswith('note') \
-                    or den_norm.startswith('observatii'):
-                in_note = True          # disclaimerul de la finalul sheet-ului
+            harta = harta_man
+            if coloane_mapate is None:
+                antet_row = randuri[idx] if 0 <= idx < len(randuri) else []
+                coloane_mapate = {k: antet_nume(antet_row, v) for k, v in harta.items()}
+                rand_antet_global = idx + 1
+            _extrage_sheet(randuri, idx, harta, obiect_sheet, st)
+        else:
+            rez = _gaseste_antet(randuri, coloane_cfg)
+            if rez is None:
+                if any(any(c is not None and str(c).strip() for c in r) for r in randuri):
+                    sheeturi_sarite.append(obiect_sheet or '(sheet)')
                 continue
-            if den_norm.startswith('total') or den_norm.startswith('subtotal') \
-                    or den_norm.startswith('valoare totala'):
-                continue                # rand de insumare
-
-            um = _val(rand, 'um', harta)
-            cant_raw = _val(rand, 'cantitate', harta)
-            este_articol = _um_valida(um) or _are_numar(cant_raw)
-
-            if not este_articol:
-                # rand-titlu de sectiune (sau paragraf de disclaimer)
-                if len(den) > 80:
-                    continue
-                if _clasa_titlu(den_norm) == 'obiect':
-                    obiect_titlu = _curata_titlu(den)
-                else:
-                    sectiune_curenta = _curata_titlu(den)
-                continue
-
-            # --- rand-articol real ---
-            cod = _val(rand, 'cod_articol', harta)
-            if not cod:
-                cod = f'AUTO{nr_randuri_total + off}'
-            cheie = normalizeaza_cheie(cod) or f'auto{nr_randuri_total + off}'
-            if cheie in chei_vazute:
-                chei_vazute[cheie] += 1
-                cod = f'{cod}#{chei_vazute[cheie] - 1}'
-                nr_duplicate += 1
-            else:
-                chei_vazute[cheie] = 1
-
-            articole.append(ArticolF3(
-                cod_articol=cod,
-                denumire=den,
-                um=um,
-                cantitate=_to_float(cant_raw),
-                obiect=(_val(rand, 'obiect', harta) or obiect_titlu
-                        or obiect_sheet or '(fara obiect)'),
-                tronson=(_val(rand, 'tronson', harta) or sectiune_curenta
-                         or '(fara tronson)'),
-                categorie=(_val(rand, 'categorie', harta) or sectiune_curenta or ''),
-                rand_sursa=nr_rand,
-            ))
+            idx_antet, harta = rez
+            if coloane_mapate is None:
+                coloane_mapate = {k: antet_nume(randuri[idx_antet], v)
+                                  for k, v in harta.items()}
+                rand_antet_global = idx_antet + 1
+            _extrage_sheet(randuri, idx_antet, harta, obiect_sheet, st)
 
     if coloane_mapate is None:
+        if manual:
+            raise EroareImport(
+                'Maparea manuala nu a produs niciun articol. Verifica coloana de '
+                'denumire si randul de antet ales.')
         raise EroareImport(
             'Nu am gasit randul de antet in niciun sheet. Asigura-te ca exista o coloana '
             'de denumire si una de unitate de masura sau cantitate (ex: Denumire / U.M. / '
@@ -506,12 +592,13 @@ def importa(continut: bytes, extensie: str, setari: Optional[dict] = None):
         'sheeturi_sarite': sheeturi_sarite,
         'rand_antet': rand_antet_global,
         'coloane_mapate': coloane_mapate,
-        'nr_articole': len(articole),
-        'nr_duplicate_redenumite': nr_duplicate,
-        'nr_randuri_ignorate': nr_ignorate,
-        'avertismente': avertismente[:50],
+        'nr_articole': len(st['articole']),
+        'nr_duplicate_redenumite': st['dup'],
+        'nr_randuri_ignorate': st['ign'],
+        'avertismente': st['avertismente'][:50],
+        'mod': 'manual' if manual else 'auto',
     }
-    return articole, raport
+    return st['articole'], raport
 
 
 def antet_nume(rand_antet: list, idx: int) -> str:

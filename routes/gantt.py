@@ -29,7 +29,7 @@ from flask_login import login_required, current_user
 
 from services.gantt.pipeline import MotorPlanificare
 from services.gantt.modele import Activitate, ArticolF3, RezultatPlanificare
-from services.gantt import import_engine, export as export_engine
+from services.gantt import import_engine, export as export_engine, store
 from services.gantt.wbs import genereaza_wbs
 from services.gantt.dependinte import genereaza_dependinte
 from services.gantt.validare import valideaza
@@ -61,6 +61,108 @@ def _curata_temp(varsta_max_s: int = 7200):
         pass
 
 
+# -------------------------------------------------- temp / mapare / profil
+def _salveaza_temp(continut: bytes, ext: str) -> str:
+    """Salveaza continutul intr-un fisier temporar; intoarce token-ul (uuid hex)."""
+    os.makedirs(_DIR_TEMP, exist_ok=True)
+    _curata_temp()
+    token = uuid.uuid4().hex
+    with open(os.path.join(_DIR_TEMP, f'{token}{ext}'), 'wb') as f:
+        f.write(continut)
+    return token
+
+
+def _citeste_temp(token: str):
+    """(continut, ext) pentru un token salvat, sau (None, None)."""
+    if not token or not re.fullmatch(r'[0-9a-f]{32}', token):
+        return None, None
+    for e in _EXT_OK:
+        p = os.path.join(_DIR_TEMP, f'{token}{e}')
+        if os.path.exists(p):
+            with open(p, 'rb') as f:
+                return f.read(), e
+    return None, None
+
+
+def _semnaturi_fisier(continut: bytes, ext: str) -> list:
+    """Semnaturile (amprente antet) ale primelor randuri din primul sheet cu continut."""
+    try:
+        sheeturi = import_engine._citeste_sheeturi(continut, (ext or '').lstrip('.'))
+    except Exception:
+        return []
+    for _nume, randuri in sheeturi:
+        if not any(any(c is not None and str(c).strip() for c in r) for r in randuri):
+            continue
+        sigs = []
+        for r in randuri[:15]:
+            s = store.semnatura_antet(r)
+            if s and s not in sigs:
+                sigs.append(s)
+        return sigs
+    return []
+
+
+def _semnatura_la_rand(continut: bytes, ext: str, rand_antet: int) -> str:
+    """Amprenta randului de antet ales (din primul sheet cu continut)."""
+    try:
+        sheeturi = import_engine._citeste_sheeturi(continut, (ext or '').lstrip('.'))
+    except Exception:
+        return ''
+    for _nume, randuri in sheeturi:
+        if not any(any(c is not None and str(c).strip() for c in r) for r in randuri):
+            continue
+        if 0 <= (rand_antet or 0) < len(randuri):
+            return store.semnatura_antet(randuri[rand_antet])
+        return ''
+    return ''
+
+
+def _profil_pt_fisier(continut: bytes, ext: str, tenant_id=None):
+    """Cauta un profil invatat care se potriveste fisierului. (profil, mapare, rand_antet)."""
+    for sig in _semnaturi_fisier(continut, ext):
+        prof = store.gaseste_profil(sig, tenant_id)
+        if prof:
+            mapare, rand_antet = store.profil_mapare(prof)
+            if mapare:
+                return prof, mapare, rand_antet
+    return None, None, None
+
+
+def _pipeline_din_temp(continut: bytes, ext: str, mapare=None, rand_antet=None):
+    """Ruleaza pipeline-ul (auto sau cu mapare manuala). (RezultatPlanificare, raport)."""
+    if mapare:
+        articole, raport = import_engine.importa(
+            continut, ext, _motor().setari,
+            mapare_manuala=mapare, rand_antet_manual=rand_antet)
+        rezultat = _motor().proceseaza(articole)
+        rezultat.statistici['import'] = raport
+        return rezultat, raport
+    return _motor().genereaza_din_fisier(continut, ext)
+
+
+def _set_mapare_sesiune(mapare, rand_antet):
+    """Tine maparea manuala in sesiune (pentru export-ul ulterior, determinist)."""
+    import json
+    if mapare:
+        session['gantt_mapare'] = json.dumps(mapare)
+        session['gantt_rand_antet'] = rand_antet
+    else:
+        session.pop('gantt_mapare', None)
+        session.pop('gantt_rand_antet', None)
+
+
+def _mapare_sesiune():
+    """(mapare, rand_antet) din sesiune sau (None, None)."""
+    import json
+    m = session.get('gantt_mapare')
+    if not m:
+        return None, None
+    try:
+        return json.loads(m), session.get('gantt_rand_antet')
+    except Exception:
+        return None, None
+
+
 # ============================================================ UI
 @gantt_bp.route('/')
 @login_required
@@ -81,28 +183,46 @@ def genereaza():
         return redirect(url_for('gantt.index'))
 
     continut = fisier.read()
+    nume_fisier = fisier.filename
+    tid = getattr(current_user, 'tenant_id', None)
+    mapare_folosita, rand_antet_folosit = None, None
     try:
         rezultat, raport_import = _motor().genereaza_din_fisier(continut, ext)
-    except import_engine.EroareImport as e:
-        flash(f'Import esuat: {e}', 'danger')
-        return redirect(url_for('gantt.index'))
+    except import_engine.EroareImport:
+        # 1) incearca un profil de mapare invatat anterior (acelasi tip de fisier)
+        prof, mapare, rand_antet = _profil_pt_fisier(continut, ext, tid)
+        if prof:
+            try:
+                rezultat, raport_import = _pipeline_din_temp(continut, ext, mapare, rand_antet)
+                store.marcheaza_utilizare(prof)
+                mapare_folosita, rand_antet_folosit = mapare, rand_antet
+                flash(f'Am aplicat automat profilul de mapare invatat "{prof.nume}".', 'info')
+            except import_engine.EroareImport:
+                prof = None
+        if not prof:
+            # 2) du utilizatorul la wizard-ul de mapare manuala
+            token = _salveaza_temp(continut, ext)
+            session['gantt_wizard_token'] = token
+            session['gantt_wizard_ext'] = ext
+            session['gantt_wizard_nume'] = nume_fisier
+            flash('Nu am putut detecta automat structura fisierului. '
+                  'Mapeaza coloanele manual mai jos - profilul se salveaza pentru data viitoare.',
+                  'warning')
+            return redirect(url_for('gantt.mapare'))
     except Exception as e:  # robustete: nu lasam 500 fara mesaj
         flash(f'Eroare la procesare: {e}', 'danger')
         return redirect(url_for('gantt.index'))
 
     # salveaza fisierul temporar pentru export ulterior (re-ruleaza pipeline determinist)
-    os.makedirs(_DIR_TEMP, exist_ok=True)
-    _curata_temp()
-    token = uuid.uuid4().hex
-    with open(os.path.join(_DIR_TEMP, f'{token}{ext}'), 'wb') as f:
-        f.write(continut)
+    token = _salveaza_temp(continut, ext)
     session['gantt_token'] = token
     session['gantt_ext'] = ext
-    session['gantt_nume'] = os.path.splitext(os.path.basename(fisier.filename))[0]
+    session['gantt_nume'] = os.path.splitext(os.path.basename(nume_fisier))[0]
+    _set_mapare_sesiune(mapare_folosita, rand_antet_folosit)
 
     return render_template('gantt/rezultat.html', rezultat=rezultat,
                            raport_import=raport_import, token=token,
-                           nume_fisier=fisier.filename)
+                           nume_fisier=nume_fisier)
 
 
 @gantt_bp.route('/export/<token>/<fmt>')
@@ -110,21 +230,21 @@ def genereaza():
 def export_fisier(token, fmt):
     if not re.fullmatch(r'[0-9a-f]{32}', token or ''):
         abort(404)
-    ext = session.get('gantt_ext', '.xlsx') if session.get('gantt_token') == token else None
     # cauta fisierul (independent de sesiune, dar token e secret/uuid)
-    cale = None
-    for e in _EXT_OK:
-        p = os.path.join(_DIR_TEMP, f'{token}{e}')
-        if os.path.exists(p):
-            cale, ext = p, e
-            break
-    if not cale:
+    continut, ext = _citeste_temp(token)
+    if not continut:
         flash('Sesiunea de preview a expirat. Reincarca fisierul F3.', 'warning')
         return redirect(url_for('gantt.index'))
 
-    with open(cale, 'rb') as f:
-        continut = f.read()
-    rezultat, _ = _motor().genereaza_din_fisier(continut, ext)
+    # aplica aceeasi mapare manuala ca la preview (daca a fost una) -> export consistent
+    mapare, rand_antet = (None, None)
+    if session.get('gantt_token') == token:
+        mapare, rand_antet = _mapare_sesiune()
+    try:
+        rezultat, _ = _pipeline_din_temp(continut, ext, mapare, rand_antet)
+    except import_engine.EroareImport:
+        flash('Nu pot regenera planificarea pentru export. Reincarca fisierul F3.', 'warning')
+        return redirect(url_for('gantt.index'))
     nume = session.get('gantt_nume', 'planificare')
     try:
         data, mime, ext_out = export_engine.exporta(
@@ -135,6 +255,89 @@ def export_fisier(token, fmt):
     import io
     return send_file(io.BytesIO(data), mimetype=mime, as_attachment=True,
                      download_name=f'planificare_{nume}.{ext_out}')
+
+
+@gantt_bp.route('/mapare', methods=['GET', 'POST'])
+@login_required
+def mapare():
+    """Wizard de mapare manuala a coloanelor (cand auto-detectia esueaza).
+    La confirmare, salveaza un profil reutilizabil pe semnatura antetului."""
+    token = session.get('gantt_wizard_token')
+    nume_fisier = session.get('gantt_wizard_nume', 'fisier')
+    continut, ext_real = _citeste_temp(token)
+    ext = session.get('gantt_wizard_ext') or ext_real
+    if not continut:
+        flash('Sesiunea de mapare a expirat. Reincarca fisierul F3.', 'warning')
+        return redirect(url_for('gantt.index'))
+
+    if request.method == 'POST':
+        try:
+            nr_coloane = int(request.form.get('nr_coloane', 0) or 0)
+        except ValueError:
+            nr_coloane = 0
+        mapare = {}
+        for i in range(nr_coloane):
+            camp = (request.form.get(f'col_{i}') or '').strip()
+            if camp and camp != 'ignora':
+                mapare[camp] = i
+        try:
+            rand_antet = int(request.form.get('rand_antet', 0) or 0)
+        except ValueError:
+            rand_antet = 0
+
+        if 'denumire' not in mapare or not ('um' in mapare or 'cantitate' in mapare):
+            flash('Maparea trebuie sa includa coloana de denumire si una de '
+                  'unitate de masura sau cantitate.', 'danger')
+            return redirect(url_for('gantt.mapare'))
+
+        try:
+            rezultat, raport_import = _pipeline_din_temp(continut, ext, mapare, rand_antet)
+        except import_engine.EroareImport as e:
+            flash(f'Maparea aleasa nu a produs articole: {e}', 'danger')
+            return redirect(url_for('gantt.mapare'))
+
+        # invata: salveaza profilul pe semnatura randului de antet ales
+        if request.form.get('salveaza_profil', '1') == '1':
+            semn = _semnatura_la_rand(continut, ext, rand_antet) or (
+                _semnaturi_fisier(continut, ext)[:1] or [''])[0]
+            if semn:
+                store.salveaza_profil(
+                    nume=(request.form.get('nume_profil') or nume_fisier),
+                    semnatura=semn, coloane_map=mapare, rand_antet=rand_antet,
+                    sursa='wizard', tenant_id=getattr(current_user, 'tenant_id', None),
+                    user_id=getattr(current_user, 'id', None))
+
+        # treci in fluxul de rezultat/export
+        session['gantt_token'] = token
+        session['gantt_ext'] = ext
+        session['gantt_nume'] = os.path.splitext(os.path.basename(nume_fisier))[0]
+        _set_mapare_sesiune(mapare, rand_antet)
+        session.pop('gantt_wizard_token', None)
+        session.pop('gantt_wizard_ext', None)
+        session.pop('gantt_wizard_nume', None)
+        flash('Mapare aplicata. Profilul a fost salvat pentru fisiere similare.', 'success')
+        return render_template('gantt/rezultat.html', rezultat=rezultat,
+                               raport_import=raport_import, token=token,
+                               nume_fisier=nume_fisier)
+
+    # GET: analizeaza fisierul si arata grila de mapare
+    try:
+        analiza = import_engine.analizeaza(continut, ext, _motor().setari)
+    except import_engine.EroareImport as e:
+        flash(f'Nu pot citi fisierul: {e}', 'danger')
+        return redirect(url_for('gantt.index'))
+
+    # alege un sheet reprezentativ (primul cu antet, altfel primul cu continut)
+    sheet = next((s for s in analiza['sheeturi'] if s['antet_gasit']), None) \
+        or next((s for s in analiza['sheeturi'] if s['are_continut']), None) \
+        or (analiza['sheeturi'][0] if analiza['sheeturi'] else None)
+    harta_inv = {v: k for k, v in (sheet['harta'].items() if sheet else {})}
+    rand_antet_def = (sheet['rand_antet'] if sheet and sheet['rand_antet'] is not None else 0)
+
+    return render_template('gantt/mapare.html', analiza=analiza, sheet=sheet,
+                           harta_inv=harta_inv, nr_coloane=analiza['nr_coloane'],
+                           campuri=analiza['campuri'], rand_antet_def=rand_antet_def,
+                           nume_fisier=nume_fisier)
 
 
 # ============================================================ REST API (JSON)

@@ -139,3 +139,80 @@ def gaseste_profil(semnatura: str, tenant_id: Optional[int] = None):
         return q.order_by(GanttProfilMapare.nr_utilizari.desc()).first()
     except Exception:
         return None
+
+
+def profil_mapare(profil) -> tuple:
+    """Despacheteaza un profil -> ({camp: index_coloana}, rand_antet:int|None)."""
+    import json
+    try:
+        d = json.loads(profil.mapare_json) if (profil and profil.mapare_json) else {}
+        col = {k: int(v) for k, v in (d.get('coloane') or {}).items()}
+        ra = d.get('rand_antet')
+        return col, (int(ra) if ra is not None else None)
+    except Exception:
+        return {}, None
+
+
+def salveaza_profil(nume: str, semnatura: str, coloane_map: dict,
+                    rand_antet: Optional[int] = None, sursa: str = 'wizard',
+                    tenant_id: Optional[int] = None, user_id: Optional[int] = None):
+    """Upsert profil de mapare pe (tenant_id, semnatura). Audit-logat. None la esec."""
+    if not semnatura:
+        return None
+    try:
+        from flask import has_app_context
+        if not has_app_context():
+            return None
+        import json
+        from datetime import datetime
+        from models import db, GanttProfilMapare
+        from services import audit
+
+        payload = json.dumps({
+            'coloane': {k: int(v) for k, v in (coloane_map or {}).items()},
+            'rand_antet': (int(rand_antet) if rand_antet is not None else None),
+        })
+        prof = GanttProfilMapare.query.filter_by(semnatura=semnatura,
+                                                 tenant_id=tenant_id).first()
+        nou = prof is None
+        if nou:
+            prof = GanttProfilMapare(
+                nume=(nume or f'Profil {semnatura[:12]}'), semnatura=semnatura,
+                mapare_json=payload, sursa=sursa, tenant_id=tenant_id, creat_de_id=user_id)
+            db.session.add(prof)
+        else:
+            prof.mapare_json = payload
+            prof.sursa = sursa
+            prof.activ = True
+            if nume:
+                prof.nume = nume
+            prof.data_actualizare = datetime.utcnow()
+        db.session.flush()
+        audit.log('create' if nou else 'update', 'gantt_profil_mapare', prof.id,
+                  new_values={'nume': prof.nume, 'semnatura': semnatura, 'sursa': sursa})
+        db.session.commit()
+        return prof
+    except Exception:
+        try:
+            from models import db
+            db.session.rollback()
+        except Exception:
+            pass
+        return None
+
+
+def marcheaza_utilizare(profil) -> None:
+    """Incrementeaza nr_utilizari pe un profil aplicat (best-effort)."""
+    try:
+        from flask import has_app_context
+        if not has_app_context() or profil is None:
+            return
+        from models import db
+        profil.nr_utilizari = (profil.nr_utilizari or 0) + 1
+        db.session.commit()
+    except Exception:
+        try:
+            from models import db
+            db.session.rollback()
+        except Exception:
+            pass
