@@ -91,6 +91,8 @@ These tripped us up — write them down once:
 
 9. **GitHub Personal Access Token must have `workflow` scope** ca să poată push fișiere `.github/workflows/*`. Dacă nu, mutăm template-ul în `docs/ci-templates/` ca workaround.
 
+10. **Alembic pe prod e DESINCRONIZAT de schema reală.** Prod era la `0006_iot` în `alembic_version`, dar tabelele 0007–0011 existau deja (create de `db.create_all()` din comenzi CLI, NU prin replay de migrații). Deci `alembic upgrade head` pe prod EȘUEAZĂ cu `table ... already exists`. **Pentru tabele noi pe prod: `db.create_all()` (idempotent, prin `python -c "from app import app; ..."`) + `alembic stamp head` (mută doar pointerul, fără DDL/date). NICIODATĂ `alembic upgrade` pe prod.** `create_all` rulează doar în comenzi CLI (`flask init-db`, `migrate-bim`), NU la Web→Reload — deci tabelele noi trebuie create manual cu snippet-ul de mai sus.
+
 ---
 
 ## Concrete corrections / "I'd do differently"
