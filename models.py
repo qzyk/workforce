@@ -4233,3 +4233,116 @@ class TarifCategorie(db.Model):
                 f'{self.tarif_baza} {scope}>')
 
 
+# ============================================================
+# FAZA 2 - IMPORT GANTT: configurare in DB (overlay peste config/gantt/*.json)
+# Principiu: daca exista randuri (pe tenant sau global), motorul le foloseste;
+# daca tabelul e gol, se cade pe JSON-ul din config (zero regresie).
+# Toate au tenant_id nullable (multi-tenant) + audit prin services/audit.py.
+# ============================================================
+
+class GanttProfilMapare(db.Model):
+    """Profil de mapare a coloanelor, invatat din wizard si reaplicat automat.
+
+    `semnatura` = amprenta randului de antet (celule normalizate, sortate, unite)
+    -> la un upload viitor cu acelasi antet, maparea se aplica automat.
+    `mapare_json` = {camp_logic: nume_coloana} (ex {"cod_articol":"Nr.", ...}).
+    """
+    __tablename__ = 'gantt_profil_mapare'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    nume = db.Column(db.String(120), nullable=False)
+    semnatura = db.Column(db.String(255), nullable=False, index=True)
+    mapare_json = db.Column(db.Text, nullable=False)          # JSON {camp: coloana}
+    sursa = db.Column(db.String(20), default='wizard', nullable=False)  # auto|wizard|manual
+    nr_utilizari = db.Column(db.Integer, default=0, nullable=False)
+    activ = db.Column(db.Boolean, default=True, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+    data_actualizare = db.Column(db.DateTime, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'semnatura', name='uix_gantt_profil_semnatura'),
+    )
+
+    def __repr__(self):
+        return f'<GanttProfilMapare {self.nume!r} sig={self.semnatura[:16]}...>'
+
+
+class GanttSinonimColoana(db.Model):
+    """Sinonim de antet pentru o coloana logica (overlay peste setari.json -> coloane)."""
+    __tablename__ = 'gantt_sinonim_coloana'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    camp = db.Column(db.String(30), nullable=False, index=True)   # cod_articol|denumire|um|...
+    sinonim = db.Column(db.String(120), nullable=False)
+    activ = db.Column(db.Boolean, default=True, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'camp', 'sinonim', name='uix_gantt_sinonim'),
+    )
+
+    def __repr__(self):
+        return f'<GanttSinonimColoana {self.camp}={self.sinonim!r}>'
+
+
+class GanttClasificareRegula(db.Model):
+    """Regula de clasificare tehnologica (overlay peste clasificare.json).
+
+    `tip_regula` = 'cuvant' (potrivire pe denumire) | 'prefix_cod' (prefix cod articol).
+    `prioritate` mai mica = incercata prima (specific inainte de generic).
+    """
+    __tablename__ = 'gantt_clasificare_regula'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    categorie = db.Column(db.String(40), nullable=False, index=True)
+    tip_regula = db.Column(db.String(16), default='cuvant', nullable=False)  # cuvant|prefix_cod
+    valoare = db.Column(db.String(120), nullable=False)
+    prioritate = db.Column(db.Integer, default=100, nullable=False)
+    activ = db.Column(db.Boolean, default=True, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'categorie', 'tip_regula', 'valoare',
+                            name='uix_gantt_clasif'),
+        db.Index('ix_gantt_clasif_tip_prio', 'tip_regula', 'prioritate'),
+    )
+
+    def __repr__(self):
+        return f'<GanttClasificareRegula {self.categorie}:{self.tip_regula}={self.valoare!r}>'
+
+
+class GanttRelatieTemplate(db.Model):
+    """Relatie tehnologica intre doua categorii (overlay peste dependinte.json).
+
+    `rang_din` = pozitia categoriei-sursa in ordinea tehnologica (reconstruieste
+    `ordine_categorii`). `tip` = FS|SS|FF|SF, `decalaj` = lag in zile.
+    """
+    __tablename__ = 'gantt_relatie_template'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    categorie_din = db.Column(db.String(40), nullable=False)
+    categorie_in = db.Column(db.String(40), nullable=False)
+    tip = db.Column(db.String(2), default='FS', nullable=False)   # FS|SS|FF|SF
+    decalaj = db.Column(db.Integer, default=0, nullable=False)    # lag in zile
+    rang_din = db.Column(db.Integer, nullable=True)              # ordine tehnologica
+    activ = db.Column(db.Boolean, default=True, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'categorie_din', 'categorie_in',
+                            name='uix_gantt_relatie'),
+    )
+
+    def __repr__(self):
+        return (f'<GanttRelatieTemplate {self.categorie_din}->{self.categorie_in} '
+                f'{self.tip}+{self.decalaj}>')
+
+

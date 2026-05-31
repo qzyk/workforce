@@ -18,18 +18,25 @@ from .dependinte import genereaza_dependinte
 from .durate import estimeaza_durata
 from .validare import valideaza
 from . import import_engine
-from . import config_loader as cfg
+from . import store
 
 
 class MotorPlanificare:
-    """Punct de intrare de nivel inalt pentru generarea structurii Gantt."""
+    """Punct de intrare de nivel inalt pentru generarea structurii Gantt.
+
+    Configurarea vine din overlay-ul `store` (DB suprascrie JSON; fallback la JSON
+    daca nu exista randuri / context / tabel). `tenant_id` selecteaza regulile
+    per-organizatie (None = globale).
+    """
 
     def __init__(self, clasificare: Optional[dict] = None,
                  dependinte: Optional[dict] = None,
-                 setari: Optional[dict] = None):
-        self.dict_clasificare = clasificare or cfg.incarca('clasificare', cfg.CLASIFICARE_IMPLICITA)
-        self.dependinte = dependinte or cfg.incarca('dependinte', cfg.DEPENDINTE_IMPLICITE)
-        self.setari = setari or cfg.incarca('setari', cfg.SETARI_IMPLICITE)
+                 setari: Optional[dict] = None,
+                 tenant_id: Optional[int] = None):
+        self.tenant_id = tenant_id
+        self.dict_clasificare = clasificare or store.clasificare(tenant_id)
+        self.dependinte = dependinte or store.dependinte(tenant_id)
+        self.setari = setari or store.setari(tenant_id)
         self.clasificator = Clasificator(self.dict_clasificare, self.setari.get('sinonime'))
 
     # -- pas cu pas (mapeaza endpoint-urile API) --
