@@ -19,7 +19,8 @@ def _curata_config(app):
             for M in (GanttSinonimColoana, GanttClasificareRegula, GanttProfilMapare):
                 for row in M.query.all():
                     db.session.delete(row)
-            for row in TarifCategorie.query.filter_by(disciplina='gantt').all():
+            for row in TarifCategorie.query.filter(
+                    TarifCategorie.disciplina.like('gantt%')).all():
                 db.session.delete(row)
             db.session.commit()
         except Exception:
@@ -43,6 +44,16 @@ def test_config_seteaza_tarif(authenticated_client, app):
         # se vede si in lista pentru admin, marcat din_db
         lista = {x['categorie']: x for x in store.lista_tarife()}
         assert lista['POZARE_CONDUCTA']['din_db'] is True
+
+
+def test_config_seteaza_randament_afecteaza_durata(authenticated_client, app):
+    r = authenticated_client.post('/gantt/config/tarif', data={
+        'categorie': 'SAPATURA', 'tarif': '40', 'um': 'mc', 'randament': '150'})
+    assert r.status_code == 302
+    with app.app_context():
+        assert abs(store.randamente_gantt()['SAPATURA']['randament_zi'] - 150) < 0.01
+        # overlay-ul de setari (folosit la calculul duratei) reflecta randamentul
+        assert abs(store.setari()['randamente']['SAPATURA']['randament_zi'] - 150) < 0.01
 
 
 def test_config_pagina_se_incarca(authenticated_client):
@@ -110,6 +121,7 @@ def test_sync_din_json_idempotent(app):
         assert GanttClasificareRegula.query.filter_by(tip_regula='prefix_cod').count() > 0
         # overlay-ul vede acum prefixele si categoriile noi
         assert 'IZOLATII' in store.clasificare()
-        assert a1['tarife'] > 0  # tarifele pe categorie sunt si ele seed-uite
+        assert a1['tarife'] > 0 and a1['randamente'] > 0  # tarife + randamente seed-uite
         a2 = store.sync_din_json()
-        assert a2 == {'sinonime': 0, 'reguli': 0, 'prefixe': 0, 'tarife': 0}  # idempotent
+        assert a2 == {'sinonime': 0, 'reguli': 0, 'prefixe': 0,
+                      'tarife': 0, 'randamente': 0}  # idempotent

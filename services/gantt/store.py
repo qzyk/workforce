@@ -111,9 +111,10 @@ def dependinte(tenant_id: Optional[int] = None) -> dict:
 
 
 def setari(tenant_id: Optional[int] = None) -> dict:
-    """setari.json cu `coloane` suprascris din DB (daca exista)."""
+    """setari.json cu `coloane` si `randamente` suprascrise din DB (daca exista)."""
     base = dict(cfg.incarca('setari', cfg.SETARI_IMPLICITE))
     base['coloane'] = coloane(tenant_id)
+    base['randamente'] = randamente_gantt(tenant_id)
     return base
 
 
@@ -375,7 +376,7 @@ def sync_din_json(tenant_id: Optional[int] = None, user_id: Optional[int] = None
     if not has_app_context():
         return {}
     from models import db, GanttSinonimColoana, GanttClasificareRegula
-    adaugate = {'sinonime': 0, 'reguli': 0, 'prefixe': 0, 'tarife': 0}
+    adaugate = {'sinonime': 0, 'reguli': 0, 'prefixe': 0, 'tarife': 0, 'randamente': 0}
 
     ex_sin = {(s.camp, s.sinonim)
               for s in GanttSinonimColoana.query.filter_by(tenant_id=tenant_id).all()}
@@ -419,6 +420,19 @@ def sync_din_json(tenant_id: Optional[int] = None, user_id: Optional[int] = None
             proiect_id=None, tenant_id=tenant_id, creat_de_id=user_id))
         ex_tarif.add(cat); adaugate['tarife'] += 1
 
+    # randamente UM/zi -> tarife_categorie (disciplina='gantt-randament')
+    ex_rand = {r.categorie_lucrare for r in TarifCategorie.query.filter_by(
+        disciplina=_DISC_RAND, proiect_id=None).all() if r.tenant_id in (None, tenant_id)}
+    for cat, v in (cfg.incarca('setari', cfg.SETARI_IMPLICITE).get('randamente', {}) or {}).items():
+        if cat in ex_rand:
+            continue
+        db.session.add(TarifCategorie(
+            disciplina=_DISC_RAND, categorie_lucrare=cat,
+            tarif_baza=float((v or {}).get('randament_zi', 0) or 0),
+            um_referinta=((v or {}).get('um') or None),
+            proiect_id=None, tenant_id=tenant_id, creat_de_id=user_id))
+        ex_rand.add(cat); adaugate['randamente'] += 1
+
     db.session.commit()
     return adaugate
 
@@ -427,7 +441,34 @@ def sync_din_json(tenant_id: Optional[int] = None, user_id: Optional[int] = None
 # Tarife pe categorie tehnologica (5D) - stocate in tarife_categorie cu
 # disciplina='gantt'. Overlay: tarife.json ca baza, DB suprascrie tariful.
 # ---------------------------------------------------------------------------
-_DISC_GANTT = 'gantt'
+_DISC_GANTT = 'gantt'          # tarif lei/UM
+_DISC_RAND = 'gantt-randament'  # randament UM/zi (reutilizam tabelul de tarife)
+
+
+def randamente_gantt(tenant_id: Optional[int] = None) -> dict:
+    """{categorie: {'randament_zi': N, 'um': ref}} - setari.json suprascris de DB."""
+    base: dict = {}
+    for cat, v in (cfg.incarca('setari', cfg.SETARI_IMPLICITE).get('randamente', {}) or {}).items():
+        base[cat] = dict(v or {})
+    try:
+        from flask import has_app_context
+        if has_app_context():
+            from sqlalchemy import or_
+            from models import TarifCategorie
+            q = TarifCategorie.query.filter_by(disciplina=_DISC_RAND, proiect_id=None)
+            if tenant_id is not None:
+                q = q.filter(or_(TarifCategorie.tenant_id == tenant_id,
+                                 TarifCategorie.tenant_id.is_(None)))
+            else:
+                q = q.filter(TarifCategorie.tenant_id.is_(None))
+            for r in q.all():
+                d = base.setdefault(r.categorie_lucrare, {})
+                d['randament_zi'] = float(r.tarif_baza or 0)
+                if r.um_referinta:
+                    d['um'] = r.um_referinta
+    except Exception:
+        pass
+    return base
 
 
 def tarife_gantt(tenant_id: Optional[int] = None) -> dict:
@@ -474,8 +515,10 @@ def lista_tarife(tenant_id: Optional[int] = None) -> list:
     except Exception:
         pass
     eff = tarife_gantt(tenant_id)
+    rand = randamente_gantt(tenant_id)
     return [{'categorie': c, 'tarif': eff[c]['tarif'], 'um': eff[c].get('um', ''),
-             'material': eff[c].get('material', 0.65), 'din_db': c in din_db}
+             'material': eff[c].get('material', 0.65), 'din_db': c in din_db,
+             'randament': (rand.get(c, {}) or {}).get('randament_zi', 0)}
             for c in sorted(eff)]
 
 
@@ -512,6 +555,50 @@ def seteaza_tarif(categorie: str, tarif, um: Optional[str] = None,
         db.session.flush()
         _audit('create' if nou else 'update', 'tarife_categorie', row.id,
                {'categorie': categorie, 'tarif': tarif, 'disciplina': _DISC_GANTT})
+        db.session.commit()
+        return row, None
+    except Exception:
+        try:
+            from models import db
+            db.session.rollback()
+        except Exception:
+            pass
+        return None, 'Eroare la salvare.'
+
+
+def seteaza_randament(categorie: str, randament, um: Optional[str] = None,
+                      tenant_id=None, user_id=None):
+    """Upsert randament UM/zi pe categorie (TarifCategorie disciplina='gantt-randament')."""
+    categorie = (categorie or '').strip().upper()
+    if not categorie:
+        return None, 'Categorie obligatorie.'
+    try:
+        randament = float(str(randament).replace(',', '.'))
+    except (TypeError, ValueError):
+        return None, 'Randament invalid.'
+    if randament < 0:
+        return None, 'Randament invalid.'
+    try:
+        from flask import has_app_context
+        if not has_app_context():
+            return None, 'Fara context aplicatie.'
+        from models import db, TarifCategorie
+        row = TarifCategorie.query.filter_by(
+            disciplina=_DISC_RAND, categorie_lucrare=categorie,
+            proiect_id=None, tenant_id=tenant_id).first()
+        nou = row is None
+        if nou:
+            row = TarifCategorie(disciplina=_DISC_RAND, categorie_lucrare=categorie,
+                                 tarif_baza=randament, um_referinta=(um or None),
+                                 proiect_id=None, tenant_id=tenant_id, creat_de_id=user_id)
+            db.session.add(row)
+        else:
+            row.tarif_baza = randament
+            if um:
+                row.um_referinta = um
+        db.session.flush()
+        _audit('create' if nou else 'update', 'tarife_categorie', row.id,
+               {'categorie': categorie, 'randament': randament, 'disciplina': _DISC_RAND})
         db.session.commit()
         return row, None
     except Exception:

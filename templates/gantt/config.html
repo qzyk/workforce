@@ -165,8 +165,9 @@ table.cf-tab-prof th { background:#F5F1E8; }
 <!-- ============ TARIFE (COST 5D) ============ -->
 <div class="cf-card" id="tarife">
   <h3>Tarife pe categorie <span style="color:var(--gray-400); font-weight:400;">(cost 5D)</span></h3>
-  <div class="cf-sub">Lei/UM (fara TVA) pentru estimarea costului cand F3 nu are preturi completate.
-     Editeaza tarifele pentru santierul tau; cele modificate sunt marcate cu <span style="color:#A8893D;">&#9679;</span>.</div>
+  <div class="cf-sub">Tarif lei/UM (cost, fara TVA) si randament UM/zi (durata) pentru fiecare categorie.
+     Editeaza-le pentru santierul tau; cele modificate sunt marcate cu <span style="color:#A8893D;">&#9679;</span>.
+     Randamentul controleaza durata (durata = cantitate / randament).</div>
 
   {% for t in tarife %}
     <form class="cf-add" method="POST" action="{{ url_for('gantt.config_tarif_set') }}"
@@ -175,11 +176,14 @@ table.cf-tab-prof th { background:#F5F1E8; }
       <input type="hidden" name="categorie" value="{{ t.categorie }}">
       <b style="min-width:175px; display:inline-block;">{{ t.categorie }}</b>
       <input type="number" step="0.01" min="0" name="tarif" value="{{ '%.2f'|format(t.tarif) }}"
-             style="width:110px;"> <span style="color:var(--gray-500);">lei /</span>
-      <input type="text" name="um" value="{{ t.um }}" placeholder="um" style="width:64px;">
-      <span style="color:var(--gray-400); font-size:.8rem;">material {{ (t.material*100)|round|int }}%</span>
+             style="width:104px;" title="tarif"> <span style="color:var(--gray-500);">lei /</span>
+      <input type="text" name="um" value="{{ t.um }}" placeholder="um" style="width:58px;" title="unitate">
+      <span style="color:var(--gray-400);">·</span>
+      <input type="number" step="0.01" min="0" name="randament" value="{{ '%g'|format(t.randament) }}"
+             style="width:84px;" title="randament"> <span style="color:var(--gray-500);">/zi</span>
+      <span style="color:var(--gray-400); font-size:.8rem;">mat. {{ (t.material*100)|round|int }}%</span>
       <button class="cf-btn-mic"><i class="fa-solid fa-check"></i> Salveaza</button>
-      {% if t.din_db %}<span title="tarif editat (din baza de date)" style="color:#A8893D;">&#9679;</span>{% endif %}
+      {% if t.din_db %}<span title="editat (din baza de date)" style="color:#A8893D;">&#9679;</span>{% endif %}
     </form>
   {% endfor %}
 </div>

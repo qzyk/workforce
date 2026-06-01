@@ -435,12 +435,18 @@ def config_sterge(entitate, id_):
 @gantt_bp.route('/config/tarif', methods=['POST'])
 @login_required
 def config_tarif_set():
-    _row, err = store.seteaza_tarif(
-        request.form.get('categorie'), request.form.get('tarif'),
-        request.form.get('um'), tenant_id=getattr(current_user, 'tenant_id', None),
-        user_id=getattr(current_user, 'id', None))
+    cat = request.form.get('categorie')
+    um = request.form.get('um')
+    tid = getattr(current_user, 'tenant_id', None)
+    uid = getattr(current_user, 'id', None)
+    _row, err = store.seteaza_tarif(cat, request.form.get('tarif'), um, tenant_id=tid, user_id=uid)
+    err2 = None
+    rand = request.form.get('randament')
+    if rand not in (None, ''):
+        _r2, err2 = store.seteaza_randament(cat, rand, um, tenant_id=tid, user_id=uid)
     _invalideaza_motor()
-    flash(err or 'Tarif actualizat.', 'warning' if err else 'success')
+    flash(err or err2 or 'Tarif si randament actualizate.',
+          'warning' if (err or err2) else 'success')
     return redirect(url_for('gantt.config') + '#tarife')
 
 
