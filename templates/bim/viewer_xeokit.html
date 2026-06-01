@@ -60,6 +60,34 @@
     </div>
 </div>
 
+<!-- 4D player (vizibil doar daca exista schedule-uri) -->
+<div id="xv4dPanel" style="margin-top:14px; background:#0B1426; color:#F5F1E8; border-radius:10px; padding:12px 16px; display:none;">
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+        <button class="xv-btn" id="xv4dPlay" title="Play/Pauza" style="min-width:46px;"><i class="fa-solid fa-play"></i></button>
+        <input type="range" id="xv4dSlider" min="0" max="100" value="0" style="flex:1; min-width:220px;">
+        <span id="xv4dDate" style="font-weight:700; color:#C9A961; min-width:108px; text-align:right;">&mdash;</span>
+    </div>
+    <div style="font-size:.76rem; color:rgba(245,241,232,.72); margin-top:8px;">
+        <span style="display:inline-block;width:11px;height:11px;background:#888;border-radius:2px;vertical-align:middle;opacity:.55;"></span> neinceput
+        &nbsp; <span style="display:inline-block;width:11px;height:11px;background:#D8B45A;border-radius:2px;vertical-align:middle;"></span> in curs
+        &nbsp; <span style="display:inline-block;width:11px;height:11px;background:#cfcfcf;border-radius:2px;vertical-align:middle;"></span> finalizat
+        &nbsp;&middot;&nbsp; <span id="xv4dInfo"></span>
+    </div>
+</div>
+
+{% if planuri %}
+<form method="POST" action="{{ url_for('bim.genereaza_4d', model_id=model.id) }}"
+      style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <i class="fa-solid fa-diagram-project" style="color:var(--primary);"></i>
+    <span style="font-size:.88rem;">Genereaza 4D din plan Gantt:</span>
+    <select name="plan_id" style="padding:7px 10px; border:1px solid var(--gray-300); border-radius:6px;">
+        {% for p in planuri %}<option value="{{ p.id }}">{{ p.nume }}{% if p.proiect %} &middot; {{ p.proiect.nume }}{% endif %}</option>{% endfor %}
+    </select>
+    <button type="submit" class="xv-btn"><i class="fa-solid fa-bolt"></i> Genereaza 4D</button>
+</form>
+{% endif %}
+
 <div style="margin-top:16px; padding:14px; background:#E3F2FD; border-left:3px solid var(--primary); border-radius:6px; font-size:0.88rem;">
     <i class="fa-solid fa-circle-info"></i>
     <strong>Faza 2 BIM:</strong> Acest viewer foloseste <code>xeokit-sdk</code> (open source, MIT) - viewer-ul nativ pentru
@@ -204,6 +232,61 @@ function showError(msg, detail) {
             console.warn('highlight failed', e);
         }
     }
+
+    // ---------------- 4D player (construction sequencing) ----------------
+    try {
+        const panel = document.getElementById('xv4dPanel');
+        const slider = document.getElementById('xv4dSlider');
+        const dateLbl = document.getElementById('xv4dDate');
+        const playBtn = document.getElementById('xv4dPlay');
+        const info4d = document.getElementById('xv4dInfo');
+        const scene = viewer.scene;
+        const guidMap = {};
+        for (const m of Object.values(viewer.metaScene.metaObjects || {})) {
+            if (m.originalSystemId) (guidMap[m.originalSystemId] = guidMap[m.originalSystemId] || []).push(m.id);
+        }
+        const data = await (await fetch("{{ url_for('bim.viewer_4d_data', model_id=model.id) }}")).json();
+        const els = (data.elemente || []).filter(e => guidMap[e.guid]);
+        if (els.length && data.data_min) {
+            const allIds = [];
+            els.forEach(e => allIds.push(...guidMap[e.guid]));
+            const dMin = new Date(data.data_min), dMax = new Date(data.data_max);
+            const nDays = Math.max(1, Math.round((dMax - dMin) / 86400000));
+            slider.max = nDays;
+            panel.style.display = '';
+            info4d.textContent = data.nr + ' elemente programate (' + data.data_min + ' → ' + data.data_max + ')';
+            const isoAt = (v) => new Date(dMin.getTime() + v * 86400000).toISOString().slice(0, 10);
+            const apply = (v) => {
+                const cur = isoAt(v);
+                dateLbl.textContent = cur;
+                const ghost = [], active = [];
+                for (const e of els) {
+                    const ids = guidMap[e.guid];
+                    if (cur < e.start) ghost.push(...ids);
+                    else if (cur <= e.finish) active.push(...ids);
+                }
+                scene.setObjectsXRayed(allIds, false);
+                scene.setObjectsColorized(allIds, null);
+                if (ghost.length) scene.setObjectsXRayed(ghost, true);
+                if (active.length) scene.setObjectsColorized(active, [0.85, 0.70, 0.35]);
+            };
+            let timer = null;
+            const stop = () => { if (timer) { clearInterval(timer); timer = null; playBtn.innerHTML = '<i class="fa-solid fa-play"></i>'; } };
+            slider.addEventListener('input', () => { stop(); apply(+slider.value); });
+            playBtn.addEventListener('click', () => {
+                if (timer) { stop(); return; }
+                playBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+                if (+slider.value >= nDays) { slider.value = 0; }
+                const pas = Math.max(1, Math.round(nDays / 60));
+                timer = setInterval(() => {
+                    let v = Math.min(nDays, +slider.value + pas);
+                    slider.value = v; apply(v);
+                    if (v >= nDays) stop();
+                }, 120);
+            });
+            apply(0);
+        }
+    } catch (e) { console.warn('4D player init failed', e); }
 })();
 </script>
 {% endblock %}

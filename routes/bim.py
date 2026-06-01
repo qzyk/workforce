@@ -743,7 +743,13 @@ def viewer(model_id):
 
         # Prioritate 2: xeokit-sdk daca flag-ul e activ
         if feature_flags.is_enabled('bim-viewer-3d'):
-            return render_template('bim/viewer_xeokit.html', model=model)
+            from models import GanttPlan
+            tid = getattr(current_user, 'tenant_id', None)
+            qp = GanttPlan.query
+            qp = (qp.filter((GanttPlan.tenant_id == tid) | (GanttPlan.tenant_id.is_(None)))
+                  if tid is not None else qp.filter(GanttPlan.tenant_id.is_(None)))
+            planuri = qp.order_by(GanttPlan.data_creare.desc()).all()
+            return render_template('bim/viewer_xeokit.html', model=model, planuri=planuri)
 
     # Fallback: viewer-ul existent (web-ifc-viewer)
     return render_template('bim/viewer.html', model=model)

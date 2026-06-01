@@ -71,3 +71,31 @@ def test_genereaza_si_date_4d(app):
         assert d['nr'] == 2 and d['data_min'] and d['data_max']
         assert any(x['guid'] == 'GUID-P1' and x['stare'] in ('neinceput', 'in_curs', 'finalizat')
                    for x in d['elemente'])
+
+
+def test_rute_genereaza_4d_si_data(authenticated_client, app):
+    from models import db, ModelBIM, ElementBIM, GanttPlan, BIMTaskSchedule
+    with app.app_context():
+        model = ModelBIM(nume='Model 4D test')
+        db.session.add(model); db.session.flush()
+        db.session.add_all([
+            ElementBIM(cod='P1', tip_element='pipe', ifc_global_id='G1', model_bim_id=model.id),
+            ElementBIM(cod='V1', tip_element='valve', ifc_global_id='G2', model_bim_id=model.id),
+        ])
+        plan = GanttPlan(nume='Plan 4D', continut=SAMPLE_CSV, ext='.csv',
+                         nr_activitati=3, durata_zile=10, cost_total=0)
+        db.session.add(plan); db.session.commit()
+        mid, pid = model.id, plan.id
+    try:
+        r = authenticated_client.post(f'/bim/model/{mid}/genereaza-4d', data={'plan_id': pid})
+        assert r.status_code == 302
+        with app.app_context():
+            assert BIMTaskSchedule.query.count() >= 2
+        rd = authenticated_client.get(f'/bim/viewer/{mid}/4d-data')
+        assert rd.status_code == 200 and rd.is_json
+        assert rd.json['nr'] >= 2 and any(x['guid'] == 'G1' for x in rd.json['elemente'])
+    finally:
+        with app.app_context():
+            p = db.session.get(GanttPlan, pid)
+            if p:
+                db.session.delete(p); db.session.commit()
