@@ -88,6 +88,15 @@
 </form>
 {% endif %}
 
+<form method="POST" action="{{ url_for('bim.genereaza_4d_secventa', model_id=model.id) }}"
+      style="margin-top:8px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <i class="fa-solid fa-layer-group" style="color:var(--gray-500);"></i>
+    <span style="font-size:.88rem;">Sau auto-secventiere (orice model, fara plan):</span>
+    <input type="number" name="durata" value="90" min="5" max="2000" style="width:84px; padding:7px 9px; border:1px solid var(--gray-300); border-radius:6px;"> zile
+    <button type="submit" class="xv-btn"><i class="fa-solid fa-layer-group"></i> Auto-secventiere</button>
+</form>
+
 <div style="margin-top:16px; padding:14px; background:#E3F2FD; border-left:3px solid var(--primary); border-radius:6px; font-size:0.88rem;">
     <i class="fa-solid fa-circle-info"></i>
     <strong>Faza 2 BIM:</strong> Acest viewer foloseste <code>xeokit-sdk</code> (open source, MIT) - viewer-ul nativ pentru

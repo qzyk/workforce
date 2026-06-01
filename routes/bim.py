@@ -823,6 +823,26 @@ def genereaza_4d(model_id):
     return redirect(url_for('bim.viewer', model_id=model_id))
 
 
+@bim_bp.route('/model/<int:model_id>/genereaza-4d-secventa', methods=['POST'])
+@login_required
+def genereaza_4d_secventa(model_id):
+    """4D fara plan: auto-secventiere a elementelor pe nivel + ordine de constructie."""
+    model = ModelBIM.query.get_or_404(model_id)
+    from services import bim_4d_bridge
+    try:
+        durata = int(request.form.get('durata') or 90)
+    except (TypeError, ValueError):
+        durata = 90
+    durata = max(5, min(durata, 2000))
+    stats = bim_4d_bridge.genereaza_secventa(
+        _elemente_model(model), date.today(), durata,
+        tenant_id=getattr(current_user, 'tenant_id', None),
+        user_id=getattr(current_user, 'id', None))
+    flash(f"Auto-secventiere pe {durata} zile: {stats['create']} create, "
+          f"{stats['actualizate']} actualizate.", 'success')
+    return redirect(url_for('bim.viewer', model_id=model_id))
+
+
 @bim_bp.route('/viewer/<int:model_id>/4d-data')
 @login_required
 def viewer_4d_data(model_id):

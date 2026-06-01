@@ -73,6 +73,47 @@ def test_genereaza_si_date_4d(app):
                    for x in d['elemente'])
 
 
+def test_genereaza_secventa_ordonare_pe_nivel(app):
+    from models import db, Santier, Cladire, Nivel, ElementBIM, BIMTaskSchedule
+    with app.app_context():
+        s = Santier(cod='SQ', nume='Seq'); db.session.add(s); db.session.flush()
+        c = Cladire(santier_id=s.id, cod='C', nume='C'); db.session.add(c); db.session.flush()
+        n0 = Nivel(cladire_id=c.id, cod='P', nume='Parter', ordine=0)
+        n1 = Nivel(cladire_id=c.id, cod='E1', nume='Etaj 1', ordine=1)
+        db.session.add_all([n0, n1]); db.session.flush()
+        cols = [ElementBIM(cod=f'C{i}', tip_element='column', ifc_global_id=f'GC{i}', nivel_id=n0.id)
+                for i in range(10)]
+        slabs = [ElementBIM(cod=f'S{i}', tip_element='slab', ifc_global_id=f'GS{i}', nivel_id=n1.id)
+                 for i in range(10)]
+        db.session.add_all(cols + slabs); db.session.commit()
+
+        stats = bridge.genereaza_secventa(cols + slabs, date(2026, 6, 1), 60)
+        assert stats['create'] == 20 and stats['mod'] == 'secventa'
+        by_el = {x.element_bim_id: x for x in BIMTaskSchedule.query.filter_by(faza='secventa').all()}
+        assert len(by_el) == 20
+        # nivelul 0 (coloane) se construieste inaintea nivelului 1 (placi)
+        col_end = max(by_el[e.id].data_start_plan for e in cols)
+        slab_start = min(by_el[e.id].data_start_plan for e in slabs)
+        assert col_end <= slab_start
+
+
+def test_ruta_genereaza_secventa(authenticated_client, app):
+    from models import db, ModelBIM, ElementBIM, BIMTaskSchedule
+    with app.app_context():
+        model = ModelBIM(nume='Model seq')
+        db.session.add(model); db.session.flush()
+        db.session.add_all([
+            ElementBIM(cod='B1', tip_element='beam', ifc_global_id='GB1', model_bim_id=model.id),
+            ElementBIM(cod='B2', tip_element='slab', ifc_global_id='GB2', model_bim_id=model.id),
+        ])
+        db.session.commit()
+        mid = model.id
+    r = authenticated_client.post(f'/bim/model/{mid}/genereaza-4d-secventa', data={'durata': '40'})
+    assert r.status_code == 302
+    with app.app_context():
+        assert BIMTaskSchedule.query.filter_by(faza='secventa').count() == 2
+
+
 def test_rute_genereaza_4d_si_data(authenticated_client, app):
     from models import db, ModelBIM, ElementBIM, GanttPlan, BIMTaskSchedule
     with app.app_context():

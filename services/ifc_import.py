@@ -41,6 +41,17 @@ IFC_TYPE_MAP = {
     'IfcSensor': 'sensor',
     'IfcFireSuppressionTerminal': 'sprinkler',
     'IfcTransportElement': 'elevator',
+    # structurale (beton armat + metal) - frecvente in modelele reale
+    'IfcReinforcingBar': 'rebar',
+    'IfcReinforcingMesh': 'mesh',
+    'IfcFooting': 'footing',
+    'IfcPlate': 'plate',
+    'IfcMember': 'member',
+    'IfcFastener': 'fastener',
+    'IfcMechanicalFastener': 'fastener',
+    'IfcBuildingElementProxy': 'proxy',
+    'IfcCovering': 'covering',
+    'IfcCurtainWall': 'curtain_wall',
 }
 
 
@@ -250,6 +261,31 @@ def import_ifc(file_path, santier_id=None, dry_run=False):
             if not dry_run:
                 db.session.add(element)
             statistici['elemente_create'] += 1
+
+    # Leg elementele de nivelul (storey) lor via containment IFC: nivel_id + cladire_id.
+    # Necesar pentru 4D (auto-secventiere pe nivel) si pentru afisarea pe niveluri.
+    if not dry_run:
+        db.session.flush()
+        niv_map = {n.extern_id: n for n in Nivel.query.filter(Nivel.extern_id.isnot(None)).all()}
+        el_map = {e.ifc_global_id: e for e in ElementBIM.query.filter(
+            ElementBIM.ifc_global_id.isnot(None), ElementBIM.nivel_id.is_(None)).all()}
+        for ifc_type in IFC_TYPE_MAP:
+            try:
+                instances = ifc.by_type(ifc_type)
+            except Exception:
+                continue
+            for inst in instances:
+                el = el_map.get(inst.GlobalId)
+                if el is None:
+                    continue
+                for rel in (getattr(inst, 'ContainedInStructure', None) or []):
+                    rs = getattr(rel, 'RelatingStructure', None)
+                    if rs is not None and rs.is_a('IfcBuildingStorey'):
+                        niv = niv_map.get(rs.GlobalId)
+                        if niv is not None:
+                            el.nivel_id = niv.id
+                            el.cladire_id = niv.cladire_id
+                        break
 
     if not dry_run:
         try:
