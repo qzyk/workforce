@@ -372,7 +372,8 @@ def config():
                           'rezumat': ', '.join(f'{k}→c{v}' for k, v in col.items())})
 
     return render_template('gantt/config.html', sin_grup=sin_grup, reg_grup=reg_grup,
-                           profiluri=profiluri, campuri=campuri)
+                           profiluri=profiluri, campuri=campuri,
+                           tarife=store.lista_tarife(tid))
 
 
 @gantt_bp.route('/config/sinonim', methods=['POST'])
@@ -422,6 +423,18 @@ def config_sterge(entitate, id_):
         _invalideaza_motor()
     flash('Sters definitiv.' if ok else 'Nu am gasit randul.', 'success' if ok else 'warning')
     return redirect(url_for('gantt.config'))
+
+
+@gantt_bp.route('/config/tarif', methods=['POST'])
+@login_required
+def config_tarif_set():
+    _row, err = store.seteaza_tarif(
+        request.form.get('categorie'), request.form.get('tarif'),
+        request.form.get('um'), tenant_id=getattr(current_user, 'tenant_id', None),
+        user_id=getattr(current_user, 'id', None))
+    _invalideaza_motor()
+    flash(err or 'Tarif actualizat.', 'warning' if err else 'success')
+    return redirect(url_for('gantt.config') + '#tarife')
 
 
 @gantt_bp.route('/config/profil/<int:id_>/redenumeste', methods=['POST'])

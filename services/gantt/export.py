@@ -56,7 +56,8 @@ def export_csv(activitati, noduri) -> bytes:
     _, _, idnum = _numerotare(noduri, activitati)
     out = io.StringIO()
     w = csv.writer(out, delimiter=',')
-    w.writerow(['ID', 'WBS', 'Activity Name', 'Duration', 'Predecessors', 'Category', 'Quantity', 'UM'])
+    w.writerow(['ID', 'WBS', 'Activity Name', 'Duration', 'Predecessors', 'Category',
+                'Quantity', 'UM', 'Valoare', 'Material', 'Manopera'])
     for a in activitati:
         preds = []
         for d in a.predecesori:
@@ -71,6 +72,8 @@ def export_csv(activitati, noduri) -> bytes:
         w.writerow([
             idnum.get(a.id, ''), a.wbs_id, a.nume, f'{a.durata} days',
             ';'.join(preds), a.categorie_tehnologica or '', _num(a.cantitate), a.um,
+            _num(getattr(a, 'valoare', 0)), _num(getattr(a, 'valoare_material', 0)),
+            _num(getattr(a, 'valoare_manopera', 0)),
         ])
     return out.getvalue().encode('utf-8-sig')
 

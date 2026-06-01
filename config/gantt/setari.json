@@ -30,7 +30,11 @@
     "obiect": ["obiect", "obiectul", "obiectiv", "obiectivul", "obiect deviz",
                "stadiul fizic"],
     "tronson": ["tronson", "strada", "sector", "zona", "corp"],
-    "categorie": ["categorie", "categoria de lucrari", "categoria"]
+    "categorie": ["categorie", "categoria de lucrari", "categoria"],
+    "pret_unitar": ["pret unitar", "pret/um", "p.u.", "pret u", "pret unit", "pret pe um"],
+    "pret_material": ["pret material", "pret materiale", "valoare material"],
+    "pret_manopera": ["pret manopera", "valoare manopera", "pret munca"],
+    "pret_total": ["pret total", "valoare totala", "total general", "valoare lucrare"]
   },
   "sinonime": {
     "teava": "conducta",

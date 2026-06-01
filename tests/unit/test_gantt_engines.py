@@ -378,3 +378,41 @@ def test_export_format_invalid():
     rez = _rezultat_demo()
     with pytest.raises(ValueError):
         export_engine.exporta('dxf', rez)
+
+
+# --------------------------------------------------------------------- cost 5D
+def test_cost_estimat_din_tarif():
+    from services.gantt.cost import calculeaza_cost
+    art = ArticolF3('1.0', 'Sapatura', um='mc', cantitate=100)
+    tarife = {'SAPATURA': {'tarif': 35, 'um': 'mc', 'material': 0.20}}
+    val, mat, man, est = calculeaza_cost(art, 'SAPATURA', tarife)
+    assert val == 3500.0 and est is True
+    assert abs(mat - 700.0) < 0.01 and abs(man - 2800.0) < 0.01
+
+
+def test_cost_din_pret_f3_nu_estimeaza():
+    from services.gantt.cost import calculeaza_cost
+    art = ArticolF3('1', 'X', cantitate=10, pret_total=5000)
+    val, _mat, _man, est = calculeaza_cost(art, 'ARMATURI', {'ARMATURI': {'tarif': 250}})
+    assert val == 5000.0 and est is False
+
+
+def test_program_forward_pass_si_lag():
+    from services.gantt.program import programeaza
+    a = Activitate(id='A1', cod='1', nume='a', categorie_tehnologica='SAPATURA', durata=3)
+    b = Activitate(id='A2', cod='2', nume='b', categorie_tehnologica='POZARE_CONDUCTA', durata=2)
+    b.predecesori.append(Dependenta('A1', 'FS', 1))  # start dupa finish(A1) + 1
+    total = programeaza([a, b])
+    assert (a.start_zi, a.finish_zi) == (0, 3)
+    assert (b.start_zi, b.finish_zi) == (4, 6)
+    assert total == 6
+
+
+def test_curba_s_si_cost_in_pipeline():
+    articole, _ = import_engine.importa(SAMPLE_CSV, '.csv')
+    st = MotorPlanificare().proceseaza(articole).statistici
+    assert st['cost_total'] > 0
+    assert st['durata_totala_zile'] > 0
+    assert st['curba_s'] and st['curba_s'][-1]['procent'] == 100.0
+    # material + manopera ~ total
+    assert abs((st['cost_material'] + st['cost_manopera']) - st['cost_total']) < 1.0

@@ -58,7 +58,8 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
     <div class="gz-stat"><div class="v">{{ st.nr_obiecte }}</div><div class="l">Obiecte</div></div>
     <div class="gz-stat"><div class="v">{{ st.nr_tronsoane }}</div><div class="l">Tronsoane</div></div>
     <div class="gz-stat"><div class="v gold">{{ st.procent_clasificat }}%</div><div class="l">Clasificat</div></div>
-    <div class="gz-stat"><div class="v {{ 'gold' if not rap.valid else '' }}">{{ rap.nr_erori }}</div><div class="l">Erori validare</div></div>
+    {% if st.cost_total %}<div class="gz-stat"><div class="v gold">{{ '{:,.0f}'.format(st.cost_total) }}</div><div class="l">Cost estimat (lei)</div></div>{% endif %}
+    <div class="gz-stat"><div class="v">{{ st.durata_totala_zile }}</div><div class="l">Durata (zile)</div></div>
 </div>
 
 {% if rap.probleme %}
@@ -77,6 +78,29 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
 <div class="gz-sec"><div class="gz-prob gz-info" style="padding:14px;"><i class="fa-solid fa-circle-check" style="color:#2e7d32;"></i> Nicio problema detectata. Structura e valida (fara cicluri, fara referinte rupte).</div></div>
 {% endif %}
 
+{% if st.cost_total %}
+<div class="gz-sec">
+    <div class="gz-sec-h"><i class="fa-solid fa-coins"></i> Cost estimat (5D){% if st.nr_cost_estimat %} — {{ st.nr_cost_estimat }} pozitii din tarif{% endif %}</div>
+    <div style="padding:14px 16px;">
+        <div class="gz-stats" style="margin-bottom:14px;">
+            <div class="gz-stat"><div class="v gold">{{ '{:,.0f}'.format(st.cost_total) }}</div><div class="l">Total fara TVA (lei)</div></div>
+            <div class="gz-stat"><div class="v">{{ '{:,.0f}'.format(st.cost_material) }}</div><div class="l">Material</div></div>
+            <div class="gz-stat"><div class="v">{{ '{:,.0f}'.format(st.cost_manopera) }}</div><div class="l">Manopera</div></div>
+            <div class="gz-stat"><div class="v">{{ '{:,.0f}'.format(st.cost_total * 1.21) }}</div><div class="l">Total cu TVA 21%</div></div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:18px;">
+            <div><canvas id="chartCurbaS" height="170"></canvas></div>
+            <div><canvas id="chartCostCat" height="170"></canvas></div>
+        </div>
+        <small style="color:var(--gray-500); display:block; margin-top:10px;">
+            Estimare din tarife orientative lei/UM — ajusteaza-le in
+            <a href="{{ url_for('gantt.config') }}#tarife">Configurare &rarr; Tarife</a>
+            (pozitiile marcate cu * sunt estimate, nu citite din F3).
+        </small>
+    </div>
+</div>
+{% endif %}
+
 <div class="gz-sec">
     <div class="gz-sec-h"><i class="fa-solid fa-sitemap"></i> WBS (primele 60 noduri din {{ st.nr_noduri_wbs }})</div>
     <div style="max-height:320px; overflow:auto; padding:10px 16px;">
@@ -90,7 +114,7 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
     <div class="gz-sec-h"><i class="fa-solid fa-list-check"></i> Activitati (primele 200 din {{ st.nr_activitati }})</div>
     <div style="overflow:auto;">
         <table class="gz">
-            <thead><tr><th>WBS</th><th>Cod</th><th>Denumire</th><th>Categorie</th><th>Durata</th><th>Predecesori</th></tr></thead>
+            <thead><tr><th>WBS</th><th>Cod</th><th>Denumire</th><th>Categorie</th><th>Cant.</th><th>Durata</th><th>Valoare (lei)</th><th>Predecesori</th></tr></thead>
             <tbody>
                 {% for a in rezultat.activitati[:200] %}
                 <tr>
@@ -98,7 +122,9 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
                     <td>{{ a.cod }}</td>
                     <td>{{ a.nume }}</td>
                     <td>{% if a.categorie_tehnologica %}{{ a.categorie_tehnologica }}{% else %}<span class="gz-avert">neclasificat</span>{% endif %}</td>
+                    <td style="white-space:nowrap;">{{ '%g'|format(a.cantitate) }} {{ a.um }}</td>
                     <td>{{ a.durata }}z</td>
+                    <td style="text-align:right; white-space:nowrap;">{{ '{:,.0f}'.format(a.valoare) }}{% if a.cost_estimat %}<span class="gz-avert" title="estimat din tarif">*</span>{% endif %}</td>
                     <td>{% for p in a.predecesori %}{{ p.predecesor_id }} <small>{{ p.tip }}{% if p.decalaj %}{{ '%+d'|format(p.decalaj) }}{% endif %}</small>{% if not loop.last %}, {% endif %}{% endfor %}</td>
                 </tr>
                 {% endfor %}
@@ -106,4 +132,43 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
         </table>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% set st = rezultat.statistici %}
+{% if st.cost_total %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    if (!window.Chart) return;
+    var cs = {{ st.curba_s | tojson }};
+    var costCat = {{ st.cost_per_categorie | tojson }};
+
+    var elS = document.getElementById('chartCurbaS');
+    if (elS && cs.length) {
+        new Chart(elS, {
+            type: 'line',
+            data: { labels: cs.map(function(p){ return 'z' + p.zi; }),
+                    datasets: [{ label: 'Cost cumulat (lei)', data: cs.map(function(p){ return p.cumulat; }),
+                                 borderColor: '#C9A961', backgroundColor: 'rgba(201,169,97,0.15)',
+                                 fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2 }] },
+            options: { responsive: true, plugins: { legend: { display: false },
+                       title: { display: true, text: 'Curba S — cost cumulat in timp' } },
+                       scales: { x: { ticks: { maxTicksLimit: 8 } } } }
+        });
+    }
+    var elC = document.getElementById('chartCostCat');
+    var ck = Object.keys(costCat).sort(function(a, b){ return costCat[b] - costCat[a]; });
+    if (elC && ck.length) {
+        new Chart(elC, {
+            type: 'bar',
+            data: { labels: ck, datasets: [{ label: 'lei', data: ck.map(function(k){ return costCat[k]; }),
+                                             backgroundColor: '#0B1426' }] },
+            options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false },
+                       title: { display: true, text: 'Cost pe categorie (lei)' } } }
+        });
+    }
+})();
+</script>
+{% endif %}
 {% endblock %}

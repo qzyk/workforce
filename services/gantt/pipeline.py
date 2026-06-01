@@ -16,6 +16,8 @@ from .clasificare import Clasificator
 from .wbs import genereaza_wbs
 from .dependinte import genereaza_dependinte
 from .durate import estimeaza_durata
+from .cost import calculeaza_cost
+from .program import programeaza, curba_s
 from .validare import valideaza
 from . import import_engine
 from . import store
@@ -37,6 +39,7 @@ class MotorPlanificare:
         self.dict_clasificare = clasificare or store.clasificare(tenant_id)
         self.dependinte = dependinte or store.dependinte(tenant_id)
         self.setari = setari or store.setari(tenant_id)
+        self.tarife = store.tarife_gantt(tenant_id)
         self.clasificator = Clasificator(self.dict_clasificare, self.setari.get('sinonime'),
                                          reguli_prefix=store.reguli_prefix_cod(tenant_id))
 
@@ -47,6 +50,7 @@ class MotorPlanificare:
         for i, art in enumerate(articole, start=1):
             cat, scor = self.clasificator.clasifica(art.denumire, art.cod_articol)
             durata = estimeaza_durata(art.cantitate, cat, self.setari)
+            val, vmat, vman, estimat = calculeaza_cost(art, cat, self.tarife)
             activitati.append(Activitate(
                 id=f'A{i:06d}',
                 cod=art.cod_articol,
@@ -58,6 +62,10 @@ class MotorPlanificare:
                 cantitate=art.cantitate,
                 durata=durata,
                 increder_clasificare=scor,
+                valoare=val,
+                valoare_material=vmat,
+                valoare_manopera=vman,
+                cost_estimat=estimat,
             ))
         return activitati
 
@@ -73,10 +81,13 @@ class MotorPlanificare:
             self.dependinte.get('intra_categorie', 'secvential'),
             self.dependinte.get('ordine_categorii', []),
         )
+        durata_totala = programeaza(activitati)   # forward pass -> start/finish per activitate
         raport = valideaza(activitati)
 
         durata_s = round(time.perf_counter() - t0, 3)
         statistici = self._statistici(activitati, noduri, nr_dep, durata_s)
+        statistici['durata_totala_zile'] = durata_totala
+        statistici['curba_s'] = curba_s(activitati, durata_totala)
         return RezultatPlanificare(activitati=activitati, noduri_wbs=noduri,
                                    raport=raport, statistici=statistici)
 
@@ -93,9 +104,20 @@ class MotorPlanificare:
         obiecte = {a.obiect for a in activitati}
         tronsoane = {(a.obiect, a.tronson) for a in activitati}
         per_categorie: dict = {}
+        cost_categorie: dict = {}
+        cost_obiect: dict = {}
+        cost_total = cost_material = cost_manopera = 0.0
+        nr_estimate = 0
         for a in activitati:
             k = a.categorie_tehnologica or 'NECLASIFICAT'
             per_categorie[k] = per_categorie.get(k, 0) + 1
+            cost_categorie[k] = round(cost_categorie.get(k, 0.0) + (a.valoare or 0), 2)
+            cost_obiect[a.obiect] = round(cost_obiect.get(a.obiect, 0.0) + (a.valoare or 0), 2)
+            cost_total += a.valoare or 0
+            cost_material += a.valoare_material or 0
+            cost_manopera += a.valoare_manopera or 0
+            if a.cost_estimat:
+                nr_estimate += 1
         return {
             'nr_activitati': len(activitati),
             'nr_dependente': nr_dep,
@@ -106,5 +128,11 @@ class MotorPlanificare:
             'procent_clasificat': (round(100 * (len(activitati) - neclasificate) / len(activitati), 1)
                                    if activitati else 0.0),
             'activitati_per_categorie': per_categorie,
+            'cost_total': round(cost_total, 2),
+            'cost_material': round(cost_material, 2),
+            'cost_manopera': round(cost_manopera, 2),
+            'cost_per_categorie': cost_categorie,
+            'cost_per_obiect': cost_obiect,
+            'nr_cost_estimat': nr_estimate,
             'durata_procesare_s': durata_s,
         }

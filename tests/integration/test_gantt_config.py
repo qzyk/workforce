@@ -13,15 +13,36 @@ def _curata_config(app):
     """Goleste tabelele de config dupa fiecare test (nu sunt in wipe-ul global)."""
     yield
     from models import (db, GanttSinonimColoana, GanttClasificareRegula,
-                        GanttProfilMapare)
+                        GanttProfilMapare, TarifCategorie)
     with app.app_context():
         try:
             for M in (GanttSinonimColoana, GanttClasificareRegula, GanttProfilMapare):
                 for row in M.query.all():
                     db.session.delete(row)
+            for row in TarifCategorie.query.filter_by(disciplina='gantt').all():
+                db.session.delete(row)
             db.session.commit()
         except Exception:
             db.session.rollback()
+
+
+def test_tarife_fallback_json():
+    # fara context de app -> tarife.json (toate categoriile cu tarif > 0)
+    t = store.tarife_gantt()
+    assert 'ARMATURI' in t and t['ARMATURI']['tarif'] > 0
+    assert 'POZARE_CONDUCTA' in t
+
+
+def test_config_seteaza_tarif(authenticated_client, app):
+    r = authenticated_client.post('/gantt/config/tarif', data={
+        'categorie': 'POZARE_CONDUCTA', 'tarif': '95.5', 'um': 'm'})
+    assert r.status_code == 302
+    with app.app_context():
+        t = store.tarife_gantt()
+        assert abs(t['POZARE_CONDUCTA']['tarif'] - 95.5) < 0.01
+        # se vede si in lista pentru admin, marcat din_db
+        lista = {x['categorie']: x for x in store.lista_tarife()}
+        assert lista['POZARE_CONDUCTA']['din_db'] is True
 
 
 def test_config_pagina_se_incarca(authenticated_client):
@@ -89,5 +110,6 @@ def test_sync_din_json_idempotent(app):
         assert GanttClasificareRegula.query.filter_by(tip_regula='prefix_cod').count() > 0
         # overlay-ul vede acum prefixele si categoriile noi
         assert 'IZOLATII' in store.clasificare()
+        assert a1['tarife'] > 0  # tarifele pe categorie sunt si ele seed-uite
         a2 = store.sync_din_json()
-        assert a2 == {'sinonime': 0, 'reguli': 0, 'prefixe': 0}  # a doua nu mai adauga
+        assert a2 == {'sinonime': 0, 'reguli': 0, 'prefixe': 0, 'tarife': 0}  # idempotent

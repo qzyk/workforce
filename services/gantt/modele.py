@@ -29,6 +29,11 @@ class ArticolF3:
     tronson: str = ''
     categorie: str = ''          # categoria din F3 (input optional, ex: "Terasamente")
     rand_sursa: int = 0          # nr. randului in fisier (pentru raportarea erorilor)
+    # preturi citite din F3 (daca exista) - altfel 0 si se estimeaza din tarife (5D)
+    pret_unitar: float = 0.0
+    pret_material: float = 0.0
+    pret_manopera: float = 0.0
+    pret_total: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -44,6 +49,10 @@ class ArticolF3:
             tronson=str(d.get('tronson', '')).strip(),
             categorie=str(d.get('categorie', '')).strip(),
             rand_sursa=int(d.get('rand_sursa', 0) or 0),
+            pret_unitar=_to_float(d.get('pret_unitar', 0)),
+            pret_material=_to_float(d.get('pret_material', 0)),
+            pret_manopera=_to_float(d.get('pret_manopera', 0)),
+            pret_total=_to_float(d.get('pret_total', 0)),
         )
 
 
@@ -81,6 +90,14 @@ class Activitate:
     wbs_id: str = ''                           # ex: 1.1.2.3
     nivel: int = 4
     increder_clasificare: float = 0.0          # scor 0..1
+    # cost (5D): valoarea totala + descompunere material/manopera (lei, fara TVA)
+    valoare: float = 0.0
+    valoare_material: float = 0.0
+    valoare_manopera: float = 0.0
+    cost_estimat: bool = False                 # True daca valoarea vine din tarif, nu din F3
+    # programare (pentru curba S): index de zi 0-based
+    start_zi: int = 0
+    finish_zi: int = 0
     predecesori: list = field(default_factory=list)   # list[Dependenta]
 
     def to_dict(self) -> dict:
@@ -104,6 +121,12 @@ class Activitate:
             wbs_id=str(d.get('wbs_id', '')),
             nivel=int(d.get('nivel', 4) or 4),
             increder_clasificare=_to_float(d.get('increder_clasificare', 0)),
+            valoare=_to_float(d.get('valoare', 0)),
+            valoare_material=_to_float(d.get('valoare_material', 0)),
+            valoare_manopera=_to_float(d.get('valoare_manopera', 0)),
+            cost_estimat=bool(d.get('cost_estimat', False)),
+            start_zi=int(d.get('start_zi', 0) or 0),
+            finish_zi=int(d.get('finish_zi', 0) or 0),
         )
         a.predecesori = [Dependenta.from_dict(p) for p in (d.get('predecesori') or [])]
         return a

@@ -1,0 +1,17 @@
+{
+  "_comentariu": "Tarife orientative lei/UM (fara TVA) pe categorie tehnologica, pentru estimarea costului (5D) cand F3 nu are preturi. 'material' = ponderea de material din valoare (restul = manopera+utilaj). Editabile in /gantt/config; stocate in tarife_categorie cu disciplina='gantt'.",
+  "TRASARE":          {"tarif": 5,    "um": "m",   "material": 0.15},
+  "SAPATURA":         {"tarif": 35,   "um": "mc",  "material": 0.20},
+  "SPRIJINIRI":       {"tarif": 60,   "um": "mp",  "material": 0.55},
+  "POZARE_CONDUCTA":  {"tarif": 80,   "um": "m",   "material": 0.65},
+  "CAMINE":           {"tarif": 1500, "um": "buc", "material": 0.70},
+  "UMPLUTURA":        {"tarif": 30,   "um": "mc",  "material": 0.45},
+  "REFACERE":         {"tarif": 120,  "um": "mp",  "material": 0.60},
+  "PROBE":            {"tarif": 15,   "um": "m",   "material": 0.10},
+  "DEMONTARI":        {"tarif": 25,   "um": "m",   "material": 0.05},
+  "TRANSPORT":        {"tarif": 40,   "um": "to",  "material": 0.10},
+  "ARMATURI":         {"tarif": 250,  "um": "buc", "material": 0.75},
+  "OBIECTE_SANITARE": {"tarif": 800,  "um": "buc", "material": 0.78},
+  "IZOLATII":         {"tarif": 45,   "um": "mp",  "material": 0.60},
+  "APARATURA_AMC":    {"tarif": 600,  "um": "buc", "material": 0.80}
+}

@@ -375,7 +375,7 @@ def sync_din_json(tenant_id: Optional[int] = None, user_id: Optional[int] = None
     if not has_app_context():
         return {}
     from models import db, GanttSinonimColoana, GanttClasificareRegula
-    adaugate = {'sinonime': 0, 'reguli': 0, 'prefixe': 0}
+    adaugate = {'sinonime': 0, 'reguli': 0, 'prefixe': 0, 'tarife': 0}
 
     ex_sin = {(s.camp, s.sinonim)
               for s in GanttSinonimColoana.query.filter_by(tenant_id=tenant_id).all()}
@@ -405,5 +405,119 @@ def sync_din_json(tenant_id: Optional[int] = None, user_id: Optional[int] = None
                            tenant_id=tenant_id, creat_de_id=user_id))
             ex_cl.add((cat, 'prefix_cod', prefix)); adaugate['prefixe'] += 1
 
+    # tarife pe categorie -> tarife_categorie (disciplina='gantt', global)
+    from models import TarifCategorie
+    ex_tarif = {r.categorie_lucrare for r in TarifCategorie.query.filter_by(
+        disciplina=_DISC_GANTT, proiect_id=None).all()
+        if r.tenant_id in (None, tenant_id)}
+    for cat, v in (cfg.incarca('tarife', {}) or {}).items():
+        if str(cat).startswith('_') or cat in ex_tarif:
+            continue
+        db.session.add(TarifCategorie(
+            disciplina=_DISC_GANTT, categorie_lucrare=cat,
+            tarif_baza=float(v.get('tarif', 0) or 0), um_referinta=(v.get('um') or None),
+            proiect_id=None, tenant_id=tenant_id, creat_de_id=user_id))
+        ex_tarif.add(cat); adaugate['tarife'] += 1
+
     db.session.commit()
     return adaugate
+
+
+# ---------------------------------------------------------------------------
+# Tarife pe categorie tehnologica (5D) - stocate in tarife_categorie cu
+# disciplina='gantt'. Overlay: tarife.json ca baza, DB suprascrie tariful.
+# ---------------------------------------------------------------------------
+_DISC_GANTT = 'gantt'
+
+
+def tarife_gantt(tenant_id: Optional[int] = None) -> dict:
+    """{categorie: {'tarif': lei/UM, 'um': ref, 'material': pondere}} - JSON suprascris de DB."""
+    base: dict = {}
+    for cat, v in (cfg.incarca('tarife', {}) or {}).items():
+        if str(cat).startswith('_'):
+            continue
+        base[cat] = {'tarif': float((v or {}).get('tarif', 0) or 0),
+                     'um': (v or {}).get('um', ''),
+                     'material': float((v or {}).get('material', 0.65) or 0.65)}
+    try:
+        from flask import has_app_context
+        if has_app_context():
+            from sqlalchemy import or_
+            from models import TarifCategorie
+            q = TarifCategorie.query.filter_by(disciplina=_DISC_GANTT, proiect_id=None)
+            if tenant_id is not None:
+                q = q.filter(or_(TarifCategorie.tenant_id == tenant_id,
+                                 TarifCategorie.tenant_id.is_(None)))
+            else:
+                q = q.filter(TarifCategorie.tenant_id.is_(None))
+            for r in q.all():
+                d = base.setdefault(r.categorie_lucrare,
+                                    {'tarif': 0, 'um': '', 'material': 0.65})
+                d['tarif'] = float(r.tarif_baza or 0)
+                if r.um_referinta:
+                    d['um'] = r.um_referinta
+    except Exception:
+        pass
+    return base
+
+
+def lista_tarife(tenant_id: Optional[int] = None) -> list:
+    """Lista pentru admin: [{categorie, tarif, um, material, din_db}] ordonata."""
+    din_db = set()
+    try:
+        from flask import has_app_context
+        if has_app_context():
+            from models import TarifCategorie
+            for r in TarifCategorie.query.filter_by(disciplina=_DISC_GANTT, proiect_id=None).all():
+                if r.tenant_id in (None, tenant_id):
+                    din_db.add(r.categorie_lucrare)
+    except Exception:
+        pass
+    eff = tarife_gantt(tenant_id)
+    return [{'categorie': c, 'tarif': eff[c]['tarif'], 'um': eff[c].get('um', ''),
+             'material': eff[c].get('material', 0.65), 'din_db': c in din_db}
+            for c in sorted(eff)]
+
+
+def seteaza_tarif(categorie: str, tarif, um: Optional[str] = None,
+                  tenant_id=None, user_id=None):
+    """Upsert tarif pe categorie (TarifCategorie disciplina='gantt'). (row, eroare)."""
+    categorie = (categorie or '').strip().upper()
+    if not categorie:
+        return None, 'Categorie obligatorie.'
+    try:
+        tarif = float(str(tarif).replace(',', '.'))
+    except (TypeError, ValueError):
+        return None, 'Tarif invalid.'
+    if tarif < 0:
+        return None, 'Tarif invalid.'
+    try:
+        from flask import has_app_context
+        if not has_app_context():
+            return None, 'Fara context aplicatie.'
+        from models import db, TarifCategorie
+        row = TarifCategorie.query.filter_by(
+            disciplina=_DISC_GANTT, categorie_lucrare=categorie,
+            proiect_id=None, tenant_id=tenant_id).first()
+        nou = row is None
+        if nou:
+            row = TarifCategorie(disciplina=_DISC_GANTT, categorie_lucrare=categorie,
+                                 tarif_baza=tarif, um_referinta=(um or None),
+                                 proiect_id=None, tenant_id=tenant_id, creat_de_id=user_id)
+            db.session.add(row)
+        else:
+            row.tarif_baza = tarif
+            if um:
+                row.um_referinta = um
+        db.session.flush()
+        _audit('create' if nou else 'update', 'tarife_categorie', row.id,
+               {'categorie': categorie, 'tarif': tarif, 'disciplina': _DISC_GANTT})
+        db.session.commit()
+        return row, None
+    except Exception:
+        try:
+            from models import db
+            db.session.rollback()
+        except Exception:
+            pass
+        return None, 'Eroare la salvare.'
