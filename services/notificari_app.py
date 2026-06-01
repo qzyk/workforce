@@ -13,7 +13,7 @@ Functii publice:
 
 from __future__ import annotations
 
-from datetime import datetime, date as _date
+from datetime import datetime
 from typing import Optional
 
 from models import db, NotificareApp
@@ -40,7 +40,10 @@ def creeaza_notificare(
     Returneaza NotificareApp creat sau (None daca skipped duplicate).
     """
     if skip_duplicate_today and entitate_referinta and id_entitate_referinta:
-        today_start = datetime.combine(_date.today(), datetime.min.time())
+        # fereastra de azi pe acelasi ceas ca `data_creare` (UTC) - altfel, in
+        # fusurile UTC+N, inainte de pranz UTC fereastra (miezul noptii local)
+        # excludea inregistrarile UTC si idempotenta esua (notificari duplicate).
+        today_start = datetime.combine(datetime.utcnow().date(), datetime.min.time())
         existing = NotificareApp.query.filter(
             NotificareApp.utilizator_id == utilizator_id,
             NotificareApp.tip == tip,
