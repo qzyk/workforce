@@ -4346,3 +4346,40 @@ class GanttRelatieTemplate(db.Model):
                 f'{self.tip}+{self.decalaj}>')
 
 
+class GanttPlan(db.Model):
+    """Plan Gantt salvat, legat (optional) de un proiect.
+
+    Pastram SURSA (fisierul F3 + maparea), nu rezultatul calculat: la deschidere
+    re-rulam pipeline-ul (rapid, reflecta mereu config-ul curent). `nr_activitati`/
+    `durata_zile`/`cost_total` sunt un snapshot pentru afisarea in lista.
+    """
+    __tablename__ = 'gantt_plan'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'), nullable=True, index=True)
+    nume = db.Column(db.String(160), nullable=False)
+    nume_fisier = db.Column(db.String(255), nullable=True)
+    ext = db.Column(db.String(10), nullable=True)
+    continut = db.Column(db.LargeBinary, nullable=False)       # bytes-ul F3
+    mapare_json = db.Column(db.Text, nullable=True)            # mapare manuala + rand_antet
+    data_start = db.Column(db.Date, nullable=True)             # start planificare
+    nr_activitati = db.Column(db.Integer, default=0, nullable=False)
+    durata_zile = db.Column(db.Integer, default=0, nullable=False)
+    cost_total = db.Column(db.Numeric(16, 2), default=0, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    data_actualizare = db.Column(db.DateTime, nullable=True)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('planuri_gantt', lazy='dynamic'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    __table_args__ = (
+        db.Index('ix_gantt_plan_tenant_proiect', 'tenant_id', 'proiect_id'),
+    )
+
+    def __repr__(self):
+        return f'<GanttPlan {self.id} {self.nume!r} proiect={self.proiect_id}>'
+
+

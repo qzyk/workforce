@@ -170,12 +170,19 @@ def _mapare_sesiune():
         return None, None
 
 
-def _render_rezultat(rezultat, raport_import, token, nume_fisier):
-    """Randeaza preview-ul rezultat + diagrama Gantt (4D)."""
+def _render_rezultat(rezultat, raport_import, token, nume_fisier, plan_id=None):
+    """Randeaza preview-ul rezultat + diagrama Gantt (4D) + optiunea de salvare."""
+    session['gantt_nume_fisier'] = nume_fisier
+    try:
+        from models import Proiect
+        proiecte = Proiect.query.order_by(Proiect.nume).all()
+    except Exception:
+        proiecte = []
     return render_template(
         'gantt/rezultat.html', rezultat=rezultat, raport_import=raport_import,
         token=token, nume_fisier=nume_fisier,
-        diagrama=diagrama.sarcini_gantt(rezultat, date.today()))
+        diagrama=diagrama.sarcini_gantt(rezultat, date.today()),
+        proiecte=proiecte, plan_id=plan_id)
 
 
 # ============================================================ UI
@@ -268,6 +275,127 @@ def export_fisier(token, fmt):
     import io
     return send_file(io.BytesIO(data), mimetype=mime, as_attachment=True,
                      download_name=f'planificare_{nume}.{ext_out}')
+
+
+# ============================================================ PLANURI SALVATE
+def _plan_sau_404(id_):
+    from models import db, GanttPlan
+    p = db.session.get(GanttPlan, id_)
+    if not p or getattr(p, 'tenant_id', None) not in (None, getattr(current_user, 'tenant_id', None)):
+        abort(404)
+    return p
+
+
+def _mapare_din_plan(p):
+    import json
+    if not p.mapare_json:
+        return None, None
+    try:
+        d = json.loads(p.mapare_json)
+        return d.get('coloane'), d.get('rand_antet')
+    except Exception:
+        return None, None
+
+
+@gantt_bp.route('/salveaza', methods=['POST'])
+@login_required
+def salveaza():
+    token = request.form.get('token') or session.get('gantt_token')
+    continut, ext = _citeste_temp(token)
+    if not continut:
+        flash('Sesiunea a expirat. Reincarca fisierul F3.', 'warning')
+        return redirect(url_for('gantt.index'))
+    nume = (request.form.get('nume') or session.get('gantt_nume') or 'Plan').strip()[:160]
+    try:
+        proiect_id = int(request.form.get('proiect_id')) if request.form.get('proiect_id') else None
+    except (TypeError, ValueError):
+        proiect_id = None
+
+    mapare, rand_antet = (_mapare_sesiune() if session.get('gantt_token') == token else (None, None))
+    try:
+        rezultat, _ = _pipeline_din_temp(continut, ext, mapare, rand_antet)
+    except import_engine.EroareImport as e:
+        flash(f'Nu pot salva planul: {e}', 'danger')
+        return redirect(url_for('gantt.index'))
+
+    import json
+    from models import db, GanttPlan
+    from services import audit
+    st = rezultat.statistici
+    plan = GanttPlan(
+        nume=nume, nume_fisier=session.get('gantt_nume_fisier'), ext=ext, continut=continut,
+        mapare_json=(json.dumps({'coloane': mapare, 'rand_antet': rand_antet}) if mapare else None),
+        data_start=date.today(),
+        nr_activitati=st.get('nr_activitati', 0), durata_zile=st.get('durata_totala_zile', 0),
+        cost_total=st.get('cost_total', 0) or 0,
+        proiect_id=proiect_id, tenant_id=getattr(current_user, 'tenant_id', None),
+        creat_de_id=getattr(current_user, 'id', None))
+    db.session.add(plan)
+    db.session.commit()
+    audit.log('create', 'gantt_plan', plan.id,
+              new_values={'nume': nume, 'proiect_id': proiect_id}, commit=True)
+    flash(f'Plan "{nume}" salvat.', 'success')
+    return redirect(url_for('gantt.plan', id_=plan.id))
+
+
+@gantt_bp.route('/planuri')
+@login_required
+def planuri():
+    from sqlalchemy import or_
+    from models import GanttPlan
+    tid = getattr(current_user, 'tenant_id', None)
+    q = GanttPlan.query
+    q = q.filter(or_(GanttPlan.tenant_id == tid, GanttPlan.tenant_id.is_(None))) if tid is not None \
+        else q.filter(GanttPlan.tenant_id.is_(None))
+    return render_template('gantt/planuri.html',
+                           planuri=q.order_by(GanttPlan.data_creare.desc()).all())
+
+
+@gantt_bp.route('/plan/<int:id_>')
+@login_required
+def plan(id_):
+    p = _plan_sau_404(id_)
+    mapare, rand_antet = _mapare_din_plan(p)
+    try:
+        rezultat, raport_import = _pipeline_din_temp(p.continut, p.ext, mapare, rand_antet)
+    except import_engine.EroareImport as e:
+        flash(f'Nu pot deschide planul: {e}', 'danger')
+        return redirect(url_for('gantt.planuri'))
+    token = _salveaza_temp(p.continut, p.ext)   # pt. butoanele de export din rezultat
+    session['gantt_token'] = token
+    session['gantt_ext'] = p.ext
+    session['gantt_nume'] = p.nume
+    _set_mapare_sesiune(mapare, rand_antet)
+    return _render_rezultat(rezultat, raport_import, token, p.nume_fisier or p.nume, plan_id=p.id)
+
+
+@gantt_bp.route('/plan/<int:id_>/sterge', methods=['POST'])
+@login_required
+def plan_sterge(id_):
+    from models import db
+    from services import audit
+    p = _plan_sau_404(id_)
+    db.session.delete(p)
+    db.session.commit()
+    audit.log('delete', 'gantt_plan', id_, commit=True)
+    flash('Plan sters.', 'success')
+    return redirect(url_for('gantt.planuri'))
+
+
+@gantt_bp.route('/plan/<int:id_>/export/<fmt>')
+@login_required
+def plan_export(id_, fmt):
+    p = _plan_sau_404(id_)
+    mapare, rand_antet = _mapare_din_plan(p)
+    try:
+        rezultat, _ = _pipeline_din_temp(p.continut, p.ext, mapare, rand_antet)
+        data, mime, ext_out = export_engine.exporta(
+            fmt, rezultat, nume_proiect=p.nume, ore_pe_zi=_motor().setari.get('ore_pe_zi', 8))
+    except (import_engine.EroareImport, ValueError):
+        abort(404)
+    import io
+    return send_file(io.BytesIO(data), mimetype=mime, as_attachment=True,
+                     download_name=f'planificare_{p.nume}.{ext_out}')
 
 
 @gantt_bp.route('/mapare', methods=['GET', 'POST'])

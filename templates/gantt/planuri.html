@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Planuri Gantt salvate{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('gantt.index') }}">Planificare Gantt (F3)</a></li>
+<li class="breadcrumb-item active">Planuri salvate</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.pl-hero { background:#0B1426; color:#F5F1E8; border-radius:12px; padding:18px 24px; margin-bottom:18px;
+    display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+.pl-hero h2 { margin:0; color:#C9A961; font-size:1.25rem; }
+.pl-dl { background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; border:none;
+    padding:9px 14px; border-radius:8px; font-weight:700; text-decoration:none; }
+.pl-card { background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:6px; box-shadow:0 2px 10px rgba(0,0,0,0.05); }
+table.pl { width:100%; border-collapse:collapse; font-size:0.88rem; }
+table.pl th { background:#F5F1E8; color:#0B1426; padding:10px 12px; text-align:left; }
+table.pl td { padding:9px 12px; border-top:1px solid #ECE7DA; vertical-align:middle; }
+table.pl tr:hover td { background:#FBF8F0; }
+.pl-nume { font-weight:700; color:#0B1426; text-decoration:none; }
+.pl-nume:hover { color:#A8893D; }
+.pl-sub { color:var(--gray-500); font-size:.78rem; }
+.pl-mic { background:#F5F1E8; color:#0B1426; border:1px solid #E8E3D5; padding:5px 10px; border-radius:6px; cursor:pointer; font-size:.8rem; text-decoration:none; display:inline-block; }
+.pl-x { border:none; background:transparent; color:#9B2222; cursor:pointer; font-size:.95rem; }
+.pl-gol { text-align:center; padding:48px 20px; color:var(--gray-500); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pl-hero">
+    <h2><i class="fa-solid fa-folder-open"></i> Planuri Gantt salvate</h2>
+    <a href="{{ url_for('gantt.index') }}" class="pl-dl"><i class="fa-solid fa-plus"></i> Plan nou din F3</a>
+</div>
+
+<div class="pl-card">
+{% if planuri %}
+    <table class="pl">
+        <thead>
+            <tr><th>Plan</th><th>Proiect</th><th>Activitati</th><th>Durata</th><th>Cost estimat</th><th>Salvat</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for p in planuri %}
+            <tr>
+                <td>
+                    <a class="pl-nume" href="{{ url_for('gantt.plan', id_=p.id) }}">{{ p.nume }}</a>
+                    {% if p.nume_fisier %}<div class="pl-sub">{{ p.nume_fisier }}</div>{% endif %}
+                </td>
+                <td>{% if p.proiect %}{{ p.proiect.cod_proiect }} &middot; {{ p.proiect.nume }}{% else %}<span class="pl-sub">&mdash;</span>{% endif %}</td>
+                <td>{{ p.nr_activitati }}</td>
+                <td>{{ p.durata_zile }}z</td>
+                <td>{{ '{:,.0f}'.format(p.cost_total or 0) }} lei</td>
+                <td class="pl-sub">{{ p.data_creare.strftime('%Y-%m-%d %H:%M') if p.data_creare else '' }}</td>
+                <td style="white-space:nowrap; text-align:right;">
+                    <a class="pl-mic" href="{{ url_for('gantt.plan', id_=p.id) }}"><i class="fa-solid fa-eye"></i> Deschide</a>
+                    <a class="pl-mic" href="{{ url_for('gantt.plan_export', id_=p.id, fmt='csv') }}"><i class="fa-solid fa-file-csv"></i> CSV</a>
+                    <form method="POST" action="{{ url_for('gantt.plan_sterge', id_=p.id) }}" style="display:inline;"
+                          onsubmit="return confirm('Stergi planul {{ p.nume }}?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button class="pl-x" title="Sterge"><i class="fa-solid fa-trash"></i></button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <div class="pl-gol">
+        <i class="fa-solid fa-folder-open" style="font-size:2rem; color:#C9A961;"></i>
+        <p>Niciun plan salvat inca. Genereaza o planificare dintr-un F3 si apasa „Salveaza planul".</p>
+        <a href="{{ url_for('gantt.index') }}" class="pl-dl"><i class="fa-solid fa-plus"></i> Plan nou din F3</a>
+    </div>
+{% endif %}
+</div>
+{% endblock %}
