@@ -40,6 +40,7 @@
         <button class="xv-btn" id="xvFitBtn"><i class="fa-solid fa-expand"></i> Fit</button>
         <button class="xv-btn" id="xvIsoBtn"><i class="fa-solid fa-cube"></i> Iso</button>
         <button class="xv-btn" id="xvOrthoBtn"><i class="fa-solid fa-square"></i> Ortho/Persp</button>
+        <a href="{{ url_for('bim.qto', model_id=model.id) }}" class="xv-btn" title="Antemasuratoare din model"><i class="fa-solid fa-list-check"></i> QTO</a>
         <a href="{{ url_for('bim.viewer', model_id=model.id) }}?legacy=1" class="xv-btn" title="Viewer vechi (web-ifc)">Legacy viewer</a>
     </div>
 </div>

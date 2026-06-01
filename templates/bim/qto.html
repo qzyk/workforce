@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Antemasuratoare (QTO) - {{ model.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.modele_lista') }}">Modele</a></li>
+<li class="breadcrumb-item active">QTO: {{ model.nume }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.qt-hero { background:#0B1426; color:#F5F1E8; border-radius:12px; padding:18px 24px; margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+.qt-hero h2 { margin:0; color:#C9A961; font-size:1.25rem; }
+.qt-dl { background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; border:none; padding:9px 14px; border-radius:8px; font-weight:700; text-decoration:none; }
+.qt-card { background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:8px; box-shadow:0 2px 10px rgba(0,0,0,0.05); }
+table.qt { width:100%; border-collapse:collapse; font-size:.88rem; }
+table.qt th { background:#F5F1E8; padding:10px 12px; text-align:right; } table.qt th:first-child, table.qt th:nth-child(2) { text-align:left; }
+table.qt td { padding:8px 12px; border-top:1px solid #ECE7DA; text-align:right; } table.qt td:first-child, table.qt td:nth-child(2) { text-align:left; }
+table.qt tr:hover td { background:#FBF8F0; }
+.qt-tip { font-family:ui-monospace,Menlo,monospace; font-size:.78rem; color:var(--gray-500); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="qt-hero">
+    <div>
+        <h2><i class="fa-solid fa-list-check"></i> Antemasuratoare din model (QTO)</h2>
+        <div style="color:rgba(245,241,232,.78); font-size:.88rem;">{{ model.nume }} · {{ total_nr }} elemente pe {{ rows|length }} tipuri</div>
+    </div>
+    <a href="{{ url_for('bim.qto_csv', model_id=model.id) }}" class="qt-dl"><i class="fa-solid fa-file-csv"></i> Descarca CSV (pentru Gantt / deviz)</a>
+</div>
+
+<div class="qt-card">
+{% if rows %}
+    <table class="qt">
+        <thead><tr><th>Tip</th><th>Denumire</th><th>U.M.</th><th>Cantitate</th><th>Nr. elemente</th></tr></thead>
+        <tbody>
+            {% for r in rows %}
+            <tr>
+                <td class="qt-tip">{{ r.tip }}</td>
+                <td>{{ r.label }}</td>
+                <td>{{ r.um }}</td>
+                <td><b>{{ '%g'|format(r.cantitate) }}</b></td>
+                <td>{{ r.nr }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p style="padding:30px; text-align:center; color:var(--gray-500);">Modelul nu are elemente importate. Importa IFC-ul (BIM → Import IFC) cu acest santier.</p>
+{% endif %}
+</div>
+
+<div style="margin-top:14px; padding:12px 16px; background:#FBF8F0; border-left:3px solid #C9A961; border-radius:6px; font-size:.86rem;">
+    <i class="fa-solid fa-circle-info"></i> CSV-ul e in format F3 (cod / denumire / um / cantitate) — il poti incarca direct in
+    <a href="{{ url_for('gantt.index') }}">Planificare Gantt</a> pentru program + cost, sau in deviz pentru pretuire.
+    Cantitatile reale apar cand modelul IFC contine BaseQuantities; altfel se afiseaza numarul de elemente.
+</div>
+{% endblock %}
