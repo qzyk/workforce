@@ -84,6 +84,20 @@ def reguli_prefix_cod(tenant_id: Optional[int] = None) -> list:
     return [(p, c, 100) for p, c in base.items()]
 
 
+def mapare_tip_element(tenant_id: Optional[int] = None) -> dict:
+    """{tip_element_BIM: CATEGORIE_gantt} pentru 4D - mapare_bim.json suprascris de DB
+    (gantt_clasificare_regula cu tip_regula='tip_element')."""
+    base = {str(k): v for k, v in (cfg.incarca('mapare_bim', {}) or {}).items()
+            if not str(k).startswith('_')}
+    from models import GanttClasificareRegula
+    rows = _randuri_active(GanttClasificareRegula, tenant_id)
+    if rows:
+        for r in rows:
+            if r.tip_regula == 'tip_element' and r.valoare:
+                base[r.valoare] = r.categorie
+    return base
+
+
 def dependinte(tenant_id: Optional[int] = None) -> dict:
     """{'ordine_categorii', 'intra_categorie', 'relatii'} pentru dependente."""
     from models import GanttRelatieTemplate
@@ -376,7 +390,8 @@ def sync_din_json(tenant_id: Optional[int] = None, user_id: Optional[int] = None
     if not has_app_context():
         return {}
     from models import db, GanttSinonimColoana, GanttClasificareRegula
-    adaugate = {'sinonime': 0, 'reguli': 0, 'prefixe': 0, 'tarife': 0, 'randamente': 0}
+    adaugate = {'sinonime': 0, 'reguli': 0, 'prefixe': 0, 'tarife': 0,
+                'randamente': 0, 'mapare_bim': 0}
 
     ex_sin = {(s.camp, s.sinonim)
               for s in GanttSinonimColoana.query.filter_by(tenant_id=tenant_id).all()}
@@ -405,6 +420,16 @@ def sync_din_json(tenant_id: Optional[int] = None, user_id: Optional[int] = None
                            valoare=prefix, prioritate=100, activ=True,
                            tenant_id=tenant_id, creat_de_id=user_id))
             ex_cl.add((cat, 'prefix_cod', prefix)); adaugate['prefixe'] += 1
+
+    # mapare tip_element BIM -> categorie (pentru 4D)
+    for tip, cat in (cfg.incarca('mapare_bim', {}) or {}).items():
+        if str(tip).startswith('_'):
+            continue
+        if (cat, 'tip_element', tip) not in ex_cl:
+            db.session.add(GanttClasificareRegula(categorie=cat, tip_regula='tip_element',
+                           valoare=tip, prioritate=100, activ=True,
+                           tenant_id=tenant_id, creat_de_id=user_id))
+            ex_cl.add((cat, 'tip_element', tip)); adaugate['mapare_bim'] += 1
 
     # tarife pe categorie -> tarife_categorie (disciplina='gantt', global)
     from models import TarifCategorie

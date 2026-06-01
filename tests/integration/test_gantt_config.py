@@ -122,6 +122,7 @@ def test_sync_din_json_idempotent(app):
         # overlay-ul vede acum prefixele si categoriile noi
         assert 'IZOLATII' in store.clasificare()
         assert a1['tarife'] > 0 and a1['randamente'] > 0  # tarife + randamente seed-uite
+        assert a1['mapare_bim'] > 0                        # mapare tip_element BIM
         a2 = store.sync_din_json()
-        assert a2 == {'sinonime': 0, 'reguli': 0, 'prefixe': 0,
-                      'tarife': 0, 'randamente': 0}  # idempotent
+        assert a2 == {'sinonime': 0, 'reguli': 0, 'prefixe': 0, 'tarife': 0,
+                      'randamente': 0, 'mapare_bim': 0}    # idempotent

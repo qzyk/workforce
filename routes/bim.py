@@ -763,6 +763,78 @@ def viewer_file(model_id):
 
 
 # ============================================================
+# 4D - PUNTE GANTT -> BIM (construction sequencing)
+# ============================================================
+def _elemente_model(model):
+    """Elementele unui model: prin model_bim_id, altfel prin santierul modelului."""
+    els = ElementBIM.query.filter_by(model_bim_id=model.id).all()
+    if not els and getattr(model, 'santier_id', None):
+        els = (ElementBIM.query.join(Cladire, ElementBIM.cladire_id == Cladire.id)
+               .filter(Cladire.santier_id == model.santier_id).all())
+    return els
+
+
+@bim_bp.route('/model/<int:model_id>/genereaza-4d', methods=['POST'])
+@login_required
+def genereaza_4d(model_id):
+    """Genereaza schedule-urile 4D pentru elementele modelului, dintr-un plan Gantt salvat."""
+    model = ModelBIM.query.get_or_404(model_id)
+    from models import GanttPlan
+    from services.gantt.pipeline import MotorPlanificare
+    from services.gantt import import_engine, store as gstore
+    from services import bim_4d_bridge
+
+    plan = db.session.get(GanttPlan, int(request.form['plan_id'])) \
+        if request.form.get('plan_id') else None
+    if not plan:
+        flash('Alege un plan Gantt salvat pentru a genera 4D.', 'warning')
+        return redirect(url_for('bim.viewer', model_id=model_id))
+
+    mapare = rand_antet = None
+    if plan.mapare_json:
+        try:
+            d = json.loads(plan.mapare_json)
+            mapare, rand_antet = d.get('coloane'), d.get('rand_antet')
+        except Exception:
+            pass
+    tid = getattr(current_user, 'tenant_id', None)
+    motor = MotorPlanificare(tenant_id=tid)
+    try:
+        articole, _ = import_engine.importa(plan.continut, plan.ext, motor.setari,
+                                            mapare_manuala=mapare, rand_antet_manual=rand_antet)
+        rezultat = motor.proceseaza(articole)
+    except import_engine.EroareImport as e:
+        flash(f'Nu pot citi planul: {e}', 'danger')
+        return redirect(url_for('bim.viewer', model_id=model_id))
+
+    stats = bim_4d_bridge.genereaza_din_rezultat(
+        _elemente_model(model), rezultat, plan.data_start or date.today(),
+        gstore.mapare_tip_element(tid), tenant_id=tid,
+        user_id=getattr(current_user, 'id', None))
+    flash(f"4D generat din planul „{plan.nume}\": {stats['create']} create, "
+          f"{stats['actualizate']} actualizate, {stats['sarite']} elemente fara categorie.",
+          'success')
+    return redirect(url_for('bim.viewer', model_id=model_id))
+
+
+@bim_bp.route('/viewer/<int:model_id>/4d-data')
+@login_required
+def viewer_4d_data(model_id):
+    """JSON pentru player-ul 4D: elemente (guid) + ferestre de date + stare."""
+    model = ModelBIM.query.get_or_404(model_id)
+    from models import BIMTaskSchedule
+    from services import bim_4d_bridge
+    elemente = _elemente_model(model)
+    ids = [e.id for e in elemente]
+    scheds = {}
+    if ids:
+        for s in BIMTaskSchedule.query.filter(BIMTaskSchedule.element_bim_id.in_(ids)).all():
+            scheds.setdefault(s.element_bim_id, s)
+    perechi = [(e, scheds[e.id]) for e in elemente if e.id in scheds]
+    return jsonify(bim_4d_bridge.date_4d(perechi))
+
+
+# ============================================================
 # DATA QUALITY & VALIDATION REPORTS
 # ============================================================
 

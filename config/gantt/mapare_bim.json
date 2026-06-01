@@ -1,0 +1,19 @@
+{
+  "_comentariu": "Mapare tip_element (BIM) -> categorie tehnologica (Gantt), pentru 4D. Elementul mosteneste fereastra de date a activitatilor din categoria lui. Editabila in /gantt/config (reguli, tip 'tip_element'). Elementele de structura/arhitectura raman nemapate (modulul Gantt e pe edilitare/MEP).",
+  "pipe": "POZARE_CONDUCTA",
+  "duct": "POZARE_CONDUCTA",
+  "valve": "ARMATURI",
+  "pump": "ARMATURI",
+  "sprinkler": "ARMATURI",
+  "extinguisher": "ARMATURI",
+  "AHU": "APARATURA_AMC",
+  "chiller": "APARATURA_AMC",
+  "fan": "APARATURA_AMC",
+  "panel": "APARATURA_AMC",
+  "sensor": "APARATURA_AMC",
+  "light": "APARATURA_AMC",
+  "outlet": "APARATURA_AMC",
+  "switch": "APARATURA_AMC",
+  "cable_tray": "APARATURA_AMC",
+  "elevator": "APARATURA_AMC"
+}
