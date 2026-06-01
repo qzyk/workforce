@@ -221,6 +221,56 @@ def detalii(id):
 # EDITEAZA PROIECT
 # ============================================================
 
+@proiecte_bp.route('/<int:id>/hub')
+@login_required
+def hub(id):
+    """Proiect 360: agrega cross-modul (BIM, contracte, oferte, planuri Gantt,
+    situatii, locatie, angajati, documente) pe FK-urile existente."""
+    from sqlalchemy import func
+    proiect = Proiect.query.get_or_404(id)
+
+    def _safe(fn, dflt=None):
+        try:
+            return fn()
+        except Exception:
+            return dflt
+
+    def _suma(model, camp):
+        return float(db.session.query(func.coalesce(func.sum(getattr(model, camp)), 0))
+                     .filter(model.proiect_id == id).scalar() or 0)
+
+    from models import (Contract, OfertaContract, SituatieLunara, LocatieProiect,
+                        GanttPlan, DocumentProiect, ModelBIM, Cladire, ElementBIM)
+
+    h = {}
+    h['contracte'] = _safe(lambda: {'nr': Contract.query.filter_by(proiect_id=id).count(),
+                                    'valoare': _suma(Contract, 'valoare_totala')}, {'nr': 0, 'valoare': 0})
+    h['oferte'] = _safe(lambda: {'nr': OfertaContract.query.filter_by(proiect_id=id).count(),
+                                 'valoare': _suma(OfertaContract, 'valoare_totala')}, {'nr': 0, 'valoare': 0})
+    h['situatie'] = _safe(lambda: (lambda s: {'procent': float(s.procent_avans_total or 0),
+                                              'cumulat': float(s.valoare_cumulat_la_zi or 0)} if s else None)(
+        SituatieLunara.query.filter_by(proiect_id=id).order_by(SituatieLunara.id.desc()).first()))
+    h['gantt'] = _safe(lambda: {'nr': GanttPlan.query.filter_by(proiect_id=id).count(),
+                                'cost': _suma(GanttPlan, 'cost_total')}, {'nr': 0, 'cost': 0})
+    h['locatie'] = _safe(lambda: (lambda l: {'lat': float(l.latitudine), 'lng': float(l.longitudine)}
+                                  if l and l.latitudine is not None else None)(
+        LocatieProiect.query.filter_by(proiect_id=id).first()))
+    h['angajati'] = _safe(lambda: AngajatProiect.query.filter_by(proiect_id=id)
+                          .filter(AngajatProiect.data_sfarsit.is_(None)).count(), 0)
+    h['documente'] = _safe(lambda: DocumentProiect.query.filter_by(proiect_id=id).count(), 0)
+    # proiectele si santierele BIM nu au inca un FK direct (conexiune viitoare);
+    # daca exista santier_id pe model, agregam; altfel sarim cardul BIM.
+    santier_id = getattr(proiect, 'santier_id', None)
+    if santier_id:
+        h['bim'] = _safe(lambda: {
+            'modele': ModelBIM.query.filter_by(santier_id=santier_id).count(),
+            'elemente': (ElementBIM.query.join(Cladire, ElementBIM.cladire_id == Cladire.id)
+                         .filter(Cladire.santier_id == santier_id).count()),
+        }, {'modele': 0, 'elemente': 0})
+
+    return render_template('proiecte/hub.html', proiect=proiect, h=h, santier_id=santier_id)
+
+
 @proiecte_bp.route('/<int:id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def editeaza(id):

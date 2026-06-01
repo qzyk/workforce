@@ -34,6 +34,9 @@
             <option value="{{ val }}" {{ 'selected' if proiect.status == val }}>{{ label }}</option>
             {% endfor %}
         </select>
+        <a href="{{ url_for('proiecte.hub', id=proiect.id) }}" class="btn btn-primary">
+            <i class="fa-solid fa-diagram-project"></i> Hub 360
+        </a>
         <a href="{{ url_for('doc_proiecte.index', proiect_id=proiect.id) }}" class="btn btn-primary">
             <i class="fa-solid fa-folder-open"></i> Documente Proiect
         </a>

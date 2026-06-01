@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Proiect 360 - {{ proiect.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.lista') }}">Proiecte</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.detalii', id=proiect.id) }}">{{ proiect.cod_proiect }}</a></li>
+<li class="breadcrumb-item active">Hub 360</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.hb-hero { background:#0B1426; color:#F5F1E8; border-radius:12px; padding:22px 26px; margin-bottom:20px; }
+.hb-hero h2 { margin:0 0 6px; color:#C9A961; }
+.hb-hero .meta { color:rgba(245,241,232,0.78); font-size:.9rem; }
+.hb-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:16px; }
+.hb-card { background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:18px 20px; box-shadow:0 2px 10px rgba(0,0,0,0.05); text-decoration:none; color:inherit; display:block; transition:transform .12s, box-shadow .12s; }
+.hb-card:hover { transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,0.10); }
+.hb-card .ic { width:42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.1rem; color:#fff; margin-bottom:10px; }
+.hb-card h3 { margin:0 0 4px; font-size:.95rem; color:#0B1426; }
+.hb-card .v { font-size:1.7rem; font-weight:800; color:#0B1426; line-height:1.1; }
+.hb-card .s { font-size:.82rem; color:var(--gray-500); }
+.hb-bim { background:#1565C0; } .hb-contr { background:#0B1426; } .hb-of { background:#A8893D; }
+.hb-gantt { background:#C9A961; } .hb-sit { background:#2e7d32; } .hb-ang { background:#6A1B9A; }
+.hb-doc { background:#546E7A; } .hb-loc { background:#00838F; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="hb-hero">
+    <h2><i class="fa-solid fa-diagram-project"></i> {{ proiect.nume }}</h2>
+    <div class="meta">
+        {{ proiect.cod_proiect }} · status <b style="color:#C9A961;">{{ proiect.status }}</b>
+        {% if proiect.manager %} · manager {{ proiect.manager.nume }} {{ proiect.manager.prenume }}{% endif %}
+    </div>
+</div>
+
+<div class="hb-grid">
+    {% if h.bim and santier_id %}
+    <a class="hb-card" href="{{ url_for('bim.santier_detaliu', id=santier_id) }}">
+        <div class="ic hb-bim"><i class="fa-solid fa-cube"></i></div>
+        <h3>BIM / Santier</h3>
+        <div class="v">{{ h.bim.elemente }}</div>
+        <div class="s">{{ h.bim.modele }} modele · elemente 3D · 4D in viewer</div>
+    </a>
+    {% endif %}
+
+    <a class="hb-card" href="{{ url_for('contracte.lista') }}">
+        <div class="ic hb-contr"><i class="fa-solid fa-file-signature"></i></div>
+        <h3>Contracte</h3>
+        <div class="v">{{ h.contracte.nr }}</div>
+        <div class="s">{{ '{:,.0f}'.format(h.contracte.valoare) }} lei valoare</div>
+    </a>
+
+    <a class="hb-card" href="{{ url_for('contracte.lista') }}">
+        <div class="ic hb-of"><i class="fa-solid fa-calculator"></i></div>
+        <h3>Oferte / Deviz</h3>
+        <div class="v">{{ h.oferte.nr }}</div>
+        <div class="s">{{ '{:,.0f}'.format(h.oferte.valoare) }} lei devizate</div>
+    </a>
+
+    <a class="hb-card" href="{{ url_for('gantt.planuri') }}">
+        <div class="ic hb-gantt"><i class="fa-solid fa-chart-gantt"></i></div>
+        <h3>Planuri Gantt</h3>
+        <div class="v">{{ h.gantt.nr }}</div>
+        <div class="s">{% if h.gantt.cost %}{{ '{:,.0f}'.format(h.gantt.cost) }} lei estimat{% else %}planificare 4D/5D{% endif %}</div>
+    </a>
+
+    <a class="hb-card" href="{{ url_for('contracte.lista') }}">
+        <div class="ic hb-sit"><i class="fa-solid fa-chart-line"></i></div>
+        <h3>Avans (situatii)</h3>
+        <div class="v">{% if h.situatie %}{{ '%.0f'|format(h.situatie.procent) }}%{% else %}&mdash;{% endif %}</div>
+        <div class="s">{% if h.situatie %}{{ '{:,.0f}'.format(h.situatie.cumulat) }} lei cumulat{% else %}fara situatii inca{% endif %}</div>
+    </a>
+
+    <a class="hb-card" href="{{ url_for('proiecte.detalii', id=proiect.id) }}">
+        <div class="ic hb-ang"><i class="fa-solid fa-helmet-safety"></i></div>
+        <h3>Angajati alocati</h3>
+        <div class="v">{{ h.angajati }}</div>
+        <div class="s">echipa activa pe proiect</div>
+    </a>
+
+    <a class="hb-card" href="{{ url_for('proiecte.detalii', id=proiect.id) }}">
+        <div class="ic hb-doc"><i class="fa-solid fa-folder-open"></i></div>
+        <h3>Documente</h3>
+        <div class="v">{{ h.documente }}</div>
+        <div class="s">documente de proiect</div>
+    </a>
+
+    <a class="hb-card" href="{{ url_for('locatii.lista', proiect_id=proiect.id) }}">
+        <div class="ic hb-loc"><i class="fa-solid fa-location-dot"></i></div>
+        <h3>Locatie</h3>
+        <div class="v">{% if h.locatie %}<i class="fa-solid fa-map-pin" style="font-size:1.2rem;"></i>{% else %}&mdash;{% endif %}</div>
+        <div class="s">{% if h.locatie %}{{ '%.4f'|format(h.locatie.lat) }}, {{ '%.4f'|format(h.locatie.lng) }}{% else %}fara locatie{% endif %}</div>
+    </a>
+</div>
+{% endblock %}
