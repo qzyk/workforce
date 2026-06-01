@@ -416,3 +416,31 @@ def test_curba_s_si_cost_in_pipeline():
     assert st['curba_s'] and st['curba_s'][-1]['procent'] == 100.0
     # material + manopera ~ total
     assert abs((st['cost_material'] + st['cost_manopera']) - st['cost_total']) < 1.0
+
+
+# ----------------------------------------------------------------- 4D / vizual
+def test_drum_critic_marja():
+    from services.gantt.program import programeaza, drum_critic
+    a = Activitate(id='A', cod='1', nume='a', categorie_tehnologica='X', durata=3)
+    c = Activitate(id='C', cod='2', nume='c', categorie_tehnologica='Y', durata=1)
+    d = Activitate(id='D', cod='3', nume='d', categorie_tehnologica='Z', durata=2)
+    d.predecesori = [Dependenta('A', 'FS', 0), Dependenta('C', 'FS', 0)]
+    total = programeaza([a, c, d])
+    nr = drum_critic([a, c, d], total)
+    assert a.critic and d.critic               # lantul lung A->D e critic
+    assert (not c.critic) and c.marja == 2     # C are 2 zile marja totala
+    assert nr == 2
+
+
+def test_diagrama_sarcini_gantt_zile_lucratoare():
+    from datetime import date as _date
+    from services.gantt import diagrama
+    articole, _ = import_engine.importa(SAMPLE_CSV, '.csv')
+    rez = MotorPlanificare().proceseaza(articole)
+    d = diagrama.sarcini_gantt(rez, _date(2026, 6, 1))
+    assert d['sarcini'] and d['total'] == len(rez.activitati)
+    s0 = d['sarcini'][0]
+    assert {'id', 'name', 'start', 'end', 'custom_class'}.issubset(s0.keys())
+    for s in d['sarcini'][:15]:                # toate datele cad in zile lucratoare
+        y, m, dd = map(int, s['start'].split('-'))
+        assert _date(y, m, dd).weekday() < 5

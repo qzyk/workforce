@@ -17,7 +17,7 @@ from .wbs import genereaza_wbs
 from .dependinte import genereaza_dependinte
 from .durate import estimeaza_durata
 from .cost import calculeaza_cost
-from .program import programeaza, curba_s
+from .program import programeaza, curba_s, drum_critic
 from .validare import valideaza
 from . import import_engine
 from . import store
@@ -82,11 +82,13 @@ class MotorPlanificare:
             self.dependinte.get('ordine_categorii', []),
         )
         durata_totala = programeaza(activitati)   # forward pass -> start/finish per activitate
+        nr_critice = drum_critic(activitati, durata_totala)  # backward pass -> marja + critic
         raport = valideaza(activitati)
 
         durata_s = round(time.perf_counter() - t0, 3)
         statistici = self._statistici(activitati, noduri, nr_dep, durata_s)
         statistici['durata_totala_zile'] = durata_totala
+        statistici['nr_activitati_critice'] = nr_critice
         statistici['curba_s'] = curba_s(activitati, durata_totala)
         return RezultatPlanificare(activitati=activitati, noduri_wbs=noduri,
                                    raport=raport, statistici=statistici)

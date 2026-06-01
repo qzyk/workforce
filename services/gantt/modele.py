@@ -95,9 +95,11 @@ class Activitate:
     valoare_material: float = 0.0
     valoare_manopera: float = 0.0
     cost_estimat: bool = False                 # True daca valoarea vine din tarif, nu din F3
-    # programare (pentru curba S): index de zi 0-based
+    # programare (pentru curba S / Gantt): index de zi 0-based
     start_zi: int = 0
     finish_zi: int = 0
+    critic: bool = False                       # pe drumul critic (slack 0)
+    marja: int = 0                             # marja totala (slack) in zile
     predecesori: list = field(default_factory=list)   # list[Dependenta]
 
     def to_dict(self) -> dict:
@@ -127,6 +129,8 @@ class Activitate:
             cost_estimat=bool(d.get('cost_estimat', False)),
             start_zi=int(d.get('start_zi', 0) or 0),
             finish_zi=int(d.get('finish_zi', 0) or 0),
+            critic=bool(d.get('critic', False)),
+            marja=int(d.get('marja', 0) or 0),
         )
         a.predecesori = [Dependenta.from_dict(p) for p in (d.get('predecesori') or [])]
         return a

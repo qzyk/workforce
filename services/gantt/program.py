@@ -69,6 +69,53 @@ def programeaza(activitati) -> int:
     return max((a.finish_zi for a in activitati), default=0)
 
 
+def drum_critic(activitati, durata_totala: int) -> int:
+    """Backward pass: calculeaza marja (slack) si marcheaza activitatile critice.
+    Necesita ca `programeaza` sa fi rulat deja (start_zi/finish_zi setate).
+    Intoarce numarul de activitati critice (marja 0)."""
+    if not activitati:
+        return 0
+    by_id = {a.id: a for a in activitati}
+    succ = {a.id: [] for a in activitati}   # pred_id -> [(succ, tip, lag)]
+    for a in activitati:
+        for d in a.predecesori:
+            if d.predecesor_id in by_id and d.predecesor_id != a.id:
+                succ[d.predecesor_id].append((a, (d.tip or 'FS').upper(), int(d.decalaj or 0)))
+
+    ordine = _ordine_topologica(activitati, by_id)
+    lf_map: dict = {}
+    for aid in reversed(ordine):              # succesorii inaintea predecesorilor
+        a = by_id[aid]
+        dur = max(1, int(a.durata or 1))
+        if not succ[aid]:
+            lf = durata_totala
+        else:
+            lf = None
+            for (s, tip, lag) in succ[aid]:
+                s_dur = max(1, int(s.durata or 1))
+                s_ls = lf_map[s.id] - s_dur
+                s_lf = lf_map[s.id]
+                if tip == 'SS':
+                    cand = s_ls - lag + dur
+                elif tip == 'FF':
+                    cand = s_lf - lag
+                elif tip == 'SF':
+                    cand = s_lf - lag + dur
+                else:                          # FS
+                    cand = s_ls - lag
+                lf = cand if lf is None else min(lf, cand)
+        lf_map[aid] = lf
+
+    nr_critice = 0
+    for a in activitati:
+        ls = lf_map[a.id] - max(1, int(a.durata or 1))
+        a.marja = max(0, int(ls - a.start_zi))
+        a.critic = a.marja <= 0
+        if a.critic:
+            nr_critice += 1
+    return nr_critice
+
+
 def curba_s(activitati, durata_totala: int, max_puncte: int = 120) -> list:
     """Cost cumulat pe zi (esantionat la max_puncte). [{zi, cumulat, procent}]."""
     if durata_totala <= 0:

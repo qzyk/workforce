@@ -30,6 +30,19 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
 .gz-wbs1 { font-weight:800; } .gz-wbs2 { padding-left:16px; font-weight:700; }
 .gz-wbs3 { padding-left:32px; color:#A8893D; } .gz-wbs4 { padding-left:48px; color:var(--gray-600); }
 .gz-pill { display:inline-block; background:#F5F1E8; border-radius:10px; padding:1px 8px; font-size:0.74rem; }
+/* diagrama Gantt (frappe-gantt) - tema Edifico */
+#gantt .bar { fill:#C9A961; stroke:#A8893D; }
+#gantt .bar-wrapper.gz-critic .bar { fill:#B71C1C; stroke:#7d1414; }
+#gantt .bar-wrapper.gz-act .bar { fill:#C9A961; }
+#gantt .bar-label { fill:#0B1426; font-size:11px; }
+#gantt .bar-label.big { fill:#0B1426; }
+#gantt .grid-header { fill:#F5F1E8; }
+#gantt .upper-text, #gantt .lower-text { fill:#0B1426; font-size:11px; }
+#gantt .today-highlight { fill:#C9A961; opacity:.12; }
+.gz-vm { background:transparent; color:#F5F1E8; border:1px solid rgba(245,241,232,0.45); border-radius:6px; padding:3px 10px; cursor:pointer; font-size:.8rem; }
+.gz-vm:hover { background:rgba(245,241,232,0.12); }
+.gantt-container { max-height:520px; }
+.gz-pop { background:#0B1426; color:#F5F1E8; padding:8px 11px; border-radius:7px; font-size:.8rem; line-height:1.4; }
 </style>
 {% endblock %}
 
@@ -101,6 +114,31 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
 </div>
 {% endif %}
 
+{% if diagrama and diagrama.sarcini %}
+<div class="gz-sec">
+    <div class="gz-sec-h" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span><i class="fa-solid fa-chart-gantt"></i> Diagrama Gantt (4D){% if st.nr_activitati_critice %} — {{ st.nr_activitati_critice }} activitati pe drumul critic{% endif %}</span>
+        <span style="display:flex; gap:6px;">
+            <button class="gz-vm" data-vm="Day">Zi</button>
+            <button class="gz-vm" data-vm="Week">Saptamana</button>
+            <button class="gz-vm" data-vm="Month">Luna</button>
+        </span>
+    </div>
+    <div style="padding:10px 8px;">
+        <div style="font-size:.78rem; color:var(--gray-500); padding:0 8px 8px;">
+            <span style="display:inline-block;width:11px;height:11px;background:#C9A961;border-radius:2px;vertical-align:middle;"></span> activitate
+            &nbsp; <span style="display:inline-block;width:11px;height:11px;background:#B71C1C;border-radius:2px;vertical-align:middle;"></span> drum critic
+            &nbsp;· start: {{ diagrama.data_start }} (zile lucratoare)
+            {% if not diagrama.cu_dependente %}&nbsp;· sageti de dependenta ascunse (plan mare){% endif %}
+            {% if diagrama.trunchiat %}&nbsp;· afisez primele {{ diagrama.sarcini|length }} din {{ diagrama.total }}{% endif %}
+        </div>
+        <div style="overflow:auto; max-height:540px; border:1px solid #E8E3D5; border-radius:8px;">
+            <svg id="gantt"></svg>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="gz-sec">
     <div class="gz-sec-h"><i class="fa-solid fa-sitemap"></i> WBS (primele 60 noduri din {{ st.nr_noduri_wbs }})</div>
     <div style="max-height:320px; overflow:auto; padding:10px 16px;">
@@ -168,6 +206,30 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
                        title: { display: true, text: 'Cost pe categorie (lei)' } } }
         });
     }
+})();
+</script>
+{% endif %}
+
+{% if diagrama and diagrama.sarcini %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
+<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+<script>
+(function() {
+    var sarcini = {{ diagrama.sarcini | tojson }};
+    if (!window.Gantt || !sarcini.length || !document.getElementById('gantt')) return;
+    var g = new Gantt('#gantt', sarcini, {
+        view_mode: 'Week', bar_height: 16, bar_corner_radius: 3, padding: 12,
+        popup_trigger: 'mouseover',
+        custom_popup_html: function(t) {
+            return '<div class="gz-pop"><b>' + t.name + '</b><br>' +
+                   t.start + ' &rarr; ' + t.end + '</div>';
+        }
+    });
+    document.querySelectorAll('.gz-vm').forEach(function(b) {
+        b.addEventListener('click', function() {
+            try { g.change_view_mode(b.dataset.vm); } catch (e) {}
+        });
+    });
 })();
 </script>
 {% endif %}

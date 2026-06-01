@@ -22,6 +22,7 @@ import re
 import tempfile
 import time
 import uuid
+from datetime import date
 
 from flask import (Blueprint, render_template, request, redirect, url_for, flash,
                    send_file, jsonify, session, abort)
@@ -29,7 +30,7 @@ from flask_login import login_required, current_user
 
 from services.gantt.pipeline import MotorPlanificare
 from services.gantt.modele import Activitate, ArticolF3, RezultatPlanificare
-from services.gantt import import_engine, export as export_engine, store
+from services.gantt import import_engine, export as export_engine, store, diagrama
 from services.gantt.wbs import genereaza_wbs
 from services.gantt.dependinte import genereaza_dependinte
 from services.gantt.validare import valideaza
@@ -169,6 +170,14 @@ def _mapare_sesiune():
         return None, None
 
 
+def _render_rezultat(rezultat, raport_import, token, nume_fisier):
+    """Randeaza preview-ul rezultat + diagrama Gantt (4D)."""
+    return render_template(
+        'gantt/rezultat.html', rezultat=rezultat, raport_import=raport_import,
+        token=token, nume_fisier=nume_fisier,
+        diagrama=diagrama.sarcini_gantt(rezultat, date.today()))
+
+
 # ============================================================ UI
 @gantt_bp.route('/')
 @login_required
@@ -226,9 +235,7 @@ def genereaza():
     session['gantt_nume'] = os.path.splitext(os.path.basename(nume_fisier))[0]
     _set_mapare_sesiune(mapare_folosita, rand_antet_folosit)
 
-    return render_template('gantt/rezultat.html', rezultat=rezultat,
-                           raport_import=raport_import, token=token,
-                           nume_fisier=nume_fisier)
+    return _render_rezultat(rezultat, raport_import, token, nume_fisier)
 
 
 @gantt_bp.route('/export/<token>/<fmt>')
