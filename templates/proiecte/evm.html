@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}EVM - {{ proiect.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.lista') }}">Proiecte</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.hub', id=proiect.id) }}">{{ proiect.cod_proiect }}</a></li>
+<li class="breadcrumb-item active">EVM</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.ev-hero { background:#0B1426; color:#F5F1E8; border-radius:12px; padding:20px 24px; margin-bottom:18px; }
+.ev-hero h2 { margin:0 0 4px; color:#C9A961; }
+.ev-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:18px; }
+.ev-stat { background:#fff; border:1px solid #E8E3D5; border-radius:10px; padding:16px; text-align:center; }
+.ev-stat .v { font-size:1.8rem; font-weight:800; }
+.ev-stat .l { font-size:.78rem; color:var(--gray-500); text-transform:uppercase; letter-spacing:.5px; }
+.ev-good { color:#2e7d32; } .ev-warn { color:#A8893D; } .ev-bad { color:#B71C1C; }
+.ev-card { background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:20px; margin-bottom:18px; }
+table.ev { width:100%; border-collapse:collapse; font-size:.85rem; }
+table.ev th { background:#F5F1E8; padding:8px 10px; text-align:right; } table.ev th:first-child { text-align:left; }
+table.ev td { padding:7px 10px; border-top:1px solid #ECE7DA; text-align:right; } table.ev td:first-child { text-align:left; }
+.ev-empty { text-align:center; padding:46px 20px; color:var(--gray-500); }
+</style>
+{% endblock %}
+
+{% macro idx(v) -%}
+{%- if v is none -%}ev-warn{%- elif v >= 1 -%}ev-good{%- elif v >= 0.9 -%}ev-warn{%- else -%}ev-bad{%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+<div class="ev-hero">
+    <h2><i class="fa-solid fa-chart-line"></i> Earned Value — {{ proiect.nume }}</h2>
+    <div style="color:rgba(245,241,232,.78); font-size:.9rem;">Planificat (curba S Gantt) vs Realizat (situatii lunare)</div>
+</div>
+
+{% if not evm %}
+<div class="ev-card ev-empty">
+    <i class="fa-solid fa-diagram-project" style="font-size:2rem; color:#C9A961;"></i>
+    <p>Nu exista un plan Gantt salvat pe acest proiect. Salveaza un plan (modulul Planificare Gantt → „Salveaza planul" cu acest proiect) ca sa pot calcula valoarea planificata (PV).</p>
+    <a href="{{ url_for('gantt.index') }}" class="btn btn-primary">Planificare Gantt</a>
+</div>
+{% else %}
+{% set u = evm.ultim %}
+<div class="ev-stats">
+    <div class="ev-stat"><div class="v">{{ '{:,.0f}'.format(evm.bac) }}</div><div class="l">BAC (buget, lei)</div></div>
+    <div class="ev-stat"><div class="v ev-good">{{ u.ev_pct if u else 0 }}%</div><div class="l">Realizat (EV)</div></div>
+    <div class="ev-stat"><div class="v {{ idx(u.spi) if u }}">{{ u.spi if u and u.spi is not none else '—' }}</div><div class="l">SPI (grafic)</div></div>
+    <div class="ev-stat"><div class="v {{ idx(u.cpi) if u }}">{{ u.cpi if u and u.cpi is not none else '—' }}</div><div class="l">CPI (buget)</div></div>
+</div>
+
+<div class="ev-card">
+    <canvas id="evChart" height="150"></canvas>
+    <small style="color:var(--gray-500);">SPI &gt; 1 = inaintea graficului · CPI &gt; 1 = sub buget · BAC = costul total estimat din plan.</small>
+</div>
+
+{% if evm.serie %}
+<div class="ev-card">
+    <table class="ev">
+        <thead><tr><th>Situatie (data)</th><th>PV %</th><th>EV % (real)</th><th>AC (lei)</th><th>SPI</th><th>CPI</th></tr></thead>
+        <tbody>
+            {% for s in evm.serie %}
+            <tr>
+                <td>{{ s.data }}</td>
+                <td>{{ s.pv_pct }}%</td>
+                <td>{{ s.ev_pct }}%</td>
+                <td>{{ '{:,.0f}'.format(s.ac) }}</td>
+                <td class="{{ idx(s.spi) }}">{{ s.spi if s.spi is not none else '—' }}</td>
+                <td class="{{ idx(s.cpi) }}">{{ s.cpi if s.cpi is not none else '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="ev-card" style="color:var(--gray-500);">
+    <i class="fa-solid fa-circle-info"></i> Plan „{{ evm.plan_nume }}" gasit, dar inca nu exista situatii lunare pe proiect — graficul arata doar curba planificata (PV). Adauga situatii pentru a urmari realizatul (EV) si SPI/CPI.
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if evm %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    if (!window.Chart) return;
+    var serie = {{ evm.serie | tojson }};
+    var pvCurba = {{ evm.pv_curba | tojson }};
+    var el = document.getElementById('evChart');
+    if (!el) return;
+    var datasets, labels;
+    if (serie.length) {
+        labels = serie.map(function(s){ return s.data; });
+        datasets = [
+            { label: 'Planificat (PV %)', data: serie.map(function(s){ return s.pv_pct; }),
+              borderColor: '#C9A961', backgroundColor: 'rgba(201,169,97,0.12)', fill: true, tension: 0.2 },
+            { label: 'Realizat (EV %)', data: serie.map(function(s){ return s.ev_pct; }),
+              borderColor: '#0B1426', backgroundColor: 'rgba(11,20,38,0.06)', fill: false, tension: 0.2 }
+        ];
+    } else {
+        labels = pvCurba.map(function(p){ return p.data; });
+        datasets = [{ label: 'Planificat (PV %)', data: pvCurba.map(function(p){ return p.procent; }),
+                      borderColor: '#C9A961', backgroundColor: 'rgba(201,169,97,0.15)', fill: true, tension: 0.2, pointRadius: 0 }];
+    }
+    new Chart(el, {
+        type: 'line',
+        data: { labels: labels, datasets: datasets },
+        options: { responsive: true, plugins: { title: { display: true, text: 'Curba S — planificat vs realizat (%)' } },
+                   scales: { y: { beginAtZero: true, max: 100, ticks: { callback: function(v){ return v + '%'; } } },
+                             x: { ticks: { maxTicksLimit: 10 } } } }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

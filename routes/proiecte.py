@@ -271,6 +271,20 @@ def hub(id):
     return render_template('proiecte/hub.html', proiect=proiect, h=h, santier_id=santier_id)
 
 
+@proiecte_bp.route('/<int:id>/evm')
+@login_required
+def evm(id):
+    """Earned Value: plan (curba S Gantt) vs realizat (situatii lunare) -> SPI/CPI."""
+    from services.evm import evm_proiect
+    proiect = Proiect.query.get_or_404(id)
+    data = None
+    try:
+        data = evm_proiect(id, getattr(current_user, 'tenant_id', None))
+    except Exception:
+        data = None
+    return render_template('proiecte/evm.html', proiect=proiect, evm=data)
+
+
 @proiecte_bp.route('/<int:id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def editeaza(id):

@@ -65,11 +65,11 @@
         <div class="s">{% if h.gantt.cost %}{{ '{:,.0f}'.format(h.gantt.cost) }} lei estimat{% else %}planificare 4D/5D{% endif %}</div>
     </a>
 
-    <a class="hb-card" href="{{ url_for('contracte.lista') }}">
+    <a class="hb-card" href="{{ url_for('proiecte.evm', id=proiect.id) }}">
         <div class="ic hb-sit"><i class="fa-solid fa-chart-line"></i></div>
-        <h3>Avans (situatii)</h3>
+        <h3>EVM / Avans</h3>
         <div class="v">{% if h.situatie %}{{ '%.0f'|format(h.situatie.procent) }}%{% else %}&mdash;{% endif %}</div>
-        <div class="s">{% if h.situatie %}{{ '{:,.0f}'.format(h.situatie.cumulat) }} lei cumulat{% else %}fara situatii inca{% endif %}</div>
+        <div class="s">{% if h.situatie %}{{ '{:,.0f}'.format(h.situatie.cumulat) }} lei · SPI/CPI{% else %}plan vs realizat (SPI/CPI){% endif %}</div>
     </a>
 
     <a class="hb-card" href="{{ url_for('proiecte.detalii', id=proiect.id) }}">
