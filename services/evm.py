@@ -29,7 +29,16 @@ def _pv_calendar(plan):
             mapare, rand_antet = d.get('coloane'), d.get('rand_antet')
         except Exception:
             pass
-    motor = MotorPlanificare()
+    # 5D real: daca proiectul are oferta pretuita, costam pe preturile din deviz
+    preturi = None
+    if getattr(plan, 'proiect_id', None):
+        try:
+            from services.deviz_link import preturi_proiect, are_preturi
+            pb = preturi_proiect(plan.proiect_id)
+            preturi = pb if are_preturi(pb) else None
+        except Exception:
+            preturi = None
+    motor = MotorPlanificare(preturi_boq=preturi)
     art, _ = import_engine.importa(plan.continut, plan.ext, motor.setari,
                                    mapare_manuala=mapare, rand_antet_manual=rand_antet)
     st = motor.proceseaza(art).statistici
@@ -40,7 +49,8 @@ def _pv_calendar(plan):
         return cal[max(0, min(int(i), len(cal) - 1))]
 
     pts = [(dz(p['zi'] - 1), float(p['procent'])) for p in st.get('curba_s', [])]
-    bac = float(plan.cost_total or st.get('cost_total', 0) or 0)
+    # BAC: costul recalculat (cu preturi reale daca exista), altfel snapshot-ul planului
+    bac = float(st.get('cost_total', 0) or plan.cost_total or 0)
     return pts, bac
 
 

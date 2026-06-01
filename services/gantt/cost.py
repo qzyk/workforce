@@ -13,12 +13,26 @@ Descompunere material/manopera:
 from __future__ import annotations
 
 
-def calculeaza_cost(art, categorie, tarife: dict) -> tuple:
-    """Intoarce (valoare, valoare_material, valoare_manopera, cost_estimat)."""
+def calculeaza_cost(art, categorie, tarife: dict, preturi_boq: dict = None) -> tuple:
+    """Intoarce (valoare, valoare_material, valoare_manopera, cost_estimat).
+
+    Prioritate: pret real din deviz (BoQ, match pe cod articol apoi denumire) >
+    pret din F3 > cantitate x tarif(categorie) [estimare]."""
     t = (tarife or {}).get(categorie or '', {}) or {}
     pondere_mat = float(t.get('material', 0.65) or 0.65)
     pondere_mat = min(max(pondere_mat, 0.0), 1.0)
     cant = float(art.cantitate or 0)
+
+    # 0. pret REAL din deviz pretuit (BoQ) - nu e estimare
+    if preturi_boq:
+        from .normalizare import normalizeaza, normalizeaza_cheie
+        rec = (preturi_boq.get('cod', {}).get(normalizeaza_cheie(art.cod_articol or ''))
+               or preturi_boq.get('den', {}).get(normalizeaza(art.denumire or '')))
+        if rec and rec.get('pu', 0) > 0:
+            val = cant * float(rec['pu'])
+            mat = cant * float(rec['mat']) if rec.get('mat') else val * pondere_mat
+            man = cant * float(rec['man']) if rec.get('man') else max(0.0, val - mat)
+            return round(val, 2), round(mat, 2), round(man, 2), False
 
     estimat = False
     if art.pret_total and art.pret_total > 0:

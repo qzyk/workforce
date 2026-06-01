@@ -135,16 +135,20 @@ def _profil_pt_fisier(continut: bytes, ext: str, tenant_id=None):
     return None, None, None
 
 
-def _pipeline_din_temp(continut: bytes, ext: str, mapare=None, rand_antet=None):
-    """Ruleaza pipeline-ul (auto sau cu mapare manuala). (RezultatPlanificare, raport)."""
+def _pipeline_din_temp(continut: bytes, ext: str, mapare=None, rand_antet=None,
+                       preturi_boq=None):
+    """Ruleaza pipeline-ul (auto sau cu mapare manuala). (RezultatPlanificare, raport).
+    Cu `preturi_boq` (din deviz) -> motor fresh ce costa activitatile pe preturi reale (5D)."""
+    motor = (MotorPlanificare(tenant_id=getattr(current_user, 'tenant_id', None),
+                              preturi_boq=preturi_boq) if preturi_boq else _motor())
     if mapare:
         articole, raport = import_engine.importa(
-            continut, ext, _motor().setari,
-            mapare_manuala=mapare, rand_antet_manual=rand_antet)
-        rezultat = _motor().proceseaza(articole)
-        rezultat.statistici['import'] = raport
-        return rezultat, raport
-    return _motor().genereaza_din_fisier(continut, ext)
+            continut, ext, motor.setari, mapare_manuala=mapare, rand_antet_manual=rand_antet)
+    else:
+        articole, raport = import_engine.importa(continut, ext, motor.setari)
+    rezultat = motor.proceseaza(articole)
+    rezultat.statistici['import'] = raport
+    return rezultat, raport
 
 
 def _set_mapare_sesiune(mapare, rand_antet):
@@ -297,6 +301,18 @@ def _mapare_din_plan(p):
         return None, None
 
 
+def _preturi_plan(p):
+    """Preturi reale din deviz (5D) pentru proiectul planului, sau None."""
+    if not getattr(p, 'proiect_id', None):
+        return None
+    try:
+        from services.deviz_link import preturi_proiect, are_preturi
+        pb = preturi_proiect(p.proiect_id)
+        return pb if are_preturi(pb) else None
+    except Exception:
+        return None
+
+
 @gantt_bp.route('/salveaza', methods=['POST'])
 @login_required
 def salveaza():
@@ -357,7 +373,8 @@ def plan(id_):
     p = _plan_sau_404(id_)
     mapare, rand_antet = _mapare_din_plan(p)
     try:
-        rezultat, raport_import = _pipeline_din_temp(p.continut, p.ext, mapare, rand_antet)
+        rezultat, raport_import = _pipeline_din_temp(p.continut, p.ext, mapare, rand_antet,
+                                                     preturi_boq=_preturi_plan(p))
     except import_engine.EroareImport as e:
         flash(f'Nu pot deschide planul: {e}', 'danger')
         return redirect(url_for('gantt.planuri'))
@@ -388,7 +405,8 @@ def plan_export(id_, fmt):
     p = _plan_sau_404(id_)
     mapare, rand_antet = _mapare_din_plan(p)
     try:
-        rezultat, _ = _pipeline_din_temp(p.continut, p.ext, mapare, rand_antet)
+        rezultat, _ = _pipeline_din_temp(p.continut, p.ext, mapare, rand_antet,
+                                         preturi_boq=_preturi_plan(p))
         data, mime, ext_out = export_engine.exporta(
             fmt, rezultat, nume_proiect=p.nume, ore_pe_zi=_motor().setari.get('ore_pe_zi', 8))
     except (import_engine.EroareImport, ValueError):

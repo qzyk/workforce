@@ -34,8 +34,10 @@ class MotorPlanificare:
     def __init__(self, clasificare: Optional[dict] = None,
                  dependinte: Optional[dict] = None,
                  setari: Optional[dict] = None,
-                 tenant_id: Optional[int] = None):
+                 tenant_id: Optional[int] = None,
+                 preturi_boq: Optional[dict] = None):
         self.tenant_id = tenant_id
+        self.preturi_boq = preturi_boq   # preturi reale din deviz (5D), optional
         self.dict_clasificare = clasificare or store.clasificare(tenant_id)
         self.dependinte = dependinte or store.dependinte(tenant_id)
         self.setari = setari or store.setari(tenant_id)
@@ -50,7 +52,7 @@ class MotorPlanificare:
         for i, art in enumerate(articole, start=1):
             cat, scor = self.clasificator.clasifica(art.denumire, art.cod_articol)
             durata = estimeaza_durata(art.cantitate, cat, self.setari)
-            val, vmat, vman, estimat = calculeaza_cost(art, cat, self.tarife)
+            val, vmat, vman, estimat = calculeaza_cost(art, cat, self.tarife, self.preturi_boq)
             activitati.append(Activitate(
                 id=f'A{i:06d}',
                 cod=art.cod_articol,

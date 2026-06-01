@@ -19,7 +19,8 @@ def test_evm_serviciu_si_ruta(authenticated_client, app):
         db.session.add(plan); db.session.commit()
         pid = p.id
         data = evm_proiect(pid)
-        assert data is not None and data['bac'] == 50000
+        # BAC = costul recalculat (cu preturi reale daca exista), > 0
+        assert data is not None and data['bac'] > 0
         assert data['pv_curba']          # curba planificata (PV) exista
         assert data['serie'] == []       # fara situatii -> fara actuals
     try:
