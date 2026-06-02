@@ -1,0 +1,16 @@
+{
+  "_descriere": "Mapare categorie tehnologica Gantt -> categorie_lucrare deviz (taxonomie F2 unica). Categoriile fara echivalent raman cu numele lor (lowercase). Editabil din /gantt/config; DB suprascrie acest fisier.",
+  "SAPATURA": "terasamente",
+  "UMPLUTURA": "terasamente",
+  "SPRIJINIRI": "terasamente",
+  "TRASARE": "amenajare_teren",
+  "ARMATURI": "armatura",
+  "POZARE_CONDUCTA": "canalizare",
+  "CAMINE": "canalizare",
+  "OBIECTE_SANITARE": "obiecte_sanitare",
+  "APARATURA_AMC": "aparataj",
+  "IZOLATII": "izolatii_diverse",
+  "PROBE": "probe_verificari",
+  "REFACERE": "asfalt",
+  "TRANSPORT": "transport"
+}

@@ -532,7 +532,13 @@ def config():
         (g['active'] if s.activ else g['inactive']).append(s)
 
     reg_grup = OrderedDict()
+    mapare_reguli = {}            # categoria Gantt suprascrisa in DB -> randul (pentru stergere)
     for r in store.lista_reguli(tid):
+        if r.tip_regula == 'mapare_categorie':
+            mapare_reguli[r.valoare] = r
+            continue              # nu poluam tabelul de clasificare
+        if r.tip_regula not in ('cuvant', 'prefix_cod'):
+            continue
         g = reg_grup.setdefault(r.categorie, {'active': [], 'inactive': []})
         (g['active'] if r.activ else g['inactive']).append(r)
 
@@ -542,8 +548,12 @@ def config():
         profiluri.append({'p': p, 'rand_antet': ra,
                           'rezumat': ', '.join(f'{k}→c{v}' for k, v in col.items())})
 
+    # F2: maparea categoriilor Gantt -> categorie_lucrare (taxonomie unica)
+    mapare = dict(sorted(store.mapare_categorii(tid).items()))
+
     return render_template('gantt/config.html', sin_grup=sin_grup, reg_grup=reg_grup,
                            profiluri=profiluri, campuri=campuri,
+                           mapare=mapare, mapare_reguli=mapare_reguli,
                            tarife=store.lista_tarife(tid))
 
 
@@ -570,6 +580,20 @@ def config_regula_add():
     _invalideaza_motor()
     flash(err or 'Regula adaugata.', 'warning' if err else 'success')
     return redirect(url_for('gantt.config') + '#reguli')
+
+
+@gantt_bp.route('/config/mapare', methods=['POST'])
+@login_required
+def config_mapare_add():
+    """Suprascrie maparea unei categorii Gantt -> categorie_lucrare (F2)."""
+    _row, err = store.adauga_regula(
+        request.form.get('categorie_lucrare'), 'mapare_categorie',
+        request.form.get('categorie_gantt'),
+        tenant_id=getattr(current_user, 'tenant_id', None),
+        user_id=getattr(current_user, 'id', None))
+    _invalideaza_motor()
+    flash(err or 'Mapare salvata.', 'warning' if err else 'success')
+    return redirect(url_for('gantt.config') + '#mapare')
 
 
 @gantt_bp.route('/config/<entitate>/<int:id_>/comuta', methods=['POST'])

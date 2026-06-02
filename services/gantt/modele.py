@@ -84,6 +84,7 @@ class Activitate:
     cod: str
     nume: str
     categorie_tehnologica: Optional[str]      # ex: SAPATURA, POZARE_CONDUCTA (None = neclasificat)
+    categorie_lucrare: Optional[str] = None   # F2 canonic (deviz): terasamente, beton... (mapat)
     obiect: str = ''
     tronson: str = ''
     um: str = ''
@@ -118,6 +119,7 @@ class Activitate:
             cod=str(d.get('cod', '')),
             nume=str(d.get('nume', '')),
             categorie_tehnologica=(d.get('categorie_tehnologica') or None),
+            categorie_lucrare=(d.get('categorie_lucrare') or None),
             obiect=str(d.get('obiect', '')),
             tronson=str(d.get('tronson', '')),
             um=str(d.get('um', '')),

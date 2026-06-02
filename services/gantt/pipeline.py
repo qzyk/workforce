@@ -42,6 +42,7 @@ class MotorPlanificare:
         self.dependinte = dependinte or store.dependinte(tenant_id)
         self.setari = setari or store.setari(tenant_id)
         self.tarife = store.tarife_gantt(tenant_id)
+        self.mapare_lucrare = store.mapare_categorii(tenant_id)   # F2: gantt -> categorie_lucrare
         self.clasificator = Clasificator(self.dict_clasificare, self.setari.get('sinonime'),
                                          reguli_prefix=store.reguli_prefix_cod(tenant_id))
 
@@ -60,6 +61,7 @@ class MotorPlanificare:
             else:
                 cat = (art.categorie or None)        # categoria din fisier, ca atare
                 scor = 1.0 if cat else None
+            cat_lucrare = store.la_categorie_lucrare(cat, self.mapare_lucrare)  # F2 canonic
             durata = estimeaza_durata(art.cantitate, cat, self.setari)
             val, vmat, vman, vuti, estimat = calculeaza_cost(
                 art, cat, self.tarife, self.preturi_boq)
@@ -68,6 +70,7 @@ class MotorPlanificare:
                 cod=art.cod_articol,
                 nume=art.denumire,
                 categorie_tehnologica=cat,
+                categorie_lucrare=cat_lucrare,
                 obiect=art.obiect,
                 tronson=art.tronson,
                 um=art.um,
@@ -122,6 +125,7 @@ class MotorPlanificare:
         tronsoane = {(a.obiect, a.tronson) for a in activitati}
         per_categorie: dict = {}
         cost_categorie: dict = {}
+        cost_lucrare: dict = {}          # F2 canonic (deviz): cost pe categorie_lucrare
         cost_obiect: dict = {}
         cost_total = cost_material = cost_manopera = cost_utilaj = 0.0
         nr_estimate = 0
@@ -129,6 +133,8 @@ class MotorPlanificare:
             k = a.categorie_tehnologica or 'NECLASIFICAT'
             per_categorie[k] = per_categorie.get(k, 0) + 1
             cost_categorie[k] = round(cost_categorie.get(k, 0.0) + (a.valoare or 0), 2)
+            kl = a.categorie_lucrare or 'neclasificat'
+            cost_lucrare[kl] = round(cost_lucrare.get(kl, 0.0) + (a.valoare or 0), 2)
             cost_obiect[a.obiect] = round(cost_obiect.get(a.obiect, 0.0) + (a.valoare or 0), 2)
             cost_total += a.valoare or 0
             cost_material += a.valoare_material or 0
@@ -151,6 +157,7 @@ class MotorPlanificare:
             'cost_manopera': round(cost_manopera, 2),
             'cost_utilaj': round(cost_utilaj, 2),
             'cost_per_categorie': cost_categorie,
+            'cost_per_categorie_lucrare': cost_lucrare,
             'cost_per_obiect': cost_obiect,
             'nr_cost_estimat': nr_estimate,
             'durata_procesare_s': durata_s,

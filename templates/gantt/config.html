@@ -51,6 +51,7 @@ table.cf-tab-prof th { background:#F5F1E8; }
 <div class="cf-tabs">
   <a class="cf-tab" href="#sinonime"><i class="fa-solid fa-table-columns"></i> Sinonime coloane</a>
   <a class="cf-tab" href="#reguli"><i class="fa-solid fa-tags"></i> Reguli clasificare</a>
+  <a class="cf-tab" href="#mapare"><i class="fa-solid fa-diagram-project"></i> Mapare categorii (F2)</a>
   <a class="cf-tab" href="#tarife"><i class="fa-solid fa-coins"></i> Tarife (cost 5D)</a>
   <a class="cf-tab" href="#profiluri"><i class="fa-solid fa-wand-magic-sparkles"></i> Profiluri mapare</a>
   <a class="cf-tab" href="{{ url_for('gantt.index') }}"><i class="fa-solid fa-arrow-left"></i> Inapoi la upload</a>
@@ -160,6 +161,37 @@ table.cf-tab-prof th { background:#F5F1E8; }
   {% else %}
     <p style="color:var(--gray-500);">Nicio regula. Adauga una mai sus.</p>
   {% endfor %}
+</div>
+
+<!-- ============ MAPARE CATEGORII (F2) ============ -->
+<div class="cf-card" id="mapare">
+  <h3>Mapare categorii <span style="color:var(--gray-400); font-weight:400;">(F2 — taxonomie unica)</span></h3>
+  <div class="cf-sub">Categoria tehnologica Gantt → categorie_lucrare din deviz. Da un limbaj comun cu devizul (potrivire directa pe articole + rapoarte unificate). Cele fara echivalent raman cu numele lor (lowercase).</div>
+
+  <form class="cf-add" method="POST" action="{{ url_for('gantt.config_mapare_add') }}" style="border-top:none; margin-bottom:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="categorie_gantt" placeholder="categorie Gantt (ex: SAPATURA)" required>
+    <span style="align-self:center; color:var(--gray-400);">→</span>
+    <input type="text" name="categorie_lucrare" placeholder="categorie_lucrare deviz (ex: terasamente)" required>
+    <button class="cf-btn"><i class="fa-solid fa-plus"></i> Salveaza maparea</button>
+  </form>
+
+  <div class="cf-grup">
+    {% for gantt_cat, deviz_cat in mapare.items() %}
+      <span class="cf-chip">
+        <b class="cf-mono">{{ gantt_cat }}</b> → {{ deviz_cat }}
+        {% if mapare_reguli.get(gantt_cat) %}
+          <form method="POST" action="{{ url_for('gantt.config_sterge', entitate='regula', id_=mapare_reguli[gantt_cat].id) }}"
+                onsubmit="return confirm('Stergi suprascrierea (revine la valoarea implicita)?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="cf-x" title="Sterge suprascrierea"><i class="fa-solid fa-trash"></i></button>
+          </form>
+        {% endif %}
+      </span>
+    {% else %}
+      <p style="color:var(--gray-500);">Nicio mapare definita.</p>
+    {% endfor %}
+  </div>
 </div>
 
 <!-- ============ TARIFE (COST 5D) ============ -->

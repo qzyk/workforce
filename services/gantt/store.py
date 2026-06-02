@@ -98,6 +98,31 @@ def mapare_tip_element(tenant_id: Optional[int] = None) -> dict:
     return base
 
 
+def mapare_categorii(tenant_id: Optional[int] = None) -> dict:
+    """{CATEGORIE_gantt: categorie_lucrare_deviz} - taxonomia F2 unica.
+    mapare_categorii.json suprascris de DB (tip_regula='mapare_categorie',
+    valoare=categoria Gantt sursa, categorie=categorie_lucrare deviz tinta)."""
+    base = {str(k): v for k, v in (cfg.incarca('mapare_categorii', {}) or {}).items()
+            if not str(k).startswith('_')}
+    from models import GanttClasificareRegula
+    rows = _randuri_active(GanttClasificareRegula, tenant_id)
+    if rows:
+        for r in rows:
+            if r.tip_regula == 'mapare_categorie' and r.valoare:
+                base[r.valoare] = r.categorie
+    return base
+
+
+def la_categorie_lucrare(categorie_tehnologica, mapare: Optional[dict] = None,
+                         tenant_id: Optional[int] = None):
+    """Traduce o categorie Gantt in categorie_lucrare canonica (F2).
+    Fallback daca nu exista mapare: numele Gantt lowercase. None ramane None."""
+    if not categorie_tehnologica:
+        return None
+    m = mapare if mapare is not None else mapare_categorii(tenant_id)
+    return m.get(categorie_tehnologica) or str(categorie_tehnologica).lower()
+
+
 def dependinte(tenant_id: Optional[int] = None) -> dict:
     """{'ordine_categorii', 'intra_categorie', 'relatii'} pentru dependente."""
     from models import GanttRelatieTemplate
@@ -308,11 +333,16 @@ def adauga_regula(categorie: str, tip_regula: str, valoare: str, prioritate: int
                   tenant_id=None, user_id=None):
     """(row, eroare). Reactiveaza daca exista dezactivat; refuza duplicat activ."""
     from models import db, GanttClasificareRegula as M
-    categorie = (categorie or '').strip().upper()
+    categorie = (categorie or '').strip()
     tip_regula = (tip_regula or 'cuvant').strip()
     valoare = (valoare or '').strip()
-    if tip_regula not in ('cuvant', 'prefix_cod'):
+    if tip_regula not in ('cuvant', 'prefix_cod', 'mapare_categorie', 'tip_element'):
         tip_regula = 'cuvant'
+    if tip_regula == 'mapare_categorie':
+        categorie = categorie.lower()   # categorie_lucrare deviz (tinta)
+        valoare = valoare.upper()       # categoria Gantt (sursa)
+    else:
+        categorie = categorie.upper()
     if not categorie or not valoare:
         return None, 'Categorie si valoare sunt obligatorii.'
     try:
