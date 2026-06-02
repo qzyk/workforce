@@ -31,6 +31,38 @@ def test_pipeline_seteaza_categorie_lucrare(app):
     assert 'terasamente' in rez.statistici['cost_per_categorie_lucrare']
 
 
+def test_centralizator_f2_in_statistici(app):
+    """Centralizatorul F2: cost pe categorie de lucrare, descompus pe resurse."""
+    from services.gantt.pipeline import MotorPlanificare
+    from services.gantt.modele import ArticolF3
+    with app.app_context():
+        arts = [ArticolF3('TS01', 'Sapatura mecanizata pamant', um='mc', cantitate=100),
+                ArticolF3('AR01', 'Montaj armatura BST500', um='kg', cantitate=200)]
+        rez = MotorPlanificare().proceseaza(arts, clasifica=True)
+    cf2 = rez.statistici['centralizator_f2']
+    assert isinstance(cf2, list) and cf2
+    for r in cf2:
+        assert {'categorie', 'nr', 'material', 'manopera', 'utilaj', 'total'} <= set(r)
+        # estimat -> material+manopera+utilaj insumeaza totalul (split exact)
+        assert abs((r['material'] + r['manopera'] + r['utilaj']) - r['total']) < 1.0
+
+
+def test_export_f2_csv(authenticated_client):
+    """Upload F3 -> descarca centralizatorul F2 (CSV) pe token-ul din sesiune."""
+    from io import BytesIO
+    csv = (b"cod_articol;denumire;um;cantitate;obiect;tronson\n"
+           b"TS01;Sapatura mecanizata;mc;100;O;T\n")
+    authenticated_client.post('/gantt/genereaza',
+                              data={'fisier': (BytesIO(csv), 'f.csv')},
+                              content_type='multipart/form-data', follow_redirects=True)
+    with authenticated_client.session_transaction() as sess:
+        token = sess.get('gantt_token')
+    assert token
+    r = authenticated_client.get(f'/gantt/export-f2/{token}')
+    assert r.status_code == 200
+    assert b'Categorie lucrare' in r.data and b'TOTAL' in r.data
+
+
 def test_mapare_db_suprascrie_json(app):
     """O regula in DB (tip mapare_categorie) suprascrie maparea din JSON."""
     from services.gantt import store

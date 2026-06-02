@@ -126,6 +126,7 @@ class MotorPlanificare:
         per_categorie: dict = {}
         cost_categorie: dict = {}
         cost_lucrare: dict = {}          # F2 canonic (deviz): cost pe categorie_lucrare
+        f2: dict = {}                    # F2 detaliat: resurse (M/m/U/total/nr) pe categorie
         cost_obiect: dict = {}
         cost_total = cost_material = cost_manopera = cost_utilaj = 0.0
         nr_estimate = 0
@@ -135,6 +136,13 @@ class MotorPlanificare:
             cost_categorie[k] = round(cost_categorie.get(k, 0.0) + (a.valoare or 0), 2)
             kl = a.categorie_lucrare or 'neclasificat'
             cost_lucrare[kl] = round(cost_lucrare.get(kl, 0.0) + (a.valoare or 0), 2)
+            g = f2.setdefault(kl, {'material': 0.0, 'manopera': 0.0, 'utilaj': 0.0,
+                                   'total': 0.0, 'nr': 0})
+            g['material'] += a.valoare_material or 0
+            g['manopera'] += a.valoare_manopera or 0
+            g['utilaj'] += a.valoare_utilaj or 0
+            g['total'] += a.valoare or 0
+            g['nr'] += 1
             cost_obiect[a.obiect] = round(cost_obiect.get(a.obiect, 0.0) + (a.valoare or 0), 2)
             cost_total += a.valoare or 0
             cost_material += a.valoare_material or 0
@@ -142,6 +150,13 @@ class MotorPlanificare:
             cost_utilaj += a.valoare_utilaj or 0
             if a.cost_estimat:
                 nr_estimate += 1
+        # Centralizator F2: cost pe categorie de lucrare, descompus pe resurse
+        centralizator_f2 = sorted(
+            [{'categorie': k, 'nr': v['nr'],
+              'material': round(v['material'], 2), 'manopera': round(v['manopera'], 2),
+              'utilaj': round(v['utilaj'], 2), 'total': round(v['total'], 2)}
+             for k, v in f2.items()],
+            key=lambda r: -r['total'])
         return {
             'nr_activitati': len(activitati),
             'nr_dependente': nr_dep,
@@ -158,6 +173,7 @@ class MotorPlanificare:
             'cost_utilaj': round(cost_utilaj, 2),
             'cost_per_categorie': cost_categorie,
             'cost_per_categorie_lucrare': cost_lucrare,
+            'centralizator_f2': centralizator_f2,
             'cost_per_obiect': cost_obiect,
             'nr_cost_estimat': nr_estimate,
             'durata_procesare_s': durata_s,

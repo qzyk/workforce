@@ -129,6 +129,48 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
             <div><canvas id="chartCurbaS" height="170"></canvas></div>
             <div><canvas id="chartCostCat" height="170"></canvas></div>
         </div>
+
+        {% if st.centralizator_f2 %}
+        <div style="margin-top:18px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                <div style="font-weight:700; color:#0B1426;"><i class="fa-solid fa-layer-group" style="color:#C9A961;"></i> Centralizator F2 — cost pe categorie de lucrare</div>
+                {% if token %}<a href="{{ url_for('gantt.export_f2', token=token) }}" style="font-size:.82rem; color:#A8893D; font-weight:600; text-decoration:none;"><i class="fa-solid fa-file-csv"></i> Descarca CSV</a>{% endif %}
+            </div>
+            <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:.86rem;">
+                <thead><tr style="background:#F5F1E8;">
+                    <th style="text-align:left; padding:8px 10px;">Categorie lucrare</th>
+                    <th style="text-align:right; padding:8px 10px;">Nr.</th>
+                    <th style="text-align:right; padding:8px 10px;">Material</th>
+                    <th style="text-align:right; padding:8px 10px;">Manopera</th>
+                    <th style="text-align:right; padding:8px 10px;">Utilaje</th>
+                    <th style="text-align:right; padding:8px 10px;">Total (lei)</th>
+                </tr></thead>
+                <tbody>
+                {% for r in st.centralizator_f2 %}
+                    <tr style="border-top:1px solid #ECE7DA;">
+                        <td style="padding:7px 10px;">{{ r.categorie }}</td>
+                        <td style="text-align:right; padding:7px 10px;">{{ r.nr }}</td>
+                        <td style="text-align:right; padding:7px 10px;">{{ '{:,.0f}'.format(r.material) }}</td>
+                        <td style="text-align:right; padding:7px 10px;">{{ '{:,.0f}'.format(r.manopera) }}</td>
+                        <td style="text-align:right; padding:7px 10px;">{{ '{:,.0f}'.format(r.utilaj) }}</td>
+                        <td style="text-align:right; padding:7px 10px; font-weight:700; color:#0B1426;">{{ '{:,.0f}'.format(r.total) }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+                <tfoot><tr style="border-top:2px solid #C9A961; font-weight:700;">
+                    <td style="padding:8px 10px;">Total</td>
+                    <td style="text-align:right; padding:8px 10px;">{{ st.nr_activitati }}</td>
+                    <td style="text-align:right; padding:8px 10px;">{{ '{:,.0f}'.format(st.cost_material) }}</td>
+                    <td style="text-align:right; padding:8px 10px;">{{ '{:,.0f}'.format(st.cost_manopera) }}</td>
+                    <td style="text-align:right; padding:8px 10px;">{{ '{:,.0f}'.format(st.cost_utilaj) }}</td>
+                    <td style="text-align:right; padding:8px 10px; color:#A8893D;">{{ '{:,.0f}'.format(st.cost_total) }}</td>
+                </tr></tfoot>
+            </table>
+            </div>
+        </div>
+        {% endif %}
+
         <small style="color:var(--gray-500); display:block; margin-top:10px;">
             Estimare din tarife orientative lei/UM — ajusteaza-le in
             <a href="{{ url_for('gantt.config') }}#tarife">Configurare &rarr; Tarife</a>

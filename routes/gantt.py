@@ -299,6 +299,39 @@ def export_fisier(token, fmt):
                      download_name=f'planificare_{nume}.{ext_out}')
 
 
+@gantt_bp.route('/export-f2/<token>')
+@login_required
+def export_f2(token):
+    """Centralizator F2 (cost pe categorie de lucrare, descompus material/manopera/utilaj) - CSV."""
+    if not re.fullmatch(r'[0-9a-f]{32}', token or ''):
+        abort(404)
+    continut, ext = _citeste_temp(token)
+    if not continut:
+        flash('Sesiunea de preview a expirat. Reincarca fisierul F3.', 'warning')
+        return redirect(url_for('gantt.index'))
+    mapare, rand_antet = (None, None)
+    if session.get('gantt_token') == token:
+        mapare, rand_antet = _mapare_sesiune()
+    try:
+        rezultat, _ = _pipeline_din_temp(continut, ext, mapare, rand_antet)
+    except import_engine.EroareImport:
+        flash('Nu pot regenera centralizatorul. Reincarca fisierul F3.', 'warning')
+        return redirect(url_for('gantt.index'))
+    import csv as _csv
+    import io
+    st = rezultat.statistici
+    out = io.StringIO()
+    w = _csv.writer(out, delimiter=';')
+    w.writerow(['Categorie lucrare', 'Nr articole', 'Material', 'Manopera', 'Utilaje', 'Total'])
+    for r in st.get('centralizator_f2', []):
+        w.writerow([r['categorie'], r['nr'], r['material'], r['manopera'], r['utilaj'], r['total']])
+    w.writerow(['TOTAL', st.get('nr_activitati', 0), st.get('cost_material', 0),
+                st.get('cost_manopera', 0), st.get('cost_utilaj', 0), st.get('cost_total', 0)])
+    nume = session.get('gantt_nume', 'planificare')
+    return send_file(io.BytesIO(out.getvalue().encode('utf-8-sig')), mimetype='text/csv',
+                     as_attachment=True, download_name=f'centralizator_f2_{nume}.csv')
+
+
 # ============================================================ PLANURI SALVATE
 def _plan_sau_404(id_):
     from models import db, GanttPlan
