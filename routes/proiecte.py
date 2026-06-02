@@ -240,7 +240,8 @@ def hub(id):
                      .filter(model.proiect_id == id).scalar() or 0)
 
     from models import (Contract, OfertaContract, SituatieLunara, LocatieProiect,
-                        GanttPlan, DocumentProiect, ModelBIM, Cladire, ElementBIM)
+                        GanttPlan, DocumentProiect, ModelBIM, Cladire, ElementBIM,
+                        Santier, ProiectSantier)
 
     h = {}
     h['contracte'] = _safe(lambda: {'nr': Contract.query.filter_by(proiect_id=id).count(),
@@ -258,17 +259,71 @@ def hub(id):
     h['angajati'] = _safe(lambda: AngajatProiect.query.filter_by(proiect_id=id)
                           .filter(AngajatProiect.data_sfarsit.is_(None)).count(), 0)
     h['documente'] = _safe(lambda: DocumentProiect.query.filter_by(proiect_id=id).count(), 0)
-    # proiectele si santierele BIM nu au inca un FK direct (conexiune viitoare);
-    # daca exista santier_id pe model, agregam; altfel sarim cardul BIM.
-    santier_id = getattr(proiect, 'santier_id', None)
-    if santier_id:
-        h['bim'] = _safe(lambda: {
-            'modele': ModelBIM.query.filter_by(santier_id=santier_id).count(),
-            'elemente': (ElementBIM.query.join(Cladire, ElementBIM.cladire_id == Cladire.id)
-                         .filter(Cladire.santier_id == santier_id).count()),
-        }, {'modele': 0, 'elemente': 0})
 
-    return render_template('proiecte/hub.html', proiect=proiect, h=h, santier_id=santier_id)
+    # santiere BIM legate (many-to-many) -> agregam BIM peste toate
+    santiere = _safe(lambda: [ls.santier for ls in proiect.legaturi_santiere
+                              if ls.santier is not None], []) or []
+    if santiere:
+        sids = [s.id for s in santiere]
+        h['bim'] = _safe(lambda: {
+            'nr_santiere': len(santiere),
+            'modele': ModelBIM.query.filter(ModelBIM.santier_id.in_(sids)).count(),
+            'elemente': (ElementBIM.query.join(Cladire, ElementBIM.cladire_id == Cladire.id)
+                         .filter(Cladire.santier_id.in_(sids)).count()),
+        }, {'nr_santiere': len(santiere), 'modele': 0, 'elemente': 0})
+    # santiere disponibile pentru legare (neasociate inca)
+    legate_ids = {s.id for s in santiere}
+    disponibile = _safe(lambda: [s for s in Santier.query.order_by(Santier.cod).all()
+                                 if s.id not in legate_ids], []) or []
+
+    return render_template('proiecte/hub.html', proiect=proiect, h=h,
+                           santiere=santiere, santiere_disponibile=disponibile)
+
+
+@proiecte_bp.route('/<int:id>/leaga-santier', methods=['POST'])
+@login_required
+def leaga_santier(id):
+    from models import ProiectSantier, Santier
+    Proiect.query.get_or_404(id)
+    try:
+        sid = int(request.form['santier_id'])
+    except (KeyError, ValueError, TypeError):
+        flash('Alege un santier BIM.', 'warning')
+        return redirect(url_for('proiecte.hub', id=id))
+    if not Santier.query.get(sid):
+        abort(404)
+    if not ProiectSantier.query.filter_by(proiect_id=id, santier_id=sid).first():
+        ps = ProiectSantier(proiect_id=id, santier_id=sid,
+                            tenant_id=getattr(current_user, 'tenant_id', None),
+                            creat_de_id=getattr(current_user, 'id', None))
+        db.session.add(ps)
+        db.session.commit()
+        try:
+            from services import audit
+            audit.log('create', 'proiect_santier', ps.id,
+                      new_values={'proiect_id': id, 'santier_id': sid}, commit=True)
+        except Exception:
+            pass
+        flash('Santier BIM legat de proiect.', 'success')
+    return redirect(url_for('proiecte.hub', id=id))
+
+
+@proiecte_bp.route('/<int:id>/dezleaga-santier/<int:santier_id>', methods=['POST'])
+@login_required
+def dezleaga_santier(id, santier_id):
+    from models import ProiectSantier
+    ps = ProiectSantier.query.filter_by(proiect_id=id, santier_id=santier_id).first()
+    if ps:
+        psid = ps.id
+        db.session.delete(ps)
+        db.session.commit()
+        try:
+            from services import audit
+            audit.log('delete', 'proiect_santier', psid, commit=True)
+        except Exception:
+            pass
+        flash('Santier dezlegat.', 'success')
+    return redirect(url_for('proiecte.hub', id=id))
 
 
 @proiecte_bp.route('/<int:id>/evm')

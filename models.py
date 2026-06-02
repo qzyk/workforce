@@ -4383,3 +4383,31 @@ class GanttPlan(db.Model):
         return f'<GanttPlan {self.id} {self.nume!r} proiect={self.proiect_id}>'
 
 
+class ProiectSantier(db.Model):
+    """Asociere many-to-many proiect <-> santier BIM.
+
+    Un proiect poate acoperi mai multe santiere si un santier poate apartine mai
+    multor proiecte. Leaga lantul proiect -> santier -> modele -> elemente -> 4D/QTO.
+    """
+    __tablename__ = 'proiect_santier'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'), nullable=False, index=True)
+    santier_id = db.Column(db.Integer, db.ForeignKey('bim_santiere.id'), nullable=False, index=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    proiect = db.relationship('Proiect', backref=db.backref('legaturi_santiere', lazy='dynamic',
+                                                            cascade='all, delete-orphan'))
+    santier = db.relationship('Santier', backref=db.backref('legaturi_proiecte', lazy='dynamic',
+                                                            cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.UniqueConstraint('proiect_id', 'santier_id', name='uix_proiect_santier'),
+    )
+
+    def __repr__(self):
+        return f'<ProiectSantier proiect={self.proiect_id} santier={self.santier_id}>'
+
+

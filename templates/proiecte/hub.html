@@ -35,12 +35,12 @@
 </div>
 
 <div class="hb-grid">
-    {% if h.bim and santier_id %}
-    <a class="hb-card" href="{{ url_for('bim.santier_detaliu', id=santier_id) }}">
+    {% if h.bim %}
+    <a class="hb-card" href="{% if santiere|length == 1 %}{{ url_for('bim.santier_detaliu', id=santiere[0].id) }}{% else %}{{ url_for('bim.dashboard') }}{% endif %}">
         <div class="ic hb-bim"><i class="fa-solid fa-cube"></i></div>
-        <h3>BIM / Santier</h3>
+        <h3>BIM / Santiere</h3>
         <div class="v">{{ h.bim.elemente }}</div>
-        <div class="s">{{ h.bim.modele }} modele · elemente 3D · 4D in viewer</div>
+        <div class="s">{{ h.bim.nr_santiere }} santiere · {{ h.bim.modele }} modele · elemente 3D · 4D/QTO</div>
     </a>
     {% endif %}
 
@@ -92,5 +92,37 @@
         <div class="v">{% if h.locatie %}<i class="fa-solid fa-map-pin" style="font-size:1.2rem;"></i>{% else %}&mdash;{% endif %}</div>
         <div class="s">{% if h.locatie %}{{ '%.4f'|format(h.locatie.lat) }}, {{ '%.4f'|format(h.locatie.lng) }}{% else %}fara locatie{% endif %}</div>
     </a>
+</div>
+
+<div class="hb-card" style="margin-top:18px;">
+    <h3 style="margin:0 0 4px;"><i class="fa-solid fa-cube" style="color:#1565C0;"></i> Santiere BIM legate</h3>
+    <div class="s" style="color:var(--gray-500); font-size:.82rem; margin-bottom:12px;">Lega proiectul de unul sau mai multe santiere BIM (modele 3D, 4D, QTO).</div>
+    {% if santiere %}
+        {% for s in santiere %}
+        <span style="display:inline-flex; align-items:center; gap:8px; background:#F5F1E8; border:1px solid #E8E3D5; border-radius:20px; padding:5px 8px 5px 14px; margin:3px 5px 3px 0; font-size:.85rem;">
+            <b>{{ s.cod }}</b> · {{ s.nume }}
+            <a href="{{ url_for('bim.santier_detaliu', id=s.id) }}" title="Deschide" style="color:#1565C0;"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+            <form method="POST" action="{{ url_for('proiecte.dezleaga_santier', id=proiect.id, santier_id=s.id) }}" style="display:inline; margin:0;" onsubmit="return confirm('Dezlegi santierul {{ s.cod }}?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button style="border:none; background:transparent; color:#9B2222; cursor:pointer;" title="Dezleaga"><i class="fa-solid fa-xmark"></i></button>
+            </form>
+        </span>
+        {% endfor %}
+    {% else %}
+        <span style="color:var(--gray-400); font-size:.85rem;">Niciun santier legat inca.</span>
+    {% endif %}
+
+    {% if santiere_disponibile %}
+    <form method="POST" action="{{ url_for('proiecte.leaga_santier', id=proiect.id) }}"
+          style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:14px; padding-top:12px; border-top:1px dashed #E8E3D5;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="santier_id" style="padding:7px 10px; border:1px solid #E8E3D5; border-radius:7px;">
+            {% for s in santiere_disponibile %}<option value="{{ s.id }}">{{ s.cod }} · {{ s.nume }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="hb-card" style="display:inline-block; padding:8px 14px; background:#1565C0; color:#fff; border:none; border-radius:7px; cursor:pointer; box-shadow:none;">
+            <i class="fa-solid fa-link"></i> Leaga santier
+        </button>
+    </form>
+    {% endif %}
 </div>
 {% endblock %}
