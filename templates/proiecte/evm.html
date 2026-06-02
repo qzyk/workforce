@@ -47,6 +47,9 @@ table.ev td { padding:7px 10px; border-top:1px solid #ECE7DA; text-align:right; 
     <div class="ev-stat"><div class="v ev-good">{{ u.ev_pct if u else 0 }}%</div><div class="l">Realizat (EV)</div></div>
     <div class="ev-stat"><div class="v {{ idx(u.spi) if u }}">{{ u.spi if u and u.spi is not none else '—' }}</div><div class="l">SPI (grafic)</div></div>
     <div class="ev-stat"><div class="v {{ idx(u.cpi) if u }}">{{ u.cpi if u and u.cpi is not none else '—' }}</div><div class="l">CPI (buget)</div></div>
+    {% if evm.manopera and evm.manopera.cost %}
+    <div class="ev-stat"><div class="v">{{ '{:,.0f}'.format(evm.manopera.cost) }}</div><div class="l">Manopera pontata (lei)</div></div>
+    {% endif %}
 </div>
 
 <div class="ev-card">
@@ -57,7 +60,7 @@ table.ev td { padding:7px 10px; border-top:1px solid #ECE7DA; text-align:right; 
 {% if evm.serie %}
 <div class="ev-card">
     <table class="ev">
-        <thead><tr><th>Situatie (data)</th><th>PV %</th><th>EV % (real)</th><th>AC (lei)</th><th>SPI</th><th>CPI</th></tr></thead>
+        <thead><tr><th>Situatie (data)</th><th>PV %</th><th>EV % (real)</th><th>AC (lei)</th><th>Manopera pontata</th><th>SPI</th><th>CPI</th></tr></thead>
         <tbody>
             {% for s in evm.serie %}
             <tr>
@@ -65,6 +68,7 @@ table.ev td { padding:7px 10px; border-top:1px solid #ECE7DA; text-align:right; 
                 <td>{{ s.pv_pct }}%</td>
                 <td>{{ s.ev_pct }}%</td>
                 <td>{{ '{:,.0f}'.format(s.ac) }}</td>
+                <td>{{ '{:,.0f}'.format(s.man_pontat or 0) }}</td>
                 <td class="{{ idx(s.spi) }}">{{ s.spi if s.spi is not none else '—' }}</td>
                 <td class="{{ idx(s.cpi) }}">{{ s.cpi if s.cpi is not none else '—' }}</td>
             </tr>

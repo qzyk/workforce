@@ -36,6 +36,38 @@ def test_evm_serviciu_si_ruta(authenticated_client, app):
             db.session.commit()
 
 
+def test_evm_manopera_pontata(authenticated_client, app):
+    from models import db, Proiect, GanttPlan, Angajat, Pontaj
+    from services.evm import evm_proiect
+    with app.app_context():
+        p = Proiect(cod_proiect='EVM-M', nume='M', data_start=date.today())
+        a = Angajat(nume='Ion', prenume='Pop', data_angajare=date.today())
+        db.session.add_all([p, a]); db.session.flush()
+        db.session.add(GanttPlan(nume='Pl', continut=SAMPLE, ext='.csv', nr_activitati=2,
+                                 durata_zile=10, cost_total=10000, proiect_id=p.id))
+        db.session.add(Pontaj(angajat_id=a.id, proiect_id=p.id, data=date.today(), ore_lucrate=8))
+        db.session.commit()
+        pid, aid = p.id, a.id
+        data = evm_proiect(pid)
+        # 8 ore x 30 lei (tarif orar implicit) = 240
+        assert abs(data['manopera']['cost'] - 240) < 1 and data['manopera']['ore'] == 8.0
+    try:
+        r = authenticated_client.get(f'/proiecte/{pid}/evm')
+        assert r.status_code == 200 and b'Manopera pontata' in r.data
+    finally:
+        with app.app_context():
+            for M in (Pontaj, GanttPlan):
+                for x in M.query.filter_by(proiect_id=pid).all():
+                    db.session.delete(x)
+            a = db.session.get(Angajat, aid)
+            if a:
+                db.session.delete(a)
+            pr = db.session.get(Proiect, pid)
+            if pr:
+                db.session.delete(pr)
+            db.session.commit()
+
+
 def test_evm_fara_plan(authenticated_client, app):
     from models import db, Proiect
     with app.app_context():

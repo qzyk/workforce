@@ -14,6 +14,40 @@ from __future__ import annotations
 
 from datetime import date
 
+# tarif orar implicit (lei/ora) cand angajatul nu are tarif_negociat pe proiect
+TARIF_ORAR_IMPLICIT = 30.0
+
+
+def _pontaje_cumulativ(proiect_id: int):
+    """([(data, cost_cumulat)], total_ore) din pontaje (cost manopera reala).
+    cost = ore_lucrate x tarif + prime ore suplimentare; tarif din AngajatProiect."""
+    from models import Pontaj, AngajatProiect
+    tarife = {ap.angajat_id: float(ap.tarif_negociat or 0)
+              for ap in AngajatProiect.query.filter_by(proiect_id=proiect_id).all()}
+    pontaje = (Pontaj.query.filter_by(proiect_id=proiect_id)
+               .order_by(Pontaj.data).all())
+    cum, ore_tot, serie = 0.0, 0.0, []
+    for p in pontaje:
+        t = tarife.get(p.angajat_id) or TARIF_ORAR_IMPLICIT
+        base = float(p.ore_lucrate or 0)
+        h50 = float(p.ore_suplimentare_50 or 0)
+        h100 = float(p.ore_suplimentare_100 or 0)
+        cum += t * base + t * 0.5 * h50 + t * 1.0 * h100
+        ore_tot += base
+        serie.append((p.data, round(cum, 2)))
+    return serie, round(ore_tot, 1)
+
+
+def _man_la_data(serie, d: date) -> float:
+    """Cost manopera cumulat la data d (functie-treapta)."""
+    val = 0.0
+    for dt, c in serie:
+        if dt and dt <= d:
+            val = c
+        else:
+            break
+    return val
+
 
 def _pv_calendar(plan):
     """([(date, procent_planificat)], BAC) din curba S a planului Gantt."""
@@ -81,6 +115,9 @@ def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
     except Exception:
         pv_pts, bac = [], float(plan.cost_total or 0)
 
+    pont_serie, pont_ore = _pontaje_cumulativ(proiect_id)   # manopera reala (pontaje)
+    man_total = pont_serie[-1][1] if pont_serie else 0.0
+
     situatii = (SituatieLunara.query.filter_by(proiect_id=proiect_id)
                 .order_by(SituatieLunara.an, SituatieLunara.luna).all())
     serie = []
@@ -94,12 +131,13 @@ def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
         serie.append({
             'data': d.isoformat(), 'pv_pct': round(pv_pct, 1), 'ev_pct': round(ev_pct, 1),
             'pv_val': round(pv_pct / 100.0 * bac, 0), 'ev_val': round(ev_val, 0),
-            'ac': round(ac, 0),
+            'ac': round(ac, 0), 'man_pontat': round(_man_la_data(pont_serie, d), 0),
             'spi': round(ev_pct / pv_pct, 2) if pv_pct else None,
             'cpi': round(ev_val / ac, 2) if ac else None,
         })
     return {
         'bac': round(bac, 0), 'plan_nume': plan.nume, 'nr_situatii': len(situatii),
+        'manopera': {'cost': round(man_total, 0), 'ore': pont_ore},
         'serie': serie, 'ultim': (serie[-1] if serie else None),
         'pv_curba': [{'data': dt.isoformat(), 'procent': round(p, 1)} for dt, p in pv_pts],
     }
