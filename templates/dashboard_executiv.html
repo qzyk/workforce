@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Dashboard executiv{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+<li class="breadcrumb-item active">Executiv</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.ex-hero { background:#0B1426; color:#F5F1E8; border-radius:12px; padding:20px 24px; margin-bottom:18px; }
+.ex-hero h2 { margin:0 0 4px; color:#C9A961; }
+.ex-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; margin-bottom:20px; }
+.ex-kpi { background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:16px 18px; box-shadow:0 2px 10px rgba(0,0,0,0.05); }
+.ex-kpi .ic { font-size:1.05rem; color:#C9A961; margin-bottom:6px; }
+.ex-kpi .v { font-size:1.7rem; font-weight:800; color:#0B1426; line-height:1.1; }
+.ex-kpi .l { font-size:.76rem; color:var(--gray-500); text-transform:uppercase; letter-spacing:.4px; }
+.ex-card { background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:6px; box-shadow:0 2px 10px rgba(0,0,0,0.05); }
+table.ex { width:100%; border-collapse:collapse; font-size:.86rem; }
+table.ex th { background:#F5F1E8; padding:10px 12px; text-align:right; } table.ex th:first-child { text-align:left; }
+table.ex td { padding:9px 12px; border-top:1px solid #ECE7DA; text-align:right; } table.ex td:first-child { text-align:left; }
+table.ex tr:hover td { background:#FBF8F0; }
+.ex-nume { font-weight:700; color:#0B1426; text-decoration:none; } .ex-nume:hover { color:#A8893D; }
+.ex-bar { width:90px; height:7px; background:#ECE7DA; border-radius:4px; overflow:hidden; display:inline-block; vertical-align:middle; }
+.ex-bar i { display:block; height:100%; background:linear-gradient(90deg,#E0BB6E,#C9A961); }
+.ex-pill { display:inline-block; background:#F5F1E8; border-radius:10px; padding:1px 9px; font-size:.74rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ex-hero">
+    <h2><i class="fa-solid fa-gauge-high"></i> Dashboard executiv</h2>
+    <div style="color:rgba(245,241,232,.78); font-size:.9rem;">Imagine de ansamblu pe proiecte, cost, BIM si avans</div>
+</div>
+
+<div class="ex-grid">
+    <div class="ex-kpi"><div class="ic"><i class="fa-solid fa-diagram-project"></i></div><div class="v">{{ kpi.proiecte_active }}</div><div class="l">Proiecte active / {{ kpi.proiecte_total }}</div></div>
+    <div class="ex-kpi"><div class="ic"><i class="fa-solid fa-file-signature"></i></div><div class="v">{{ '{:,.0f}'.format(kpi.contracte_val) }}</div><div class="l">Contracte (lei)</div></div>
+    <div class="ex-kpi"><div class="ic"><i class="fa-solid fa-calculator"></i></div><div class="v">{{ '{:,.0f}'.format(kpi.deviz_val) }}</div><div class="l">Deviz / oferte (lei)</div></div>
+    <div class="ex-kpi"><div class="ic"><i class="fa-solid fa-chart-gantt"></i></div><div class="v">{{ kpi.gantt_planuri }}</div><div class="l">Planuri Gantt · {{ '{:,.0f}'.format(kpi.gantt_cost) }} lei</div></div>
+    <div class="ex-kpi"><div class="ic"><i class="fa-solid fa-cube"></i></div><div class="v">{{ kpi.bim_elemente }}</div><div class="l">Elemente BIM · {{ kpi.bim_modele }} modele</div></div>
+    <div class="ex-kpi"><div class="ic"><i class="fa-solid fa-triangle-exclamation"></i></div><div class="v">{{ kpi.bim_issues }}</div><div class="l">Issues BIM deschise</div></div>
+</div>
+
+<div class="ex-card">
+    <div style="padding:10px 14px; font-weight:700; color:#0B1426;"><i class="fa-solid fa-list"></i> Portofoliu proiecte</div>
+    {% if proiecte %}
+    <table class="ex">
+        <thead><tr><th>Proiect</th><th>Status</th><th>Avans</th><th>Contracte</th><th>Planuri</th><th>Santiere</th><th></th></tr></thead>
+        <tbody>
+            {% for it in proiecte %}
+            <tr>
+                <td><a class="ex-nume" href="{{ url_for('proiecte.hub', id=it.p.id) }}">{{ it.p.cod_proiect }}</a> <span style="color:var(--gray-500);">{{ it.p.nume }}</span></td>
+                <td><span class="ex-pill">{{ it.p.status }}</span></td>
+                <td><span class="ex-bar"><i style="width:{{ it.avans|round|int }}%;"></i></span> {{ it.avans|round|int }}%</td>
+                <td>{{ it.contracte }}</td>
+                <td>{{ it.planuri }}</td>
+                <td>{{ it.santiere }}</td>
+                <td style="white-space:nowrap;">
+                    <a class="ex-pill" href="{{ url_for('proiecte.hub', id=it.p.id) }}" style="text-decoration:none;">Hub 360</a>
+                    <a class="ex-pill" href="{{ url_for('proiecte.evm', id=it.p.id) }}" style="text-decoration:none;">EVM</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="padding:30px; text-align:center; color:var(--gray-500);">Niciun proiect inca.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -326,3 +326,46 @@ def _calculeaza_trend(valoare_curenta, valoare_precedenta):
     elif diferenta < 0:
         return {'procent': round(abs(diferenta), 1), 'directie': 'down'}
     return {'procent': 0, 'directie': 'flat'}
+
+
+@dashboard_bp.route('/dashboard/executiv')
+@login_required
+def executiv():
+    """Dashboard executiv cross-modul: proiecte, cost, BIM, avans (portofoliu)."""
+    from models import (Contract, OfertaContract, GanttPlan, SituatieLunara,
+                        ModelBIM, ElementBIM, IssueBIM)
+
+    def safe(fn, d=0):
+        try:
+            return fn()
+        except Exception:
+            return d
+
+    def suma(model, camp):
+        return float(db.session.query(func.coalesce(func.sum(getattr(model, camp)), 0))
+                     .scalar() or 0)
+
+    kpi = {
+        'proiecte_active': safe(lambda: Proiect.query.filter_by(status='activ').count()),
+        'proiecte_total': safe(lambda: Proiect.query.count()),
+        'contracte_val': safe(lambda: suma(Contract, 'valoare_totala'), 0.0),
+        'deviz_val': safe(lambda: suma(OfertaContract, 'valoare_totala'), 0.0),
+        'gantt_planuri': safe(lambda: GanttPlan.query.count()),
+        'gantt_cost': safe(lambda: suma(GanttPlan, 'cost_total'), 0.0),
+        'bim_modele': safe(lambda: ModelBIM.query.count()),
+        'bim_elemente': safe(lambda: ElementBIM.query.count()),
+        'bim_issues': safe(lambda: IssueBIM.query.filter(IssueBIM.status != 'inchis').count()),
+    }
+
+    proiecte = []
+    for p in safe(lambda: Proiect.query.order_by(Proiect.data_creare.desc()).limit(40).all(), []):
+        sit = safe(lambda: SituatieLunara.query.filter_by(proiect_id=p.id)
+                   .order_by(SituatieLunara.id.desc()).first(), None)
+        proiecte.append({
+            'p': p,
+            'avans': float(sit.procent_avans_total) if sit and sit.procent_avans_total else 0.0,
+            'contracte': safe(lambda: Contract.query.filter_by(proiect_id=p.id).count()),
+            'planuri': safe(lambda: GanttPlan.query.filter_by(proiect_id=p.id).count()),
+            'santiere': safe(lambda: p.legaturi_santiere.count()),
+        })
+    return render_template('dashboard_executiv.html', kpi=kpi, proiecte=proiecte)
