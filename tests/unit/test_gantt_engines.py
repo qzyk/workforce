@@ -385,15 +385,25 @@ def test_cost_estimat_din_tarif():
     from services.gantt.cost import calculeaza_cost
     art = ArticolF3('1.0', 'Sapatura', um='mc', cantitate=100)
     tarife = {'SAPATURA': {'tarif': 35, 'um': 'mc', 'material': 0.20}}
-    val, mat, man, est = calculeaza_cost(art, 'SAPATURA', tarife)
+    val, mat, man, uti, est = calculeaza_cost(art, 'SAPATURA', tarife)
     assert val == 3500.0 and est is True
-    assert abs(mat - 700.0) < 0.01 and abs(man - 2800.0) < 0.01
+    assert abs(mat - 700.0) < 0.01 and abs(man - 2800.0) < 0.01 and uti == 0.0
+
+
+def test_cost_utilaj_din_pondere():
+    """Pondere utilaj pe categorie -> split pe 3 resurse (material/utilaj/manopera)."""
+    from services.gantt.cost import calculeaza_cost
+    art = ArticolF3('TS', 'Sapatura mecanizata', um='mc', cantitate=100)
+    tarife = {'SAPATURA': {'tarif': 35, 'um': 'mc', 'material': 0.10, 'utilaj': 0.60}}
+    val, mat, man, uti, est = calculeaza_cost(art, 'SAPATURA', tarife)
+    assert val == 3500.0
+    assert abs(mat - 350.0) < 0.01 and abs(uti - 2100.0) < 0.01 and abs(man - 1050.0) < 0.01
 
 
 def test_cost_din_pret_f3_nu_estimeaza():
     from services.gantt.cost import calculeaza_cost
     art = ArticolF3('1', 'X', cantitate=10, pret_total=5000)
-    val, _mat, _man, est = calculeaza_cost(art, 'ARMATURI', {'ARMATURI': {'tarif': 250}})
+    val, _mat, _man, _uti, est = calculeaza_cost(art, 'ARMATURI', {'ARMATURI': {'tarif': 250}})
     assert val == 5000.0 and est is False
 
 

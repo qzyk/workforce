@@ -9,9 +9,45 @@ from services.gantt.normalizare import normalizeaza_cheie
 def test_cost_din_boq_pret_real():
     art = ArticolF3('ART001', 'Sapatura', um='mc', cantitate=10)
     pb = {'cod': {normalizeaza_cheie('ART001'): {'pu': 150, 'mat': 90, 'man': 60}}, 'den': {}}
-    val, mat, man, est = calculeaza_cost(art, 'SAPATURA', {'SAPATURA': {'tarif': 35}}, pb)
+    val, mat, man, uti, est = calculeaza_cost(art, 'SAPATURA', {'SAPATURA': {'tarif': 35}}, pb)
     assert val == 1500.0 and est is False        # pret real din deviz -> nu e estimat
-    assert mat == 900.0 and man == 600.0
+    assert mat == 900.0 and man == 600.0 and uti == 0.0
+
+
+def test_cost_din_boq_cu_utilaj():
+    art = ArticolF3('ART003', 'Sapatura mecanizata', um='mc', cantitate=10)
+    pb = {'cod': {normalizeaza_cheie('ART003'):
+                  {'pu': 150, 'mat': 30, 'man': 40, 'uti': 80}}, 'den': {}}
+    val, mat, man, uti, est = calculeaza_cost(art, 'SAPATURA', {}, pb)
+    assert val == 1500.0 and est is False
+    assert mat == 300.0 and man == 400.0 and uti == 800.0   # utilajul iese separat
+
+
+def test_pipeline_propaga_utilaj_din_deviz(app):
+    """Utilajul din deviz se propaga prin pipeline -> activitate + statistici."""
+    from services.gantt import import_engine
+    from services.gantt.pipeline import MotorPlanificare
+    pb = {'cod': {normalizeaza_cheie('ART9'):
+                  {'pu': 100, 'mat': 20, 'man': 30, 'uti': 50}}, 'den': {}}
+    csv = (b"cod_articol;denumire;um;cantitate;obiect;tronson\n"
+           b"ART9;Excavare mecanizata;mc;10;O;T\n")
+    with app.app_context():
+        art, _ = import_engine.importa(csv, '.csv')
+        rez = MotorPlanificare(preturi_boq=pb).proceseaza(art)
+    a = rez.activitati[0]
+    assert a.valoare == 1000.0 and a.valoare_utilaj == 500.0
+    assert rez.statistici['cost_utilaj'] == 500.0
+
+
+def test_pret_utilaj_din_coloana_f3(app):
+    """Coloana 'pret utilaj' din F3 -> Activitate.valoare_utilaj (cale reala cu setari)."""
+    from services.gantt.pipeline import MotorPlanificare
+    csv = (b"cod_articol;denumire;um;cantitate;pret unitar;pret material;pret manopera;pret utilaj\n"
+           b"A;Lucrare;mc;10;10;5;3;2\n")
+    with app.app_context():
+        rez, _ = MotorPlanificare().genereaza_din_fisier(csv, '.csv', clasifica=False)
+    a = rez.activitati[0]
+    assert a.valoare == 100.0 and a.valoare_utilaj == 20.0   # 10 x 2
 
 
 def test_preturi_proiect_si_motor(app):

@@ -11,7 +11,8 @@ from __future__ import annotations
 
 def preturi_proiect(proiect_id: int, tenant_id=None) -> dict:
     """{'cod': {cheie_cod: rec}, 'den': {denumire_norm: rec}} unde
-    rec = {'pu': pret_unitar, 'mat': material_unitar, 'man': manopera_unitar}."""
+    rec = {'pu': pret_unitar, 'mat': material_unitar, 'man': manopera_unitar,
+           'uti': utilaj_unitar}."""
     from models import OfertaContract, PozitieBoQ
     from services.gantt.normalizare import normalizeaza, normalizeaza_cheie
 
@@ -25,7 +26,8 @@ def preturi_proiect(proiect_id: int, tenant_id=None) -> dict:
             continue
         rec = {'pu': pu,
                'mat': float(poz.valoare_materiale_unitar or 0),
-               'man': float(poz.valoare_manopera_unitar or 0)}
+               'man': float(poz.valoare_manopera_unitar or 0),
+               'uti': float(poz.valoare_utilaj_unitar or 0)}
         if poz.cod_articol:
             pe_cod.setdefault(normalizeaza_cheie(poz.cod_articol), rec)
         if poz.denumire:

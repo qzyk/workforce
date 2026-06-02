@@ -456,6 +456,7 @@ def _extrage_sheet(randuri: list, idx_antet: int, harta: dict, obiect_sheet: str
             pret_unitar=_to_float(_val(rand, 'pret_unitar', harta)),
             pret_material=_to_float(_val(rand, 'pret_material', harta)),
             pret_manopera=_to_float(_val(rand, 'pret_manopera', harta)),
+            pret_utilaj=_to_float(_val(rand, 'pret_utilaj', harta)),
             pret_total=_to_float(_val(rand, 'pret_total', harta)),
         ))
 

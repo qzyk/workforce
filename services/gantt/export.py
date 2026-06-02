@@ -16,8 +16,14 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import xml.etree.ElementTree as ET
 from typing import Optional
+
+# Caractere invalide in XML 1.0 (control chars, exceptand TAB/LF/CR).
+# MS Project / Primavera resping importul daca un <Name> contine asa ceva.
+_INVALID_XML = re.compile(
+    '[^\x09\x0a\x0d\x20-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]')
 
 from .modele import Activitate, NodWBS
 
@@ -57,7 +63,7 @@ def export_csv(activitati, noduri) -> bytes:
     out = io.StringIO()
     w = csv.writer(out, delimiter=',')
     w.writerow(['ID', 'WBS', 'Activity Name', 'Duration', 'Predecessors', 'Category',
-                'Quantity', 'UM', 'Valoare', 'Material', 'Manopera'])
+                'Quantity', 'UM', 'Valoare', 'Material', 'Manopera', 'Utilaje'])
     for a in activitati:
         preds = []
         for d in a.predecesori:
@@ -73,7 +79,7 @@ def export_csv(activitati, noduri) -> bytes:
             idnum.get(a.id, ''), a.wbs_id, a.nume, f'{a.durata} days',
             ';'.join(preds), a.categorie_tehnologica or '', _num(a.cantitate), a.um,
             _num(getattr(a, 'valoare', 0)), _num(getattr(a, 'valoare_material', 0)),
-            _num(getattr(a, 'valoare_manopera', 0)),
+            _num(getattr(a, 'valoare_manopera', 0)), _num(getattr(a, 'valoare_utilaj', 0)),
         ])
     return out.getvalue().encode('utf-8-sig')
 
@@ -96,7 +102,7 @@ def export_msproject_xml(activitati, noduri, nume_proiect='Proiect', ore_pe_zi=8
         t = ET.SubElement(tasks, f'{{{NS}}}Task')
         _sub(t, NS, 'UID', str(uid))
         _sub(t, NS, 'ID', str(uid))
-        _sub(t, NS, 'Name', n.nume)
+        _sub(t, NS, 'Name', _nume_sigur(n.nume, n.wbs_id or f'Task {uid}'))
         _sub(t, NS, 'OutlineLevel', str(n.nivel))
         _sub(t, NS, 'OutlineNumber', n.wbs_id)
         _sub(t, NS, 'WBS', n.wbs_id)
@@ -132,7 +138,7 @@ def export_primavera_xml(activitati, noduri, nume_proiect='Proiect', ore_pe_zi=8
     proj = ET.SubElement(root, 'Project')
     _sub(proj, None, 'ObjectId', '1')
     _sub(proj, None, 'Id', 'PRJ-001')
-    _sub(proj, None, 'Name', nume_proiect)
+    _sub(proj, None, 'Name', _nume_sigur(nume_proiect, 'Proiect'))
 
     # WBS (noduri non-activitate)
     for n in noduri:
@@ -141,7 +147,7 @@ def export_primavera_xml(activitati, noduri, nume_proiect='Proiect', ore_pe_zi=8
         w = ET.SubElement(proj, 'WBS')
         _sub(w, None, 'ObjectId', str(uid_wbs[n.wbs_id]))
         _sub(w, None, 'Code', n.wbs_id)
-        _sub(w, None, 'Name', n.nume)
+        _sub(w, None, 'Name', _nume_sigur(n.nume, n.wbs_id or 'WBS'))
         if n.parinte_id and n.parinte_id in uid_wbs:
             _sub(w, None, 'ParentObjectId', str(uid_wbs[n.parinte_id]))
 
@@ -152,7 +158,7 @@ def export_primavera_xml(activitati, noduri, nume_proiect='Proiect', ore_pe_zi=8
         act = ET.SubElement(proj, 'Activity')
         _sub(act, None, 'ObjectId', a.id)
         _sub(act, None, 'Id', a.cod)
-        _sub(act, None, 'Name', a.nume)
+        _sub(act, None, 'Name', _nume_sigur(a.nume, a.cod or f'ACT-{a.id}'))
         parinte = idx_act_parinte.get(a.id)
         if parinte and parinte in uid_wbs:
             _sub(act, None, 'WBSObjectId', str(uid_wbs[parinte]))
@@ -194,9 +200,21 @@ def exporta(format_: str, rezultat, nume_proiect='Proiect', ore_pe_zi=8):
 
 
 # ----------------------------------------------------------------------- helpers
+def _curata_xml(text: str) -> str:
+    """Scoate caracterele invalide in XML 1.0 (control chars) care strica importul."""
+    return _INVALID_XML.sub('', text)
+
+
+def _nume_sigur(raw, fallback: str) -> str:
+    """Nume non-gol si valid pentru MS Project / Primavera (resping <Name> gol).
+    Curata control chars, taie spatiile; daca ramane gol -> fallback."""
+    nume = _curata_xml(str(raw or '')).strip()
+    return nume or fallback
+
+
 def _sub(parinte, ns, tag, text):
     el = ET.SubElement(parinte, f'{{{ns}}}{tag}' if ns else tag)
-    el.text = '' if text is None else str(text)
+    el.text = '' if text is None else _curata_xml(str(text))
     return el
 
 

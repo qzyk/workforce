@@ -46,13 +46,23 @@ class MotorPlanificare:
                                          reguli_prefix=store.reguli_prefix_cod(tenant_id))
 
     # -- pas cu pas (mapeaza endpoint-urile API) --
-    def clasifica_articole(self, articole) -> list:
-        """Transforma articole F3 -> activitati clasificate (cu durata estimata)."""
+    def clasifica_articole(self, articole, clasifica: bool = True) -> list:
+        """Transforma articole F3 -> activitati (cu durata estimata).
+
+        clasifica=True  -> ruleaza clasificatorul (dictionar de categorii).
+        clasifica=False -> NU clasifica automat: pastreaza categoria din fisier
+                           (coloana 'categorie' din F3), altfel ramane neclasificat.
+        """
         activitati = []
         for i, art in enumerate(articole, start=1):
-            cat, scor = self.clasificator.clasifica(art.denumire, art.cod_articol)
+            if clasifica:
+                cat, scor = self.clasificator.clasifica(art.denumire, art.cod_articol)
+            else:
+                cat = (art.categorie or None)        # categoria din fisier, ca atare
+                scor = 1.0 if cat else None
             durata = estimeaza_durata(art.cantitate, cat, self.setari)
-            val, vmat, vman, estimat = calculeaza_cost(art, cat, self.tarife, self.preturi_boq)
+            val, vmat, vman, vuti, estimat = calculeaza_cost(
+                art, cat, self.tarife, self.preturi_boq)
             activitati.append(Activitate(
                 id=f'A{i:06d}',
                 cod=art.cod_articol,
@@ -67,15 +77,17 @@ class MotorPlanificare:
                 valoare=val,
                 valoare_material=vmat,
                 valoare_manopera=vman,
+                valoare_utilaj=vuti,
                 cost_estimat=estimat,
             ))
         return activitati
 
-    def proceseaza(self, articole) -> RezultatPlanificare:
-        """Ruleaza pipeline-ul complet pe o lista de ArticolF3."""
+    def proceseaza(self, articole, clasifica: bool = True) -> RezultatPlanificare:
+        """Ruleaza pipeline-ul complet pe o lista de ArticolF3.
+        clasifica=False sare peste clasificarea automata (vezi clasifica_articole)."""
         t0 = time.perf_counter()
 
-        activitati = self.clasifica_articole(articole)
+        activitati = self.clasifica_articole(articole, clasifica=clasifica)
         noduri = genereaza_wbs(activitati, self.dependinte.get('ordine_categorii', []))
         nr_dep = genereaza_dependinte(
             activitati,
@@ -95,10 +107,11 @@ class MotorPlanificare:
         return RezultatPlanificare(activitati=activitati, noduri_wbs=noduri,
                                    raport=raport, statistici=statistici)
 
-    def genereaza_din_fisier(self, continut: bytes, extensie: str):
+    def genereaza_din_fisier(self, continut: bytes, extensie: str,
+                             clasifica: bool = True):
         """Import + pipeline complet. Intoarce (RezultatPlanificare, raport_import)."""
         articole, raport_import = import_engine.importa(continut, extensie, self.setari)
-        rezultat = self.proceseaza(articole)
+        rezultat = self.proceseaza(articole, clasifica=clasifica)
         rezultat.statistici['import'] = raport_import
         return rezultat, raport_import
 
@@ -110,7 +123,7 @@ class MotorPlanificare:
         per_categorie: dict = {}
         cost_categorie: dict = {}
         cost_obiect: dict = {}
-        cost_total = cost_material = cost_manopera = 0.0
+        cost_total = cost_material = cost_manopera = cost_utilaj = 0.0
         nr_estimate = 0
         for a in activitati:
             k = a.categorie_tehnologica or 'NECLASIFICAT'
@@ -120,6 +133,7 @@ class MotorPlanificare:
             cost_total += a.valoare or 0
             cost_material += a.valoare_material or 0
             cost_manopera += a.valoare_manopera or 0
+            cost_utilaj += a.valoare_utilaj or 0
             if a.cost_estimat:
                 nr_estimate += 1
         return {
@@ -135,6 +149,7 @@ class MotorPlanificare:
             'cost_total': round(cost_total, 2),
             'cost_material': round(cost_material, 2),
             'cost_manopera': round(cost_manopera, 2),
+            'cost_utilaj': round(cost_utilaj, 2),
             'cost_per_categorie': cost_categorie,
             'cost_per_obiect': cost_obiect,
             'nr_cost_estimat': nr_estimate,

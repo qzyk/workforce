@@ -56,6 +56,16 @@
             </div>
             <input type="file" name="fisier" id="gzFile" accept=".xlsx,.xlsm,.xls,.csv,.xml" style="display:none;" required>
         </label>
+
+        <label style="display:flex; align-items:flex-start; gap:10px; margin-top:16px; cursor:pointer; padding:12px 14px; background:#FBF8F0; border:1px solid #E8E3D5; border-radius:8px;">
+            <input type="checkbox" name="clasifica" checked style="margin-top:3px; width:18px; height:18px; accent-color:#C9A961;">
+            <span>
+                <b style="color:#0B1426;">Clasificare tehnologica automata</b><br>
+                <small style="color:var(--gray-500);">Detecteaza categoriile (sapatura, cofraj, armare, turnare beton...) din denumiri si coduri.
+                Debifeaza daca fisierul are deja coloana <code>categorie</code> pe care vrei s-o pastrezi ca atare (fara reclasificare).</small>
+            </span>
+        </label>
+
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:18px; flex-wrap:wrap; gap:12px;">
             <small style="color:var(--gray-500);">
                 Regulile (clasificare, dependente, randamente) sunt configurabile in

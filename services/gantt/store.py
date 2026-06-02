@@ -497,14 +497,16 @@ def randamente_gantt(tenant_id: Optional[int] = None) -> dict:
 
 
 def tarife_gantt(tenant_id: Optional[int] = None) -> dict:
-    """{categorie: {'tarif': lei/UM, 'um': ref, 'material': pondere}} - JSON suprascris de DB."""
+    """{categorie: {'tarif': lei/UM, 'um': ref, 'material': pondere, 'utilaj': pondere}}
+    - JSON suprascris de DB. Ponderea 'utilaj' (implicit 0) decupleaza utilajul din manopera."""
     base: dict = {}
     for cat, v in (cfg.incarca('tarife', {}) or {}).items():
         if str(cat).startswith('_'):
             continue
         base[cat] = {'tarif': float((v or {}).get('tarif', 0) or 0),
                      'um': (v or {}).get('um', ''),
-                     'material': float((v or {}).get('material', 0.65) or 0.65)}
+                     'material': float((v or {}).get('material', 0.65) or 0.65),
+                     'utilaj': float((v or {}).get('utilaj', 0.0) or 0.0)}
     try:
         from flask import has_app_context
         if has_app_context():
@@ -518,7 +520,7 @@ def tarife_gantt(tenant_id: Optional[int] = None) -> dict:
                 q = q.filter(TarifCategorie.tenant_id.is_(None))
             for r in q.all():
                 d = base.setdefault(r.categorie_lucrare,
-                                    {'tarif': 0, 'um': '', 'material': 0.65})
+                                    {'tarif': 0, 'um': '', 'material': 0.65, 'utilaj': 0.0})
                 d['tarif'] = float(r.tarif_baza or 0)
                 if r.um_referinta:
                     d['um'] = r.um_referinta

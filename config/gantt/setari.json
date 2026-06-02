@@ -34,6 +34,7 @@
     "pret_unitar": ["pret unitar", "pret/um", "p.u.", "pret u", "pret unit", "pret pe um"],
     "pret_material": ["pret material", "pret materiale", "valoare material"],
     "pret_manopera": ["pret manopera", "valoare manopera", "pret munca"],
+    "pret_utilaj": ["pret utilaj", "pret utilaje", "valoare utilaj", "valoare utilaje", "utilaj"],
     "pret_total": ["pret total", "valoare totala", "total general", "valoare lucrare"]
   },
   "sinonime": {

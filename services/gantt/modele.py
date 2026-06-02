@@ -33,6 +33,7 @@ class ArticolF3:
     pret_unitar: float = 0.0
     pret_material: float = 0.0
     pret_manopera: float = 0.0
+    pret_utilaj: float = 0.0
     pret_total: float = 0.0
 
     def to_dict(self) -> dict:
@@ -52,6 +53,7 @@ class ArticolF3:
             pret_unitar=_to_float(d.get('pret_unitar', 0)),
             pret_material=_to_float(d.get('pret_material', 0)),
             pret_manopera=_to_float(d.get('pret_manopera', 0)),
+            pret_utilaj=_to_float(d.get('pret_utilaj', 0)),
             pret_total=_to_float(d.get('pret_total', 0)),
         )
 
@@ -90,10 +92,11 @@ class Activitate:
     wbs_id: str = ''                           # ex: 1.1.2.3
     nivel: int = 4
     increder_clasificare: float = 0.0          # scor 0..1
-    # cost (5D): valoarea totala + descompunere material/manopera (lei, fara TVA)
+    # cost (5D): valoarea totala + descompunere pe resurse material/manopera/utilaj (lei, fara TVA)
     valoare: float = 0.0
     valoare_material: float = 0.0
     valoare_manopera: float = 0.0
+    valoare_utilaj: float = 0.0
     cost_estimat: bool = False                 # True daca valoarea vine din tarif, nu din F3
     # programare (pentru curba S / Gantt): index de zi 0-based
     start_zi: int = 0
@@ -126,6 +129,7 @@ class Activitate:
             valoare=_to_float(d.get('valoare', 0)),
             valoare_material=_to_float(d.get('valoare_material', 0)),
             valoare_manopera=_to_float(d.get('valoare_manopera', 0)),
+            valoare_utilaj=_to_float(d.get('valoare_utilaj', 0)),
             cost_estimat=bool(d.get('cost_estimat', False)),
             start_zi=int(d.get('start_zi', 0) or 0),
             finish_zi=int(d.get('finish_zi', 0) or 0),

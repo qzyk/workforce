@@ -136,9 +136,12 @@ def _profil_pt_fisier(continut: bytes, ext: str, tenant_id=None):
 
 
 def _pipeline_din_temp(continut: bytes, ext: str, mapare=None, rand_antet=None,
-                       preturi_boq=None):
+                       preturi_boq=None, clasifica=None):
     """Ruleaza pipeline-ul (auto sau cu mapare manuala). (RezultatPlanificare, raport).
-    Cu `preturi_boq` (din deviz) -> motor fresh ce costa activitatile pe preturi reale (5D)."""
+    Cu `preturi_boq` (din deviz) -> motor fresh ce costa activitatile pe preturi reale (5D).
+    `clasifica` None -> se ia din sesiune (alegerea utilizatorului din wizard)."""
+    if clasifica is None:
+        clasifica = _clasifica_sesiune()
     motor = (MotorPlanificare(tenant_id=getattr(current_user, 'tenant_id', None),
                               preturi_boq=preturi_boq) if preturi_boq else _motor())
     if mapare:
@@ -146,7 +149,7 @@ def _pipeline_din_temp(continut: bytes, ext: str, mapare=None, rand_antet=None,
             continut, ext, motor.setari, mapare_manuala=mapare, rand_antet_manual=rand_antet)
     else:
         articole, raport = import_engine.importa(continut, ext, motor.setari)
-    rezultat = motor.proceseaza(articole)
+    rezultat = motor.proceseaza(articole, clasifica=clasifica)
     rezultat.statistici['import'] = raport
     return rezultat, raport
 
@@ -174,6 +177,16 @@ def _mapare_sesiune():
         return None, None
 
 
+def _set_clasifica_sesiune(val: bool):
+    """Tine alegerea 'clasifica automat' in sesiune (consistenta in tot wizard-ul)."""
+    session['gantt_clasifica'] = bool(val)
+
+
+def _clasifica_sesiune() -> bool:
+    """Alegerea curenta de clasificare (implicit True = clasifica automat)."""
+    return session.get('gantt_clasifica', True)
+
+
 def _render_rezultat(rezultat, raport_import, token, nume_fisier, plan_id=None):
     """Randeaza preview-ul rezultat + diagrama Gantt (4D) + optiunea de salvare."""
     session['gantt_nume_fisier'] = nume_fisier
@@ -186,7 +199,7 @@ def _render_rezultat(rezultat, raport_import, token, nume_fisier, plan_id=None):
         'gantt/rezultat.html', rezultat=rezultat, raport_import=raport_import,
         token=token, nume_fisier=nume_fisier,
         diagrama=diagrama.sarcini_gantt(rezultat, date.today()),
-        proiecte=proiecte, plan_id=plan_id)
+        proiecte=proiecte, plan_id=plan_id, clasifica=_clasifica_sesiune())
 
 
 # ============================================================ UI
@@ -211,15 +224,20 @@ def genereaza():
     continut = fisier.read()
     nume_fisier = fisier.filename
     tid = getattr(current_user, 'tenant_id', None)
+    # alegerea utilizatorului: clasifica automat (checkbox) — implicit DA
+    clasifica = 'clasifica' in request.form
+    _set_clasifica_sesiune(clasifica)
     mapare_folosita, rand_antet_folosit = None, None
     try:
-        rezultat, raport_import = _motor().genereaza_din_fisier(continut, ext)
+        rezultat, raport_import = _motor().genereaza_din_fisier(continut, ext,
+                                                                clasifica=clasifica)
     except import_engine.EroareImport:
         # 1) incearca un profil de mapare invatat anterior (acelasi tip de fisier)
         prof, mapare, rand_antet = _profil_pt_fisier(continut, ext, tid)
         if prof:
             try:
-                rezultat, raport_import = _pipeline_din_temp(continut, ext, mapare, rand_antet)
+                rezultat, raport_import = _pipeline_din_temp(continut, ext, mapare, rand_antet,
+                                                             clasifica=clasifica)
                 store.marcheaza_utilizare(prof)
                 mapare_folosita, rand_antet_folosit = mapare, rand_antet
                 flash(f'Am aplicat automat profilul de mapare invatat "{prof.nume}".', 'info')
