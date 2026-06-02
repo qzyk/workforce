@@ -164,12 +164,23 @@ def _eval_forbidden_in_zone(rule: BIMRule, definition: dict, scope: Optional[dic
     return violations
 
 
+def _eval_min_clearance(rule, definition, scope):
+    """Gabarit minim intre elemente. Necesita geometrie 3D (AABB) care nu e stocata
+    pe elemente -> nu evaluam automat. Intoarcem un flag CLAR (nu '0 violari' fals),
+    ca utilizatorul sa stie ca regula nu valideaza inca, nu ca a trecut."""
+    return [{
+        'mesaj': 'Regula de gabarit minim (min_clearance) nu e evaluata automat — '
+                 'necesita geometrie 3D (AABB) pe elemente. Verificare manuala recomandata.',
+        'detalii': {'rule_cod': rule.cod, 'status': 'neevaluat_necesita_geometrie'},
+    }]
+
+
 # Mapping tip regula -> evaluator
 EVALUATORS = {
     'required_properties': _eval_required_properties,
     'naming_convention': _eval_naming_convention,
     'forbidden_in_zone': _eval_forbidden_in_zone,
-    'min_clearance': lambda *a, **kw: [],  # placeholder Faza 4.1 (geometric)
+    'min_clearance': _eval_min_clearance,   # honest: flag "neevaluat", nu pass fals
 }
 
 
