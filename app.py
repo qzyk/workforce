@@ -17,9 +17,9 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from random import choice, randint, uniform
 
-from flask import Flask, render_template, redirect, url_for, flash, request
+from flask import Flask, render_template, redirect, url_for, flash, request, session
 from flask_login import LoginManager, current_user
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, CSRFError
 
 from config import config
 from models import (
@@ -43,6 +43,19 @@ def create_app(config_name='default'):
     csrf = CSRFProtect(app)
     login_manager = LoginManager(app)
     login_manager.login_view = 'auth.login'
+
+    # Hardening sesiune/CSRF: sesiunile devin permanente (lifetime 8h din config)
+    # ca sa nu moara cookie-ul la inchiderea browserului -> evita "CSRF session
+    # token missing" pe pagini lasate deschise.
+    @app.before_request
+    def _sesiune_permanenta():
+        session.permanent = True
+
+    @app.errorhandler(CSRFError)
+    def _csrf_expirat(e):
+        flash('Sesiunea a expirat sau pagina a stat deschisa prea mult. '
+              'Reincarca pagina si incearca din nou.', 'warning')
+        return redirect(request.referrer or url_for('auth.login')), 303
     login_manager.login_message = 'Trebuie sa fiti autentificat pentru a accesa aceasta pagina.'
     login_manager.login_message_category = 'warning'
     login_manager.remember_cookie_duration = timedelta(days=30)
