@@ -31,6 +31,7 @@ TRANSLATIONS = {
     'Angajati': {'en': 'Employees'},
     'Proiecte': {'en': 'Projects'},
     'Pontaje': {'en': 'Timesheets'},
+    'Teren': {'en': 'Field'},
     'Activitati': {'en': 'Activities'},
     'Documente': {'en': 'Documents'},
     'Rapoarte': {'en': 'Reports'},

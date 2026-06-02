@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Pontaj rapid - Teren{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('teren.index') }}">Teren</a></li>
+<li class="breadcrumb-item active">Pontaj rapid</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.tr-wrap { max-width:560px; margin:0 auto; }
+.tr-form { background:#fff; border:1px solid #E8E3D5; border-radius:16px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,0.06); }
+.tr-form h2 { margin:0 0 16px; font-size:1.2rem; color:#0B1426; }
+.tr-g { margin-bottom:16px; }
+.tr-g label { display:block; font-size:.82rem; font-weight:700; color:var(--gray-600); margin-bottom:6px; text-transform:uppercase; letter-spacing:.4px; }
+.tr-g select, .tr-g input, .tr-g textarea { width:100%; padding:14px; font-size:1.05rem; border:1.5px solid #E0D9C7; border-radius:12px; background:#FCFAF5; -webkit-appearance:none; }
+.tr-g select:focus, .tr-g input:focus, .tr-g textarea:focus { outline:none; border-color:#C9A961; background:#fff; }
+.tr-ore { display:flex; gap:8px; margin-bottom:10px; }
+.tr-ore button { flex:1; padding:12px 0; font-size:1.05rem; font-weight:800; border:1.5px solid #E0D9C7; border-radius:12px; background:#FCFAF5; color:#0B1426; cursor:pointer; }
+.tr-ore button.on, .tr-ore button:active { background:linear-gradient(135deg,#E0BB6E,#C9A961); border-color:#C9A961; color:#0B1426; }
+.tr-sub { width:100%; min-height:54px; font-size:1.1rem; font-weight:800; border:none; border-radius:12px; background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; cursor:pointer; margin-top:4px; }
+.tr-sub:active { opacity:.9; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tr-wrap">
+    <form class="tr-form" method="POST" action="{{ url_for('teren.pontaj') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <h2><i class="fa-solid fa-clock" style="color:#C9A961;"></i> Pontaj rapid</h2>
+
+        <div class="tr-g">
+            <label>Proiect</label>
+            <select name="proiect_id" required>
+                <option value="">Alege proiectul…</option>
+                {% for p in proiecte %}
+                <option value="{{ p.id }}">{{ p.nume }}{% if p.status != 'activ' %} ({{ p.status }}){% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="tr-g">
+            <label>Angajat</label>
+            <select name="angajat_id" required>
+                {% if not eu %}<option value="">Alege angajatul…</option>{% endif %}
+                {% for a in angajati %}
+                <option value="{{ a.id }}" {{ 'selected' if eu and a.id == eu.id }}>{{ a.nume }} {{ a.prenume }}{% if a.functie %} — {{ a.functie }}{% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="tr-g">
+            <label>Ore lucrate</label>
+            <div class="tr-ore">
+                <button type="button" data-ore="4">4</button>
+                <button type="button" data-ore="6">6</button>
+                <button type="button" data-ore="8" class="on">8</button>
+                <button type="button" data-ore="10">10</button>
+                <button type="button" data-ore="12">12</button>
+            </div>
+            <input type="number" name="ore" id="ore" value="8" min="0.5" max="24" step="0.5" inputmode="decimal">
+        </div>
+
+        <div class="tr-g">
+            <label>Data</label>
+            <input type="date" name="data" value="{{ azi.isoformat() }}">
+        </div>
+
+        <div class="tr-g">
+            <label>Observatii (optional)</label>
+            <textarea name="observatii" rows="2" placeholder="ex: turnare beton fundatie ax A-C"></textarea>
+        </div>
+
+        <button type="submit" class="tr-sub"><i class="fa-solid fa-check"></i> Salveaza pontajul</button>
+    </form>
+</div>
+
+<script>
+(function() {
+    var inp = document.getElementById('ore');
+    document.querySelectorAll('.tr-ore button').forEach(function(b) {
+        b.addEventListener('click', function() {
+            document.querySelectorAll('.tr-ore button').forEach(function(x) { x.classList.remove('on'); });
+            b.classList.add('on');
+            inp.value = b.getAttribute('data-ore');
+        });
+    });
+    inp.addEventListener('input', function() {
+        document.querySelectorAll('.tr-ore button').forEach(function(x) {
+            x.classList.toggle('on', x.getAttribute('data-ore') === inp.value);
+        });
+    });
+})();
+</script>
+{% endblock %}

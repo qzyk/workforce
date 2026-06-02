@@ -100,6 +100,12 @@
                     </a>
                 </li>
                 <li>
+                    <a href="{{ url_for('teren.index') }}" class="{% if request.endpoint and request.endpoint.startswith('teren') %}active{% endif %}">
+                        <i class="fa-solid fa-helmet-safety"></i>
+                        <span>{{ _('Teren') }}</span>
+                    </a>
+                </li>
+                <li>
                     <a href="{{ url_for('activitati.panou') }}" class="{% if request.endpoint and 'activitati' in request.endpoint %}active{% endif %}">
                         <i class="fa-solid fa-clipboard-list"></i>
                         <span>{{ _('Activitati') }}</span>

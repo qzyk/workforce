@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Teren - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Teren</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.tr-wrap { max-width:560px; margin:0 auto; }
+.tr-hero { background:linear-gradient(135deg,#0B1426,#152033); color:#F5F1E8; border-radius:16px; padding:22px 24px; margin-bottom:18px; }
+.tr-hero h2 { margin:0 0 4px; color:#C9A961; font-family:'Cinzel',serif; font-size:1.4rem; }
+.tr-hero .d { color:rgba(245,241,232,.72); font-size:.92rem; }
+.tr-act { display:grid; gap:14px; }
+.tr-card { display:flex; align-items:center; gap:16px; background:#fff; border:1px solid #E8E3D5; border-radius:16px; padding:20px 22px; box-shadow:0 2px 12px rgba(0,0,0,0.06); text-decoration:none; color:#0B1426; transition:transform .12s, box-shadow .12s; min-height:84px; }
+.tr-card:active { transform:scale(.985); }
+.tr-card:hover { box-shadow:0 6px 20px rgba(11,20,38,0.12); border-color:#C9A961; }
+.tr-ic { flex:0 0 56px; width:56px; height:56px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:#0B1426; background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); }
+.tr-card .t { font-size:1.12rem; font-weight:800; }
+.tr-card .s { font-size:.85rem; color:var(--gray-500); margin-top:2px; }
+.tr-card .go { margin-left:auto; color:#C9A961; font-size:1.1rem; }
+.tr-today { background:#fff; border:1px solid #E8E3D5; border-radius:16px; padding:6px 4px; margin-top:18px; box-shadow:0 2px 10px rgba(0,0,0,0.05); }
+.tr-today h3 { font-size:.82rem; text-transform:uppercase; letter-spacing:.5px; color:var(--gray-500); margin:12px 16px 8px; }
+.tr-row { display:flex; justify-content:space-between; align-items:center; padding:11px 16px; border-top:1px solid #ECE7DA; font-size:.92rem; }
+.tr-row .o { font-weight:800; color:#0B1426; }
+.tr-note { padding:14px 16px; color:var(--gray-500); font-size:.88rem; text-align:center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tr-wrap">
+    <div class="tr-hero">
+        <h2><i class="fa-solid fa-helmet-safety"></i> Teren</h2>
+        <div class="d">{{ azi.strftime('%d.%m.%Y') }}{% if eu %} · {{ eu.nume }} {{ eu.prenume }}{% endif %} — introdu rapid de pe telefon.</div>
+    </div>
+
+    <div class="tr-act">
+        <a class="tr-card" href="{{ url_for('teren.pontaj') }}">
+            <div class="tr-ic"><i class="fa-solid fa-clock"></i></div>
+            <div>
+                <div class="t">Pontaj rapid</div>
+                <div class="s">Proiect + ore, salvat ca draft</div>
+            </div>
+            <div class="go"><i class="fa-solid fa-chevron-right"></i></div>
+        </a>
+        <a class="tr-card" href="{{ url_for('teren.problema') }}">
+            <div class="tr-ic"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <div>
+                <div class="t">Raporteaza problema</div>
+                <div class="s">Observatie / defect de pe santier</div>
+            </div>
+            <div class="go"><i class="fa-solid fa-chevron-right"></i></div>
+        </a>
+    </div>
+
+    <div class="tr-today">
+        <h3>Pontajele tale azi</h3>
+        {% if pontaje_azi %}
+            {% for p in pontaje_azi %}
+            <div class="tr-row">
+                <span>{{ p.proiect.nume if p.proiect else '—' }}</span>
+                <span class="o">{{ '%g'|format(p.ore_lucrate or 0) }}h <span style="font-weight:500; color:var(--gray-400); font-size:.8rem;">({{ p.status }})</span></span>
+            </div>
+            {% endfor %}
+        {% elif eu %}
+            <div class="tr-note">Niciun pontaj azi. Apasa „Pontaj rapid".</div>
+        {% else %}
+            <div class="tr-note">Contul tau nu e legat de un angajat (dupa email). Poti ponta alegand angajatul manual.</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
