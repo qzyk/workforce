@@ -103,6 +103,34 @@ def _pv_la_data(pv_pts, d: date) -> float:
     return proc
 
 
+def risc_proiect(proiect_id: int) -> dict:
+    """Evaluare RAPIDA de risc (fara re-rularea pipeline-ului): SPI/CPI din ultima
+    situatie vs plan (PV liniar din durata). {spi, cpi, status, ev_pct} sau None."""
+    from models import GanttPlan, SituatieLunara
+    plan = (GanttPlan.query.filter_by(proiect_id=proiect_id)
+            .order_by(GanttPlan.data_creare.desc()).first())
+    sit = (SituatieLunara.query.filter_by(proiect_id=proiect_id)
+           .order_by(SituatieLunara.id.desc()).first())
+    if not plan or not sit:
+        return None
+    bac = float(plan.cost_total or 0)
+    ev_pct = float(sit.procent_avans_total or 0)
+    ac = float(sit.valoare_cumulat_la_zi or 0)
+    d = sit.data_emitere or date(int(sit.an or date.today().year), int(sit.luna or 1), 28)
+    durata = int(plan.durata_zile or 0)
+    pv_pct = 0.0
+    if plan.data_start and durata > 0:
+        pv_pct = max(0.0, min(100.0, (d - plan.data_start).days / durata * 100.0))
+    spi = round(ev_pct / pv_pct, 2) if pv_pct else None
+    cpi = round((ev_pct / 100.0 * bac) / ac, 2) if ac else None
+    status = 'ok'
+    if (cpi is not None and cpi < 0.9) or (spi is not None and spi < 0.9):
+        status = 'critic'
+    elif (cpi is not None and cpi < 1.0) or (spi is not None and spi < 1.0):
+        status = 'atentie'
+    return {'spi': spi, 'cpi': cpi, 'status': status, 'ev_pct': round(ev_pct, 1)}
+
+
 def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
     """EVM pentru un proiect (None daca nu exista plan Gantt). Robust la date lipsa."""
     from models import GanttPlan, SituatieLunara

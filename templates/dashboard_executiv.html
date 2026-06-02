@@ -28,9 +28,17 @@ table.ex tr:hover td { background:#FBF8F0; }
 {% endblock %}
 
 {% block content %}
-<div class="ex-hero">
-    <h2><i class="fa-solid fa-gauge-high"></i> Dashboard executiv</h2>
-    <div style="color:rgba(245,241,232,.78); font-size:.9rem;">Imagine de ansamblu pe proiecte, cost, BIM si avans</div>
+<div class="ex-hero" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2><i class="fa-solid fa-gauge-high"></i> Dashboard executiv</h2>
+        <div style="color:rgba(245,241,232,.78); font-size:.9rem;">Imagine de ansamblu pe proiecte, cost, BIM si avans</div>
+    </div>
+    <form method="POST" action="{{ url_for('dashboard.verifica_riscuri') }}" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" style="background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; border:none; padding:9px 16px; border-radius:8px; font-weight:700; cursor:pointer;">
+            <i class="fa-solid fa-bell"></i> Verifica riscuri EVM
+        </button>
+    </form>
 </div>
 
 <div class="ex-grid">
@@ -51,7 +59,9 @@ table.ex tr:hover td { background:#FBF8F0; }
             {% for it in proiecte %}
             <tr>
                 <td><a class="ex-nume" href="{{ url_for('proiecte.hub', id=it.p.id) }}">{{ it.p.cod_proiect }}</a> <span style="color:var(--gray-500);">{{ it.p.nume }}</span></td>
-                <td><span class="ex-pill">{{ it.p.status }}</span></td>
+                <td><span class="ex-pill">{{ it.p.status }}</span>
+                    {% if it.risc == 'critic' %}<span class="ex-pill" style="background:#FAE3E3; color:#9B2222;">risc</span>
+                    {% elif it.risc == 'atentie' %}<span class="ex-pill" style="background:#FBF1D6; color:#8A6A12;">atentie</span>{% endif %}</td>
                 <td><span class="ex-bar"><i style="width:{{ it.avans|round|int }}%;"></i></span> {{ it.avans|round|int }}%</td>
                 <td>{{ it.contracte }}</td>
                 <td>{{ it.planuri }}</td>

@@ -68,6 +68,42 @@ def test_evm_manopera_pontata(authenticated_client, app):
             db.session.commit()
 
 
+def test_risc_proiect_si_alerta(app, admin_user):
+    from models import (db, Proiect, Contract, GanttPlan, SituatieLunara,
+                        NotificareApp, Utilizator)
+    from services.evm import risc_proiect
+    from services.notificari_job import alerteaza_evm_risc
+    with app.app_context():
+        mid = Utilizator.query.filter_by(email='admin_test@test.local').first().id
+        p = Proiect(cod_proiect='R-T', nume='R', data_start=date(2026, 1, 1),
+                    status='activ', manager_id=mid)
+        db.session.add(p); db.session.flush()
+        c = Contract(proiect_id=p.id, nr_contract='C', data_semnare=date(2026, 1, 1))
+        db.session.add(c); db.session.flush()
+        db.session.add(GanttPlan(nume='Pl', continut=SAMPLE, ext='.csv', nr_activitati=2,
+                                 durata_zile=100, cost_total=10000, proiect_id=p.id,
+                                 data_start=date(2026, 1, 1)))
+        db.session.add(SituatieLunara(proiect_id=p.id, contract_id=c.id, an=2026, luna=2,
+                                      data_emitere=date(2026, 2, 28), procent_avans_total=50,
+                                      valoare_cumulat_la_zi=6000))   # CPI = 5000/6000 = 0.83
+        db.session.commit()
+        pid = p.id
+        r = risc_proiect(pid)
+        assert r and r['cpi'] is not None and r['cpi'] < 0.9 and r['status'] == 'critic'
+        NotificareApp.query.filter_by(utilizator_id=mid).delete(); db.session.commit()
+        assert alerteaza_evm_risc() >= 1
+        assert NotificareApp.query.filter_by(utilizator_id=mid, tip='evm_risc').count() >= 1
+    with app.app_context():
+        NotificareApp.query.filter_by(utilizator_id=mid).delete()
+        for M in (SituatieLunara, GanttPlan, Contract):
+            for x in M.query.filter_by(proiect_id=pid).all():
+                db.session.delete(x)
+        pr = db.session.get(Proiect, pid)
+        if pr:
+            db.session.delete(pr)
+        db.session.commit()
+
+
 def test_evm_fara_plan(authenticated_client, app):
     from models import db, Proiect
     with app.app_context():

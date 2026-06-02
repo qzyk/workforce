@@ -6,7 +6,7 @@ Calculeaza statistici complete pentru panoul de control
 import json
 import calendar
 from datetime import datetime, date, timedelta
-from flask import Blueprint, render_template, redirect, url_for, jsonify
+from flask import Blueprint, render_template, redirect, url_for, jsonify, flash
 from flask_login import login_required, current_user
 from sqlalchemy import func, case, and_, or_, extract
 
@@ -357,6 +357,7 @@ def executiv():
         'bim_issues': safe(lambda: IssueBIM.query.filter(IssueBIM.status != 'inchis').count()),
     }
 
+    from services.evm import risc_proiect
     proiecte = []
     for p in safe(lambda: Proiect.query.order_by(Proiect.data_creare.desc()).limit(40).all(), []):
         sit = safe(lambda: SituatieLunara.query.filter_by(proiect_id=p.id)
@@ -367,5 +368,17 @@ def executiv():
             'contracte': safe(lambda: Contract.query.filter_by(proiect_id=p.id).count()),
             'planuri': safe(lambda: GanttPlan.query.filter_by(proiect_id=p.id).count()),
             'santiere': safe(lambda: p.legaturi_santiere.count()),
+            'risc': safe(lambda: (risc_proiect(p.id) or {}).get('status'), None),
         })
     return render_template('dashboard_executiv.html', kpi=kpi, proiecte=proiecte)
+
+
+@dashboard_bp.route('/dashboard/verifica-riscuri', methods=['POST'])
+@login_required
+def verifica_riscuri():
+    """Genereaza notificari EVM pentru proiectele la risc (manual)."""
+    from services.notificari_job import alerteaza_evm_risc
+    n = alerteaza_evm_risc()
+    flash(f'{n} alerte EVM generate — vezi notificari.' if n
+          else 'Niciun proiect activ la risc EVM.', 'info' if n else 'success')
+    return redirect(url_for('dashboard.executiv'))
