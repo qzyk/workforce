@@ -196,9 +196,15 @@
                 {% if current_user.is_admin %}
                 <li class="sidebar-divider"></li>
                 <li>
-                    <a href="{{ url_for('setari.firma') }}" class="{% if request.endpoint and 'setari' in request.endpoint %}active{% endif %}">
+                    <a href="{{ url_for('setari.firma') }}" class="{% if request.endpoint and 'setari' in request.endpoint and 'module' not in request.endpoint %}active{% endif %}">
                         <i class="fa-solid fa-gear"></i>
                         <span>{{ _('Setari') }}</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('setari.module') }}" class="{% if request.endpoint == 'setari.module' %}active{% endif %}">
+                        <i class="fa-solid fa-toggle-on"></i>
+                        <span>{{ _('Module si functii') }}</span>
                     </a>
                 </li>
                 {% if multi_tenant_mode and multi_tenant_mode != 'off' %}

@@ -790,3 +790,36 @@ def info_sistem():
         'rapoarte': Raport.query.count(),
         'db_size': db_size,
     })
+
+
+@setari_bp.route('/module')
+@admin_required
+def module():
+    """Activare/dezactivare functii (feature flags) din UI, nu din REPL."""
+    from collections import OrderedDict
+    from services import feature_flags as ff
+    tid = getattr(current_user, 'tenant_id', None)
+    etichete = {'bim': 'BIM', 'controale': 'Contract Controls', 'planificare': 'Planificare Gantt'}
+    grupuri = OrderedDict()
+    for key, desc in sorted(ff.KNOWN_FLAGS.items()):
+        grup = key.split('-')[0]
+        grupuri.setdefault(etichete.get(grup, grup.title()), []).append({
+            'key': key, 'descriere': desc, 'activ': ff.is_enabled(key, tid),
+        })
+    return render_template('setari/module.html', grupuri=grupuri)
+
+
+@setari_bp.route('/module/toggle', methods=['POST'])
+@admin_required
+def module_toggle():
+    from services import feature_flags as ff
+    key = request.form.get('key')
+    if key in ff.KNOWN_FLAGS:
+        tid = getattr(current_user, 'tenant_id', None)
+        nou = not ff.is_enabled(key, tid)
+        ff.set_flag(key, nou, tenant_id=tid)
+        log_action('toggle_flag', f'{key}={nou}')
+        flash(f'Functia "{key}" a fost {"activata" if nou else "dezactivata"}.', 'success')
+    else:
+        flash('Functie necunoscuta.', 'warning')
+    return redirect(url_for('setari.module'))

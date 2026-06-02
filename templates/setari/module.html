@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Module si functii{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('setari.index') }}">Setari</a></li>
+<li class="breadcrumb-item active">Module si functii</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.md-hero { background:#0B1426; color:#F5F1E8; border-radius:12px; padding:18px 24px; margin-bottom:18px; }
+.md-hero h2 { margin:0 0 4px; color:#C9A961; }
+.md-hero p { margin:0; color:rgba(245,241,232,.78); font-size:.88rem; }
+.md-card { background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:18px 20px; margin-bottom:16px; box-shadow:0 2px 10px rgba(0,0,0,0.05); }
+.md-card h3 { margin:0 0 12px; color:#0B1426; font-size:1.05rem; }
+.md-row { display:flex; justify-content:space-between; align-items:center; gap:14px; padding:10px 0; border-top:1px solid #F0ECE0; }
+.md-row:first-of-type { border-top:none; }
+.md-info b { color:#0B1426; font-family:ui-monospace,Menlo,monospace; font-size:.82rem; }
+.md-info span { display:block; color:var(--gray-500); font-size:.83rem; margin-top:2px; }
+.md-on { background:#2e7d32; color:#fff; border:none; padding:6px 14px; border-radius:20px; cursor:pointer; font-size:.82rem; font-weight:700; }
+.md-off { background:#F5F1E8; color:#0B1426; border:1px solid #E8E3D5; padding:6px 14px; border-radius:20px; cursor:pointer; font-size:.82rem; }
+.md-badge { font-size:.72rem; padding:2px 9px; border-radius:10px; }
+.md-badge.on { background:#E5F4E8; color:#1B7a34; } .md-badge.off { background:#F0ECE0; color:#8A6A12; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="md-hero">
+    <h2><i class="fa-solid fa-toggle-on"></i> Module si functii</h2>
+    <p>Activeaza sau dezactiveaza functiile aplicatiei (feature flags). Implicit sunt OFF.
+       Schimbarile au efect imediat (unele pagini necesita refresh).</p>
+</div>
+
+{% for grup, flags in grupuri.items() %}
+<div class="md-card">
+    <h3>{{ grup }}</h3>
+    {% for f in flags %}
+    <div class="md-row">
+        <div class="md-info">
+            <b>{{ f.key }}</b>
+            <span>{{ f.descriere }}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; white-space:nowrap;">
+            <span class="md-badge {{ 'on' if f.activ else 'off' }}">{{ 'ACTIV' if f.activ else 'oprit' }}</span>
+            <form method="POST" action="{{ url_for('setari.module_toggle') }}" style="margin:0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="key" value="{{ f.key }}">
+                <button class="{{ 'md-on' if f.activ else 'md-off' }}">
+                    {{ 'Dezactiveaza' if f.activ else 'Activeaza' }}
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endfor %}
+{% endblock %}
