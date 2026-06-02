@@ -740,6 +740,28 @@ def create_app(config_name='default'):
         click.echo(f'[OK] Job notificari rulat: {stats}')
 
     # --------------------------------------------------------
+    # COMANDA CLI: flask backup (Tema E - Ops)
+    # --------------------------------------------------------
+    @app.cli.command('backup')
+    @click.option('--eticheta', default='manual', help='Eticheta backup-ului.')
+    @click.option('--max-auto', default=14, help='Cate backup-uri auto se pastreaza.')
+    def backup_command(eticheta, max_auto):
+        """Creeaza un backup al bazei de date (SQLite) + rotatie.
+
+        Util pentru o sarcina programata (Scheduled Task) pe PythonAnywhere:
+            cd ~/workforce && flask backup --eticheta auto
+        """
+        from services.backup import creeaza_backup, roteste
+        r = creeaza_backup(eticheta)
+        if r.get('ok'):
+            kb = r['size'] / 1024
+            sterse = roteste(max_auto) if eticheta == 'auto' else 0
+            click.echo(f'[OK] Backup -> {r["nume"]} ({kb:.0f} KB). '
+                       f'Rotite sterse: {sterse}.')
+        else:
+            click.echo(f'[SKIP] {r.get("mesaj")}')
+
+    # --------------------------------------------------------
     # APScheduler register (Faza 14)
     # --------------------------------------------------------
     try:

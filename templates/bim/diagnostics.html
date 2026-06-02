@@ -33,6 +33,54 @@
 </p>
 
 <!-- ============================ -->
+<!-- Ops / Sistem (Tema E) -->
+<!-- ============================ -->
+{% if ops %}
+<div class="diag-section">
+    <h3 style="margin: 0 0 12px 0; font-size: 1rem;">
+        <i class="fa-solid fa-server"></i> Sistem &amp; Ops
+    </h3>
+    <div class="diag-row">
+        <div class="diag-key">Baza de date</div>
+        <div class="diag-val">{{ ops.db_engine }}{% if ops.db_size %} · {{ '%.1f'|format(ops.db_size / 1048576) }} MB{% endif %}</div>
+    </div>
+    <div class="diag-row">
+        <div class="diag-key">Versiune Alembic</div>
+        <div class="diag-val">{{ ops.alembic or '—' }}</div>
+    </div>
+    <div class="diag-row">
+        <div class="diag-key">Commit git</div>
+        <div class="diag-val">{{ ops.git_commit or '—' }}</div>
+    </div>
+    {% if ops.backup %}
+    <div class="diag-row">
+        <div class="diag-key">Backup-uri</div>
+        <div class="diag-val">
+            {% if ops.backup.nr %}
+            <span class="status-ok">{{ ops.backup.nr }}</span> · {{ '%.1f'|format(ops.backup.total_size / 1048576) }} MB · ultimul: <code>{{ ops.backup.ultim_nume }}</code>
+            {% else %}
+            <span class="status-fail">niciun backup</span> — ruleaza <code>flask backup</code>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    <div class="diag-row">
+        <div class="diag-key">Joburi programate</div>
+        <div class="diag-val">
+            {% if ops.scheduler_jobs %}
+                {% for j in ops.scheduler_jobs %}<span class="flag-on">● {{ j.id }}</span> (next: {{ j.next }}){% if not loop.last %} · {% endif %}{% endfor %}
+            {% else %}
+            <span class="flag-off">○ scheduler oprit (normal in CLI/teste)</span>
+            {% endif %}
+        </div>
+    </div>
+    <div style="margin-top:10px;">
+        <a href="{{ url_for('setari.backup') }}" class="btn btn-outline" style="font-size:0.82rem; padding:5px 12px;"><i class="fa-solid fa-database"></i> Gestioneaza backup-uri</a>
+    </div>
+</div>
+{% endif %}
+
+<!-- ============================ -->
 <!-- ifcopenshell — focus principal -->
 <!-- ============================ -->
 <div class="diag-section">

@@ -233,7 +233,31 @@ def init_scheduler(app):
         id='notificari_job_zilnic',
         replace_existing=True,
     )
+
+    # Backup automat zilnic al bazei de date (self-hosted, cu rotatie)
+    backup_hour = int(os.environ.get('BACKUP_JOB_HOUR', '3'))
+    backup_max = int(os.environ.get('BACKUP_MAX', '14'))
+
+    def _wrapped_backup():
+        with app.app_context():
+            try:
+                from services.backup import ruleaza_backup_automat
+                r = ruleaza_backup_automat(backup_max)
+                _logger.info('Backup automat: %s', r)
+            except Exception as e:
+                _logger.exception('Backup automat a crapat: %s', e)
+
+    scheduler.add_job(
+        _wrapped_backup,
+        trigger='cron',
+        hour=backup_hour,
+        minute=0,
+        id='backup_zilnic',
+        replace_existing=True,
+    )
+
     scheduler.start()
-    _logger.info('APScheduler porneste - job notificari programat zilnic la %02d:00.', hour)
+    _logger.info('APScheduler pornit - notificari %02d:00, backup %02d:00.',
+                 hour, backup_hour)
     app.extensions['apscheduler_notificari'] = scheduler
     return scheduler

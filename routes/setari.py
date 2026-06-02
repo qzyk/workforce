@@ -561,11 +561,22 @@ def backup():
                 uploads_size += os.path.getsize(os.path.join(root, f))
                 uploads_count += 1
 
+    # Backup-uri automate (.db, create de jobul zilnic / CLI `flask backup`)
+    from services import backup as backup_svc
+    auto_backups = [b for b in backup_svc.lista_backups() if b['nume'].endswith('.db')]
+    scheduler_on = 'apscheduler_notificari' in current_app.extensions
+    backup_hour = int(os.environ.get('BACKUP_JOB_HOUR', '3'))
+    backup_max = int(os.environ.get('BACKUP_MAX', '14'))
+
     return render_template('setari/backup.html',
                            backups=backups,
                            db_size=db_size,
                            uploads_size=uploads_size,
-                           uploads_count=uploads_count)
+                           uploads_count=uploads_count,
+                           auto_backups=auto_backups,
+                           scheduler_on=scheduler_on,
+                           backup_hour=backup_hour,
+                           backup_max=backup_max)
 
 
 @setari_bp.route('/backup/creeaza', methods=['POST'])
@@ -644,6 +655,21 @@ def sterge_backup(filename):
     else:
         flash('Fisierul nu a fost gasit.', 'danger')
 
+    return redirect(url_for('setari.backup'))
+
+
+@setari_bp.route('/backup/snapshot-db', methods=['POST'])
+@admin_required
+def snapshot_db():
+    """Snapshot rapid CONSISTENT al bazei (doar DB, prin API-ul sqlite .backup()).
+    Util inainte de o operatie riscanta — mai rapid decat ZIP-ul complet."""
+    from services import backup as backup_svc
+    r = backup_svc.creeaza_backup('manual')
+    if r.get('ok'):
+        log_action('Snapshot DB', f'{r["nume"]} ({r["size"] / (1024*1024):.1f} MB)')
+        flash(f'Snapshot DB creat: {r["nume"]}', 'success')
+    else:
+        flash(r.get('mesaj', 'Snapshot esuat.'), 'warning')
     return redirect(url_for('setari.backup'))
 
 

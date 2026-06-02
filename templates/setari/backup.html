@@ -11,13 +11,21 @@
     <h2 style="margin: 0;">
         <i class="fa-solid fa-database" style="color: var(--primary);"></i> Backup & Restore
     </h2>
-    <form method="POST" action="{{ url_for('setari.creeaza_backup') }}" style="display: inline;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-secondary"
-                onclick="this.innerHTML='<i class=\'fa-solid fa-spinner fa-spin\'></i> Se creeaza...'; this.disabled=true; this.form.submit();">
-            <i class="fa-solid fa-plus"></i> Creeaza Backup
-        </button>
-    </form>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <form method="POST" action="{{ url_for('setari.snapshot_db') }}" style="display: inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline" title="Copie consistenta doar a bazei de date (rapid)">
+                <i class="fa-solid fa-bolt"></i> Snapshot DB
+            </button>
+        </form>
+        <form method="POST" action="{{ url_for('setari.creeaza_backup') }}" style="display: inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-secondary"
+                    onclick="this.innerHTML='<i class=\'fa-solid fa-spinner fa-spin\'></i> Se creeaza...'; this.disabled=true; this.form.submit();">
+                <i class="fa-solid fa-plus"></i> Creeaza Backup complet
+            </button>
+        </form>
+    </div>
 </div>
 
 <!-- Nav tabs setari -->
@@ -68,7 +76,18 @@
             <i class="fa-solid fa-box-archive" style="font-size: 1.5rem; color: #2e7d32;"></i>
             <div>
                 <div style="font-weight: 600;">Backup-uri</div>
-                <div style="font-size: 0.85rem; color: var(--gray-500);">{{ backups|length }} fisiere</div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">{{ backups|length }} complete / {{ auto_backups|length }} auto</div>
+            </div>
+        </div>
+    </div>
+    <div class="stat-card" style="background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <i class="fa-solid fa-clock-rotate-left" style="font-size: 1.5rem; color: {{ '#2e7d32' if scheduler_on else 'var(--gray-400)' }};"></i>
+            <div>
+                <div style="font-weight: 600;">Backup automat</div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">
+                    {% if scheduler_on %}Activ · zilnic la {{ '%02d'|format(backup_hour) }}:00{% else %}Inactiv (scheduler oprit){% endif %}
+                </div>
             </div>
         </div>
     </div>
@@ -132,9 +151,57 @@
     </div>
 </div>
 
+<!-- Tabel backup-uri automate (.db) -->
+<div class="card-panel" style="margin-top: 20px;">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-clock-rotate-left"></i> Backup-uri Automate (doar DB)</h3>
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        {% if auto_backups %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr><th>#</th><th>Fisier</th><th>Dimensiune</th><th>Actiuni</th></tr>
+                </thead>
+                <tbody>
+                    {% for b in auto_backups %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td><strong><i class="fa-solid fa-database" style="color: var(--primary);"></i> {{ b.nume }}</strong></td>
+                        <td>
+                            {% if b.size < 1048576 %}{{ '%.1f'|format(b.size / 1024) }} KB{% else %}{{ '%.1f'|format(b.size / 1048576) }} MB{% endif %}
+                        </td>
+                        <td class="actions-cell">
+                            <a href="{{ url_for('setari.descarca_backup', filename=b.nume) }}" class="btn-action btn-view" title="Descarca">
+                                <i class="fa-solid fa-download"></i>
+                            </a>
+                            <form method="POST" action="{{ url_for('setari.sterge_backup', filename=b.nume) }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action btn-delete" title="Sterge"
+                                        onclick="return confirm('Stergeti {{ b.nume }}?')">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding: 30px;">
+            <i class="fa-solid fa-clock-rotate-left" style="font-size: 2.2rem; color: var(--gray-300); margin-bottom: 10px;"></i>
+            <p style="color: var(--gray-500);">Niciun backup automat inca. Ruleaza <code>flask backup --eticheta auto</code> sau asteapta jobul zilnic.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
 <div style="margin-top: 16px; padding: 12px 16px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
     <i class="fa-solid fa-circle-info"></i>
-    <strong>Nota:</strong> Backup-ul include baza de date SQLite si toate fisierele incarcate (documente, poze).
+    <strong>Nota:</strong> „Backup complet" (ZIP) include baza de date SQLite si toate fisierele incarcate (documente, poze).
+    „Snapshot DB" si backup-urile automate contin doar baza de date (copie consistenta, rapida).
+    Backup-urile automate se pastreaza ultimele {{ backup_max }} si rotesc singure.
     Restaurarea se face manual prin inlocuirea fisierelor din directorul aplicatiei.
 </div>
 {% endblock %}

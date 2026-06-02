@@ -2412,9 +2412,68 @@ def bim_diagnostics():
     for flag_key in ff_svc.KNOWN_FLAGS.keys():
         flag_status[flag_key] = ff_svc.is_enabled(flag_key)
 
+    ops_info = _ops_info()
+
     return render_template('bim/diagnostics.html',
                            ifc_info=ifc_info,
                            other_libs=other_libs,
                            python_executable=sys.executable,
                            python_version=sys.version,
-                           flag_status=flag_status)
+                           flag_status=flag_status,
+                           ops=ops_info)
+
+
+def _ops_info():
+    """Stare operationala (Tema E): DB, backup automat, scheduler, alembic, git."""
+    import os as _os
+    import subprocess
+    from sqlalchemy import text
+    from config import Config
+
+    info = {'db_engine': 'MySQL' if Config.is_mysql() else 'SQLite'}
+
+    # Marime DB (doar SQLite)
+    try:
+        from services.backup import cale_db
+        p = cale_db()
+        info['db_size'] = _os.path.getsize(p) if p and _os.path.exists(p) else None
+    except Exception:
+        info['db_size'] = None
+
+    # Status backup-uri
+    try:
+        from services.backup import status as backup_status
+        info['backup'] = backup_status()
+    except Exception:
+        info['backup'] = None
+
+    # Joburi APScheduler
+    jobs = []
+    sched = current_app.extensions.get('apscheduler_notificari')
+    if sched is not None:
+        try:
+            for j in sched.get_jobs():
+                nxt = getattr(j, 'next_run_time', None)
+                jobs.append({'id': j.id,
+                             'next': nxt.strftime('%d.%m %H:%M') if nxt else '—'})
+        except Exception:
+            pass
+    info['scheduler_jobs'] = jobs
+
+    # Versiune Alembic din DB
+    try:
+        info['alembic'] = db.session.execute(
+            text('SELECT version_num FROM alembic_version')).scalar()
+    except Exception:
+        info['alembic'] = None
+
+    # Commit git curent (scurt)
+    try:
+        info['git_commit'] = subprocess.check_output(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            cwd=current_app.root_path, stderr=subprocess.DEVNULL,
+            timeout=3).decode().strip()
+    except Exception:
+        info['git_commit'] = None
+
+    return info
