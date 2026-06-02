@@ -238,17 +238,21 @@ def import_ifc(file_path, santier_id=None, dry_run=False):
                                 db.session.flush()
                             statistici['spatii_create'] += 1
 
-    # Elemente fizice (parcurgem direct, nu via spatial structure)
+    # Elemente fizice (parcurgem direct, nu via spatial structure).
+    # Preincarc GlobalId-urile existente o singura data (1 query) -> evit un SELECT
+    # per element la modele mari (era O(N) query-uri de dedup; acum O(1) + set lookup).
+    existing_ids = {gid for (gid,) in db.session.query(ElementBIM.ifc_global_id)
+                    .filter(ElementBIM.ifc_global_id.isnot(None)).all()}
     for ifc_type, our_type in IFC_TYPE_MAP.items():
         try:
             instances = ifc.by_type(ifc_type)
         except Exception:
             continue
         for inst in instances:
-            existing = ElementBIM.query.filter_by(ifc_global_id=inst.GlobalId).first()
-            if existing:
+            if inst.GlobalId in existing_ids:
                 statistici['elemente_skipped'] += 1
                 continue
+            existing_ids.add(inst.GlobalId)   # evita dubluri in acelasi import
 
             cod = (inst.Name or f'{our_type.upper()}-{inst.GlobalId[:6]}').strip()[:100]
             element = ElementBIM(

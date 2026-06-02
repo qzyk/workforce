@@ -27,13 +27,30 @@ table.qt tr:hover td { background:#FBF8F0; }
         <h2><i class="fa-solid fa-list-check"></i> Antemasuratoare din model (QTO)</h2>
         <div style="color:rgba(245,241,232,.78); font-size:.88rem;">{{ model.nume }} · {{ total_nr }} elemente pe {{ rows|length }} tipuri</div>
     </div>
-    <a href="{{ url_for('bim.qto_csv', model_id=model.id) }}" class="qt-dl"><i class="fa-solid fa-file-csv"></i> Descarca CSV (pentru Gantt / deviz)</a>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        {% if geometric %}
+        <a href="{{ url_for('bim.qto', model_id=model.id) }}" style="background:rgba(245,241,232,.12); color:#F5F1E8; border:1px solid rgba(201,169,97,.5); padding:9px 14px; border-radius:8px; font-weight:700; text-decoration:none;"><i class="fa-solid fa-rotate-left"></i> Fara volume geometrice</a>
+        {% else %}
+        <a href="{{ url_for('bim.qto', model_id=model.id, geometric=1) }}" style="background:rgba(245,241,232,.12); color:#F5F1E8; border:1px solid rgba(201,169,97,.5); padding:9px 14px; border-radius:8px; font-weight:700; text-decoration:none;"><i class="fa-solid fa-cube"></i> Calculeaza volume reale</a>
+        {% endif %}
+        <a href="{{ url_for('bim.qto_csv', model_id=model.id, geometric=1 if geometric else None) }}" class="qt-dl"><i class="fa-solid fa-file-csv"></i> Descarca CSV (pentru Gantt / deviz)</a>
+    </div>
 </div>
+
+{% if geometric and nr_capat %}
+<div style="margin-bottom:14px; padding:12px 16px; background:#FBF1D6; border-left:3px solid #C9A961; border-radius:6px; font-size:.86rem; color:#8A6A12;">
+    <i class="fa-solid fa-triangle-exclamation"></i> Volume calculate geometric pentru {{ nr_geom }} elemente; <b>{{ nr_capat }}</b> elemente au depasit plafonul si raman numarate (nu insumate volumetric). Modelul e foarte mare — recomandat sa folosesti modele IFC cu BaseQuantities.
+</div>
+{% elif geometric and nr_geom %}
+<div style="margin-bottom:14px; padding:12px 16px; background:#E6F2E6; border-left:3px solid #4CAF50; border-radius:6px; font-size:.86rem; color:#2E6B2E;">
+    <i class="fa-solid fa-check"></i> Volume calculate geometric pentru {{ nr_geom }} elemente (din geometria tesalata, cand modelul nu are BaseQuantities).
+</div>
+{% endif %}
 
 <div class="qt-card">
 {% if rows %}
     <table class="qt">
-        <thead><tr><th>Tip</th><th>Denumire</th><th>U.M.</th><th>Cantitate</th><th>Nr. elemente</th></tr></thead>
+        <thead><tr><th>Tip</th><th>Denumire</th><th>U.M.</th><th>Cantitate</th>{% if geometric %}<th>din care geom.</th>{% endif %}<th>Nr. elemente</th></tr></thead>
         <tbody>
             {% for r in rows %}
             <tr>
@@ -41,6 +58,7 @@ table.qt tr:hover td { background:#FBF8F0; }
                 <td>{{ r.label }}</td>
                 <td>{{ r.um }}</td>
                 <td><b>{{ '%g'|format(r.cantitate) }}</b></td>
+                {% if geometric %}<td>{% if r.nr_geom %}<span style="font-size:.78rem; color:#2E6B2E;">{{ r.nr_geom }}</span>{% else %}-{% endif %}</td>{% endif %}
                 <td>{{ r.nr }}</td>
             </tr>
             {% endfor %}

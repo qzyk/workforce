@@ -9,6 +9,9 @@
 {% block content %}
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
     <h2 style="margin:0;"><i class="fa-solid fa-cubes" style="color:var(--primary);"></i> Elemente BIM</h2>
+    {% if pagination %}
+    <span style="font-size:0.9rem; color:var(--gray-600);">{{ '{:,}'.format(pagination.total) }} elemente</span>
+    {% endif %}
 </div>
 
 <div class="card-panel" style="margin-bottom:16px;">
@@ -87,6 +90,25 @@
                 {% endfor %}
             </tbody>
         </table>
+        {% if pagination and pagination.pages > 1 %}
+        <div class="pagination" style="margin:16px; justify-content:center;">
+            <div class="page-item {{ 'disabled' if not pagination.has_prev }}">
+                <a class="page-link" href="{{ url_for('bim.elemente_lista', page=pagination.prev_num, tip=f_tip, status=f_status, cladire_id=f_cladire) if pagination.has_prev else '#' }}"><i class="fa-solid fa-chevron-left"></i></a>
+            </div>
+            {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                {% if p %}
+                <div class="page-item {{ 'active' if p == pagination.page }}">
+                    <a class="page-link" href="{{ url_for('bim.elemente_lista', page=p, tip=f_tip, status=f_status, cladire_id=f_cladire) }}">{{ p }}</a>
+                </div>
+                {% else %}
+                <div class="page-item disabled"><span class="page-link">…</span></div>
+                {% endif %}
+            {% endfor %}
+            <div class="page-item {{ 'disabled' if not pagination.has_next }}">
+                <a class="page-link" href="{{ url_for('bim.elemente_lista', page=pagination.next_num, tip=f_tip, status=f_status, cladire_id=f_cladire) if pagination.has_next else '#' }}"><i class="fa-solid fa-chevron-right"></i></a>
+            </div>
+        </div>
+        {% endif %}
         {% else %}
         <div class="empty-state" style="padding:40px;">
             <i class="fa-solid fa-cubes" style="font-size:2.5rem; color:var(--gray-300);"></i>

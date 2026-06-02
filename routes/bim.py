@@ -216,11 +216,14 @@ def elemente_lista():
     if f_cladire:
         q = q.filter_by(cladire_id=f_cladire)
 
-    elemente = q.order_by(ElementBIM.cod).limit(200).all()
+    page = request.args.get('page', 1, type=int)
+    pagination = q.order_by(ElementBIM.cod).paginate(
+        page=page, per_page=100, error_out=False)
     cladiri = Cladire.query.order_by(Cladire.cod).all()
     tipuri = ElementBIM.TIPURI
     return render_template('bim/elemente_lista.html',
-        elemente=elemente,
+        elemente=pagination.items,
+        pagination=pagination,
         cladiri=cladiri,
         tipuri=tipuri,
         f_tip=f_tip, f_status=f_status, f_cladire=f_cladire,
@@ -863,12 +866,12 @@ def viewer_4d_data(model_id):
 # ============================================================
 # QTO - antemasuratoare (BoQ) din model BIM
 # ============================================================
-def _qto_rows(model):
+def _qto_rows(model, geometric=False):
     from services import ifc_qto
     if model.fisier_path:
         abs_path = os.path.join(current_app.root_path, model.fisier_path)
         if os.path.exists(abs_path):
-            rows = ifc_qto.qto_din_ifc(abs_path)
+            rows = ifc_qto.qto_din_ifc(abs_path, geometric=geometric)
             if rows:
                 return rows
     return ifc_qto.qto_din_elemente(_elemente_model(model))
@@ -879,8 +882,12 @@ def _qto_rows(model):
 def qto(model_id):
     """Antemasuratoare (QTO) din model: cantitati pe tip de element."""
     model = ModelBIM.query.get_or_404(model_id)
-    rows = _qto_rows(model)
+    geometric = request.args.get('geometric') in ('1', 'true', 'on')
+    rows = _qto_rows(model, geometric=geometric)
     return render_template('bim/qto.html', model=model, rows=rows,
+                           geometric=geometric,
+                           nr_geom=sum(r.get('nr_geom', 0) for r in rows),
+                           nr_capat=sum(r.get('nr_capat', 0) for r in rows),
                            total_nr=sum(r['nr'] for r in rows))
 
 
@@ -890,7 +897,8 @@ def qto_csv(model_id):
     import csv as _csv
     from io import StringIO
     model = ModelBIM.query.get_or_404(model_id)
-    rows = _qto_rows(model)
+    geometric = request.args.get('geometric') in ('1', 'true', 'on')
+    rows = _qto_rows(model, geometric=geometric)
     out = StringIO()
     w = _csv.writer(out, delimiter=';')
     w.writerow(['cod_articol', 'denumire', 'um', 'cantitate'])      # format F3 -> upload in Gantt
