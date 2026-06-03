@@ -340,6 +340,81 @@ def evm(id):
     return render_template('proiecte/evm.html', proiect=proiect, evm=data)
 
 
+@proiecte_bp.route('/<int:id>/utilaje')
+@login_required
+def utilaje(id):
+    """Consum real de utilaj pe proiect (Faza 3 - C) + comparatie cu planificatul."""
+    from models import ConsumUtilaj, Masina
+    from services.evm import evm_proiect
+    proiect = Proiect.query.get_or_404(id)
+    randuri = (ConsumUtilaj.query.filter_by(proiect_id=id)
+               .order_by(ConsumUtilaj.data.desc(), ConsumUtilaj.id.desc()).all())
+    masini = Masina.query.order_by(Masina.numar_inmatriculare).all()
+    real_total = sum(r.calc_cost() for r in randuri)
+    planificat = 0.0
+    try:
+        ev = evm_proiect(id, getattr(current_user, 'tenant_id', None))
+        if ev and ev.get('utilaj'):
+            planificat = ev['utilaj']['planificat']
+    except Exception:
+        pass
+    return render_template('proiecte/utilaje.html', proiect=proiect, randuri=randuri,
+                           masini=masini, real_total=real_total, planificat=planificat,
+                           today=date.today())
+
+
+@proiecte_bp.route('/<int:id>/utilaje/adauga', methods=['POST'])
+@login_required
+def utilaje_adauga(id):
+    from models import ConsumUtilaj
+    Proiect.query.get_or_404(id)
+    denumire = (request.form.get('denumire') or '').strip()
+    if not denumire:
+        flash('Completeaza denumirea utilajului.', 'danger')
+        return redirect(url_for('proiecte.utilaje', id=id))
+
+    def _f(camp):
+        try:
+            return float((request.form.get(camp) or '0').replace(',', '.'))
+        except ValueError:
+            return 0.0
+    ore, tarif = _f('ore'), _f('tarif_ora')
+    cost = _f('cost') or (ore * tarif)
+    d = date.today()
+    ds = (request.form.get('data') or '').strip()
+    if ds:
+        try:
+            d = date.fromisoformat(ds)
+        except ValueError:
+            pass
+    try:
+        mid = int(request.form.get('masina_id') or 0) or None
+    except ValueError:
+        mid = None
+    db.session.add(ConsumUtilaj(
+        proiect_id=id, masina_id=mid, denumire=denumire[:150], data=d,
+        ore=ore, tarif_ora=tarif, cost=cost,
+        categorie_lucrare=(request.form.get('categorie_lucrare') or '').strip()[:60] or None,
+        observatii=(request.form.get('observatii') or '').strip() or None,
+        introdus_de=getattr(current_user, 'id', None),
+        tenant_id=getattr(current_user, 'tenant_id', None)))
+    db.session.commit()
+    flash(f'Consum utilaj adaugat: {denumire} ({cost:,.0f} lei).', 'success')
+    return redirect(url_for('proiecte.utilaje', id=id))
+
+
+@proiecte_bp.route('/<int:id>/utilaje/<int:cid>/sterge', methods=['POST'])
+@login_required
+def utilaje_sterge(id, cid):
+    from models import ConsumUtilaj
+    r = db.session.get(ConsumUtilaj, cid)
+    if r and r.proiect_id == id:
+        db.session.delete(r)
+        db.session.commit()
+        flash('Consum sters.', 'success')
+    return redirect(url_for('proiecte.utilaje', id=id))
+
+
 @proiecte_bp.route('/<int:id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def editeaza(id):

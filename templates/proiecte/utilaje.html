@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Utilaje - {{ proiect.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.lista') }}">Proiecte</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.hub', id=proiect.id) }}">{{ proiect.cod_proiect }}</a></li>
+<li class="breadcrumb-item active">Utilaje</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.ut-hero { background:#0B1426; color:#F5F1E8; border-radius:12px; padding:20px 24px; margin-bottom:18px; }
+.ut-hero h2 { margin:0 0 10px; color:#C9A961; }
+.ut-kpis { display:flex; gap:24px; flex-wrap:wrap; }
+.ut-kpi .v { font-size:1.5rem; font-weight:800; }
+.ut-kpi .l { font-size:.76rem; color:rgba(245,241,232,.7); text-transform:uppercase; letter-spacing:.4px; }
+.ut-bar { height:8px; background:rgba(245,241,232,.15); border-radius:5px; overflow:hidden; margin-top:10px; max-width:520px; }
+.ut-bar i { display:block; height:100%; background:linear-gradient(90deg,#E0BB6E,#C9A961); }
+.ut-card { background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:16px; box-shadow:0 2px 10px rgba(0,0,0,0.05); margin-bottom:16px; }
+.ut-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; align-items:end; }
+.ut-form label { display:block; font-size:.74rem; font-weight:700; color:var(--gray-600); text-transform:uppercase; letter-spacing:.3px; margin-bottom:4px; }
+.ut-form input, .ut-form select { width:100%; padding:9px 10px; border:1.5px solid #E0D9C7; border-radius:8px; background:#FCFAF5; }
+.ut-btn { background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; border:none; padding:10px 16px; border-radius:8px; font-weight:700; cursor:pointer; }
+table.ut { width:100%; border-collapse:collapse; font-size:.86rem; }
+table.ut th { background:#F5F1E8; padding:9px 11px; text-align:right; } table.ut th:first-child,table.ut th:nth-child(2) { text-align:left; }
+table.ut td { padding:8px 11px; border-top:1px solid #ECE7DA; text-align:right; } table.ut td:first-child,table.ut td:nth-child(2) { text-align:left; }
+.ut-x { background:none; border:none; color:#9B2222; cursor:pointer; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set diff = real_total - planificat %}
+<div class="ut-hero">
+    <h2><i class="fa-solid fa-truck-arrow-right"></i> Utilaje — {{ proiect.cod_proiect }}</h2>
+    <div class="ut-kpis">
+        <div class="ut-kpi"><div class="v">{{ '{:,.0f}'.format(planificat) }}</div><div class="l">Planificat (din plan/deviz)</div></div>
+        <div class="ut-kpi"><div class="v" style="color:#C9A961;">{{ '{:,.0f}'.format(real_total) }}</div><div class="l">Real (consum inregistrat)</div></div>
+        <div class="ut-kpi"><div class="v" style="color:{{ '#E8A0A0' if diff > 0 else '#9FD8A0' }};">{{ '{:+,.0f}'.format(diff) }}</div><div class="l">Diferenta (real - plan)</div></div>
+    </div>
+    {% if planificat %}
+    <div class="ut-bar"><i style="width:{{ [ (real_total / planificat * 100), 100 ]|min if planificat else 0 }}%;"></i></div>
+    {% endif %}
+</div>
+
+<div class="ut-card">
+    <div style="font-weight:700; color:#0B1426; margin-bottom:12px;"><i class="fa-solid fa-plus" style="color:#C9A961;"></i> Inregistreaza consum utilaj</div>
+    <form class="ut-form" method="POST" action="{{ url_for('proiecte.utilaje_adauga', id=proiect.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div style="grid-column:span 2;"><label>Utilaj</label><input type="text" name="denumire" placeholder="ex: Excavator CAT 320" required></div>
+        <div><label>Din flota (optional)</label>
+            <select name="masina_id"><option value="">—</option>
+                {% for m in masini %}<option value="{{ m.id }}">{{ m.numar_inmatriculare }} ({{ m.marca }} {{ m.model }})</option>{% endfor %}
+            </select>
+        </div>
+        <div><label>Data</label><input type="date" name="data" value="{{ today.isoformat() }}"></div>
+        <div><label>Ore</label><input type="number" name="ore" step="0.5" min="0" inputmode="decimal" placeholder="8"></div>
+        <div><label>Tarif/ora (lei)</label><input type="number" name="tarif_ora" step="0.01" min="0" inputmode="decimal" placeholder="120"></div>
+        <div><label>Cost (lei, optional)</label><input type="number" name="cost" step="0.01" min="0" inputmode="decimal" placeholder="= ore x tarif"></div>
+        <div><label>Categorie lucrare</label><input type="text" name="categorie_lucrare" placeholder="ex: terasamente"></div>
+        <div><button type="submit" class="ut-btn"><i class="fa-solid fa-check"></i> Adauga</button></div>
+    </form>
+    <small style="color:var(--gray-500); display:block; margin-top:8px;">Daca nu completezi Cost, se calculeaza automat ore × tarif.</small>
+</div>
+
+<div class="ut-card" style="padding:6px;">
+    {% if randuri %}
+    <table class="ut">
+        <thead><tr><th>Data</th><th>Utilaj</th><th>Flota</th><th>Ore</th><th>Tarif/ora</th><th>Cost (lei)</th><th></th></tr></thead>
+        <tbody>
+            {% for r in randuri %}
+            <tr>
+                <td>{{ r.data.strftime('%d.%m.%Y') }}</td>
+                <td><strong>{{ r.denumire }}</strong>{% if r.categorie_lucrare %} <span style="color:var(--gray-400); font-size:.78rem;">· {{ r.categorie_lucrare }}</span>{% endif %}</td>
+                <td style="text-align:left; color:var(--gray-500); font-size:.8rem;">{{ r.masina.numar_inmatriculare if r.masina else '—' }}</td>
+                <td>{{ '%g'|format(r.ore or 0) }}</td>
+                <td>{{ '{:,.0f}'.format(r.tarif_ora or 0) }}</td>
+                <td style="font-weight:700; color:#0B1426;">{{ '{:,.0f}'.format(r.calc_cost()) }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('proiecte.utilaje_sterge', id=proiect.id, cid=r.id) }}" onsubmit="return confirm('Stergi consumul?');" style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button class="ut-x" title="Sterge"><i class="fa-solid fa-trash"></i></button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="padding:28px; text-align:center; color:var(--gray-500);">Niciun consum de utilaj inregistrat. Adauga mai sus.</p>
+    {% endif %}
+</div>
+
+<a href="{{ url_for('proiecte.evm', id=proiect.id) }}" style="color:#A8893D; font-weight:600; text-decoration:none;"><i class="fa-solid fa-chart-line"></i> Vezi EVM (planificat vs real)</a>
+{% endblock %}

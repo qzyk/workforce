@@ -49,8 +49,21 @@ def _man_la_data(serie, d: date) -> float:
     return val
 
 
+def _utilaj_cumulativ(proiect_id: int):
+    """([(data, cost_cumulat)], total_ore) din ConsumUtilaj (cost utilaj real)."""
+    from models import ConsumUtilaj
+    randuri = (ConsumUtilaj.query.filter_by(proiect_id=proiect_id)
+               .order_by(ConsumUtilaj.data).all())
+    cum, ore_tot, serie = 0.0, 0.0, []
+    for r in randuri:
+        cum += r.calc_cost()
+        ore_tot += float(r.ore or 0)
+        serie.append((r.data, round(cum, 2)))
+    return serie, round(ore_tot, 1)
+
+
 def _pv_calendar(plan):
-    """([(date, procent_planificat)], BAC) din curba S a planului Gantt."""
+    """([(date, procent_planificat)], BAC, utilaj_planificat) din curba S a planului."""
     import json
     from services.gantt.pipeline import MotorPlanificare
     from services.gantt import import_engine
@@ -85,7 +98,8 @@ def _pv_calendar(plan):
     pts = [(dz(p['zi'] - 1), float(p['procent'])) for p in st.get('curba_s', [])]
     # BAC: costul recalculat (cu preturi reale daca exista), altfel snapshot-ul planului
     bac = float(st.get('cost_total', 0) or plan.cost_total or 0)
-    return pts, bac
+    utilaj_plan = float(st.get('cost_utilaj', 0) or 0)   # utilaj planificat (Faza 3)
+    return pts, bac, utilaj_plan
 
 
 def _pv_la_data(pv_pts, d: date) -> float:
@@ -139,12 +153,14 @@ def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
     if not plan:
         return None
     try:
-        pv_pts, bac = _pv_calendar(plan)
+        pv_pts, bac, utilaj_plan = _pv_calendar(plan)
     except Exception:
-        pv_pts, bac = [], float(plan.cost_total or 0)
+        pv_pts, bac, utilaj_plan = [], float(plan.cost_total or 0), 0.0
 
     pont_serie, pont_ore = _pontaje_cumulativ(proiect_id)   # manopera reala (pontaje)
     man_total = pont_serie[-1][1] if pont_serie else 0.0
+    util_serie, util_ore = _utilaj_cumulativ(proiect_id)    # utilaj real (ConsumUtilaj)
+    util_total = util_serie[-1][1] if util_serie else 0.0
 
     situatii = (SituatieLunara.query.filter_by(proiect_id=proiect_id)
                 .order_by(SituatieLunara.an, SituatieLunara.luna).all())
@@ -160,12 +176,15 @@ def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
             'data': d.isoformat(), 'pv_pct': round(pv_pct, 1), 'ev_pct': round(ev_pct, 1),
             'pv_val': round(pv_pct / 100.0 * bac, 0), 'ev_val': round(ev_val, 0),
             'ac': round(ac, 0), 'man_pontat': round(_man_la_data(pont_serie, d), 0),
+            'utilaj_real': round(_man_la_data(util_serie, d), 0),
             'spi': round(ev_pct / pv_pct, 2) if pv_pct else None,
             'cpi': round(ev_val / ac, 2) if ac else None,
         })
     return {
         'bac': round(bac, 0), 'plan_nume': plan.nume, 'nr_situatii': len(situatii),
         'manopera': {'cost': round(man_total, 0), 'ore': pont_ore},
+        'utilaj': {'planificat': round(utilaj_plan, 0), 'real': round(util_total, 0),
+                   'ore': util_ore},
         'serie': serie, 'ultim': (serie[-1] if serie else None),
         'pv_curba': [{'data': dt.isoformat(), 'procent': round(p, 1)} for dt, p in pv_pts],
     }

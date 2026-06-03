@@ -72,6 +72,13 @@
         <div class="s">{% if h.situatie %}{{ '{:,.0f}'.format(h.situatie.cumulat) }} lei · SPI/CPI{% else %}plan vs realizat (SPI/CPI){% endif %}</div>
     </a>
 
+    <a class="hb-card" href="{{ url_for('proiecte.utilaje', id=proiect.id) }}">
+        <div class="ic hb-sit"><i class="fa-solid fa-truck-arrow-right"></i></div>
+        <h3>Utilaje</h3>
+        <div class="v">&mdash;</div>
+        <div class="s">consum real vs planificat (C)</div>
+    </a>
+
     <a class="hb-card" href="{{ url_for('proiecte.detalii', id=proiect.id) }}">
         <div class="ic hb-ang"><i class="fa-solid fa-helmet-safety"></i></div>
         <h3>Angajati alocati</h3>

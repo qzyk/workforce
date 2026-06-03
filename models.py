@@ -1234,6 +1234,43 @@ class DefectiuneMasina(db.Model):
         return f'<DefectiuneMasina {self.masina_id} {self.gravitate}>'
 
 
+class ConsumUtilaj(db.Model):
+    """Consum real de utilaj pe proiect (Faza 3 - C: utilaj planificat vs real).
+
+    Inchide bucla pe utilaje, analog manopera<->pontaje: planificatul vine din
+    plan/deviz (cost_utilaj), realul de aici. Optional legat de o masina din flota.
+    cost = valoarea explicita daca > 0, altfel ore x tarif_ora.
+    """
+    __tablename__ = 'consum_utilaj'
+    id = db.Column(db.Integer, primary_key=True)   # Integer (SQLite auto-increment)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)
+    masina_id = db.Column(db.Integer, db.ForeignKey('masini.id'),
+                          nullable=True, index=True)   # optional: utilaj din flota
+    denumire = db.Column(db.String(150), nullable=False)   # ex: Excavator CAT 320
+    data = db.Column(db.Date, nullable=False, default=date.today, index=True)
+    ore = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    tarif_ora = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    cost = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    categorie_lucrare = db.Column(db.String(60), nullable=True)   # F2 optional
+    observatii = db.Column(db.Text, nullable=True)
+    introdus_de = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    proiect = db.relationship('Proiect', backref=db.backref('consum_utilaj', lazy='dynamic'))
+    masina = db.relationship('Masina', backref=db.backref('consum_utilaj', lazy='dynamic'))
+
+    def calc_cost(self) -> float:
+        """Costul efectiv: explicit daca > 0, altfel ore x tarif_ora."""
+        if self.cost and float(self.cost) > 0:
+            return float(self.cost)
+        return float(self.ore or 0) * float(self.tarif_ora or 0)
+
+    def __repr__(self):
+        return f'<ConsumUtilaj {self.denumire} p{self.proiect_id} {self.data}>'
+
+
 # ============================================================
 # ============================================================
 # === MODULUL BIM (Building Information Modeling)         ===

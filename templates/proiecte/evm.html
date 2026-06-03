@@ -50,7 +50,24 @@ table.ev td { padding:7px 10px; border-top:1px solid #ECE7DA; text-align:right; 
     {% if evm.manopera and evm.manopera.cost %}
     <div class="ev-stat"><div class="v">{{ '{:,.0f}'.format(evm.manopera.cost) }}</div><div class="l">Manopera pontata (lei)</div></div>
     {% endif %}
+    {% if evm.utilaj and evm.utilaj.real %}
+    <div class="ev-stat"><div class="v">{{ '{:,.0f}'.format(evm.utilaj.real) }}</div><div class="l">Utilaj real (lei)</div></div>
+    {% endif %}
 </div>
+
+{% if evm.utilaj and (evm.utilaj.planificat or evm.utilaj.real) %}
+<div class="ev-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+    <div>
+        <div style="font-weight:700; color:#0B1426;"><i class="fa-solid fa-truck-arrow-right" style="color:#C9A961;"></i> Utilaje — planificat vs real</div>
+        <div style="font-size:.9rem; color:var(--gray-600); margin-top:4px;">
+            Planificat <b>{{ '{:,.0f}'.format(evm.utilaj.planificat) }}</b> lei ·
+            Real <b style="color:#A8893D;">{{ '{:,.0f}'.format(evm.utilaj.real) }}</b> lei
+            {% if evm.utilaj.ore %} · {{ '%g'|format(evm.utilaj.ore) }} ore{% endif %}
+        </div>
+    </div>
+    <a href="{{ url_for('proiecte.utilaje', id=proiect.id) }}" style="background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; padding:9px 16px; border-radius:8px; font-weight:700; text-decoration:none; white-space:nowrap;"><i class="fa-solid fa-list"></i> Gestioneaza utilaje</a>
+</div>
+{% endif %}
 
 <div class="ev-card">
     <canvas id="evChart" height="150"></canvas>
@@ -60,7 +77,7 @@ table.ev td { padding:7px 10px; border-top:1px solid #ECE7DA; text-align:right; 
 {% if evm.serie %}
 <div class="ev-card">
     <table class="ev">
-        <thead><tr><th>Situatie (data)</th><th>PV %</th><th>EV % (real)</th><th>AC (lei)</th><th>Manopera pontata</th><th>SPI</th><th>CPI</th></tr></thead>
+        <thead><tr><th>Situatie (data)</th><th>PV %</th><th>EV % (real)</th><th>AC (lei)</th><th>Manopera pontata</th><th>Utilaj real</th><th>SPI</th><th>CPI</th></tr></thead>
         <tbody>
             {% for s in evm.serie %}
             <tr>
@@ -69,6 +86,7 @@ table.ev td { padding:7px 10px; border-top:1px solid #ECE7DA; text-align:right; 
                 <td>{{ s.ev_pct }}%</td>
                 <td>{{ '{:,.0f}'.format(s.ac) }}</td>
                 <td>{{ '{:,.0f}'.format(s.man_pontat or 0) }}</td>
+                <td>{{ '{:,.0f}'.format(s.utilaj_real or 0) }}</td>
                 <td class="{{ idx(s.spi) }}">{{ s.spi if s.spi is not none else '—' }}</td>
                 <td class="{{ idx(s.cpi) }}">{{ s.cpi if s.cpi is not none else '—' }}</td>
             </tr>
