@@ -271,6 +271,8 @@ _RX_UM = re.compile(
 )
 _RX_PREFIX_NUMERIC = re.compile(r'^\s*\d+([.\-)]\d*)*[.\-)\s]+')
 _RX_NUMEROTARE = re.compile(r'^\d{1,2}$')
+# celula-formula din randul de numerotare, ex: '5 = 3 x 4' sau '4 = 2 X 3'
+_RX_NUMEROTARE_FORMULA = re.compile(r'^\d+\s*=\s*\d+\s*[xX×]\s*\d+$')
 _RX_TITLU_NUM = re.compile(r'^[\sIVXLCDM0-9]+[.\)\-:]\s+')
 
 
@@ -298,7 +300,8 @@ def _este_rand_numerotare(rand) -> bool:
     vals = [str(c).strip() for c in (rand or []) if c is not None and str(c).strip()]
     if len(vals) < 3:
         return False
-    return all(_RX_NUMEROTARE.fullmatch(v) for v in vals)
+    return all(_RX_NUMEROTARE.fullmatch(v) or _RX_NUMEROTARE_FORMULA.fullmatch(v)
+               for v in vals)
 
 
 def _curata_nume_obiect(nume) -> str:
@@ -381,9 +384,38 @@ def _stare_noua() -> dict:
     return {'articole': [], 'avertismente': [], 'chei': {}, 'dup': 0, 'ign': 0, 'seq': 0}
 
 
+_RESURSE_ET = ('material', 'manopera', 'utilaj', 'transport')
+
+
+def _eticheta_resursa(rand) -> Optional[str]:
+    """Daca randul e o sub-linie de descompunere (material:/manopera:/utilaj:/transport:)
+    a unui articol-capitol, intoarce eticheta normalizata; altfel None."""
+    for c in (rand or []):
+        s = normalizeaza(str(c)).strip().rstrip(':').strip()
+        if s in ('material', 'materiale'):
+            return 'material'
+        if s == 'manopera':
+            return 'manopera'
+        if s in ('utilaj', 'utilaje'):
+            return 'utilaj'
+        if s == 'transport':
+            return 'transport'
+    return None
+
+
+def _um_manopera(um) -> bool:
+    """UM tipica de manopera (ora) -> sub-articolul e munca, nu material."""
+    return 'ora' in normalizeaza(str(um))
+
+
 def _extrage_sheet(randuri: list, idx_antet: int, harta: dict, obiect_sheet: str, st: dict):
     """Extrage articolele dintr-un sheet (antet pe `idx_antet`, mapare `harta`).
-    Foloseste euristicile F3: rand-articol vs rand-titlu de sectiune, NOTA, total."""
+    Foloseste euristicile F3: rand-articol vs rand-titlu de sectiune, NOTA, total.
+
+    Mod „deviz cu extrase" (detectat prin prezenta sub-randurilor material:/manopera:
+    /utilaj:/transport:): articolele-capitol (Nr intreg) devin grupare, iar
+    sub-articolele (Nr cu '.') devin activitati (cost real + M/m dupa UM). Capitolele
+    fara sub-articole se emit ca activitati (cu descompunerea din sub-randuri)."""
     sectiune_curenta = ''   # tronson/sectiune din randuri-titlu
     obiect_titlu = ''       # obiect din randuri-titlu (ex "Obiectul: ...")
     in_note = False
@@ -391,6 +423,40 @@ def _extrage_sheet(randuri: list, idx_antet: int, harta: dict, obiect_sheet: str
     start = idx_antet + 1
     if 0 <= start < len(randuri) and _este_rand_numerotare(randuri[start]):
         start += 1
+
+    mod_extras = any(_eticheta_resursa(r) for r in randuri[max(start, 0):])
+    capitol = None          # capitol in asteptare (dict), in mod_extras
+    capitol_copii = 0
+
+    def _emite(cod, den, um, cant, pu, pm, pman, puti, ptot, nr_rand, tronson,
+               obiect=None, categorie=None):
+        if not cod:
+            st['seq'] += 1
+            cod = f'AUTO{st["seq"]}'
+        cheie = normalizeaza_cheie(cod) or f'auto{nr_rand}'
+        if cheie in st['chei']:
+            st['chei'][cheie] += 1
+            cod = f'{cod}#{st["chei"][cheie] - 1}'
+            st['dup'] += 1
+        else:
+            st['chei'][cheie] = 1
+        st['articole'].append(ArticolF3(
+            cod_articol=cod, denumire=den, um=um, cantitate=cant,
+            obiect=(obiect or obiect_titlu or obiect_sheet or '(fara obiect)'),
+            tronson=(tronson or '(fara tronson)'),
+            categorie=(categorie or sectiune_curenta or ''),
+            rand_sursa=nr_rand, pret_unitar=pu, pret_material=pm,
+            pret_manopera=pman, pret_utilaj=puti, pret_total=ptot,
+        ))
+
+    def _flush_capitol():
+        nonlocal capitol, capitol_copii
+        if capitol and capitol_copii == 0:   # capitol fara sub-articole -> activitate
+            _emite(capitol['cod'], capitol['den'], capitol['um'], capitol['cant'],
+                   capitol['pu'], capitol['material'], capitol['manopera'],
+                   capitol['utilaj'], capitol['ptot'], capitol['nr_rand'],
+                   sectiune_curenta)
+        capitol, capitol_copii = None, 0
 
     for off in range(max(start, 0), len(randuri)):
         if in_note:
@@ -402,6 +468,13 @@ def _extrage_sheet(randuri: list, idx_antet: int, harta: dict, obiect_sheet: str
 
         den = _val(rand, 'denumire', harta)
         if not den:
+            if mod_extras and capitol is not None:
+                et = _eticheta_resursa(rand)
+                if et:
+                    pu = _to_float(_val(rand, 'pret_unitar', harta))
+                    if pu > 0:
+                        capitol[et] = pu
+                    continue
             st['ign'] += 1
             if len(st['avertismente']) < 50:
                 st['avertismente'].append(f'{obiect_sheet or "sheet"} rand {nr_rand}: '
@@ -423,6 +496,8 @@ def _extrage_sheet(randuri: list, idx_antet: int, harta: dict, obiect_sheet: str
             # rand-titlu de sectiune (sau paragraf de disclaimer)
             if len(den) > 80:
                 continue
+            if mod_extras:
+                _flush_capitol()
             if _clasa_titlu(den_norm) == 'obiect':
                 obiect_titlu = _curata_titlu(den)
             else:
@@ -430,35 +505,40 @@ def _extrage_sheet(randuri: list, idx_antet: int, harta: dict, obiect_sheet: str
             continue
 
         # --- rand-articol real ---
-        cod = _val(rand, 'cod_articol', harta)
-        if not cod:
-            st['seq'] += 1
-            cod = f'AUTO{st["seq"]}'
-        cheie = normalizeaza_cheie(cod) or f'auto{nr_rand}'
-        if cheie in st['chei']:
-            st['chei'][cheie] += 1
-            cod = f'{cod}#{st["chei"][cheie] - 1}'
-            st['dup'] += 1
-        else:
-            st['chei'][cheie] = 1
+        nr_val = _val(rand, 'cod_articol', harta)
+        cant = _to_float(cant_raw)
+        pu = _to_float(_val(rand, 'pret_unitar', harta))
+        ptot = _to_float(_val(rand, 'pret_total', harta))
+        pm = _to_float(_val(rand, 'pret_material', harta))
+        pman = _to_float(_val(rand, 'pret_manopera', harta))
+        puti = _to_float(_val(rand, 'pret_utilaj', harta))
 
-        st['articole'].append(ArticolF3(
-            cod_articol=cod,
-            denumire=den,
-            um=um,
-            cantitate=_to_float(cant_raw),
-            obiect=(_val(rand, 'obiect', harta) or obiect_titlu
-                    or obiect_sheet or '(fara obiect)'),
-            tronson=(_val(rand, 'tronson', harta) or sectiune_curenta
-                     or '(fara tronson)'),
-            categorie=(_val(rand, 'categorie', harta) or sectiune_curenta or ''),
-            rand_sursa=nr_rand,
-            pret_unitar=_to_float(_val(rand, 'pret_unitar', harta)),
-            pret_material=_to_float(_val(rand, 'pret_material', harta)),
-            pret_manopera=_to_float(_val(rand, 'pret_manopera', harta)),
-            pret_utilaj=_to_float(_val(rand, 'pret_utilaj', harta)),
-            pret_total=_to_float(_val(rand, 'pret_total', harta)),
-        ))
+        if mod_extras:
+            if '.' not in nr_val:           # CAPITOL -> grupare (emis doar daca n-are copii)
+                _flush_capitol()
+                capitol = {'cod': nr_val, 'den': den, 'um': um, 'cant': cant, 'pu': pu,
+                           'ptot': ptot, 'material': pm, 'manopera': pman, 'utilaj': puti,
+                           'nr_rand': nr_rand}
+                continue
+            # SUB-ARTICOL -> activitate; M/m dupa UM daca nu e descompunere proprie
+            capitol_copii += 1
+            if pm == 0 and pman == 0 and puti == 0 and pu > 0:
+                if _um_manopera(um):
+                    pman = pu
+                else:
+                    pm = pu
+            tronson = (capitol['den'][:90] if capitol else sectiune_curenta)
+            _emite(nr_val, den, um, cant, pu, pm, pman, puti, ptot, nr_rand, tronson)
+            continue
+
+        # --- mod normal (flat): fiecare rand-articol = activitate ---
+        _emite(nr_val, den, um, cant, pu, pm, pman, puti, ptot, nr_rand,
+               (_val(rand, 'tronson', harta) or sectiune_curenta),
+               obiect=_val(rand, 'obiect', harta) or None,
+               categorie=_val(rand, 'categorie', harta) or None)
+
+    if mod_extras:
+        _flush_capitol()
 
 
 def analizeaza(continut: bytes, extensie: str, setari: Optional[dict] = None,
