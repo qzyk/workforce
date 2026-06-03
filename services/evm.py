@@ -161,6 +161,17 @@ def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
     man_total = pont_serie[-1][1] if pont_serie else 0.0
     util_serie, util_ore = _utilaj_cumulativ(proiect_id)    # utilaj real (ConsumUtilaj)
     util_total = util_serie[-1][1] if util_serie else 0.0
+    # B: utilaj PLANIFICAT din extrasul C8 (daca importat), altfel estimarea din plan
+    util_plan_ore, util_sursa = 0.0, 'plan'
+    try:
+        from models import ExtrasResursa
+        c8 = ExtrasResursa.query.filter_by(proiect_id=proiect_id, tip='utilaj').all()
+        if c8:
+            utilaj_plan = sum(float(x.valoare or 0) for x in c8)
+            util_plan_ore = sum(float(x.cantitate or 0) for x in c8)
+            util_sursa = 'C8'
+    except Exception:
+        pass
 
     situatii = (SituatieLunara.query.filter_by(proiect_id=proiect_id)
                 .order_by(SituatieLunara.an, SituatieLunara.luna).all())
@@ -184,7 +195,8 @@ def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
         'bac': round(bac, 0), 'plan_nume': plan.nume, 'nr_situatii': len(situatii),
         'manopera': {'cost': round(man_total, 0), 'ore': pont_ore},
         'utilaj': {'planificat': round(utilaj_plan, 0), 'real': round(util_total, 0),
-                   'ore': util_ore},
+                   'ore': util_ore, 'planificat_ore': round(util_plan_ore, 1),
+                   'sursa': util_sursa},
         'serie': serie, 'ultim': (serie[-1] if serie else None),
         'pv_curba': [{'data': dt.isoformat(), 'procent': round(p, 1)} for dt, p in pv_pts],
     }

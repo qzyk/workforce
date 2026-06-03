@@ -39,6 +39,32 @@ table.rs td { padding:7px 11px; border-top:1px solid #ECE7DA; text-align:right; 
     <small style="color:var(--gray-500);">Re-importul aceluiasi tip il inlocuieste.</small>
 </form>
 
+{# D: reconciliere F3 (plan) vs extrase #}
+{% if recon and recon.are_extrase %}
+{% set _st = {'ok':('#2e7d32','✓ concorda'),'atentie':('#8A6A12','⚠ verifica'),'critic':('#9B2222','✗ discrepanta'),'lipsa':('var(--gray-400)','— fara extras')} %}
+<div class="rs-card" style="padding:0;">
+    <div class="rs-h"><span><i class="fa-solid fa-scale-balanced"></i> Reconciliere F3 ↔ extrase</span>
+        <span class="t">{% if not recon.are_plan %}fara plan Gantt salvat — incarca F3 in Planificare{% else %}cost din plan F3 vs total extrase C6/C7/C8{% endif %}</span></div>
+    {% if recon.are_plan %}
+    <table class="rs">
+        <thead><tr><th>Resursa</th><th>F3 (plan)</th><th>Extras (C)</th><th>Diferenta</th><th>Stare</th></tr></thead>
+        <tbody>
+            {% for tip, et in [('material','Materiale (C6)'),('manopera','Manopera (C7)'),('utilaj','Utilaje (C8)')] %}
+            {% set r = recon[tip] %}
+            <tr>
+                <td>{{ et }}</td>
+                <td>{{ '{:,.0f}'.format(r.f3) }}</td>
+                <td>{{ '{:,.0f}'.format(r.extras) }}</td>
+                <td>{{ r.diff_pct }}%</td>
+                <td style="color:{{ _st[r.status][0] }}; font-weight:700;">{{ _st[r.status][1] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endif %}
+
 {% set meta = {'material':('C6 — Materiale','box-open','aprovizionare'),
                'manopera':('C7 — Manopera','helmet-safety','pe meserii'),
                'utilaj':('C8 — Utilaje','truck-ramp-box','pe ore functionare')} %}
@@ -49,12 +75,23 @@ table.rs td { padding:7px 11px; border-top:1px solid #ECE7DA; text-align:right; 
         <span><i class="fa-solid fa-{{ meta[tip][1] }}"></i> {{ meta[tip][0] }}
             <span class="t">· {{ lst|length }} resurse · {{ '{:,.0f}'.format(totaluri.get(tip,0)) }} lei{% if tip in ['manopera','utilaj'] and ore.get(tip) %} · {{ '{:,.0f}'.format(ore.get(tip,0)) }} ore{% endif %}</span></span>
         {% if lst %}
-        <form method="POST" action="{{ url_for('proiecte.resurse_sterge', id=proiect.id, tip=tip) }}" onsubmit="return confirm('Stergi extrasul {{ meta[tip][0] }}?');" style="margin:0;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="rs-x"><i class="fa-solid fa-trash"></i> Sterge</button>
-        </form>
+        <span style="display:flex; gap:6px; align-items:center;">
+            {% if tip == 'material' %}
+            <a href="{{ url_for('proiecte.resurse_aprovizionare_csv', id=proiect.id) }}" class="rs-x" style="text-decoration:none;"><i class="fa-solid fa-file-csv"></i> Necesar materiale (CSV)</a>
+            {% endif %}
+            <form method="POST" action="{{ url_for('proiecte.resurse_sterge', id=proiect.id, tip=tip) }}" onsubmit="return confirm('Stergi extrasul {{ meta[tip][0] }}?');" style="margin:0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="rs-x"><i class="fa-solid fa-trash"></i> Sterge</button>
+            </form>
+        </span>
         {% endif %}
     </div>
+    {% if tip == 'material' and furnizori %}
+    <div style="padding:8px 16px; background:#FBF8F0; border-bottom:1px solid #ECE7DA; font-size:.82rem; color:var(--gray-600);">
+        <i class="fa-solid fa-truck-fast" style="color:#C9A961;"></i> Furnizori:
+        {% for f, v in furnizori.items() %}<span style="margin-right:12px;">{{ f }}: <b>{{ '{:,.0f}'.format(v) }}</b> lei</span>{% endfor %}
+    </div>
+    {% endif %}
     {% if lst %}
     <div style="overflow-x:auto; max-height:340px; overflow-y:auto;">
     <table class="rs">

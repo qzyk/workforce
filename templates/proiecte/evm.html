@@ -60,7 +60,7 @@ table.ev td { padding:7px 10px; border-top:1px solid #ECE7DA; text-align:right; 
     <div>
         <div style="font-weight:700; color:#0B1426;"><i class="fa-solid fa-truck-arrow-right" style="color:#C9A961;"></i> Utilaje — planificat vs real</div>
         <div style="font-size:.9rem; color:var(--gray-600); margin-top:4px;">
-            Planificat <b>{{ '{:,.0f}'.format(evm.utilaj.planificat) }}</b> lei ·
+            Planificat <b>{{ '{:,.0f}'.format(evm.utilaj.planificat) }}</b> lei{% if evm.utilaj.sursa == 'C8' %} <span style="font-size:.74rem; color:#2e7d32;">(din extras C8{% if evm.utilaj.planificat_ore %}, {{ '%g'|format(evm.utilaj.planificat_ore) }}h{% endif %})</span>{% else %} <span style="font-size:.74rem; color:var(--gray-400);">(estimat din plan)</span>{% endif %} ·
             Real <b style="color:#A8893D;">{{ '{:,.0f}'.format(evm.utilaj.real) }}</b> lei
             {% if evm.utilaj.ore %} · {{ '%g'|format(evm.utilaj.ore) }} ore{% endif %}
         </div>

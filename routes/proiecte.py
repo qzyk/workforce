@@ -459,8 +459,36 @@ def resurse(id):
     totaluri = {t: sum(float(x.valoare or 0) for x in lst) for t, lst in grupuri.items()}
     ore = {t: sum(float(x.cantitate or 0) for x in grupuri.get(t, []))
            for t in ('manopera', 'utilaj')}
+    # D: reconciliere F3 (plan) vs extrase. C: furnizori (aprovizionare)
+    from services.deviz_extras import reconciliere
+    recon = reconciliere(id)
+    furnizori = {}
+    for m in grupuri.get('material', []):
+        f = (m.furnizor or '—')
+        furnizori[f] = round(furnizori.get(f, 0.0) + float(m.valoare or 0), 2)
     return render_template('proiecte/resurse.html', proiect=proiect,
-                           grupuri=grupuri, totaluri=totaluri, ore=ore)
+                           grupuri=grupuri, totaluri=totaluri, ore=ore,
+                           recon=recon, furnizori=furnizori)
+
+
+@proiecte_bp.route('/<int:id>/resurse/aprovizionare.csv')
+@login_required
+def resurse_aprovizionare_csv(id):
+    """Necesar materiale (C6) pentru comanda - CSV grupat pe furnizor."""
+    import csv as _csv
+    from io import StringIO, BytesIO
+    from models import ExtrasResursa
+    Proiect.query.get_or_404(id)
+    mat = (ExtrasResursa.query.filter_by(proiect_id=id, tip='material')
+           .order_by(ExtrasResursa.furnizor, ExtrasResursa.denumire).all())
+    out = StringIO()
+    w = _csv.writer(out, delimiter=';')
+    w.writerow(['Furnizor', 'Cod', 'Denumire', 'UM', 'Cantitate', 'Pret unitar', 'Valoare'])
+    for m in mat:
+        w.writerow([m.furnizor or '', m.cod or '', m.denumire, m.um or '',
+                    float(m.cantitate or 0), float(m.tarif_unitar or 0), float(m.valoare or 0)])
+    return send_file(BytesIO(out.getvalue().encode('utf-8-sig')), mimetype='text/csv',
+                     as_attachment=True, download_name=f'necesar_materiale_proiect_{id}.csv')
 
 
 @proiecte_bp.route('/<int:id>/resurse/upload', methods=['POST'])

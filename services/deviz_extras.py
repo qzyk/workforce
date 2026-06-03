@@ -69,6 +69,58 @@ def _split_cod(text: str):
     return '', s
 
 
+def reconciliere(proiect_id: int) -> dict:
+    """Compara totalurile M/m/U din planul F3 (Gantt) vs extrasele C6/C7/C8.
+    {'material'|'manopera'|'utilaj': {f3, extras, diff_pct, status}, are_plan, are_extrase}.
+    status: ok (<=5%), atentie (<=20%), critic (>20%), lipsa (fara extras)."""
+    from models import GanttPlan, ExtrasResursa
+    ex = {'material': 0.0, 'manopera': 0.0, 'utilaj': 0.0}
+    for e in ExtrasResursa.query.filter_by(proiect_id=proiect_id).all():
+        if e.tip in ex:
+            ex[e.tip] += float(e.valoare or 0)
+
+    f3 = {'material': 0.0, 'manopera': 0.0, 'utilaj': 0.0}
+    plan = (GanttPlan.query.filter_by(proiect_id=proiect_id)
+            .order_by(GanttPlan.data_creare.desc()).first())
+    are_plan = False
+    if plan:
+        try:
+            import json
+            from services.gantt.pipeline import MotorPlanificare
+            from services.gantt import import_engine
+            mapare = rand = None
+            if plan.mapare_json:
+                d = json.loads(plan.mapare_json)
+                mapare, rand = d.get('coloane'), d.get('rand_antet')
+            motor = MotorPlanificare()
+            art, _ = import_engine.importa(plan.continut, plan.ext, motor.setari,
+                                           mapare_manuala=mapare, rand_antet_manual=rand)
+            st = motor.proceseaza(art).statistici
+            f3 = {'material': st.get('cost_material', 0) or 0,
+                  'manopera': st.get('cost_manopera', 0) or 0,
+                  'utilaj': st.get('cost_utilaj', 0) or 0}
+            are_plan = True
+        except Exception:
+            are_plan = False
+
+    out = {'are_plan': are_plan, 'are_extrase': any(ex.values())}
+    for tip in ('material', 'manopera', 'utilaj'):
+        a, b = float(f3[tip]), float(ex[tip])
+        baza = max(a, b)
+        diff = (abs(a - b) / baza * 100.0) if baza else 0.0
+        if not b:
+            status = 'lipsa'
+        elif diff <= 5:
+            status = 'ok'
+        elif diff <= 20:
+            status = 'atentie'
+        else:
+            status = 'critic'
+        out[tip] = {'f3': round(a, 0), 'extras': round(b, 0),
+                    'diff_pct': round(diff, 1), 'status': status}
+    return out
+
+
 def parse_extras(continut: bytes, ext: str):
     """Intoarce (tip, [resurse]) sau (None, [])."""
     from services.gantt import import_engine
