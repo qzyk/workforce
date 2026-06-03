@@ -49,6 +49,7 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
 {% block content %}
 {% set st = rezultat.statistici %}
 {% set rap = rezultat.raport %}
+{% set pas_activ = 4 if plan_id else 2 %}{% include 'gantt/_stepper.html' %}
 <div class="gz-bar">
     <div>
         <h2><i class="fa-solid fa-diagram-project"></i> Planificare generata — {{ nume_fisier }}</h2>

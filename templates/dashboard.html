@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_macros.html' import next_hint %}
 {% block title %}Dashboard - EDIFICO WORKFORCE{% endblock %}
 
 {% block breadcrumb %}
@@ -11,6 +12,13 @@
         <i class="fa-solid fa-gauge-high"></i> Dashboard executiv (proiecte · cost · BIM)
     </a>
 </div>
+{% if ghid_nr_proiecte == 0 %}
+    {{ next_hint('Bun venit! Primul pas: adauga un proiect ca sa incepi.',
+       url_for('proiecte.adauga'), 'Adauga primul proiect') }}
+{% elif ghid_nr_planuri == 0 %}
+    {{ next_hint('Ai proiecte. Urmatorul pas: genereaza un plan din lista de cantitati (F3).',
+       url_for('gantt.index'), 'Creeaza primul plan Gantt') }}
+{% endif %}
 <!-- ============================================ -->
 <!-- RAND 1: CARDURI STATISTICI PRINCIPALE -->
 <!-- ============================================ -->

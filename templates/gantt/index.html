@@ -45,6 +45,8 @@
     </div>
 </div>
 
+{% set pas_activ = 1 %}{% include 'gantt/_stepper.html' %}
+
 <div class="gz-card">
     <form method="POST" action="{{ url_for('gantt.genereaza') }}" enctype="multipart/form-data" id="gzForm">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -75,6 +77,12 @@
         </div>
     </form>
 </div>
+
+<div id="gzLoading" style="display:none; position:fixed; inset:0; background:rgba(11,20,38,0.72); z-index:9999; align-items:center; justify-content:center; flex-direction:column; color:#F5F1E8; text-align:center;">
+    <i class="fa-solid fa-gears fa-spin" style="font-size:2.6rem; color:#C9A961;"></i>
+    <div style="margin-top:14px; font-weight:700; font-size:1.05rem;">Se genereaza planificarea...</div>
+    <div style="margin-top:4px; font-size:.85rem; color:rgba(245,241,232,.7);">Import → clasificare → WBS → dependente. Fisierele mari pot dura cateva secunde.</div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -91,6 +99,14 @@
     drop.addEventListener('drop', function(e){
         if (e.dataTransfer.files.length) { inp.files = e.dataTransfer.files; nume.textContent = inp.files[0].name; }
     });
+    // overlay de incarcare la submit (pipeline lent pe fisiere mari)
+    var form = document.getElementById('gzForm');
+    var loading = document.getElementById('gzLoading');
+    if (form && loading) {
+        form.addEventListener('submit', function() {
+            if (inp.files.length) loading.style.display = 'flex';
+        });
+    }
 })();
 </script>
 {% endblock %}

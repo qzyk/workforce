@@ -265,7 +265,14 @@ def index():
         'total_alerte': len(alerte)
     }
 
+    # Ghid „pasul urmator" (U4): adaptiv dupa stadiul contului
+    from models import GanttPlan
+    ghid_nr_proiecte = Proiect.query.count()
+    ghid_nr_planuri = GanttPlan.query.count()
+
     return render_template('dashboard.html',
+                           ghid_nr_proiecte=ghid_nr_proiecte,
+                           ghid_nr_planuri=ghid_nr_planuri,
                            # Carduri principale
                            total_angajati_activi=total_angajati_activi,
                            proiecte_active=proiecte_active,

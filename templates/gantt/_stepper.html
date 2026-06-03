@@ -1,0 +1,30 @@
+{# Stepper vizual pentru fluxul Gantt. Param: pas_activ (1..5). #}
+{% set _pasi = [
+    ('Import', 'file-arrow-up'),
+    ('Verifica', 'list-check'),
+    ('Salveaza', 'floppy-disk'),
+    ('WBS', 'sitemap'),
+    ('Export', 'file-export')
+] %}
+<style>
+.gz-stepper { display:flex; align-items:center; gap:0; flex-wrap:wrap; margin-bottom:18px; }
+.gz-step-item { display:flex; align-items:center; gap:8px; padding:6px 4px; }
+.gz-step-b { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.82rem; flex:0 0 30px; }
+.gz-step-item.done .gz-step-b { background:linear-gradient(135deg,#E0BB6E,#C9A961); color:#0B1426; }
+.gz-step-item.on .gz-step-b { background:#0B1426; color:#C9A961; box-shadow:0 0 0 3px rgba(201,169,97,0.30); }
+.gz-step-item.todo .gz-step-b { background:#ECE7DA; color:var(--gray-500); }
+.gz-step-t { font-size:.82rem; font-weight:700; color:var(--gray-500); }
+.gz-step-item.done .gz-step-t, .gz-step-item.on .gz-step-t { color:#0B1426; }
+.gz-step-line { flex:1; min-width:18px; height:2px; background:#ECE7DA; margin:0 4px; }
+@media (max-width:640px){ .gz-step-t { display:none; } .gz-step-line { min-width:8px; } }
+</style>
+<div class="gz-stepper">
+    {% for nume, ic in _pasi %}
+    {% set n = loop.index %}
+    <div class="gz-step-item {{ 'done' if n < pas_activ else ('on' if n == pas_activ else 'todo') }}">
+        <span class="gz-step-b"><i class="fa-solid {{ 'fa-check' if n < pas_activ else 'fa-' ~ ic }}"></i></span>
+        <span class="gz-step-t">{{ n }}. {{ nume }}</span>
+    </div>
+    {% if not loop.last %}<span class="gz-step-line"></span>{% endif %}
+    {% endfor %}
+</div>

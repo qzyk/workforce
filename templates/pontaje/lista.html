@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_macros.html' import empty_state %}
 {% block title %}Pontaje - EDIFICO WORKFORCE{% endblock %}
 
 {% block breadcrumb %}
@@ -139,10 +140,10 @@
             </table>
         </div>
         {% else %}
-        <div class="empty-state">
-            <i class="fa-solid fa-clock"></i>
-            <p>Nu au fost gasite pontaje.</p>
-        </div>
+        {{ empty_state('clock', 'Niciun pontaj inca',
+           'Inregistreaza orele lucrate pe proiecte. Cel mai rapid: din teren, de pe telefon.',
+           url_for('pontaje.adauga'), 'Adauga pontaj',
+           url_for('teren.pontaj'), 'Pontaj rapid (teren)') }}
         {% endif %}
     </div>
 </div>
