@@ -445,6 +445,69 @@ def utilaje_sterge(id, cid):
     return redirect(url_for('proiecte.utilaje', id=id))
 
 
+# ---- Extrase de resurse C6/C7/C8 (Faza 2) ----
+@proiecte_bp.route('/<int:id>/resurse')
+@login_required
+def resurse(id):
+    """Extrase de resurse din deviz (C6 materiale / C7 manopera / C8 utilaje)."""
+    from models import ExtrasResursa
+    proiect = Proiect.query.get_or_404(id)
+    grupuri = {'material': [], 'manopera': [], 'utilaj': []}
+    for e in (ExtrasResursa.query.filter_by(proiect_id=id)
+              .order_by(ExtrasResursa.valoare.desc()).all()):
+        grupuri.setdefault(e.tip, []).append(e)
+    totaluri = {t: sum(float(x.valoare or 0) for x in lst) for t, lst in grupuri.items()}
+    ore = {t: sum(float(x.cantitate or 0) for x in grupuri.get(t, []))
+           for t in ('manopera', 'utilaj')}
+    return render_template('proiecte/resurse.html', proiect=proiect,
+                           grupuri=grupuri, totaluri=totaluri, ore=ore)
+
+
+@proiecte_bp.route('/<int:id>/resurse/upload', methods=['POST'])
+@login_required
+def resurse_upload(id):
+    from models import ExtrasResursa
+    from services.deviz_extras import parse_extras
+    Proiect.query.get_or_404(id)
+    fisier = request.files.get('fisier')
+    if not fisier or not fisier.filename:
+        flash('Selecteaza un fisier C6/C7/C8 (.xls/.xlsx).', 'warning')
+        return redirect(url_for('proiecte.resurse', id=id))
+    ext = os.path.splitext(fisier.filename)[1].lower()
+    try:
+        tip, rows = parse_extras(fisier.read(), ext)
+    except Exception as e:
+        flash(f'Nu pot citi fisierul: {e}', 'danger')
+        return redirect(url_for('proiecte.resurse', id=id))
+    if not tip or not rows:
+        flash('Fisierul nu pare un extras C6/C7/C8 valid (Formular C6/C7/C8).', 'warning')
+        return redirect(url_for('proiecte.resurse', id=id))
+    # re-import = inlocuieste extrasul de acelasi tip
+    ExtrasResursa.query.filter_by(proiect_id=id, tip=tip).delete()
+    for r in rows:
+        db.session.add(ExtrasResursa(
+            proiect_id=id, tip=tip, cod=(r['cod'][:60] or None), denumire=r['denumire'],
+            um=r['um'], cantitate=r['cantitate'], tarif_unitar=r['tarif_unitar'],
+            valoare=r['valoare'], furnizor=r['furnizor'],
+            nume_fisier=fisier.filename[:255],
+            introdus_de=getattr(current_user, 'id', None),
+            tenant_id=getattr(current_user, 'tenant_id', None)))
+    db.session.commit()
+    etichete = {'material': 'C6 materiale', 'manopera': 'C7 manopera', 'utilaj': 'C8 utilaje'}
+    flash(f'{etichete.get(tip, tip)}: {len(rows)} resurse importate.', 'success')
+    return redirect(url_for('proiecte.resurse', id=id))
+
+
+@proiecte_bp.route('/<int:id>/resurse/sterge/<tip>', methods=['POST'])
+@login_required
+def resurse_sterge(id, tip):
+    from models import ExtrasResursa
+    n = ExtrasResursa.query.filter_by(proiect_id=id, tip=tip).delete()
+    db.session.commit()
+    flash(f'{n} resurse sterse.', 'success')
+    return redirect(url_for('proiecte.resurse', id=id))
+
+
 @proiecte_bp.route('/<int:id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def editeaza(id):

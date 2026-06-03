@@ -1271,6 +1271,38 @@ class ConsumUtilaj(db.Model):
         return f'<ConsumUtilaj {self.denumire} p{self.proiect_id} {self.data}>'
 
 
+class ExtrasResursa(db.Model):
+    """Extras de resurse din deviz (Formular C6 materiale / C7 manopera / C8 utilaje),
+    importat pe proiect (Faza 2 - F3/C). Listele PLANIFICATE de resurse pe proiect:
+    materiale (aprovizionare), manopera pe meserii, utilaje pe ore. Distinct de
+    ConsumUtilaj (consum REAL)."""
+    __tablename__ = 'extras_resursa'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)
+    tip = db.Column(db.String(12), nullable=False, index=True)   # material | manopera | utilaj
+    cod = db.Column(db.String(60), nullable=True)
+    denumire = db.Column(db.String(400), nullable=False)
+    um = db.Column(db.String(20), nullable=True)
+    cantitate = db.Column(db.Numeric(16, 3), nullable=False, default=0)   # consum / ore
+    tarif_unitar = db.Column(db.Numeric(14, 4), nullable=False, default=0)
+    valoare = db.Column(db.Numeric(16, 2), nullable=False, default=0)
+    furnizor = db.Column(db.String(150), nullable=True)          # doar C6
+    nume_fisier = db.Column(db.String(255), nullable=True)
+    introdus_de = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('extrase_resurse', lazy='dynamic'))
+
+    TIPURI = [('material', 'Materiale (C6)'), ('manopera', 'Manopera (C7)'),
+              ('utilaj', 'Utilaje (C8)')]
+
+    def __repr__(self):
+        return f'<ExtrasResursa {self.tip} {self.denumire[:30]!r} p{self.proiect_id}>'
+
+
 # ============================================================
 # ============================================================
 # === MODULUL BIM (Building Information Modeling)         ===

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Resurse (C6/C7/C8) - {{ proiect.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.lista') }}">Proiecte</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.hub', id=proiect.id) }}">{{ proiect.cod_proiect }}</a></li>
+<li class="breadcrumb-item active">Resurse</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.rs-hero { background:#0B1426; color:#F5F1E8; border-radius:12px; padding:18px 22px; margin-bottom:16px; }
+.rs-hero h2 { margin:0 0 4px; color:#C9A961; }
+.rs-up { background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:16px; margin-bottom:18px; box-shadow:0 2px 10px rgba(0,0,0,0.05); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.rs-up input[type=file] { flex:1; min-width:200px; }
+.rs-btn { background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; border:none; padding:9px 16px; border-radius:8px; font-weight:700; cursor:pointer; }
+.rs-card { background:#fff; border:1px solid #E8E3D5; border-radius:12px; margin-bottom:16px; box-shadow:0 2px 10px rgba(0,0,0,0.05); overflow:hidden; }
+.rs-h { background:#0B1426; color:#C9A961; padding:11px 16px; font-weight:700; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+.rs-h .t { color:rgba(245,241,232,.85); font-weight:600; font-size:.85rem; }
+table.rs { width:100%; border-collapse:collapse; font-size:.84rem; }
+table.rs th { background:#F5F1E8; padding:8px 11px; text-align:right; } table.rs th:first-child, table.rs th:nth-child(2) { text-align:left; }
+table.rs td { padding:7px 11px; border-top:1px solid #ECE7DA; text-align:right; } table.rs td:first-child, table.rs td:nth-child(2) { text-align:left; }
+.rs-x { background:rgba(245,241,232,.12); color:#F5F1E8; border:1px solid rgba(201,169,97,.4); padding:4px 10px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+.rs-cod { font-family:ui-monospace,Menlo,monospace; font-size:.76rem; color:var(--gray-500); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rs-hero">
+    <h2><i class="fa-solid fa-layer-group"></i> Resurse din deviz — {{ proiect.cod_proiect }}</h2>
+    <div style="color:rgba(245,241,232,.75); font-size:.9rem;">Extrase C6 (materiale) · C7 (manopera) · C8 (utilaje). Incarca fisierele separat — tipul e detectat automat.</div>
+</div>
+
+<form class="rs-up" method="POST" action="{{ url_for('proiecte.resurse_upload', id=proiect.id) }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <i class="fa-solid fa-file-arrow-up" style="color:#C9A961;"></i>
+    <input type="file" name="fisier" accept=".xls,.xlsx,.csv" required>
+    <button type="submit" class="rs-btn"><i class="fa-solid fa-upload"></i> Importa C6 / C7 / C8</button>
+    <small style="color:var(--gray-500);">Re-importul aceluiasi tip il inlocuieste.</small>
+</form>
+
+{% set meta = {'material':('C6 — Materiale','box-open','aprovizionare'),
+               'manopera':('C7 — Manopera','helmet-safety','pe meserii'),
+               'utilaj':('C8 — Utilaje','truck-ramp-box','pe ore functionare')} %}
+{% for tip in ['material','manopera','utilaj'] %}
+{% set lst = grupuri.get(tip, []) %}
+<div class="rs-card">
+    <div class="rs-h">
+        <span><i class="fa-solid fa-{{ meta[tip][1] }}"></i> {{ meta[tip][0] }}
+            <span class="t">· {{ lst|length }} resurse · {{ '{:,.0f}'.format(totaluri.get(tip,0)) }} lei{% if tip in ['manopera','utilaj'] and ore.get(tip) %} · {{ '{:,.0f}'.format(ore.get(tip,0)) }} ore{% endif %}</span></span>
+        {% if lst %}
+        <form method="POST" action="{{ url_for('proiecte.resurse_sterge', id=proiect.id, tip=tip) }}" onsubmit="return confirm('Stergi extrasul {{ meta[tip][0] }}?');" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="rs-x"><i class="fa-solid fa-trash"></i> Sterge</button>
+        </form>
+        {% endif %}
+    </div>
+    {% if lst %}
+    <div style="overflow-x:auto; max-height:340px; overflow-y:auto;">
+    <table class="rs">
+        <thead><tr><th>Cod</th><th>Denumire</th><th>U.M.</th><th>{{ 'Ore' if tip in ['manopera','utilaj'] else 'Consum' }}</th><th>Tarif/Pret</th><th>Valoare (lei)</th>{% if tip == 'material' %}<th>Furnizor</th>{% endif %}</tr></thead>
+        <tbody>
+            {% for r in lst %}
+            <tr>
+                <td class="rs-cod">{{ r.cod or '-' }}</td>
+                <td>{{ r.denumire }}</td>
+                <td>{{ r.um or '-' }}</td>
+                <td>{{ '%g'|format(r.cantitate or 0) }}</td>
+                <td>{{ '%g'|format(r.tarif_unitar or 0) }}</td>
+                <td><b>{{ '{:,.0f}'.format(r.valoare or 0) }}</b></td>
+                {% if tip == 'material' %}<td style="text-align:left; color:var(--gray-500);">{{ r.furnizor or '-' }}</td>{% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p style="padding:20px; text-align:center; color:var(--gray-500); font-size:.86rem;">Niciun extras {{ meta[tip][0] }} importat ({{ meta[tip][2] }}).</p>
+    {% endif %}
+</div>
+{% endfor %}
+
+<a href="{{ url_for('proiecte.hub', id=proiect.id) }}" style="color:#A8893D; font-weight:600; text-decoration:none;"><i class="fa-solid fa-arrow-left"></i> Inapoi la Hub 360</a>
+{% endblock %}
