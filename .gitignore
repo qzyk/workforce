@@ -16,3 +16,8 @@ htmlcov/
 ~$*.pptx
 ~$*.docx
 ~$*.xlsx
+
+# Fisiere locale / chei / worktrees (nu in repo)
+passkey.txt
+passkey.txt.pub
+.claude/worktrees/
