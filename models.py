@@ -4420,6 +4420,38 @@ class GanttPlan(db.Model):
         return f'<GanttPlan {self.id} {self.nume!r} proiect={self.proiect_id}>'
 
 
+class GanttWbsNod(db.Model):
+    """Nod editabil de WBS pentru un plan salvat (editor WBS, Faza Editor).
+
+    Arborele e seedat din WBS-ul auto la prima editare; apoi utilizatorul il poate
+    redenumi / reordona / regrupa. La randare/export, daca planul are arbore salvat,
+    el are prioritate fata de WBS-ul auto. Frunzele (tip='activitate') au
+    `activitate_ref` = id-ul activitatii (A000001) pentru a lega cost/durata/date.
+    """
+    __tablename__ = 'gantt_wbs_nod'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    plan_id = db.Column(db.Integer, db.ForeignKey('gantt_plan.id'),
+                        nullable=False, index=True)
+    parinte_id = db.Column(db.Integer, db.ForeignKey('gantt_wbs_nod.id'),
+                           nullable=True, index=True)
+    tip = db.Column(db.String(20), nullable=False, default='grup')   # 'grup' | 'activitate'
+    nume = db.Column(db.String(300), nullable=False)
+    ordine = db.Column(db.Integer, nullable=False, default=0)
+    activitate_ref = db.Column(db.String(20), nullable=True)   # id activitate (frunza)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    plan = db.relationship('GanttPlan',
+                           backref=db.backref('wbs_noduri', lazy='dynamic',
+                                              cascade='all, delete-orphan'))
+    copii = db.relationship('GanttWbsNod', backref=db.backref('parinte', remote_side=[id]),
+                            lazy='dynamic', cascade='all, delete-orphan')
+
+    def __repr__(self):
+        return f'<GanttWbsNod {self.id} {self.tip} {self.nume!r} plan={self.plan_id}>'
+
+
 class ProiectSantier(db.Model):
     """Asociere many-to-many proiect <-> santier BIM.
 

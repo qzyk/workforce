@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Editor WBS - {{ p.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('gantt.planuri') }}">Planuri Gantt</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('gantt.plan', id_=p.id) }}">{{ p.nume }}</a></li>
+<li class="breadcrumb-item active">Editor WBS</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.wb-hero { background:#0B1426; color:#F5F1E8; border-radius:12px; padding:18px 22px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+.wb-hero h2 { margin:0; color:#C9A961; font-size:1.2rem; }
+.wb-card { background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:10px; box-shadow:0 2px 10px rgba(0,0,0,0.05); }
+.wb-rand { display:flex; align-items:center; gap:6px; padding:6px 8px; border-radius:8px; }
+.wb-rand:hover { background:#FBF8F0; }
+.wb-rand.grup { font-weight:700; color:#0B1426; }
+.wb-rand.act { color:var(--gray-700); }
+.wb-ic { width:20px; text-align:center; color:#C9A961; flex:0 0 20px; }
+.wb-nume { flex:1; min-width:120px; padding:5px 8px; border:1px solid transparent; border-radius:6px; background:transparent; font:inherit; color:inherit; }
+.wb-nume:focus { outline:none; border-color:#C9A961; background:#fff; }
+.wb-act form { display:inline; margin:0; }
+.wb-btn { background:#F5F1E8; border:1px solid #E8E3D5; border-radius:6px; padding:4px 7px; cursor:pointer; font-size:.78rem; color:var(--gray-600); }
+.wb-btn:hover { background:#EFE7D2; }
+.wb-btn.del { color:#9B2222; }
+.wb-mv { font-size:.78rem; padding:4px 6px; border:1px solid #E8E3D5; border-radius:6px; background:#fff; }
+.wb-add { display:flex; gap:8px; margin-top:10px; padding:10px; border-top:1px dashed #E8E3D5; flex-wrap:wrap; }
+.wb-add input { padding:8px 10px; border:1.5px solid #E0D9C7; border-radius:8px; }
+.wb-gold { background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; border:none; padding:8px 14px; border-radius:8px; font-weight:700; cursor:pointer; text-decoration:none; }
+</style>
+{% endblock %}
+
+{% macro rand(item, grupuri, plan_id, nivel) %}
+{% set n = item.nod %}
+<div class="wb-rand {{ 'grup' if n.tip == 'grup' else 'act' }}" style="margin-left:{{ nivel * 20 }}px;">
+    <span class="wb-ic"><i class="fa-solid {{ 'fa-folder' if n.tip == 'grup' else 'fa-diagram-next' }}"></i></span>
+    <form method="POST" action="{{ url_for('gantt.plan_wbs_op', id_=plan_id) }}" style="flex:1; display:flex; gap:4px; margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="actiune" value="redenumeste">
+        <input type="hidden" name="nod_id" value="{{ n.id }}">
+        <input class="wb-nume" name="nume" value="{{ n.nume }}" title="Editeaza numele si apasa Enter">
+    </form>
+    <div class="wb-act" style="display:flex; gap:3px; align-items:center;">
+        <form method="POST" action="{{ url_for('gantt.plan_wbs_op', id_=plan_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="nod_id" value="{{ n.id }}"><input type="hidden" name="actiune" value="sus">
+            <button class="wb-btn" title="Sus"><i class="fa-solid fa-arrow-up"></i></button>
+        </form>
+        <form method="POST" action="{{ url_for('gantt.plan_wbs_op', id_=plan_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="nod_id" value="{{ n.id }}"><input type="hidden" name="actiune" value="jos">
+            <button class="wb-btn" title="Jos"><i class="fa-solid fa-arrow-down"></i></button>
+        </form>
+        <form method="POST" action="{{ url_for('gantt.plan_wbs_op', id_=plan_id) }}" style="display:flex; gap:2px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="nod_id" value="{{ n.id }}"><input type="hidden" name="actiune" value="muta">
+            <select class="wb-mv" name="grup_id" onchange="this.form.submit()" title="Muta in grup">
+                <option value="">↳ muta in…</option>
+                <option value="">(radacina)</option>
+                {% for g in grupuri %}{% if g.id != n.id %}<option value="{{ g.id }}">{{ g.nume }}</option>{% endif %}{% endfor %}
+            </select>
+        </form>
+        <form method="POST" action="{{ url_for('gantt.plan_wbs_op', id_=plan_id) }}" onsubmit="return confirm('Stergi „{{ n.nume }}“? (activitatile raman, merg in Neincadrate)');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="nod_id" value="{{ n.id }}"><input type="hidden" name="actiune" value="sterge">
+            <button class="wb-btn del" title="Sterge"><i class="fa-solid fa-trash"></i></button>
+        </form>
+    </div>
+</div>
+{% for c in item.copii %}{{ rand(c, grupuri, plan_id, nivel + 1) }}{% endfor %}
+{% endmacro %}
+
+{% block content %}
+<div class="wb-hero">
+    <h2><i class="fa-solid fa-sitemap"></i> Editor WBS — {{ p.nume }}</h2>
+    <div style="display:flex; gap:8px;">
+        <a href="{{ url_for('gantt.plan', id_=p.id) }}" class="wb-gold" style="background:rgba(245,241,232,.12); color:#F5F1E8; border:1px solid rgba(201,169,97,.5);"><i class="fa-solid fa-eye"></i> Vezi planul</a>
+        <form method="POST" action="{{ url_for('gantt.plan_wbs_op', id_=p.id) }}" onsubmit="return confirm('Resetezi WBS-ul la structura automata? Pierzi modificarile.');" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="actiune" value="reset">
+            <button class="wb-gold" style="background:rgba(245,241,232,.12); color:#F5F1E8; border:1px solid rgba(201,169,97,.5);"><i class="fa-solid fa-rotate-left"></i> Reset la auto</button>
+        </form>
+    </div>
+</div>
+
+<p style="color:var(--gray-500); font-size:.88rem; margin-bottom:12px;">
+    Redenumește (scrie + Enter), reordonează (▲▼), mută în alt grup (select) sau șterge. Modificările se reflectă în vizualizare și în export (MS Project / P6 / CSV). Butonul „Reset" revine la structura generată automat.
+</p>
+
+<div class="wb-card">
+    {% if arbore %}
+        {% for it in arbore %}{{ rand(it, grupuri, p.id, 0) }}{% endfor %}
+    {% else %}
+        <p style="padding:24px; text-align:center; color:var(--gray-500);">WBS gol. Adauga un grup mai jos.</p>
+    {% endif %}
+    <div class="wb-add">
+        <form method="POST" action="{{ url_for('gantt.plan_wbs_op', id_=p.id) }}" style="display:flex; gap:8px; flex-wrap:wrap; margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="actiune" value="adauga">
+            <input type="text" name="nume" placeholder="Nume grup nou (la radacina)" required>
+            <button class="wb-gold"><i class="fa-solid fa-plus"></i> Adauga grup</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -429,6 +429,7 @@ def plan(id_):
     except import_engine.EroareImport as e:
         flash(f'Nu pot deschide planul: {e}', 'danger')
         return redirect(url_for('gantt.planuri'))
+    _aplica_arbore_salvat(rezultat, p.id)        # WBS editat are prioritate fata de auto
     token = _salveaza_temp(p.continut, p.ext)   # pt. butoanele de export din rezultat
     session['gantt_token'] = token
     session['gantt_ext'] = p.ext
@@ -458,6 +459,7 @@ def plan_export(id_, fmt):
     try:
         rezultat, _ = _pipeline_din_temp(p.continut, p.ext, mapare, rand_antet,
                                          preturi_boq=_preturi_plan(p))
+        _aplica_arbore_salvat(rezultat, p.id)    # export-ul respecta WBS-ul editat
         data, mime, ext_out = export_engine.exporta(
             fmt, rezultat, nume_proiect=p.nume, ore_pe_zi=_motor().setari.get('ore_pe_zi', 8))
     except (import_engine.EroareImport, ValueError):
@@ -465,6 +467,77 @@ def plan_export(id_, fmt):
     import io
     return send_file(io.BytesIO(data), mimetype=mime, as_attachment=True,
                      download_name=f'planificare_{p.nume}.{ext_out}')
+
+
+# ===================== EDITOR WBS (pe plan salvat) =====================
+def _aplica_arbore_salvat(rezultat, plan_id):
+    """Daca planul are arbore WBS salvat, inlocuieste WBS-ul auto cu cel editat."""
+    from services.gantt import wbs_editor
+    if plan_id and wbs_editor.arbore_exista(plan_id):
+        noduri_db = wbs_editor.noduri_plan(plan_id)
+        rezultat.noduri_wbs = wbs_editor.wbs_din_arbore(rezultat.activitati, noduri_db)
+    return rezultat
+
+
+def _arbore_nested(plan_id):
+    """(arbore_nested, grupuri_flat) pentru editorul WBS."""
+    from services.gantt import wbs_editor
+    noduri = wbs_editor.noduri_plan(plan_id)
+    by_parent: dict = {}
+    for n in noduri:
+        by_parent.setdefault(n.parinte_id, []).append(n)
+    for k in by_parent:
+        by_parent[k].sort(key=lambda x: (x.ordine, x.id))
+    grupuri = [n for n in noduri if n.tip == 'grup']
+
+    def build(pid):
+        return [{'nod': n, 'copii': build(n.id)} for n in by_parent.get(pid, [])]
+    return build(None), grupuri
+
+
+@gantt_bp.route('/plan/<int:id_>/wbs')
+@login_required
+def plan_wbs(id_):
+    """Editor WBS pentru un plan salvat. Seedeaza arborele din auto la prima intrare."""
+    from services.gantt import wbs_editor
+    p = _plan_sau_404(id_)
+    if not wbs_editor.arbore_exista(p.id):
+        mapare, rand_antet = _mapare_din_plan(p)
+        try:
+            rezultat, _ = _pipeline_din_temp(p.continut, p.ext, mapare, rand_antet)
+        except import_engine.EroareImport as e:
+            flash(f'Nu pot genera WBS-ul: {e}', 'danger')
+            return redirect(url_for('gantt.plan', id_=p.id))
+        wbs_editor.seed_arbore(p, rezultat.noduri_wbs)
+    arbore, grupuri = _arbore_nested(p.id)
+    return render_template('gantt/wbs_editor.html', p=p, arbore=arbore, grupuri=grupuri)
+
+
+@gantt_bp.route('/plan/<int:id_>/wbs/op', methods=['POST'])
+@login_required
+def plan_wbs_op(id_):
+    """Operatii editor: redenumeste / sus / jos / muta / adauga / sterge / reset."""
+    from services.gantt import wbs_editor
+    p = _plan_sau_404(id_)
+    act = request.form.get('actiune')
+    nod_id = request.form.get('nod_id', type=int)
+    if act == 'redenumeste':
+        wbs_editor.redenumeste(p.id, nod_id, request.form.get('nume'))
+    elif act in ('sus', 'jos'):
+        wbs_editor.muta(p.id, nod_id, act)
+    elif act == 'muta':
+        wbs_editor.muta_in_grup(p.id, nod_id, request.form.get('grup_id', type=int) or None)
+    elif act == 'adauga':
+        if wbs_editor.adauga_grup(p, request.form.get('nume'),
+                                  request.form.get('parinte_id', type=int) or None):
+            flash('Grup adaugat.', 'success')
+    elif act == 'sterge':
+        wbs_editor.sterge_nod(p.id, nod_id)
+    elif act == 'reset':
+        wbs_editor.reset(p.id)
+        flash('WBS resetat la structura automata.', 'success')
+        return redirect(url_for('gantt.plan', id_=p.id))
+    return redirect(url_for('gantt.plan_wbs', id_=p.id))
 
 
 @gantt_bp.route('/mapare', methods=['GET', 'POST'])
