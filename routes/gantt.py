@@ -195,10 +195,16 @@ def _render_rezultat(rezultat, raport_import, token, nume_fisier, plan_id=None):
         proiecte = Proiect.query.order_by(Proiect.nume).all()
     except Exception:
         proiecte = []
+    from services.gantt import resurse_timp
+    try:
+        resurse = resurse_timp.histograma_resurse(rezultat, date.today())
+    except Exception:
+        resurse = None
     return render_template(
         'gantt/rezultat.html', rezultat=rezultat, raport_import=raport_import,
         token=token, nume_fisier=nume_fisier,
         diagrama=diagrama.sarcini_gantt(rezultat, date.today()),
+        resurse=resurse,
         proiecte=proiecte, plan_id=plan_id, clasifica=_clasifica_sesiune())
 
 

@@ -185,6 +185,24 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
 </div>
 {% endif %}
 
+{% if resurse and resurse.luna %}
+<div class="gz-sec">
+    <div class="gz-sec-h" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span><i class="fa-solid fa-chart-column"></i> Resurse in timp &amp; cash-flow{% if resurse.varf %} — varf {{ resurse.varf.eticheta }}: {{ '{:,.0f}'.format(resurse.varf.total) }} lei{% endif %}</span>
+        <span style="display:flex; gap:6px;">
+            <button class="gz-rp on" data-pas="luna" style="background:rgba(245,241,232,.14); color:#F5F1E8; border:1px solid rgba(201,169,97,.5); padding:3px 12px; border-radius:6px; font-size:.78rem; cursor:pointer;">Lunar</button>
+            <button class="gz-rp" data-pas="saptamana" style="background:rgba(245,241,232,.14); color:#F5F1E8; border:1px solid rgba(201,169,97,.5); padding:3px 12px; border-radius:6px; font-size:.78rem; cursor:pointer;">Saptamanal</button>
+        </span>
+    </div>
+    <div style="padding:14px 16px;">
+        <canvas id="chartResurse" height="150"></canvas>
+        <small style="color:var(--gray-500); display:block; margin-top:8px;">
+            Bare stivuite = cost pe perioada (material / manopera / utilaj). Linia = cash-flow cumulat (curba S in bani). Orele de manopera sunt estimate (valoare / tarif).
+        </small>
+    </div>
+</div>
+{% endif %}
+
 {% if diagrama and diagrama.sarcini %}
 <div class="gz-sec">
     <div class="gz-sec-h" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -282,6 +300,39 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
                                              backgroundColor: '#0B1426' }] },
             options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false },
                        title: { display: true, text: 'Cost pe categorie (lei)' } } }
+        });
+    }
+
+    // --- Resurse in timp + cash-flow (A) ---
+    var R = {{ {'luna': (resurse.luna if resurse else []), 'saptamana': (resurse.saptamana if resurse else [])} | tojson }};
+    var elR = document.getElementById('chartResurse');
+    if (elR && R.luna && R.luna.length) {
+        var chartR = null;
+        var render = function(pas) {
+            var d = R[pas] || [];
+            if (chartR) chartR.destroy();
+            chartR = new Chart(elR, {
+                data: { labels: d.map(function(p){ return p.eticheta; }), datasets: [
+                    { label: 'Material', data: d.map(function(p){ return p.material; }), backgroundColor: '#C9A961', stack: 'c' },
+                    { label: 'Manopera', data: d.map(function(p){ return p.manopera; }), backgroundColor: '#0B1426', stack: 'c' },
+                    { label: 'Utilaj', data: d.map(function(p){ return p.utilaj; }), backgroundColor: '#8A6A12', stack: 'c' },
+                    { type: 'line', label: 'Cash-flow cumulat', data: d.map(function(p){ return p.cumulat; }),
+                      borderColor: '#2e7d32', fill: false, tension: 0.25, pointRadius: 0, borderWidth: 2, yAxisID: 'y2' }
+                ] },
+                options: { responsive: true, interaction: { mode: 'index', intersect: false },
+                    plugins: { title: { display: true, text: 'Resurse pe perioada + cash-flow cumulat' } },
+                    scales: { x: { stacked: true, ticks: { maxTicksLimit: 12 } },
+                              y: { stacked: true, title: { display: true, text: 'lei / perioada' } },
+                              y2: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'cumulat (lei)' } } } }
+            });
+        };
+        render('luna');
+        document.querySelectorAll('.gz-rp').forEach(function(b) {
+            b.addEventListener('click', function() {
+                document.querySelectorAll('.gz-rp').forEach(function(x) { x.style.background = 'rgba(245,241,232,.14)'; });
+                b.style.background = 'rgba(201,169,97,.55)';
+                render(b.getAttribute('data-pas'));
+            });
         });
     }
 })();
