@@ -69,6 +69,111 @@ def _split_cod(text: str):
     return '', s
 
 
+import re as _re
+_RX_COD_RESURSA = _re.compile(r'^\s*([0-9A-Za-z^+%./]+)\s*-\s*')
+
+
+def cod_resursa(denumire: str) -> str:
+    """Extrage codul de resursa din 'COD - denumire' (ex: '17460 - Izolator' -> '17460')."""
+    m = _RX_COD_RESURSA.match(str(denumire or ''))
+    return m.group(1) if m else ''
+
+
+def _rezultat_plan(plan):
+    """Re-ruleaza planul Gantt -> (RezultatPlanificare cu activitati programate, data_start)."""
+    import json
+    from datetime import date
+    from services.gantt.pipeline import MotorPlanificare
+    from services.gantt import import_engine
+    mapare = rand = None
+    if plan.mapare_json:
+        try:
+            d = json.loads(plan.mapare_json)
+            mapare, rand = d.get('coloane'), d.get('rand_antet')
+        except Exception:
+            pass
+    motor = MotorPlanificare()
+    art, _ = import_engine.importa(plan.continut, plan.ext, motor.setari,
+                                   mapare_manuala=mapare, rand_antet_manual=rand)
+    return motor.proceseaza(art), (plan.data_start or date.today())
+
+
+def legatura_resurse(proiect_id: int) -> dict:
+    """Conexiunea reala F3 <-> C pe cod de resursa. Pentru fiecare resursa:
+    cantitatea din F3 (suma pe activitati) vs extrasul C, activitatile care o
+    folosesc (drill-down) si necesarul esalonat pe luni (din programul Gantt).
+
+    {'are_plan', 'are_extrase', 'luni_axa': [...], 'resurse': [ {cod, denumire,
+    tip, um, f3_cant, extras_cant, extras_val, diff_pct, status, activitati: [...],
+    luni: {eticheta: cantitate}} ]}."""
+    from models import GanttPlan, ExtrasResursa
+    from services.gantt.diagrama import _calendar_lucrator
+
+    extrase = {}
+    for e in ExtrasResursa.query.filter_by(proiect_id=proiect_id).all():
+        if e.cod:
+            extrase[e.cod] = e
+    plan = (GanttPlan.query.filter_by(proiect_id=proiect_id)
+            .order_by(GanttPlan.data_creare.desc()).first())
+    if not plan:
+        return {'are_plan': False, 'are_extrase': bool(extrase),
+                'resurse': [], 'luni_axa': []}
+
+    rez, data_start = _rezultat_plan(plan)
+    durata = 1
+    for a in rez.activitati:
+        durata = max(durata, int(a.finish_zi or 0) + 1)
+    cal = _calendar_lucrator(data_start, durata)
+
+    def dz(i):
+        return cal[max(0, min(int(i), len(cal) - 1))]
+
+    grup: dict = {}        # cod -> {activitati, luni}
+    luni_axa: dict = {}
+    for a in rez.activitati:
+        cod = cod_resursa(a.nume)
+        if not cod:
+            continue
+        g = grup.setdefault(cod, {'activitati': [], 'luni': {}})
+        s0 = int(a.start_zi or 0)
+        s1 = max(s0, int(a.finish_zi or s0))
+        nd = s1 - s0 + 1
+        per = float(a.cantitate or 0) / nd
+        g['activitati'].append({'cod': a.cod, 'nume': a.nume[:80], 'um': a.um,
+                                'cantitate': round(float(a.cantitate or 0), 2),
+                                'start': dz(s0).isoformat(), 'finish': dz(s1).isoformat()})
+        for zi in range(s0, s1 + 1):
+            d = dz(zi)
+            k, et = (d.year, d.month), f'{d.month:02d}.{d.year}'
+            g['luni'][k] = g['luni'].get(k, 0.0) + per
+            luni_axa[k] = et
+
+    resurse = []
+    for cod, g in grup.items():
+        ex = extrase.get(cod)
+        f3c = sum(x['cantitate'] for x in g['activitati'])
+        exc = float(ex.cantitate or 0) if ex else 0.0
+        baza = max(f3c, exc)
+        diff = (abs(f3c - exc) / baza * 100.0) if baza else 0.0
+        status = ('lipsa' if not ex else ('ok' if diff <= 1 else
+                  ('atentie' if diff <= 15 else 'critic')))
+        resurse.append({
+            'cod': cod,
+            'denumire': (ex.denumire if ex else g['activitati'][0]['nume'])[:90],
+            'tip': (ex.tip if ex else '?'),
+            'um': (ex.um if ex else g['activitati'][0]['um']) or '',
+            'f3_cant': round(f3c, 2), 'extras_cant': round(exc, 2),
+            'extras_val': round(float(ex.valoare or 0) if ex else 0.0, 0),
+            'diff_pct': round(diff, 1), 'status': status,
+            'activitati': g['activitati'],
+            'luni': {et: round(g['luni'][k], 2) for k, et in sorted(luni_axa.items())
+                     if k in g['luni']},
+        })
+    resurse.sort(key=lambda r: (-r['extras_val'], r['cod']))
+    return {'are_plan': True, 'are_extrase': bool(extrase),
+            'luni_axa': [luni_axa[k] for k in sorted(luni_axa)], 'resurse': resurse}
+
+
 def reconciliere(proiect_id: int) -> dict:
     """Compara totalurile M/m/U din planul F3 (Gantt) vs extrasele C6/C7/C8.
     {'material'|'manopera'|'utilaj': {f3, extras, diff_pct, status}, are_plan, are_extrase}.

@@ -471,6 +471,21 @@ def resurse(id):
                            recon=recon, furnizori=furnizori)
 
 
+@proiecte_bp.route('/<int:id>/resurse/conexiune')
+@login_required
+def resurse_conexiune(id):
+    """Conexiunea reala F3 <-> C pe cod de resursa: reconciliere la nivel de articol,
+    necesar esalonat in timp (per resursa) si drill-down resursa -> activitati."""
+    from services.deviz_extras import legatura_resurse
+    proiect = Proiect.query.get_or_404(id)
+    leg = legatura_resurse(id)
+    sumar = {'ok': 0, 'atentie': 0, 'critic': 0, 'lipsa': 0}
+    for r in leg.get('resurse', []):
+        sumar[r['status']] = sumar.get(r['status'], 0) + 1
+    return render_template('proiecte/legatura_resurse.html', proiect=proiect,
+                           leg=leg, sumar=sumar)
+
+
 @proiecte_bp.route('/<int:id>/resurse/aprovizionare.csv')
 @login_required
 def resurse_aprovizionare_csv(id):

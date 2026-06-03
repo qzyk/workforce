@@ -29,6 +29,7 @@ table.rs td { padding:7px 11px; border-top:1px solid #ECE7DA; text-align:right; 
 <div class="rs-hero">
     <h2><i class="fa-solid fa-layer-group"></i> Resurse din deviz — {{ proiect.cod_proiect }}</h2>
     <div style="color:rgba(245,241,232,.75); font-size:.9rem;">Extrase C6 (materiale) · C7 (manopera) · C8 (utilaje). Incarca fisierele separat — tipul e detectat automat.</div>
+    <a href="{{ url_for('proiecte.resurse_conexiune', id=proiect.id) }}" style="display:inline-block; margin-top:10px; background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; padding:7px 14px; border-radius:8px; font-weight:700; text-decoration:none; font-size:.85rem;"><i class="fa-solid fa-link"></i> Conexiune F3 ↔ resurse (reconciliere + necesar in timp)</a>
 </div>
 
 <form class="rs-up" method="POST" action="{{ url_for('proiecte.resurse_upload', id=proiect.id) }}" enctype="multipart/form-data">

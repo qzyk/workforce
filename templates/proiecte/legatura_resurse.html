@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Conexiune F3 ↔ resurse - {{ proiect.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.lista') }}">Proiecte</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.hub', id=proiect.id) }}">{{ proiect.cod_proiect }}</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.resurse', id=proiect.id) }}">Resurse</a></li>
+<li class="breadcrumb-item active">Conexiune F3 ↔ C</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.lr-hero { background:#0B1426; color:#F5F1E8; border-radius:12px; padding:18px 22px; margin-bottom:16px; }
+.lr-hero h2 { margin:0 0 4px; color:#C9A961; }
+.lr-pills { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.lr-pill { padding:3px 10px; border-radius:12px; font-size:.78rem; font-weight:700; }
+.lr-card { background:#fff; border:1px solid #E8E3D5; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,0.05); overflow:hidden; }
+table.lr { width:100%; border-collapse:collapse; font-size:.84rem; }
+table.lr th { background:#F5F1E8; padding:9px 11px; text-align:right; position:sticky; top:0; } table.lr th:nth-child(-n+3){ text-align:left; }
+table.lr td { padding:8px 11px; border-top:1px solid #ECE7DA; text-align:right; vertical-align:top; } table.lr td:nth-child(-n+3){ text-align:left; }
+.lr-cod { font-family:ui-monospace,Menlo,monospace; font-size:.78rem; color:var(--gray-500); }
+.lr-st { font-weight:700; padding:1px 8px; border-radius:10px; font-size:.74rem; }
+.st-ok{background:#E6F2E6;color:#2e7d32;} .st-atentie{background:#FBF1D6;color:#8A6A12;}
+.st-critic{background:#FAE3E3;color:#9B2222;} .st-lipsa{background:#ECECEC;color:#777;}
+.lr-tag{font-size:.7rem;padding:1px 6px;border-radius:8px;background:#E8EAF6;color:#3949AB;}
+.lr-det{ background:#FBF8F0; }
+.lr-mini{ width:100%; border-collapse:collapse; font-size:.78rem; margin-top:4px; }
+.lr-mini td{ padding:3px 8px; border:none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lr-hero">
+    <h2><i class="fa-solid fa-link"></i> Conexiune F3 ↔ resurse (C) — {{ proiect.cod_proiect }}</h2>
+    <div style="color:rgba(245,241,232,.78); font-size:.9rem;">Legatura pe cod de resursa: reconciliere la nivel de articol, necesar esalonat in timp si trasabilitate resursa → activitati.</div>
+    {% if leg.resurse %}
+    <div class="lr-pills">
+        <span class="lr-pill" style="background:#E6F2E6;color:#2e7d32;">✓ {{ sumar.ok }} concorda</span>
+        <span class="lr-pill" style="background:#FBF1D6;color:#8A6A12;">⚠ {{ sumar.atentie }} atentie</span>
+        <span class="lr-pill" style="background:#FAE3E3;color:#9B2222;">✗ {{ sumar.critic }} discrepanta</span>
+        <span class="lr-pill" style="background:#ECECEC;color:#555;">— {{ sumar.lipsa }} fara extras</span>
+    </div>
+    {% endif %}
+</div>
+
+{% if not leg.are_plan %}
+<div class="lr-card" style="padding:28px; text-align:center; color:var(--gray-500);">
+    Niciun plan Gantt salvat pe proiect. Incarca F3-ul in <a href="{{ url_for('gantt.index') }}">Planificare Gantt</a> si salveaza-l pe acest proiect.
+</div>
+{% elif not leg.resurse %}
+<div class="lr-card" style="padding:28px; text-align:center; color:var(--gray-500);">
+    Planul nu are coduri de resursa recunoscute. (Sub-articolele F3 trebuie sa aiba forma „COD - denumire".)
+</div>
+{% else %}
+<div class="lr-card">
+    <div style="overflow:auto; max-height:640px;">
+    <table class="lr">
+        <thead><tr>
+            <th>Cod</th><th>Resursa</th><th>Tip</th><th>F3 (plan)</th><th>Extras (C)</th><th>Dif.</th><th>Stare</th><th>Detalii</th>
+        </tr></thead>
+        <tbody>
+            {% for r in leg.resurse %}
+            <tr>
+                <td class="lr-cod">{{ r.cod }}</td>
+                <td>{{ r.denumire }}</td>
+                <td><span class="lr-tag">{{ r.tip }}</span></td>
+                <td>{{ '%g'|format(r.f3_cant) }} {{ r.um }}</td>
+                <td>{{ '%g'|format(r.extras_cant) }}{% if r.extras_val %} <span style="color:var(--gray-400);">· {{ '{:,.0f}'.format(r.extras_val) }} lei</span>{% endif %}</td>
+                <td>{{ r.diff_pct }}%</td>
+                <td><span class="lr-st st-{{ r.status }}">{{ {'ok':'✓','atentie':'⚠','critic':'✗','lipsa':'—'}[r.status] }} {{ r.status }}</span></td>
+                <td style="text-align:left;">
+                    <details>
+                        <summary style="cursor:pointer; color:#A8893D; font-weight:600;">{{ r.activitati|length }} activitati</summary>
+                        <div class="lr-det" style="padding:6px 8px; border-radius:6px; margin-top:4px;">
+                            <b style="font-size:.74rem; color:var(--gray-600);">Folosita in:</b>
+                            <table class="lr-mini">
+                                {% for a in r.activitati %}
+                                <tr><td class="lr-cod">{{ a.cod }}</td><td>{{ a.nume }}</td><td style="text-align:right;">{{ '%g'|format(a.cantitate) }} {{ a.um }}</td><td style="color:var(--gray-500);">{{ a.start }} → {{ a.finish }}</td></tr>
+                                {% endfor %}
+                            </table>
+                            {% if r.luni %}
+                            <b style="font-size:.74rem; color:var(--gray-600);">Necesar pe luni:</b>
+                            <div style="font-size:.78rem;">{% for et, q in r.luni.items() %}<span style="display:inline-block; margin:2px 8px 2px 0;">{{ et }}: <b>{{ '%g'|format(q) }}</b></span>{% endfor %}</div>
+                            {% endif %}
+                        </div>
+                    </details>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
+
+<a href="{{ url_for('proiecte.resurse', id=proiect.id) }}" style="display:inline-block; margin-top:14px; color:#A8893D; font-weight:600; text-decoration:none;"><i class="fa-solid fa-arrow-left"></i> Inapoi la Resurse</a>
+{% endblock %}
