@@ -40,6 +40,7 @@ TRANSLATIONS = {
     'Administrare': {'en': 'Administration'},
     'Documente': {'en': 'Documents'},
     'Rapoarte': {'en': 'Reports'},
+    'Ghid de utilizator': {'en': 'User guide'},
     'Setari': {'en': 'Settings'},
     'Masini': {'en': 'Vehicles'},
     'BIM': {'en': 'BIM'},

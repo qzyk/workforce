@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Ghid de utilizator - EDIFICO{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Ghid de utilizator</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.gh-hero { background:linear-gradient(135deg,#0B1426,#152033); color:#F5F1E8; border-radius:14px; padding:24px 28px; margin-bottom:18px; }
+.gh-hero h1 { margin:0 0 6px; color:#C9A961; font-family:'Cinzel',serif; font-size:1.6rem; }
+.gh-hero p { margin:0; color:rgba(245,241,232,.8); max-width:760px; }
+.gh-wrap { display:grid; grid-template-columns:230px 1fr; gap:22px; align-items:start; }
+.gh-toc { position:sticky; top:14px; background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:14px; box-shadow:0 2px 10px rgba(0,0,0,0.05); font-size:.85rem; }
+.gh-toc b { display:block; color:#0B1426; margin-bottom:8px; text-transform:uppercase; letter-spacing:.5px; font-size:.72rem; color:var(--gray-500); }
+.gh-toc a { display:block; padding:5px 8px; color:var(--gray-700); text-decoration:none; border-radius:6px; }
+.gh-toc a:hover { background:#FBF8F0; color:#A8893D; }
+.gh-sec { background:#fff; border:1px solid #E8E3D5; border-radius:12px; padding:20px 24px; margin-bottom:16px; box-shadow:0 2px 10px rgba(0,0,0,0.04); scroll-margin-top:14px; }
+.gh-sec h2 { margin:0 0 12px; color:#0B1426; font-size:1.18rem; display:flex; align-items:center; gap:10px; }
+.gh-sec h2 .n { width:30px; height:30px; flex:0 0 30px; border-radius:50%; background:linear-gradient(135deg,#E0BB6E,#C9A961); color:#0B1426; display:flex; align-items:center; justify-content:center; font-size:.9rem; font-weight:800; }
+.gh-sec h3 { margin:16px 0 6px; color:#0B1426; font-size:.98rem; }
+.gh-sec p, .gh-sec li { color:var(--gray-700); line-height:1.6; }
+.gh-sec ol, .gh-sec ul { padding-left:22px; }
+.gh-tip { background:#FBF8F0; border-left:3px solid #C9A961; border-radius:6px; padding:10px 14px; margin:12px 0; font-size:.9rem; }
+.gh-flow { background:#0B1426; color:#C9A961; border-radius:8px; padding:10px 14px; font-weight:700; text-align:center; margin:10px 0; }
+.gh-gloss dt { font-weight:700; color:#0B1426; margin-top:8px; }
+.gh-gloss dd { margin:0 0 4px; color:var(--gray-600); }
+kbd { background:#0B1426; color:#F5F1E8; padding:1px 7px; border-radius:5px; font-size:.82rem; }
+@media (max-width:880px){ .gh-wrap { grid-template-columns:1fr; } .gh-toc { position:static; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="gh-hero">
+    <h1><i class="fa-solid fa-circle-question"></i> Ghid de utilizator</h1>
+    <p>Pe intelesul oricui, pas cu pas — fara termeni tehnici. Edifico tine la un loc tot ce tine
+       de santierele tale: oameni, pontaje, devize, planificare, costuri, utilaje, documente.</p>
+</div>
+
+<div class="gh-wrap">
+    <nav class="gh-toc">
+        <b>Cuprins</b>
+        <a href="#s1">1. Primii pasi</a>
+        <a href="#s2">2. Incepi un proiect</a>
+        <a href="#s3">3. Planificare din deviz</a>
+        <a href="#s4">4. Resurse C6/C7/C8</a>
+        <a href="#s5">5. Pontaje si teren</a>
+        <a href="#s6">6. Utilaje si avans</a>
+        <a href="#s7">7. Contracte si oferte</a>
+        <a href="#s8">8. BIM (model 3D)</a>
+        <a href="#s9">9. Masini, documente</a>
+        <a href="#s10">10. Setari</a>
+        <a href="#s11">11. Intrebari frecvente</a>
+        <a href="#s12">12. Glosar</a>
+    </nav>
+
+    <div>
+        <div class="gh-sec" id="s1">
+            <h2><span class="n">1</span> Primii pasi</h2>
+            <ol>
+                <li>Intra in cont cu emailul si parola primite.</li>
+                <li>Ajungi pe <b>Tabloul de bord</b> — privire de ansamblu: angajati activi, proiecte, orele lunii, alerte.</li>
+                <li>Meniul din stanga e impartit pe sectiuni: <b>Operational</b> (Proiecte, Pontaje, Teren, Activitati),
+                    <b>Planificare &amp; cost</b> (Gantt, BIM, Contracte), <b>Resurse</b> (Angajati, Masini),
+                    <b>Documente &amp; rapoarte</b>, <b>Administrare</b>.</li>
+            </ol>
+            <div class="gh-tip"><i class="fa-solid fa-bolt" style="color:#C9A961;"></i> <b>Cautare rapida:</b>
+                apasa <kbd>Ctrl</kbd>+<kbd>K</kbd> din orice pagina si scrie ce cauti (proiect, plan, santier, angajat) — sari direct acolo.</div>
+            <p>Sus in dreapta poti comuta limba intre Romana si Engleza.</p>
+        </div>
+
+        <div class="gh-sec" id="s2">
+            <h2><span class="n">2</span> Cum incepi un proiect</h2>
+            <ol>
+                <li><b>Adaugi proiectul</b> — meniul <i>Proiecte</i> &rarr; <i>Adauga proiect</i>.</li>
+                <li>Deschizi <b>Hub 360</b> al proiectului — vezi <b>Parcursul proiectului</b>, cu pasii marcati ca facut / de facut si pasul urmator evidentiat.</li>
+                <li>Apesi pe pasul urmator si te duce direct unde trebuie.</li>
+            </ol>
+            <div class="gh-flow">Deviz &rarr; Planificare &rarr; Structura (WBS) &rarr; Cost &rarr; Utilaje &rarr; Avans</div>
+        </div>
+
+        <div class="gh-sec" id="s3">
+            <h2><span class="n">3</span> Planificarea lucrarilor din deviz</h2>
+            <p>Transformi <b>lista de cantitati (devizul / formularul F3)</b> intr-un <b>plan de lucru</b> automat.</p>
+            <h3>Pas cu pas</h3>
+            <ol>
+                <li>Meniul <i>Planificare Gantt</i>.</li>
+                <li><b>Incarci fisierul</b> cu lista de cantitati (Excel sau CSV).</li>
+                <li>Lasi bifat <b>"Clasificare automata"</b> (recunoaste tipul lucrarilor) sau debifezi daca pastrezi categoria din fisier.</li>
+                <li>Apesi <b>Genereaza planificarea</b>. Aplicatia calculeaza durata si <b>costul real</b> (materiale / manopera / utilaje).</li>
+            </ol>
+            <h3>Ce vezi dupa generare</h3>
+            <ul>
+                <li>Lista de activitati cu cantitati, durate, costuri.</li>
+                <li><b>Centralizator F2</b> — costul pe categorii de lucrari.</li>
+                <li><b>Resurse in timp &amp; cash-flow</b> — cati bani pe luna iti trebuie + varful de cheltuieli.</li>
+                <li><b>Diagrama Gantt</b> cu drumul critic, si butoane de export (MS Project / Primavera / CSV).</li>
+            </ul>
+            <h3>Salvare si structura (WBS)</h3>
+            <p>Apesi <b>"Salveaza si editeaza WBS"</b>. In editor poti redenumi (scrii + Enter), reordona (sageti),
+               muta in alt grup, adauga grupuri sau reseta. Modificarile apar in plan si in export.</p>
+            <div class="gh-tip"><i class="fa-solid fa-circle-info" style="color:#C9A961;"></i> Editorul de structura merge doar pe un plan <b>salvat</b>.
+                Din previzualizare, foloseste butonul "Salveaza si editeaza WBS".</div>
+            <div class="gh-tip"><i class="fa-solid fa-clock" style="color:#C9A961;"></i> Daca duratele par prea mari, regleaza
+                <b>randamentele</b> (cat se face pe zi) din <i>Planificare Gantt &rarr; Configurare</i>.</div>
+        </div>
+
+        <div class="gh-sec" id="s4">
+            <h2><span class="n">4</span> Resursele din deviz (C6 / C7 / C8)</h2>
+            <p>Extrasele de resurse: <b>C6</b> materiale, <b>C7</b> manopera (ore pe meserii), <b>C8</b> utilaje (ore).</p>
+            <h3>Cum le incarci</h3>
+            <ol>
+                <li>Proiect &rarr; <b>Resurse</b> (sau cardul din Hub 360).</li>
+                <li>Incarci fisierele <b>pe rand</b> — aplicatia recunoaste singura tipul (C6/C7/C8).</li>
+            </ol>
+            <h3>Ce poti face</h3>
+            <ul>
+                <li><b>Necesar materiale (CSV)</b> — lista de comanda, grupata pe furnizor.</li>
+                <li><b>Reconciliere F3 ↔ extrase</b> — verifici daca planul se potriveste cu extrasele (verde / galben / rosu).</li>
+                <li><b>Conexiune F3 ↔ resurse</b> — pentru fiecare resursa: comparatie pe articol, <b>necesar pe luni</b>, si in ce activitati e folosita.</li>
+            </ul>
+        </div>
+
+        <div class="gh-sec" id="s5">
+            <h2><span class="n">5</span> Pontaje si lucru din teren</h2>
+            <h3>Pontaje (birou)</h3>
+            <p>Meniul <i>Pontaje</i> &rarr; <i>Adauga pontaj</i> (angajat, proiect, ore, ziua). Poti adauga si in masa, vedea calendarul si trimite spre aprobare.</p>
+            <h3>Teren (telefon)</h3>
+            <ol>
+                <li>Meniul <i>Teren</i>.</li>
+                <li><b>Pontaj rapid</b> — alegi proiectul, apesi orele (4/6/8/10/12), salvezi. Gata in 3 atingeri.</li>
+                <li><b>Raporteaza problema</b> — ce ai observat + gravitatea.</li>
+            </ol>
+            <div class="gh-tip"><i class="fa-solid fa-mobile-screen" style="color:#C9A961;"></i> Poti instala aplicatia pe telefon din meniul <i>Instaleaza app</i>.</div>
+        </div>
+
+        <div class="gh-sec" id="s6">
+            <h2><span class="n">6</span> Utilaje si avans (EVM)</h2>
+            <h3>Utilaje</h3>
+            <p>Proiect &rarr; <b>Utilaje</b>: inregistrezi consumul real (utilaj, ore, tarif). Sus vezi <b>planificat vs real</b>.</p>
+            <h3>Avans (planificat vs realizat)</h3>
+            <p>Proiect &rarr; <b>EVM</b>: compara cat ar fi trebuit facut cu cat s-a facut.</p>
+            <ul>
+                <li><b>Avans %</b> — cat e gata.</li>
+                <li><b>SPI</b> — inaintea/in urma graficului (peste 1 = bine).</li>
+                <li><b>CPI</b> — sub/peste buget (peste 1 = bine).</li>
+            </ul>
+            <p>Daca un proiect e in risc, managerul primeste o notificare automata.</p>
+        </div>
+
+        <div class="gh-sec" id="s7">
+            <h2><span class="n">7</span> Contracte, oferte si situatii</h2>
+            <p>Daca e activat, modulul <i>Contracte</i> tine contractele, ofertele pretuite, situatiile lunare,
+               procesele verbale si termenele (cu alerte). Aceste date alimenteaza automat avansul (EVM).</p>
+        </div>
+
+        <div class="gh-sec" id="s8">
+            <h2><span class="n">8</span> BIM — modelul 3D</h2>
+            <p>Pentru proiecte modelate (IFC): arborele santiere &rarr; cladiri &rarr; spatii &rarr; elemente,
+               modele 3D cu animatie <b>4D</b>, <b>antemasuratoare (QTO)</b> si probleme/calitate.</p>
+            <div class="gh-tip"><i class="fa-solid fa-circle-info" style="color:#C9A961;"></i> Multe functii BIM sunt optionale (vezi <i>Module</i>). Daca nu lucrezi cu modele 3D, poti ignora modulul.</div>
+        </div>
+
+        <div class="gh-sec" id="s9">
+            <h2><span class="n">9</span> Masini, documente, rapoarte</h2>
+            <ul>
+                <li><b>Masini</b> — parc auto: documente (ITP/RCA/CASCO) cu alerte de expirare, foi de parcurs, defectiuni.</li>
+                <li><b>Documente</b> — fisiere pe proiecte, cu alerte de expirare.</li>
+                <li><b>Rapoarte</b> — situatii si exporturi pentru management.</li>
+            </ul>
+        </div>
+
+        <div class="gh-sec" id="s10">
+            <h2><span class="n">10</span> Setari (administrator)</h2>
+            <ul>
+                <li><b>Firma</b> — datele companiei.</li>
+                <li><b>Utilizatori</b> — acces si roluri (administrator / manager / operator).</li>
+                <li><b>Sarbatori</b> — calendarul legal (folosit la pontaje).</li>
+                <li><b>Backup</b> — copii de siguranta: complet, snapshot rapid, si <b>backup automat zilnic</b>.</li>
+                <li><b>Module si functii</b> — activezi/dezactivezi functii optionale.</li>
+            </ul>
+            <div class="gh-tip"><i class="fa-solid fa-shield-halved" style="color:#C9A961;"></i> Datele tale stau pe serverul tau — fara servicii externe.</div>
+        </div>
+
+        <div class="gh-sec" id="s11">
+            <h2><span class="n">11</span> Intrebari frecvente</h2>
+            <h3>Nu gasesc un buton / o functie.</h3>
+            <p>Foloseste cautarea (<kbd>Ctrl</kbd>+<kbd>K</kbd>). Daca e o functie optionala, verifica in <i>Administrare &rarr; Module</i> daca e pornita.</p>
+            <h3>Costurile par estimate, nu reale.</h3>
+            <p>Asigura-te ca fisierul are coloanele de pret si, la deviz cu extrase, randurile material:/manopera:/utilaj: sub fiecare articol.</p>
+            <h3>Nu pot edita structura (WBS).</h3>
+            <p>Editorul merge doar pe un plan salvat. Din previzualizare, apasa "Salveaza si editeaza WBS".</p>
+            <h3>Vreau lista de materiale pentru comanda.</h3>
+            <p>Proiect &rarr; Resurse &rarr; "Necesar materiale (CSV)".</p>
+        </div>
+
+        <div class="gh-sec" id="s12">
+            <h2><span class="n">12</span> Glosar simplu</h2>
+            <dl class="gh-gloss">
+                <dt>Deviz / F3 (lista de cantitati)</dt><dd>Tabelul cu ce lucrari se fac si in ce cantitati.</dd>
+                <dt>C6 / C7 / C8</dt><dd>Extrasele de resurse: materiale / manopera / utilaje.</dd>
+                <dt>WBS (structura lucrarilor)</dt><dd>Cum sunt organizate lucrarile: capitole &rarr; activitati.</dd>
+                <dt>Gantt</dt><dd>Graficul cu lucrarile asezate in timp (bare).</dd>
+                <dt>Drum critic</dt><dd>Lantul de lucrari care nu pot intarzia fara sa intarzie tot proiectul.</dd>
+                <dt>Cash-flow</dt><dd>Banii de care ai nevoie, esalonati pe perioade.</dd>
+                <dt>EVM (avans)</dt><dd>Compararea a ce ar fi trebuit facut cu ce s-a facut (SPI, CPI).</dd>
+                <dt>QTO (antemasuratoare)</dt><dd>Cantitatile scoase automat din modelul 3D.</dd>
+            </dl>
+        </div>
+    </div>
+</div>
+{% endblock %}

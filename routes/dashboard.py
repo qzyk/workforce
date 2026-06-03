@@ -433,3 +433,10 @@ def cauta():
         pass
 
     return jsonify(out)
+
+
+@dashboard_bp.route('/ghid')
+@login_required
+def ghid():
+    """Ghid de utilizator (pentru incepatori, fara termeni tehnici)."""
+    return render_template('ghid.html')

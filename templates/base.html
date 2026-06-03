@@ -203,6 +203,12 @@
                         <span>{{ _('Rapoarte') }}</span>
                     </a>
                 </li>
+                <li>
+                    <a href="{{ url_for('dashboard.ghid') }}" class="{% if request.endpoint == 'dashboard.ghid' %}active{% endif %}">
+                        <i class="fa-solid fa-circle-question"></i>
+                        <span>{{ _('Ghid de utilizator') }}</span>
+                    </a>
+                </li>
                 {% if current_user.is_admin %}
                 <li class="sidebar-section">{{ _('Administrare') }}</li>
                 <li>

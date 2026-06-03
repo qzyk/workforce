@@ -20,6 +20,13 @@ def test_pontaje_empty_state_macro(authenticated_client):
     assert r.status_code == 200
 
 
+def test_ghid_utilizator(authenticated_client):
+    """Pagina de ajutor (/ghid) se incarca cu cuprins si glosar."""
+    r = authenticated_client.get('/ghid')
+    assert r.status_code == 200
+    assert b'Ghid de utilizator' in r.data and b'Cuprins' in r.data and b'Glosar' in r.data
+
+
 def test_dashboard_ghid_fara_planuri(authenticated_client, app):
     """U4: cu proiecte dar fara planuri -> hint 'creeaza primul plan'."""
     from models import db, Proiect, GanttPlan
