@@ -239,6 +239,9 @@ a:hover { color: var(--primary-light); }
 .badge-danger { background: var(--danger); color: #fff; }
 
 .sidebar-divider { border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 20px; }
+.sidebar-section { padding: 14px 20px 4px; font-size: 0.66rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.9px; color: rgba(201,169,97,0.75); }
+.sidebar-section:first-child { padding-top: 4px; }
 
 .sidebar-logout { color: rgba(255,255,255,0.5) !important; }
 .sidebar-logout:hover { color: var(--danger-light) !important; background: rgba(198,40,40,0.15) !important; }

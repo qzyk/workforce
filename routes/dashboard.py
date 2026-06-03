@@ -6,7 +6,7 @@ Calculeaza statistici complete pentru panoul de control
 import json
 import calendar
 from datetime import datetime, date, timedelta
-from flask import Blueprint, render_template, redirect, url_for, jsonify, flash
+from flask import Blueprint, render_template, redirect, url_for, jsonify, flash, request
 from flask_login import login_required, current_user
 from sqlalchemy import func, case, and_, or_, extract
 
@@ -382,3 +382,47 @@ def verifica_riscuri():
     flash(f'{n} alerte EVM generate — vezi notificari.' if n
           else 'Niciun proiect activ la risc EVM.', 'info' if n else 'success')
     return redirect(url_for('dashboard.executiv'))
+
+
+@dashboard_bp.route('/cauta')
+@login_required
+def cauta():
+    """Cautare globala (autocomplete header): proiecte, planuri, angajati, santiere, contracte."""
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 2:
+        return jsonify([])
+    like = f'%{q}%'
+    tid = getattr(current_user, 'tenant_id', None)
+    out = []
+
+    for p in Proiect.query.filter(or_(Proiect.cod_proiect.ilike(like),
+                                      Proiect.nume.ilike(like))).limit(6).all():
+        out.append({'tip': 'proiect', 'label': f'{p.cod_proiect} · {p.nume}',
+                    'cale': 'Proiect', 'url': url_for('proiecte.hub', id=p.id)})
+
+    from models import GanttPlan, Santier
+    for pl in GanttPlan.query.filter(GanttPlan.nume.ilike(like)).limit(5).all():
+        out.append({'tip': 'plan', 'label': pl.nume, 'cale': 'Plan Gantt',
+                    'url': url_for('gantt.plan', id_=pl.id)})
+
+    for a in Angajat.query.filter(or_(Angajat.nume.ilike(like),
+                                      Angajat.prenume.ilike(like))).limit(5).all():
+        out.append({'tip': 'angajat', 'label': f'{a.nume} {a.prenume}',
+                    'cale': a.functie or 'Angajat', 'url': url_for('angajati.detalii', id=a.id)})
+
+    for s in Santier.query.filter(or_(Santier.cod.ilike(like),
+                                      Santier.nume.ilike(like))).limit(5).all():
+        out.append({'tip': 'santier', 'label': f'{s.cod} · {s.nume}', 'cale': 'Santier',
+                    'url': url_for('bim.santier_detaliu', id=s.id)})
+
+    try:
+        from services.feature_flags import is_enabled
+        if is_enabled('controale-contract', tenant_id=tid):
+            from models import Contract
+            for c in Contract.query.filter(Contract.nr_contract.ilike(like)).limit(5).all():
+                out.append({'tip': 'contract', 'label': c.nr_contract, 'cale': 'Contract',
+                            'url': url_for('contracte.detalii', id=c.id)})
+    except Exception:
+        pass
+
+    return jsonify(out)

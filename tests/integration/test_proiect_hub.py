@@ -14,6 +14,8 @@ def test_hub_se_incarca(authenticated_client, app):
         assert r.status_code == 200
         assert b'Proiect hub test' in r.data
         assert b'Contracte' in r.data and b'Planuri Gantt' in r.data
+        # U2: parcursul ghidat + pasul urmator (proiect nou -> primul pas e "urmatorul")
+        assert b'Parcurs proiect' in r.data and b'urmatorul' in r.data
     finally:
         with app.app_context():
             p = db.session.get(Proiect, pid)

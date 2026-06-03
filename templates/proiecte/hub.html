@@ -22,6 +22,16 @@
 .hb-bim { background:#1565C0; } .hb-contr { background:#0B1426; } .hb-of { background:#A8893D; }
 .hb-gantt { background:#C9A961; } .hb-sit { background:#2e7d32; } .hb-ang { background:#6A1B9A; }
 .hb-doc { background:#546E7A; } .hb-loc { background:#00838F; }
+.hb-parcurs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:22px; }
+.hb-pas { flex:1; min-width:150px; display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #E8E3D5; border-radius:10px; padding:10px 12px; text-decoration:none; color:inherit; position:relative; transition:border-color .12s; }
+.hb-pas:hover { border-color:#C9A961; }
+.hb-pas .b { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.8rem; flex:0 0 30px; }
+.hb-pas.gata .b { background:linear-gradient(135deg,#E0BB6E,#C9A961); color:#0B1426; }
+.hb-pas.todo .b { background:#ECE7DA; color:var(--gray-500); }
+.hb-pas.next { border-color:#C9A961; box-shadow:0 0 0 2px rgba(201,169,97,0.30); }
+.hb-pas .t { font-size:.84rem; font-weight:700; color:#0B1426; }
+.hb-pas .h { font-size:.71rem; color:var(--gray-500); }
+.hb-pas .nx { position:absolute; top:5px; right:8px; font-size:.6rem; font-weight:800; color:#A8893D; text-transform:uppercase; letter-spacing:.4px; }
 </style>
 {% endblock %}
 
@@ -33,6 +43,22 @@
         {% if proiect.manager %} · manager {{ proiect.manager.nume }} {{ proiect.manager.prenume }}{% endif %}
     </div>
 </div>
+
+{% if parcurs %}
+<div style="font-size:.78rem; font-weight:700; color:var(--gray-500); text-transform:uppercase; letter-spacing:.6px; margin-bottom:8px;"><i class="fa-solid fa-route" style="color:#C9A961;"></i> Parcurs proiect</div>
+<div class="hb-parcurs">
+    {% for e in parcurs %}
+    <a class="hb-pas {{ 'gata' if e.gata else 'todo' }} {{ 'next' if loop.index0 == next_idx else '' }}" href="{{ e.url }}" title="{{ e.hint }}">
+        <span class="b"><i class="fa-solid {{ 'fa-check' if e.gata else 'fa-' ~ e.icon }}"></i></span>
+        <span>
+            <div class="t">{{ e.nume }}</div>
+            <div class="h">{{ e.hint }}</div>
+        </span>
+        {% if loop.index0 == next_idx %}<span class="nx">urmatorul</span>{% endif %}
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
 
 <div class="hb-grid">
     {% if h.bim %}

@@ -276,8 +276,38 @@ def hub(id):
     disponibile = _safe(lambda: [s for s in Santier.query.order_by(Santier.cod).all()
                                  if s.id not in legate_ids], []) or []
 
+    # ---- Parcurs ghidat (U2): etapele fluxului cu stare + pasul urmator ----
+    from models import GanttWbsNod, ConsumUtilaj
+    plan = _safe(lambda: GanttPlan.query.filter_by(proiect_id=id)
+                 .order_by(GanttPlan.data_creare.desc()).first())
+    are_wbs = _safe(lambda: db.session.query(GanttWbsNod.id)
+                    .join(GanttPlan, GanttWbsNod.plan_id == GanttPlan.id)
+                    .filter(GanttPlan.proiect_id == id).first() is not None, False)
+    are_utilaj = _safe(lambda: ConsumUtilaj.query.filter_by(proiect_id=id).first() is not None, False)
+    contracte_on = _safe(lambda: __import__('services.feature_flags', fromlist=['is_enabled'])
+                         .is_enabled('controale-contract',
+                                     tenant_id=getattr(current_user, 'tenant_id', None)), False)
+    u_plan = (lambda f, d: url_for(f, id_=plan.id) if plan else url_for(d))
+    parcurs = [
+        {'nume': 'Deviz / oferta', 'icon': 'calculator', 'gata': h['oferte']['nr'] > 0,
+         'hint': 'Pretuieste lista de cantitati (F3)',
+         'url': url_for('contracte.lista') if contracte_on else url_for('proiecte.detalii', id=id)},
+        {'nume': 'Plan Gantt', 'icon': 'diagram-project', 'gata': h['gantt']['nr'] > 0,
+         'hint': 'Genereaza planul din F3', 'url': u_plan('gantt.plan', 'gantt.index')},
+        {'nume': 'WBS', 'icon': 'sitemap', 'gata': are_wbs,
+         'hint': 'Structureaza / editeaza WBS-ul', 'url': u_plan('gantt.plan_wbs', 'gantt.index')},
+        {'nume': 'Cost 5D', 'icon': 'coins', 'gata': (h['gantt']['cost'] or 0) > 0,
+         'hint': 'Cost pe categorii + resurse', 'url': u_plan('gantt.plan', 'gantt.index')},
+        {'nume': 'Utilaje', 'icon': 'truck-arrow-right', 'gata': are_utilaj,
+         'hint': 'Consum real de utilaj', 'url': url_for('proiecte.utilaje', id=id)},
+        {'nume': 'EVM / avans', 'icon': 'chart-line', 'gata': h['situatie'] is not None,
+         'hint': 'Planificat vs realizat (SPI/CPI)', 'url': url_for('proiecte.evm', id=id)},
+    ]
+    next_idx = next((i for i, e in enumerate(parcurs) if not e['gata']), None)
+
     return render_template('proiecte/hub.html', proiect=proiect, h=h,
-                           santiere=santiere, santiere_disponibile=disponibile)
+                           santiere=santiere, santiere_disponibile=disponibile,
+                           parcurs=parcurs, next_idx=next_idx)
 
 
 @proiecte_bp.route('/<int:id>/leaga-santier', methods=['POST'])

@@ -78,12 +78,7 @@
                         <span>{{ _('Dashboard') }}</span>
                     </a>
                 </li>
-                <li>
-                    <a href="{{ url_for('angajati.lista') }}" class="{% if request.endpoint and 'angajati' in request.endpoint %}active{% endif %}">
-                        <i class="fa-solid fa-hard-hat"></i>
-                        <span>{{ _('Angajati') }}</span>
-                    </a>
-                </li>
+                <li class="sidebar-section">{{ _('Operational') }}</li>
                 <li>
                     <a href="{{ url_for('proiecte.lista') }}" class="{% if request.endpoint and 'proiecte' in request.endpoint %}active{% endif %}">
                         <i class="fa-solid fa-building"></i>
@@ -135,6 +130,7 @@
                     </ul>
                     {% endif %}
                 </li>
+                <li class="sidebar-section">{{ _('Planificare & cost') }}</li>
                 {% if feature_enabled('planificare-gantt') %}
                 <li>
                     <a href="{{ url_for('gantt.index') }}" class="{% if request.endpoint and request.endpoint.startswith('gantt') %}active{% endif %}">
@@ -175,6 +171,13 @@
                     {% endif %}
                 </li>
                 {% endif %}
+                <li class="sidebar-section">{{ _('Resurse') }}</li>
+                <li>
+                    <a href="{{ url_for('angajati.lista') }}" class="{% if request.endpoint and 'angajati' in request.endpoint %}active{% endif %}">
+                        <i class="fa-solid fa-hard-hat"></i>
+                        <span>{{ _('Angajati') }}</span>
+                    </a>
+                </li>
                 <li>
                     <a href="{{ url_for('masini.lista') }}" class="{% if request.endpoint and 'masini' in request.endpoint %}active{% endif %}">
                         <i class="fa-solid fa-car-side"></i>
@@ -184,6 +187,7 @@
                         {% endif %}
                     </a>
                 </li>
+                <li class="sidebar-section">{{ _('Documente & rapoarte') }}</li>
                 <li>
                     <a href="{{ url_for('documente.lista') }}" class="{% if request.endpoint and 'documente' in request.endpoint %}active{% endif %}">
                         <i class="fa-solid fa-file-lines"></i>
@@ -200,7 +204,7 @@
                     </a>
                 </li>
                 {% if current_user.is_admin %}
-                <li class="sidebar-divider"></li>
+                <li class="sidebar-section">{{ _('Administrare') }}</li>
                 <li>
                     <a href="{{ url_for('setari.firma') }}" class="{% if request.endpoint and 'setari' in request.endpoint and 'module' not in request.endpoint %}active{% endif %}">
                         <i class="fa-solid fa-gear"></i>
@@ -263,7 +267,7 @@
             </div>
             <div class="header-right">
                 <div class="header-bim-search" style="position:relative; max-width:280px; flex:1; margin:0 8px;">
-                    <input type="text" id="bimGlobalSearch" placeholder="{{ _('Cauta BIM (cod element / spatiu / santier)...') }}"
+                    <input type="text" id="bimGlobalSearch" placeholder="{{ _('Cauta (proiect, plan, angajat, santier)...') }}"
                            style="width:100%; padding:6px 10px 6px 32px; border:1px solid var(--gray-200); border-radius:18px; font-size:0.82rem; background:var(--gray-50);"
                            autocomplete="off">
                     <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--gray-400); font-size:0.78rem;"></i>
@@ -477,15 +481,16 @@
                 return;
             }
             debounceTimer = setTimeout(function() {
-                fetch('/bim/api/search?q=' + encodeURIComponent(q))
+                fetch('/cauta?q=' + encodeURIComponent(q))
                     .then(function(r) { return r.json(); })
                     .then(function(items) {
                         if (!items || items.length === 0) {
                             results.innerHTML = '<div style="padding:10px; color:var(--gray-500); text-align:center; font-size:0.82rem;">Niciun rezultat</div>';
                         } else {
                             results.innerHTML = items.map(function(it) {
-                                var iconMap = {element: 'cube', spatiu: 'door-open', santier: 'map-location-dot'};
-                                var color = it.tip === 'element' ? '#3949AB' : (it.tip === 'spatiu' ? '#7E57C2' : '#1A237E');
+                                var iconMap = {proiect:'building', plan:'diagram-project', angajat:'hard-hat', santier:'map-location-dot', contract:'file-contract', element:'cube', spatiu:'door-open'};
+                                var colorMap = {proiect:'#0B1426', plan:'#A8893D', angajat:'#2e7d32', santier:'#1A237E', contract:'#6A1B9A', element:'#3949AB', spatiu:'#7E57C2'};
+                                var color = colorMap[it.tip] || '#C9A961';
                                 return '<a href="' + it.url + '" style="display:block; padding:8px 12px; border-bottom:1px solid var(--gray-100); text-decoration:none; color:var(--gray-800); font-size:0.85rem;">' +
                                     '<i class="fa-solid fa-' + (iconMap[it.tip] || 'cube') + '" style="color:' + color + '; margin-right:8px;"></i>' +
                                     '<strong>' + escapeHtml(it.label) + '</strong>' +
@@ -504,6 +509,15 @@
         document.addEventListener('click', function(e) {
             if (!e.target.closest('.header-bim-search')) {
                 results.style.display = 'none';
+            }
+        });
+
+        // Scurtatura: Ctrl/Cmd-K focuseaza cautarea; Escape o inchide
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+                e.preventDefault(); input.focus(); input.select();
+            } else if (e.key === 'Escape' && document.activeElement === input) {
+                results.style.display = 'none'; input.blur();
             }
         });
 
