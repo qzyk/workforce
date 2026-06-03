@@ -402,6 +402,11 @@ def salveaza():
     audit.log('create', 'gantt_plan', plan.id,
               new_values={'nume': nume, 'proiect_id': proiect_id}, commit=True)
     flash(f'Plan "{nume}" salvat.', 'success')
+    if request.form.get('actiune') == 'wbs':
+        # salveaza + seedeaza arborele + deschide direct editorul WBS (din previzualizare)
+        from services.gantt import wbs_editor
+        wbs_editor.seed_arbore(plan, rezultat.noduri_wbs)
+        return redirect(url_for('gantt.plan_wbs', id_=plan.id))
     return redirect(url_for('gantt.plan', id_=plan.id))
 
 
