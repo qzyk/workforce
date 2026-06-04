@@ -63,6 +63,29 @@ def test_export_f2_csv(authenticated_client):
     assert b'Categorie lucrare' in r.data and b'TOTAL' in r.data
 
 
+def test_clasificare_categorii_cladire(app):
+    """Clasificatorul extins recunoaste categorii de cladire/structura/fatada,
+    fara sa strice retelele (sapatura, pozare)."""
+    from services.gantt.pipeline import MotorPlanificare
+    cazuri = {
+        'Termosistem cu vata minerala bazaltica': 'termosistem',
+        'Tencuiala acrilica structurata': 'termosistem',
+        'Turnare beton C20/25': 'beton',
+        'Cofraj pentru fundatii': 'cofraje',
+        'Zidarie din caramida': 'zidarie',
+        'Otel beton BST500 fasonat': 'armatura',
+        'Fatada ventilata placata cu piatra naturala': 'placaje',
+        'Tamplarie PVC cu geam termopan': 'tamplarie',
+        'Sapatura mecanizata pamant': 'terasamente',     # retea - neschimbat
+        'Pozare conducta PEHD': 'canalizare',            # retea - neschimbat
+    }
+    with app.app_context():
+        m = MotorPlanificare()
+        for den, exp in cazuri.items():
+            cat, _ = m.clasificator.clasifica(den, '')
+            assert m.mapare_lucrare.get(cat) == exp, f'{den!r} -> {cat}'
+
+
 def test_mapare_db_suprascrie_json(app):
     """O regula in DB (tip mapare_categorie) suprascrie maparea din JSON."""
     from services.gantt import store

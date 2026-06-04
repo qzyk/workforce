@@ -12,5 +12,16 @@
   "IZOLATII": "izolatii_diverse",
   "PROBE": "probe_verificari",
   "REFACERE": "asfalt",
-  "TRANSPORT": "transport"
+  "TRANSPORT": "transport",
+  "TERMOSISTEM": "termosistem",
+  "PLACAJE": "placaje",
+  "ZIDARIE": "zidarie",
+  "COFRAJE": "cofraje",
+  "ARMATURA_BETON": "armatura",
+  "BETON": "beton",
+  "INVELITORI": "invelitori",
+  "FINISAJE": "finisaje_pereti",
+  "PARDOSELI": "pardoseli",
+  "TAMPLARIE": "tamplarie",
+  "CONFECTII_METALICE": "confectii_metalice"
 }
