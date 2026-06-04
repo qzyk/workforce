@@ -551,6 +551,17 @@ def resurse_sterge(id, tip):
     return redirect(url_for('proiecte.resurse', id=id))
 
 
+@proiecte_bp.route('/<int:id>/bim-deviz')
+@login_required
+def bim_deviz(id):
+    """Puntea BIM (model 3D) <-> deviz F3 <-> resurse C, pe categorie de lucrare:
+    reconciliere cantitati model vs deviz + resursele implicate."""
+    from services.legatura_bim import legatura_bim
+    proiect = Proiect.query.get_or_404(id)
+    leg = legatura_bim(id)
+    return render_template('proiecte/bim_deviz.html', proiect=proiect, leg=leg)
+
+
 @proiecte_bp.route('/<int:id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def editeaza(id):

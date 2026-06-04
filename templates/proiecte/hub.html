@@ -112,6 +112,15 @@
         <div class="s">extrase materiale · manopera · utilaje</div>
     </a>
 
+    {% if h.bim %}
+    <a class="hb-card" href="{{ url_for('proiecte.bim_deviz', id=proiect.id) }}">
+        <div class="ic hb-bim"><i class="fa-solid fa-cube"></i></div>
+        <h3>BIM ↔ deviz</h3>
+        <div class="v">&mdash;</div>
+        <div class="s">model vs F3 + resurse, pe categorie</div>
+    </a>
+    {% endif %}
+
     <a class="hb-card" href="{{ url_for('proiecte.detalii', id=proiect.id) }}">
         <div class="ic hb-ang"><i class="fa-solid fa-helmet-safety"></i></div>
         <h3>Angajati alocati</h3>

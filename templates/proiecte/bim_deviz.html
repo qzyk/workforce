@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}BIM ↔ deviz - {{ proiect.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.lista') }}">Proiecte</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('proiecte.hub', id=proiect.id) }}">{{ proiect.cod_proiect }}</a></li>
+<li class="breadcrumb-item active">BIM ↔ deviz</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.bd-hero { background:linear-gradient(135deg,#0B1426,#152033); color:#F5F1E8; border-radius:12px; padding:18px 22px; margin-bottom:16px; }
+.bd-hero h2 { margin:0 0 4px; color:#C9A961; }
+.bd-card { background:#fff; border:1px solid #E8E3D5; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,0.05); overflow:hidden; }
+table.bd { width:100%; border-collapse:collapse; font-size:.85rem; }
+table.bd th { background:#F5F1E8; padding:9px 11px; text-align:right; } table.bd th:first-child{ text-align:left; }
+table.bd td { padding:8px 11px; border-top:1px solid #ECE7DA; text-align:right; vertical-align:top; } table.bd td:first-child{ text-align:left; }
+.bd-st { font-weight:700; padding:1px 8px; border-radius:10px; font-size:.74rem; white-space:nowrap; }
+.st-ok{background:#E6F2E6;color:#2e7d32;} .st-atentie{background:#FBF1D6;color:#8A6A12;}
+.st-critic{background:#FAE3E3;color:#9B2222;} .st-info{background:#E8EAF6;color:#3949AB;}
+.st-doar_model{background:#E0F2F1;color:#00695C;} .st-doar_deviz{background:#ECECEC;color:#666;}
+.bd-res{ font-size:.74rem; padding:1px 6px; border-radius:8px; margin:1px; display:inline-block; }
+.res-material{background:#FFF3E0;color:#8A6A12;} .res-manopera{background:#E8EAF6;color:#3949AB;} .res-utilaj{background:#E0F2F1;color:#00695C;}
+.bd-empty{ padding:28px; text-align:center; color:var(--gray-500); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bd-hero">
+    <h2><i class="fa-solid fa-cube"></i> BIM ↔ deviz — {{ proiect.cod_proiect }}</h2>
+    <div style="color:rgba(245,241,232,.78); font-size:.9rem;">
+        Legatura pe categorie de lucrare: cantitatile din model (QTO) vs deviz (F3) + resursele implicate (C).
+        {% if leg.are_model %}{{ leg.nr_elemente }} elemente in model.{% endif %}
+    </div>
+</div>
+
+{% if not leg.are_model %}
+<div class="bd-card"><div class="bd-empty">
+    Proiectul nu are santiere BIM legate (sau santierele n-au elemente). Leaga un santier din <a href="{{ url_for('proiecte.hub', id=proiect.id) }}">Hub 360</a> si importa modelul IFC.
+</div></div>
+{% elif not leg.categorii %}
+<div class="bd-card"><div class="bd-empty">Niciun element mapabil pe categorii de lucrare.</div></div>
+{% else %}
+<div class="bd-card">
+    <div style="overflow:auto;">
+    <table class="bd">
+        <thead><tr>
+            <th>Categorie lucrare</th><th>Model (QTO)</th><th>Deviz F3</th><th>Valoare F3</th><th>Dif.</th><th>Stare</th><th>Resurse C implicate</th>
+        </tr></thead>
+        <tbody>
+            {% for c in leg.categorii %}
+            <tr>
+                <td><b>{{ c.categorie }}</b></td>
+                <td>{% if c.model_cant %}{{ '%g'|format(c.model_cant) }} {{ c.model_um }}{% else %}<span style="color:var(--gray-400);">{{ c.model_nr }} buc</span>{% endif %}</td>
+                <td>{% if c.f3_cant %}{{ '%g'|format(c.f3_cant) }} {{ c.f3_um }}{% else %}—{% endif %}</td>
+                <td>{% if c.f3_valoare %}{{ '{:,.0f}'.format(c.f3_valoare) }}{% else %}—{% endif %}</td>
+                <td>{% if c.status in ['ok','atentie','critic'] %}{{ c.diff_pct }}%{% else %}—{% endif %}</td>
+                <td><span class="bd-st st-{{ c.status }}">{{ {'ok':'✓ concorda','atentie':'⚠ verifica','critic':'✗ discrepanta','info':'UM diferit','doar_model':'doar in model','doar_deviz':'doar in deviz'}[c.status] }}</span></td>
+                <td style="text-align:left;">
+                    {% for r in c.resurse %}<span class="bd-res res-{{ r.tip }}" title="{{ r.denumire }} · {{ '{:,.0f}'.format(r.valoare) }} lei">{{ r.cod }}</span>{% else %}<span style="color:var(--gray-400);">—</span>{% endfor %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+<div style="margin-top:12px; padding:11px 15px; background:#FBF8F0; border-left:3px solid #C9A961; border-radius:6px; font-size:.85rem; color:var(--gray-700);">
+    <i class="fa-solid fa-circle-info" style="color:#C9A961;"></i> „Model (QTO)" = cantitatile din modelul 3D (volume reale daca exista geometrie). „Deviz F3" = cantitatile din plan. Compararea cantitativa se face doar la acelasi U.M. Resursele C sunt cele folosite de articolele F3 din acea categorie.
+    {% if not leg.are_plan %}<br><b>Nu exista plan F3 salvat</b> pe proiect — incarca-l in Planificare Gantt ca sa vezi reconcilierea.{% endif %}
+</div>
+{% endif %}
+
+<a href="{{ url_for('proiecte.hub', id=proiect.id) }}" style="display:inline-block; margin-top:14px; color:#A8893D; font-weight:600; text-decoration:none;"><i class="fa-solid fa-arrow-left"></i> Inapoi la Hub 360</a>
+{% endblock %}
