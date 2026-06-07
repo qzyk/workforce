@@ -79,6 +79,7 @@
                     <td class="actions-cell" style="white-space:nowrap; text-align:right;">
                         {% if m.is_viewer_intern %}
                         <a href="{{ url_for('bim.viewer', model_id=m.id) }}" class="btn-action btn-view" title="Deschide viewer 3D"><i class="fa-solid fa-cube"></i></a>
+                        <a href="{{ url_for('bim.qto_harvest_review', model_id=m.id) }}" class="btn-action" title="Ciorna F3 din IFC (QTO)"><i class="fa-solid fa-diagram-project" style="color:var(--primary);"></i></a>
                         {% endif %}
                         {% if feature_enabled('bim-model-versioning') %}
                         <a href="{{ url_for('bim.model_versiuni', model_id=m.id) }}" class="btn-action" title="Versiuni model (CDE)"><i class="fa-solid fa-code-branch" style="color:var(--primary);"></i></a>

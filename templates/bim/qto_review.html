@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Ciorna F3 din IFC') }} - {{ model.nume }}{% endblock %}
+
+{% macro nr(v) %}{{ '{:,.2f}'.format((v or 0)|float).replace(',', '.') }}{% endmacro %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('bim.modele_lista') }}">{{ _('Modele 3D') }}</a>
+<span>/</span>
+<span class="active">{{ _('Ciorna F3') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h2 style="margin:0;">
+        <i class="fa-solid fa-diagram-project" style="color:var(--primary);"></i>
+        {{ _('Ciorna F3 din IFC') }} — {{ model.nume }}
+    </h2>
+    <a href="{{ url_for('bim.qto_harvest_export', model_id=model.id) }}" class="btn">
+        <i class="fa-solid fa-file-excel"></i> {{ _('Export Excel') }}</a>
+</div>
+
+{% if not rev.nr_elemente %}
+<div class="card-panel" style="padding:30px; text-align:center; color:var(--text-muted);">
+    <p>{{ _('Niciun element harvestat pentru acest model.') }}</p>
+    <p style="font-size:.9rem;">{{ _('Ruleaza offline (consola PA, in venv):') }}</p>
+    <code style="display:inline-block; background:rgba(0,0,0,0.05); padding:8px 12px; border-radius:6px;">flask qto-harvest --model {{ model.id }}</code>
+</div>
+{% else %}
+
+<!-- Sumar harvest -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:18px;">
+    <div class="card-panel" style="padding:14px;">
+        <div style="font-size:.8rem; color:var(--text-muted);">{{ _('Elemente') }}</div>
+        <div style="font-size:1.6rem; font-weight:600;">{{ rev.nr_elemente }}</div>
+    </div>
+    <div class="card-panel" style="padding:14px;">
+        <div style="font-size:.8rem; color:var(--text-muted);">{{ _('Cu cantitate (QTO)') }}</div>
+        <div style="font-size:1.6rem; font-weight:600; color:#2e7d32;">{{ rev.stat.cu_cantitate }}</div>
+    </div>
+    <div class="card-panel" style="padding:14px;">
+        <div style="font-size:.8rem; color:var(--text-muted);">{{ _('De verificat') }}</div>
+        <div style="font-size:1.6rem; font-weight:600; color:{{ '#9B2222' if rev.stat.de_verificat else '#2e7d32' }};">{{ rev.stat.de_verificat }}</div>
+    </div>
+    <div class="card-panel" style="padding:14px;">
+        <div style="font-size:.8rem; color:var(--text-muted);">{{ _('Categorii deviz') }}</div>
+        <div style="font-size:1.6rem; font-weight:600;">{{ rev.categorii|length }}</div>
+    </div>
+</div>
+
+<div class="card-panel" style="padding:12px; background:rgba(201,169,97,0.08); border:1px solid rgba(201,169,97,0.3); margin-bottom:18px; font-size:.85rem;">
+    <i class="fa-solid fa-circle-info" style="color:var(--primary);"></i>
+    {{ _('Ciorna e generata din cantitatile de baza (BaseQuantities) stocate in IFC, fara recalcul geometric. Trebuie revizuita de un devizier: vezi randurile "de verificat" (goluri si elemente multistrat cu risc de double-count).') }}
+</div>
+
+<!-- Agregat pe categorie -->
+<div class="card-panel" style="padding:0; overflow:hidden; margin-bottom:18px;">
+    <div style="padding:12px 14px; font-weight:600; border-bottom:1px solid rgba(0,0,0,0.06);">{{ _('Antemasuratoare ciorna (pe categorie)') }}</div>
+    <table style="width:100%; border-collapse:collapse; font-size:.9rem;">
+        <thead><tr style="background:rgba(0,0,0,0.03); text-align:left;">
+            <th style="padding:8px 12px;">{{ _('Categorie (cod deviz)') }}</th>
+            <th style="padding:8px 12px; text-align:right;">{{ _('Cantitate') }}</th>
+            <th style="padding:8px 12px;">{{ _('U.M.') }}</th>
+            <th style="padding:8px 12px; text-align:center;">{{ _('Nr. elem.') }}</th>
+            <th style="padding:8px 12px; text-align:center;">{{ _('De verificat') }}</th>
+        </tr></thead>
+        <tbody>
+        {% for c in rev.categorii %}
+            <tr style="border-top:1px solid rgba(0,0,0,0.05);">
+                <td style="padding:8px 12px;">{% if c.categorie == 'neclasificat' %}<span style="color:#8A6A12;">⚠ {{ c.categorie }}</span>{% else %}{{ c.categorie }}{% endif %}</td>
+                <td style="padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums;">{{ nr(c.cantitate) }}</td>
+                <td style="padding:8px 12px;">{{ c.um }}</td>
+                <td style="padding:8px 12px; text-align:center;">{{ c.nr }}</td>
+                <td style="padding:8px 12px; text-align:center;">{% if c.de_verificat %}<span style="color:#9B2222;">{{ c.de_verificat }}</span>{% else %}—{% endif %}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- De verificat -->
+{% if rev.de_verificat %}
+<div class="card-panel" style="padding:0; overflow:hidden;">
+    <div style="padding:12px 14px; font-weight:600; border-bottom:1px solid rgba(0,0,0,0.06); color:#9B2222;">
+        {{ _('De verificat manual') }} ({{ rev.de_verificat|length }})</div>
+    <table style="width:100%; border-collapse:collapse; font-size:.85rem;">
+        <thead><tr style="background:rgba(0,0,0,0.03); text-align:left;">
+            <th style="padding:8px 12px;">{{ _('Element') }}</th>
+            <th style="padding:8px 12px;">{{ _('Tip') }}</th>
+            <th style="padding:8px 12px;">{{ _('Categorie') }}</th>
+            <th style="padding:8px 12px;">{{ _('Motiv') }}</th>
+            <th style="padding:8px 12px;">{{ _('IFC GlobalId') }}</th>
+        </tr></thead>
+        <tbody>
+        {% for d in rev.de_verificat %}
+            <tr style="border-top:1px solid rgba(0,0,0,0.05);">
+                <td style="padding:6px 12px;">{{ d.nume }}</td>
+                <td style="padding:6px 12px;">{{ d.tip }}</td>
+                <td style="padding:6px 12px;">{{ d.cod_deviz or '—' }}</td>
+                <td style="padding:6px 12px; color:#8A6A12;">{{ d.motiv }}</td>
+                <td style="padding:6px 12px; font-family:monospace; font-size:.78rem; color:var(--text-muted);">{{ d.global_id }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

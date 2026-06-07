@@ -1,0 +1,12 @@
+{
+  "_doc": "Nivel 1 de mapare IFC -> categorie deviz (F2): cod de clasificare externa (IfcClassificationReference.Identification) -> categorie. Cheia se compara case-insensitive si pe prefix. Gol e ok: harvest cade pe Pset Reference, apoi pe euristica TIP_F2, apoi 'neclasificat'. Exemple (de completat pe modelele tale reale):",
+  "mappings": {
+    "23-13 35": "beton",
+    "Ss_20": "beton",
+    "EF_25_10": "beton",
+    "Ss_25_13": "zidarie",
+    "Ss_25_30": "termosistem",
+    "Ss_30_30": "placaje",
+    "Ss_25_14": "tamplarie"
+  }
+}

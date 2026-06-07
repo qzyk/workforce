@@ -414,6 +414,13 @@ def create_app(config_name='default'):
             ('bim_elemente', 'source_system', 'VARCHAR(30)'),
             ('bim_elemente', 'model_bim_id', 'INTEGER REFERENCES bim_modele(id)'),
             ('bim_elemente', 'last_synced_at', 'DATETIME'),
+            # QTO harvest (Etapa 1: punte IFC -> F3)
+            ('bim_elemente', 'qto_sursa', 'VARCHAR(20)'),
+            ('bim_elemente', 'qto_set', 'VARCHAR(60)'),
+            ('bim_elemente', 'cod_deviz', 'VARCHAR(40)'),
+            ('bim_elemente', 'clasificare_sursa', 'VARCHAR(30)'),
+            ('bim_elemente', 'necesita_verificare', 'BOOLEAN NOT NULL DEFAULT 0'),
+            ('bim_elemente', 'motiv_verificare', 'VARCHAR(120)'),
             ('bim_assets', 'extern_id', 'VARCHAR(100)'),
             ('bim_assets', 'source_system', 'VARCHAR(30)'),
             ('bim_issues', 'extern_id', 'VARCHAR(100)'),
@@ -446,6 +453,42 @@ def create_app(config_name='default'):
         bim_tables = [t for t in insp2.get_table_names() if t.startswith('bim_') or t == 'tenants']
         click.echo(f'  Tabele BIM gasite: {bim_tables}')
         click.echo(f'[FINAL] Migrare BIM completa. {adaugate} coloane FK adaugate.')
+
+    # --------------------------------------------------------
+    # COMANDA CLI: flask qto-harvest (Etapa 1: punte IFC -> F3)
+    # Citeste BaseQuantities din IFC -> ElementBIM. OFFLINE, fara geometrie.
+    # --------------------------------------------------------
+    @app.cli.command('qto-harvest')
+    @click.option('--model', 'model_id', type=int, help='ID ModelBIM specific')
+    @click.option('--proiect', 'proiect_id', type=int, help='ID Proiect (toate modelele lui)')
+    def qto_harvest_command(model_id, proiect_id):
+        """Citeste cantitatile de baza din IFC -> ElementBIM (OFFLINE, fara geometrie)."""
+        from models import ModelBIM, Proiect
+        from services.ifc_qto_harvest import harvest_model
+        if model_id:
+            modele = [ModelBIM.query.get(model_id)]
+        elif proiect_id:
+            p = Proiect.query.get(proiect_id)
+            sids = [ls.santier_id for ls in p.legaturi_santiere if ls.santier_id] if p else []
+            modele = ModelBIM.query.filter(ModelBIM.santier_id.in_(sids)).all() if sids else []
+        else:
+            modele = ModelBIM.query.filter_by(tip='ifc').all()
+        modele = [m for m in modele if m]
+        if not modele:
+            click.echo('[INFO] Niciun model BIM (ifc) gasit.')
+            return
+        for m in modele:
+            r = harvest_model(m, root_path=app.root_path)
+            if r.get('ok'):
+                s = r['stat']
+                click.echo(
+                    f"[OK] model {m.id} ({m.nume}) schema={r.get('schema')}: "
+                    f"{s['elemente']} elem | {s['cu_cantitate']} cu cantitate | "
+                    f"{s['count_buc']} count | {s['de_verificat']} de verificat "
+                    f"(fara cant {s['fara_cantitate']}, multistrat {s['multistrat']}, "
+                    f"neclasificat {s['neclasificat']})")
+            else:
+                click.echo(f"[EROARE] model {m.id} ({m.nume}): {r.get('motiv')}")
 
     # --------------------------------------------------------
     # COMANDA CLI: flask validate-bim

@@ -772,6 +772,52 @@ def viewer_file(model_id):
 
 
 # ============================================================
+# CIORNA F3 din IFC (Etapa 1: punte IFC -> F3, QTO harvest)
+# Review-ul rezultatelor harvest-ului offline (flask qto-harvest).
+# ============================================================
+
+@bim_bp.route('/qto-harvest/<int:model_id>')
+@login_required
+def qto_harvest_review(model_id):
+    """Ciorna F3 din IFC: agregat pe categorie deviz + elemente care necesita
+    verificare (gol / multistrat), fiecare cu GlobalId pentru trasabilitate.
+    Cantitatile se populeaza offline cu: flask qto-harvest --model <id>."""
+    model = ModelBIM.query.get_or_404(model_id)
+    from services.ifc_qto_harvest import ciorna_review
+    rev = ciorna_review(model_id)
+    return render_template('bim/qto_review.html', model=model, rev=rev)
+
+
+@bim_bp.route('/qto-harvest/<int:model_id>/export')
+@login_required
+def qto_harvest_export(model_id):
+    """Export ciorna F3 (categorii + de verificat) ca Excel."""
+    model = ModelBIM.query.get_or_404(model_id)
+    from services.ifc_qto_harvest import ciorna_review
+    from openpyxl import Workbook
+    rev = ciorna_review(model_id)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Ciorna F3'
+    ws.append(['Ciorna F3 din IFC:', model.nume])
+    ws.append([])
+    ws.append(['Categorie (cod deviz)', 'Cantitate', 'U.M.', 'Nr. elemente', 'De verificat'])
+    for c in rev['categorii']:
+        ws.append([c['categorie'], c['cantitate'], c['um'], c['nr'], c['de_verificat']])
+    wsv = wb.create_sheet('De verificat')
+    wsv.append(['Cod', 'Tip', 'Categorie', 'Cantitate', 'U.M.', 'Motiv', 'IFC GlobalId'])
+    for d in rev['de_verificat']:
+        wsv.append([d['cod'], d['tip'], d['cod_deviz'], d['cantitate'],
+                    d['um'], d['motiv'], d['global_id']])
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True,
+                     download_name=f'ciorna_f3_model_{model_id}.xlsx',
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+# ============================================================
 # 4D - PUNTE GANTT -> BIM (construction sequencing)
 # ============================================================
 def _elemente_model(model):

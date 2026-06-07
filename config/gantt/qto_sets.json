@@ -1,0 +1,17 @@
+{
+  "_doc": "Maparea tip_element -> [Qto set EXACT, camp cantitate, U.M.] pentru harvest-ul de BaseQuantities din IFC (services/ifc_qto_harvest.py). Editabil fara cod. Numele seturilor sunt identice IFC2x3/IFC4/IFC4.3. Tipurile lipsa raman count (buc).",
+  "slab":    ["Qto_SlabBaseQuantities", "NetVolume", "mc"],
+  "beam":    ["Qto_BeamBaseQuantities", "NetVolume", "mc"],
+  "column":  ["Qto_ColumnBaseQuantities", "NetVolume", "mc"],
+  "wall":    ["Qto_WallBaseQuantities", "NetVolume", "mc"],
+  "footing": ["Qto_FootingBaseQuantities", "NetVolume", "mc"],
+  "pile":    ["Qto_PileBaseQuantities", "NetVolume", "mc"],
+  "covering": ["Qto_CoveringBaseQuantities", "NetArea", "mp"],
+  "curtain_wall": ["Qto_CurtainWallBaseQuantities", "NetArea", "mp"],
+  "rebar":   ["Qto_ReinforcingElementBaseQuantities", "Weight", "kg"],
+  "mesh":    ["Qto_ReinforcingElementBaseQuantities", "Weight", "kg"],
+  "pipe":    ["Qto_PipeSegmentBaseQuantities", "Length", "m"],
+  "duct":    ["Qto_DuctSegmentBaseQuantities", "Length", "m"],
+  "member":  ["Qto_MemberBaseQuantities", "NetVolume", "mc"],
+  "plate":   ["Qto_PlateBaseQuantities", "NetWeight", "kg"]
+}

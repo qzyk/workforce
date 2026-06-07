@@ -1529,6 +1529,14 @@ class ElementBIM(db.Model):
     # JSON cu proprietati custom (PSet IFC sau alte atribute)
     proprietati_json = db.Column(db.Text, nullable=True)
 
+    # QTO harvest (Etapa 1: punte IFC -> F3). Populate de flask qto-harvest.
+    qto_sursa = db.Column(db.String(20), nullable=True)        # ifc_basequantity / count / lipsa
+    qto_set = db.Column(db.String(60), nullable=True)          # ex: Qto_SlabBaseQuantities
+    cod_deviz = db.Column(db.String(40), nullable=True)        # categorie F2 aleasa
+    clasificare_sursa = db.Column(db.String(30), nullable=True)  # classification/pset_reference/heuristic/neclasificat
+    necesita_verificare = db.Column(db.Boolean, nullable=False, default=False)  # gol / multistrat / double-count
+    motiv_verificare = db.Column(db.String(120), nullable=True)
+
     data_creare = db.Column(db.DateTime, default=datetime.utcnow)
     data_actualizare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
