@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}{{ a.nume }} - {{ _('Audit Deviz') }}{% endblock %}
+
+{% macro lei(v) %}{{ '{:,.0f}'.format((v or 0)|float).replace(',', '.') }}{% endmacro %}
+{% set culori = {'ok': '#2e7d32', 'atentie': '#8A6A12', 'critic': '#9B2222'} %}
+{% set sev = {'info': '#5A6B7B', 'atentie': '#8A6A12', 'critic': '#9B2222'} %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('audit_deviz.lista') }}">{{ _('Audit Deviz') }}</a>
+<span>/</span>
+<span class="active">{{ a.nume }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+    <h2 style="margin:0;">
+        <i class="fa-solid fa-magnifying-glass-chart" style="color:var(--primary);"></i>
+        {{ a.nume }}
+    </h2>
+    <div style="display:flex; gap:8px;">
+        <a href="{{ url_for('audit_deviz.export', audit_id=a.id) }}" class="btn">
+            <i class="fa-solid fa-file-excel"></i> {{ _('Export') }}</a>
+        <form method="POST" action="{{ url_for('audit_deviz.sterge', audit_id=a.id) }}"
+              onsubmit="return confirm('{{ _('Stergi acest audit?') }}');" style="display:inline;">
+            <button class="btn" style="color:#9B2222;"><i class="fa-solid fa-trash"></i></button>
+        </form>
+    </div>
+</div>
+
+<!-- Sumar -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; margin-bottom:18px;">
+    <div class="card-panel" style="padding:14px;">
+        <div style="font-size:.8rem; color:var(--text-muted);">{{ _('Total F3 (fara TVA)') }}</div>
+        <div style="font-size:1.5rem; font-weight:600;">{{ lei(a.total_f3) }} lei</div>
+    </div>
+    <div class="card-panel" style="padding:14px;">
+        <div style="font-size:.8rem; color:var(--text-muted);">{{ _('Total cu TVA') }}</div>
+        <div style="font-size:1.5rem; font-weight:600;">{{ lei(a.total_cu_tva) }} lei</div>
+    </div>
+    <div class="card-panel" style="padding:14px;">
+        <div style="font-size:.8rem; color:var(--text-muted);">{{ _('Obiecte') }}</div>
+        <div style="font-size:1.5rem; font-weight:600;">{{ a.nr_obiecte }}</div>
+    </div>
+    <div class="card-panel" style="padding:14px;">
+        <div style="font-size:.8rem; color:var(--text-muted);">{{ _('Anomalii') }}</div>
+        <div style="font-size:1.5rem; font-weight:600; color:{{ '#9B2222' if a.nr_anomalii else '#2e7d32' }};">{{ a.nr_anomalii }}</div>
+    </div>
+</div>
+
+<!-- Reconciliere globala -->
+<div class="card-panel" style="padding:14px; margin-bottom:18px; border-left:4px solid {{ '#2e7d32' if a.reconciliaza else '#9B2222' }};">
+    {% if a.reconciliaza %}
+        <strong style="color:#2e7d32;">✓ {{ _('Reconciliere OK') }}</strong> —
+        Σ F3 = {{ lei(a.total_f3) }} lei {% if a.total_f2 %}≈ F2 = {{ lei(a.total_f2) }} lei{% endif %}
+    {% else %}
+        <strong style="color:#9B2222;">✗ {{ _('Discrepanta') }}</strong> —
+        Σ F3 = {{ lei(a.total_f3) }} vs F2 = {{ lei(a.total_f2) }} (delta {{ lei(a.delta_reconciliere) }} lei)
+    {% endif %}
+</div>
+
+<!-- Structura de cost -->
+<div class="card-panel" style="padding:16px; margin-bottom:18px;">
+    <div style="font-weight:600; margin-bottom:10px;">{{ _('Structura de cost') }}</div>
+    <div style="display:flex; height:28px; border-radius:6px; overflow:hidden; margin-bottom:10px;">
+        <div style="width:{{ a.pct_material or 0 }}%; background:#C9A961;" title="Material"></div>
+        <div style="width:{{ a.pct_manopera or 0 }}%; background:#0B1426;" title="Manopera"></div>
+        <div style="width:{{ a.pct_utilaj or 0 }}%; background:#8A6A12;" title="Utilaje"></div>
+        <div style="width:{{ a.pct_transport or 0 }}%; background:#A8893D;" title="Transport"></div>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:16px; font-size:.85rem;">
+        <span><span style="display:inline-block; width:10px; height:10px; background:#C9A961; border-radius:2px;"></span> {{ _('Material') }} {{ a.pct_material }}% ({{ lei(rez.val_material) }})</span>
+        <span><span style="display:inline-block; width:10px; height:10px; background:#0B1426; border-radius:2px;"></span> {{ _('Manopera') }} {{ a.pct_manopera }}% ({{ lei(rez.val_manopera) }})</span>
+        <span><span style="display:inline-block; width:10px; height:10px; background:#8A6A12; border-radius:2px;"></span> {{ _('Utilaje') }} {{ a.pct_utilaj }}% ({{ lei(rez.val_utilaj) }})</span>
+        <span><span style="display:inline-block; width:10px; height:10px; background:#A8893D; border-radius:2px;"></span> {{ _('Transport') }} {{ a.pct_transport }}% ({{ lei(rez.val_transport) }})</span>
+    </div>
+</div>
+
+<!-- Reconciliere pe obiect -->
+<div class="card-panel" style="padding:0; overflow:hidden; margin-bottom:18px;">
+    <div style="padding:12px 14px; font-weight:600; border-bottom:1px solid rgba(0,0,0,0.06);">{{ _('Reconciliere pe obiect') }}</div>
+    <table style="width:100%; border-collapse:collapse; font-size:.88rem;">
+        <thead>
+            <tr style="background:rgba(0,0,0,0.03); text-align:right;">
+                <th style="padding:8px 10px; text-align:left;">{{ _('Obiect') }}</th>
+                <th style="padding:8px 10px;">F3</th><th style="padding:8px 10px;">F2</th>
+                <th style="padding:8px 10px;">C6 mat</th><th style="padding:8px 10px;">C7 man</th>
+                <th style="padding:8px 10px;">C8 util</th><th style="padding:8px 10px;">C9 tr</th>
+                <th style="padding:8px 10px;">Δ L2</th><th style="padding:8px 10px; text-align:center;">{{ _('Stare') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for o in rez.obiecte %}
+            <tr style="border-top:1px solid rgba(0,0,0,0.05); text-align:right; font-variant-numeric:tabular-nums;">
+                <td style="padding:8px 10px; text-align:left;">{{ o.numar }} {{ o.nume }}</td>
+                <td style="padding:8px 10px;">{{ lei(o.f3) }}</td>
+                <td style="padding:8px 10px;">{{ lei(o.f2) if o.f2 is not none else '—' }}</td>
+                <td style="padding:8px 10px;">{{ lei(o.c6) }}</td>
+                <td style="padding:8px 10px;">{{ lei(o.c7) }}</td>
+                <td style="padding:8px 10px;">{{ lei(o.c8) }}</td>
+                <td style="padding:8px 10px;">{{ lei(o.c9) }}</td>
+                <td style="padding:8px 10px;">{{ lei(o.delta_l2) }}</td>
+                <td style="padding:8px 10px; text-align:center;">
+                    <span style="color:{{ culori.get(o.status, '#5A6B7B') }};">●</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Anomalii -->
+{% if rez.anomalii %}
+<div class="card-panel" style="padding:16px; margin-bottom:18px;">
+    <div style="font-weight:600; margin-bottom:10px;">{{ _('Anomalii') }} ({{ rez.anomalii|length }})</div>
+    {% for an in rez.anomalii %}
+    <div style="display:flex; gap:10px; padding:8px 0; border-top:1px solid rgba(0,0,0,0.05);">
+        <span style="color:{{ sev.get(an.severitate, '#5A6B7B') }}; font-weight:700; min-width:64px; font-size:.8rem; text-transform:uppercase;">{{ an.severitate }}</span>
+        <span style="font-size:.9rem;">{{ an.mesaj }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Top resurse -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px;">
+    <div class="card-panel" style="padding:0; overflow:hidden;">
+        <div style="padding:12px 14px; font-weight:600; border-bottom:1px solid rgba(0,0,0,0.06);">{{ _('Top materiale') }}</div>
+        <table style="width:100%; border-collapse:collapse; font-size:.85rem;">
+            {% for m in rez.top_materiale %}
+            <tr style="border-top:1px solid rgba(0,0,0,0.05);">
+                <td style="padding:6px 10px;">{{ m.denumire }}</td>
+                <td style="padding:6px 10px; text-align:right; white-space:nowrap;">{{ lei(m.valoare) }} lei</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    <div class="card-panel" style="padding:0; overflow:hidden;">
+        <div style="padding:12px 14px; font-weight:600; border-bottom:1px solid rgba(0,0,0,0.06);">{{ _('Top meserii (manopera)') }}</div>
+        <table style="width:100%; border-collapse:collapse; font-size:.85rem;">
+            {% for t in rez.top_meserii %}
+            <tr style="border-top:1px solid rgba(0,0,0,0.05);">
+                <td style="padding:6px 10px;">{{ t.denumire }}</td>
+                <td style="padding:6px 10px; text-align:right; white-space:nowrap;">{{ '{:,.0f}'.format((t.ore or 0)|float).replace(',', '.') }} ore</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+
+{% if rez.avertismente %}
+<div style="margin-top:16px; font-size:.82rem; color:var(--text-muted);">
+    <strong>{{ _('Avertismente parsare') }}:</strong>
+    <ul style="margin:6px 0 0;">{% for w in rez.avertismente %}<li>{{ w }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+{% endblock %}

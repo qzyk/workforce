@@ -64,6 +64,8 @@ KNOWN_FLAGS: dict[str, str] = {
     'controale-contract-notificari-email': 'Activeaza trimitere email pentru alertele de termen (in plus de in-app)',
     # Planificare Gantt din F3
     'planificare-gantt': 'Modul Planificare Gantt din F3 (WBS + dependente tehnologice + export P6/MS Project)',
+    # Audit Deviz - verificare pachet deviz extern (F2+F3+C6/C7/C8/C9)
+    'audit-deviz': 'Modul Audit Deviz (reconciliere 3 niveluri F2/F3/C + structura cost + anomalii)',
 }
 
 

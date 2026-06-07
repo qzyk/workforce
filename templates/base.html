@@ -171,6 +171,14 @@
                     {% endif %}
                 </li>
                 {% endif %}
+                {% if feature_enabled('audit-deviz') %}
+                <li>
+                    <a href="{{ url_for('audit_deviz.lista') }}" class="{% if request.endpoint and request.endpoint.startswith('audit_deviz') %}active{% endif %}">
+                        <i class="fa-solid fa-magnifying-glass-chart"></i>
+                        <span>{{ _('Audit Deviz') }}</span>
+                    </a>
+                </li>
+                {% endif %}
                 <li class="sidebar-section">{{ _('Resurse') }}</li>
                 <li>
                     <a href="{{ url_for('angajati.lista') }}" class="{% if request.endpoint and 'angajati' in request.endpoint %}active{% endif %}">

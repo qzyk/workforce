@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Audit nou') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<a href="{{ url_for('audit_deviz.lista') }}">{{ _('Audit Deviz') }}</a>
+<span>/</span>
+<span class="active">{{ _('Audit nou') }}</span>
+{% endblock %}
+
+{% block content %}
+<h2 style="margin:0 0 18px;">
+    <i class="fa-solid fa-magnifying-glass-chart" style="color:var(--primary);"></i>
+    {{ _('Audit deviz nou') }}
+</h2>
+
+<form method="POST" enctype="multipart/form-data" class="card-panel" style="padding:20px; max-width:720px;">
+    {{ form.hidden_tag() }}
+
+    <div class="form-group">
+        <label class="form-label">{{ _('Nume audit') }} *</label>
+        {{ form.nume(class="form-control", placeholder="ex: 004 Arhitectura 2") }}
+        {% for e in form.nume.errors %}<div style="color:#9B2222; font-size:.85rem;">{{ e }}</div>{% endfor %}
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">{{ _('Proiect (optional)') }}</label>
+        {{ form.proiect_id(class="form-select") }}
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">{{ _('Fisiere deviz') }} *</label>
+        <input type="file" name="fisiere" class="form-control" multiple
+               accept=".zip,.xls,.xlsx">
+        <div style="font-size:.83rem; color:var(--text-muted); margin-top:6px;">
+            {{ _('Incarca un ZIP cu tot setul SAU selecteaza fisierele (.xls/.xlsx). Recunoasterea se face dupa nume:') }}
+            <code>NNN_NN_&lt;OBIECT&gt;_F3_...</code>, <code>..._C6_...</code>, <code>..._F2_centralizator...</code>
+        </div>
+    </div>
+
+    <div class="card-panel" style="padding:12px; background:rgba(201,169,97,0.08); border:1px solid rgba(201,169,97,0.3); margin:8px 0 18px;">
+        <strong style="font-size:.85rem;">{{ _('Ce verifica') }}:</strong>
+        <ul style="margin:6px 0 0; padding-left:18px; font-size:.83rem; color:var(--text-muted);">
+            <li>{{ _('Reconciliere: Sigma F3 = F2, si F3 = C6+C7+C8+C9 pe fiecare obiect') }}</li>
+            <li>{{ _('Structura de cost (material / manopera / utilaj / transport)') }}</li>
+            <li>{{ _('Anomalii: transport 0, tarife uniforme, utilaje lipsa, discrepante') }}</li>
+        </ul>
+    </div>
+
+    <div style="display:flex; gap:10px;">
+        <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-play"></i> {{ _('Ruleaza auditul') }}
+        </button>
+        <a href="{{ url_for('audit_deviz.lista') }}" class="btn">{{ _('Anuleaza') }}</a>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Audit Deviz') }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">{{ _('Dashboard') }}</a>
+<span>/</span>
+<span class="active">{{ _('Audit Deviz') }}</span>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+    <h2 style="margin:0;">
+        <i class="fa-solid fa-magnifying-glass-chart" style="color:var(--primary);"></i>
+        {{ _('Audit Deviz') }}
+    </h2>
+    <a href="{{ url_for('audit_deviz.nou') }}" class="btn btn-primary">
+        <i class="fa-solid fa-plus"></i> {{ _('Audit nou') }}
+    </a>
+</div>
+
+<p style="color:var(--text-muted); margin-top:-8px; margin-bottom:18px;">
+    {{ _('Verifica un pachet de deviz extern (F2 + F3 + C6/C7/C8/C9): reconciliere pe 3 niveluri, structura de cost si anomalii.') }}
+</p>
+
+{% if not audituri %}
+<div class="card-panel" style="padding:40px; text-align:center; color:var(--text-muted);">
+    <i class="fa-solid fa-folder-open" style="font-size:2rem; opacity:.4;"></i>
+    <p style="margin-top:12px;">{{ _('Niciun audit inca.') }}
+       <a href="{{ url_for('audit_deviz.nou') }}">{{ _('Creeaza primul audit') }}</a>.</p>
+</div>
+{% else %}
+<div class="card-panel" style="padding:0; overflow:hidden;">
+<table style="width:100%; border-collapse:collapse;">
+    <thead>
+        <tr style="background:rgba(0,0,0,0.03); text-align:left;">
+            <th style="padding:10px 12px;">{{ _('Nume') }}</th>
+            <th style="padding:10px 12px; text-align:right;">{{ _('Total F3 (fara TVA)') }}</th>
+            <th style="padding:10px 12px; text-align:center;">{{ _('Obiecte') }}</th>
+            <th style="padding:10px 12px; text-align:center;">{{ _('Anomalii') }}</th>
+            <th style="padding:10px 12px; text-align:center;">{{ _('Reconciliere') }}</th>
+            <th style="padding:10px 12px;">{{ _('Data') }}</th>
+            <th style="padding:10px 12px;"></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in audituri %}
+        <tr style="border-top:1px solid rgba(0,0,0,0.06);">
+            <td style="padding:10px 12px;">
+                <a href="{{ url_for('audit_deviz.detalii', audit_id=a.id) }}"
+                   style="font-weight:600; color:var(--primary);">{{ a.nume }}</a>
+                {% if a.proiect %}<div style="font-size:.8rem; color:var(--text-muted);">{{ a.proiect.nume }}</div>{% endif %}
+            </td>
+            <td style="padding:10px 12px; text-align:right; font-variant-numeric:tabular-nums;">
+                {{ '{:,.0f}'.format((a.total_f3 or 0)|float).replace(',', '.') }} lei</td>
+            <td style="padding:10px 12px; text-align:center;">{{ a.nr_obiecte }}</td>
+            <td style="padding:10px 12px; text-align:center;">
+                {% if a.nr_anomalii %}
+                <span style="background:#9B2222; color:#fff; border-radius:10px; padding:2px 8px; font-size:.8rem;">{{ a.nr_anomalii }}</span>
+                {% else %}<span style="color:#2e7d32;">0</span>{% endif %}
+            </td>
+            <td style="padding:10px 12px; text-align:center;">
+                {% if a.reconciliaza %}
+                <span style="color:#2e7d32;" title="Sigma F3 = F2">✓</span>
+                {% else %}
+                <span style="color:#9B2222;" title="Discrepanta F3 vs F2">✗</span>
+                {% endif %}
+            </td>
+            <td style="padding:10px 12px; color:var(--text-muted); font-size:.85rem;">
+                {{ a.data_creare.strftime('%d.%m.%Y %H:%M') }}</td>
+            <td style="padding:10px 12px; text-align:right;">
+                <a href="{{ url_for('audit_deviz.detalii', audit_id=a.id) }}" class="btn btn-sm">
+                    <i class="fa-solid fa-eye"></i></a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

@@ -4512,3 +4512,106 @@ class ProiectSantier(db.Model):
         return f'<ProiectSantier proiect={self.proiect_id} santier={self.santier_id}>'
 
 
+# ============================================================
+# AUDIT DEVIZ (verificare pachet de deviz EXTERN: F2 + F3 + C6/C7/C8/C9)
+#
+# Stocheaza rezultatul analizei unui set complet de deviz primit din exterior:
+# reconciliere 3 niveluri, structura de cost, anomalii. Distinct de
+# services/centralizator.py (genereaza din date proprii). Tabele NOI (strict
+# aditiv) - pe prod: db.create_all() + alembic stamp head (NU alembic upgrade).
+# ============================================================
+
+class AuditDeviz(db.Model):
+    """Un audit (set de deviz extern analizat). Sumar + rezultat complet JSON."""
+    __tablename__ = 'audit_deviz'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'),
+                          nullable=True, index=True)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=True, index=True)
+
+    nume = db.Column(db.String(200), nullable=False)
+    nume_fisier = db.Column(db.String(255), nullable=True)
+
+    total_f2 = db.Column(db.Numeric(16, 2), nullable=True)
+    total_f3 = db.Column(db.Numeric(16, 2), nullable=True)
+    tva = db.Column(db.Numeric(16, 2), nullable=True)
+    total_cu_tva = db.Column(db.Numeric(16, 2), nullable=True)
+    delta_reconciliere = db.Column(db.Numeric(16, 2), nullable=True)  # f3 - f2
+
+    pct_material = db.Column(db.Numeric(6, 2), nullable=True)
+    pct_manopera = db.Column(db.Numeric(6, 2), nullable=True)
+    pct_utilaj = db.Column(db.Numeric(6, 2), nullable=True)
+    pct_transport = db.Column(db.Numeric(6, 2), nullable=True)
+
+    nr_obiecte = db.Column(db.Integer, nullable=False, default=0)
+    nr_anomalii = db.Column(db.Integer, nullable=False, default=0)
+
+    rezultat_json = db.Column(db.Text, nullable=True)  # dict complet pt. dashboard
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'),
+                            nullable=True)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('audituri_deviz', lazy='dynamic'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+    obiecte = db.relationship('ObiectAuditDeviz', backref='audit',
+                              lazy='dynamic', cascade='all, delete-orphan')
+    anomalii = db.relationship('AnomalieDeviz', backref='audit',
+                               lazy='dynamic', cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.Index('ix_audit_deviz_proiect', 'proiect_id', 'data_creare'),
+    )
+
+    @property
+    def reconciliaza(self) -> bool:
+        """True daca delta de reconciliere e neglijabila (sub 0.5% din F3)."""
+        if self.delta_reconciliere is None or not self.total_f3:
+            return True
+        return abs(float(self.delta_reconciliere)) <= float(self.total_f3) * 0.005
+
+    def __repr__(self):
+        return f'<AuditDeviz {self.id} {self.nume!r} obiecte={self.nr_obiecte}>'
+
+
+class ObiectAuditDeviz(db.Model):
+    """Un obiect din audit: totaluri F3/F2/C6-C9 + delte de reconciliere."""
+    __tablename__ = 'obiect_audit_deviz'
+    id = db.Column(db.Integer, primary_key=True)
+    audit_id = db.Column(db.Integer, db.ForeignKey('audit_deviz.id'),
+                         nullable=False, index=True)
+    numar = db.Column(db.String(10), nullable=True)
+    nume = db.Column(db.String(200), nullable=False)
+
+    val_f3 = db.Column(db.Numeric(16, 2), nullable=True)
+    val_f2 = db.Column(db.Numeric(16, 2), nullable=True)
+    val_c6 = db.Column(db.Numeric(16, 2), nullable=True)
+    val_c7 = db.Column(db.Numeric(16, 2), nullable=True)
+    val_c8 = db.Column(db.Numeric(16, 2), nullable=True)
+    val_c9 = db.Column(db.Numeric(16, 2), nullable=True)
+    delta_l1 = db.Column(db.Numeric(16, 2), nullable=True)  # f3 - f2
+    delta_l2 = db.Column(db.Numeric(16, 2), nullable=True)  # f3 - (c6+c7+c8+c9)
+    status = db.Column(db.String(12), nullable=False, default='ok')  # ok/atentie/critic
+
+    def __repr__(self):
+        return f'<ObiectAuditDeviz {self.numar} {self.nume!r} {self.status}>'
+
+
+class AnomalieDeviz(db.Model):
+    """O anomalie detectata in audit (transport 0, tarif uniform, delta etc.)."""
+    __tablename__ = 'anomalie_deviz'
+    id = db.Column(db.Integer, primary_key=True)
+    audit_id = db.Column(db.Integer, db.ForeignKey('audit_deviz.id'),
+                         nullable=False, index=True)
+    obiect = db.Column(db.String(200), nullable=True)
+    tip = db.Column(db.String(40), nullable=False, index=True)
+    severitate = db.Column(db.String(12), nullable=False, default='info')  # info/atentie/critic
+    mesaj = db.Column(db.String(400), nullable=False)
+    valoare = db.Column(db.Numeric(16, 2), nullable=True)
+
+    def __repr__(self):
+        return f'<AnomalieDeviz {self.tip} {self.severitate}>'
+
+

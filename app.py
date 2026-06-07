@@ -89,6 +89,7 @@ def create_app(config_name='default'):
     from routes.locatii import locatii_bp  # Locatii proiect cu Mapbox
     from routes.gantt import gantt_bp  # Planificare Gantt din F3 (WBS + dependente + export P6/MSP)
     from routes.teren import teren_bp  # Captura rapida din teren (mobil-first)
+    from routes.audit_deviz import audit_deviz_bp  # Audit deviz extern (gated 'audit-deviz')
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -107,6 +108,7 @@ def create_app(config_name='default'):
     app.register_blueprint(locatii_bp, url_prefix='/locatii')
     app.register_blueprint(gantt_bp)  # url_prefix '/gantt' definit in blueprint
     app.register_blueprint(teren_bp)  # url_prefix '/teren' definit in blueprint
+    app.register_blueprint(audit_deviz_bp)  # url_prefix '/audit-deviz' definit in blueprint
 
     # Context processor pentru token Mapbox public (vizibil in template-uri).
     # Token-ul public e safe sa apara in HTML (asta e flow-ul Mapbox standard).
