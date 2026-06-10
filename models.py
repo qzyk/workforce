@@ -1303,6 +1303,39 @@ class ExtrasResursa(db.Model):
         return f'<ExtrasResursa {self.tip} {self.denumire[:30]!r} p{self.proiect_id}>'
 
 
+class PretResursa(db.Model):
+    """Banca de preturi de resurse - referinta din extrase REALE (C6 materiale /
+    C7 manopera / C8 utilaje / C9 transport / F4 echipamente).
+
+    Distinct de ExtrasResursa (consum PLANIFICAT pe un proiect) si de
+    TarifCategorie (tarif pe categorie de lucrare, pt auto-pricing). Aici tinem
+    pretul UNITAR pe cod-resursa, cu sursa (proiect/oferta) si data, ca sa
+    putem face benchmark (P25/P50/P75) pe acelasi cod intre proiecte.
+    Un rand per (tip, cod, sursa). Strict aditiv, optional (flag 'banca-preturi')."""
+    __tablename__ = 'pret_resursa'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    tip = db.Column(db.String(12), nullable=False, index=True)   # material|manopera|utilaj|transport|echipament
+    cod = db.Column(db.String(80), nullable=False, index=True)
+    denumire = db.Column(db.String(400), nullable=False)
+    um = db.Column(db.String(20), nullable=True)
+    pret_unitar = db.Column(db.Numeric(16, 4), nullable=False, default=0)
+    moneda = db.Column(db.String(8), nullable=False, default='RON')
+    sursa = db.Column(db.String(200), nullable=True, index=True)  # ex: nume proiect / fisier
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'), nullable=True, index=True)
+    data_pret = db.Column(db.Date, nullable=True)                 # data ofertei / extrasului
+    furnizor = db.Column(db.String(150), nullable=True)           # doar materiale (C6)
+    introdus_de = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    TIPURI = [('material', 'Materiale (C6)'), ('manopera', 'Manopera (C7)'),
+              ('utilaj', 'Utilaje (C8)'), ('transport', 'Transport (C9)'),
+              ('echipament', 'Echipamente (F4)')]
+
+    def __repr__(self):
+        return f'<PretResursa {self.tip} {self.cod} {self.pret_unitar}>'
+
+
 # ============================================================
 # ============================================================
 # === MODULUL BIM (Building Information Modeling)         ===
