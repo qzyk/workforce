@@ -1,6 +1,7 @@
 {
   "ore_pe_zi": 8,
   "durata_implicita_zile": 1,
+  "durata_max_zile": 240,
   "randamente": {
     "TRASARE": {"randament_zi": 500, "um": "m"},
     "SAPATURA": {"randament_zi": 200, "um": "mc"},
@@ -15,7 +16,18 @@
     "ARMATURI": {"randament_zi": 8, "um": "buc"},
     "OBIECTE_SANITARE": {"randament_zi": 3, "um": "buc"},
     "IZOLATII": {"randament_zi": 50, "um": "mp"},
-    "APARATURA_AMC": {"randament_zi": 5, "um": "buc"}
+    "APARATURA_AMC": {"randament_zi": 5, "um": "buc"},
+    "BETON": {"randament_zi": 30, "um": "mc"},
+    "COFRAJE": {"randament_zi": 80, "um": "mp"},
+    "ARMATURA_BETON": {"randament_zi": 1500, "um": "kg"},
+    "ZIDARIE": {"randament_zi": 15, "um": "mc"},
+    "TERMOSISTEM": {"randament_zi": 60, "um": "mp"},
+    "PLACAJE": {"randament_zi": 25, "um": "mp"},
+    "PARDOSELI": {"randament_zi": 60, "um": "mp"},
+    "FINISAJE": {"randament_zi": 80, "um": "mp"},
+    "TAMPLARIE": {"randament_zi": 10, "um": "buc"},
+    "INVELITORI": {"randament_zi": 40, "um": "mp"},
+    "CONFECTII_METALICE": {"randament_zi": 250, "um": "kg"}
   },
   "coloane": {
     "cod_articol": ["cod_articol", "cod", "articol", "art.", "simbol", "indicativ",

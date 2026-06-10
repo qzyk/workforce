@@ -62,7 +62,7 @@ class MotorPlanificare:
                 cat = (art.categorie or None)        # categoria din fisier, ca atare
                 scor = 1.0 if cat else None
             cat_lucrare = store.la_categorie_lucrare(cat, self.mapare_lucrare)  # F2 canonic
-            durata = estimeaza_durata(art.cantitate, cat, self.setari)
+            durata = estimeaza_durata(art.cantitate, cat, self.setari, um=art.um)
             val, vmat, vman, vuti, estimat = calculeaza_cost(
                 art, cat, self.tarife, self.preturi_boq)
             activitati.append(Activitate(

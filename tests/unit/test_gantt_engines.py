@@ -275,6 +275,30 @@ def test_durata_din_randament():
     assert estimeaza_durata(100, None, setari) == 1          # neclasificat -> implicit
 
 
+def test_durata_categorii_cladire():
+    """Regresie: categoriile de cladire (clasificator extins) au randamente -
+    fara ele, articole mari (ex. schela 13120 mp) cadeau pe durata implicita 1 zi."""
+    for setari in (cfg.SETARI_IMPLICITE, cfg.incarca('setari', cfg.SETARI_IMPLICITE)):
+        assert estimeaza_durata(600, 'BETON', setari) == 20          # 600/30
+        assert estimeaza_durata(4000, 'COFRAJE', setari) == 50       # 4000/80
+        assert estimeaza_durata(45000, 'ARMATURA_BETON', setari) == 30
+        assert estimeaza_durata(13120, 'CONFECTII_METALICE', setari) == 53
+        assert estimeaza_durata(120, 'TAMPLARIE', setari) == 12
+
+
+def test_randamente_sincronizate_json_si_implicite():
+    """Cele doua surse de config (setari.json + fallback-ul SETARI_IMPLICITE)
+    trebuie tinute identice - vezi bug-ul similar pe 'coloane' (053b18c).
+    In plus, orice categorie din clasificator trebuie sa aiba randament,
+    altfel durata cade pe implicit (1 zi) indiferent de cantitate."""
+    json_setari = cfg.incarca('setari', cfg.SETARI_IMPLICITE)
+    assert json_setari['randamente'] == cfg.SETARI_IMPLICITE['randamente']
+
+    clasificare = cfg.incarca('clasificare', cfg.CLASIFICARE_IMPLICITA)
+    fara_randament = set(clasificare) - set(json_setari['randamente'])
+    assert not fara_randament, f'categorii fara randament: {sorted(fara_randament)}'
+
+
 # ------------------------------------------------------------------------- wbs
 def test_wbs_ierarhie():
     articole, _ = import_engine.importa(SAMPLE_CSV, '.csv')
@@ -426,6 +450,43 @@ def test_curba_s_si_cost_in_pipeline():
     assert st['curba_s'] and st['curba_s'][-1]['procent'] == 100.0
     # material + manopera ~ total
     assert abs((st['cost_material'] + st['cost_manopera']) - st['cost_total']) < 1.0
+
+
+# CSV sintetic: deviz de cladire (structura + arhitectura + fatada), cantitati
+# tipice pentru un corp mic. Inainte de randamentele de cladire, fiecare articol
+# cadea pe durata implicita (1 zi) -> plan total nerealist de scurt; iar pe
+# devize reale articolele mari (ex. schela 13120 mp) dadeau durate aberante.
+CSV_CLADIRE = (
+    "cod_articol;denumire;um;cantitate;obiect;tronson\n"
+    "1;Turnare beton C25/30 in fundatii;mc;600;Cladire C1;Corp A\n"
+    "2;Cofraje stalpi si grinzi;mp;4000;Cladire C1;Corp A\n"
+    "3;Otel beton BST500 fasonat si montat;kg;45000;Cladire C1;Corp A\n"
+    "4;Zidarie din caramida la pereti;mc;300;Cladire C1;Corp A\n"
+    "5;Termosistem polistiren expandat 10 cm;mp;2400;Cladire C1;Corp A\n"
+    "6;Tencuieli interioare la pereti;mp;8000;Cladire C1;Corp A\n"
+    "7;Pardoseli din parchet laminat;mp;3000;Cladire C1;Corp A\n"
+    "8;Tamplarie PVC cu geam termopan;buc;120;Cladire C1;Corp A\n"
+    "9;Placaje din gresie si faianta;mp;500;Cladire C1;Corp A\n"
+).encode('utf-8')
+
+
+def test_plan_cladire_durata_realista():
+    """Planul unui deviz de cladire are durata totala intr-un interval realist
+    (luni, nu zile si nu zeci de ani) - regresie pentru randamentele de cladire."""
+    articole, _ = import_engine.importa(CSV_CLADIRE, '.csv')
+    rez = MotorPlanificare().proceseaza(articole)
+    st = rez.statistici
+
+    assert st['nr_neclasificate'] == 0          # toate denumirile au categorie
+    pe_categorie = {a.categorie_tehnologica: a for a in rez.activitati}
+    assert pe_categorie['BETON'].durata == 20            # 600 mc / 30 pe zi
+    assert pe_categorie['FINISAJE'].durata == 100        # 8000 mp / 80 pe zi
+    assert pe_categorie['TAMPLARIE'].durata == 12        # 120 buc / 10 pe zi
+    # nicio activitate nu mai cade pe durata implicita (1 zi la cantitati mari)
+    assert all(a.durata > 1 for a in rez.activitati)
+
+    # interval realist pentru un corp mic de cladire: ~2 luni .. ~1.5 ani
+    assert 60 <= st['durata_totala_zile'] <= 400
 
 
 # ----------------------------------------------------------------- 4D / vizual

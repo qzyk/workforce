@@ -64,12 +64,41 @@ DEPENDINTE_IMPLICITE = {
 SETARI_IMPLICITE = {
     'ore_pe_zi': 8,
     'durata_implicita_zile': 1,
+    # Plafon de sanitate: o activitate nu depaseste N zile (in realitate se
+    # suplimenteaza echipa) - un articol patologic nu deformeaza programul.
+    'durata_max_zile': 240,
+    # ATENTIE: tinut in sincron cu config/gantt/setari.json -> "randamente"
+    # (acelasi tip de bug ca la 'coloane', reparat in 053b18c: fluxurile fara
+    # fisier de config cad pe acest fallback, nu pe JSON). Valori orientative
+    # de productivitate pe echipa/zi - de calibrat cu un inginer de santier.
     'randamente': {
+        # retele edilitare
         'TRASARE': {'randament_zi': 500, 'um': 'm'},
         'SAPATURA': {'randament_zi': 200, 'um': 'mc'},
+        'SPRIJINIRI': {'randament_zi': 300, 'um': 'mp'},
         'POZARE_CONDUCTA': {'randament_zi': 120, 'um': 'm'},
+        'CAMINE': {'randament_zi': 1, 'um': 'buc'},
         'UMPLUTURA': {'randament_zi': 250, 'um': 'mc'},
         'REFACERE': {'randament_zi': 150, 'um': 'mp'},
+        'PROBE': {'randament_zi': 300, 'um': 'm'},
+        'DEMONTARI': {'randament_zi': 100, 'um': 'm'},
+        'TRANSPORT': {'randament_zi': 50, 'um': 'to'},
+        'ARMATURI': {'randament_zi': 8, 'um': 'buc'},
+        'OBIECTE_SANITARE': {'randament_zi': 3, 'um': 'buc'},
+        'IZOLATII': {'randament_zi': 50, 'um': 'mp'},
+        'APARATURA_AMC': {'randament_zi': 5, 'um': 'buc'},
+        # cladiri / structura / fatada
+        'BETON': {'randament_zi': 30, 'um': 'mc'},
+        'COFRAJE': {'randament_zi': 80, 'um': 'mp'},
+        'ARMATURA_BETON': {'randament_zi': 1500, 'um': 'kg'},
+        'ZIDARIE': {'randament_zi': 15, 'um': 'mc'},
+        'TERMOSISTEM': {'randament_zi': 60, 'um': 'mp'},
+        'PLACAJE': {'randament_zi': 25, 'um': 'mp'},
+        'PARDOSELI': {'randament_zi': 60, 'um': 'mp'},
+        'FINISAJE': {'randament_zi': 80, 'um': 'mp'},
+        'TAMPLARIE': {'randament_zi': 10, 'um': 'buc'},
+        'INVELITORI': {'randament_zi': 40, 'um': 'mp'},
+        'CONFECTII_METALICE': {'randament_zi': 250, 'um': 'kg'},
     },
     'coloane': {
         'cod_articol': ['cod_articol', 'cod', 'articol', 'nr', 'nr crt', 'pozitie'],
