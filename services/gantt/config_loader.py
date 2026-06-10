@@ -73,12 +73,23 @@ SETARI_IMPLICITE = {
     },
     'coloane': {
         'cod_articol': ['cod_articol', 'cod', 'articol', 'nr', 'nr crt', 'pozitie'],
-        'denumire': ['denumire', 'descriere', 'denumirea lucrarii', 'lucrare', 'denumire articol'],
+        # 'capitol de lucrari' = coloana de DENUMIRE in F3-urile unor proiectanti
+        # (ex. Academia de Politie); sinonimul mai lung bate 'capitol' (categorie).
+        'denumire': ['denumire', 'descriere', 'denumirea lucrarii', 'lucrare',
+                     'denumire articol', 'capitol de lucrari', 'capitolul de lucrari',
+                     'capitol lucrari', 'capitole de lucrari'],
         'um': ['um', 'u.m.', 'unitate', 'unitate de masura', 'unitatea de masura'],
         'cantitate': ['cantitate', 'cant', 'cant.', 'qty', 'cantitati'],
         'obiect': ['obiect', 'obiectiv', 'obiect deviz'],
         'tronson': ['tronson', 'strada', 'sector', 'zona'],
         'categorie': ['categorie', 'capitol', 'categoria de lucrari'],
+        'pret_unitar': ['pret unitar', 'pretul unitar', 'pretul', 'pret/um', 'p.u.',
+                        'pret u', 'pret unit', 'pret pe um'],
+        'pret_material': ['pret material', 'pret materiale', 'valoare material'],
+        'pret_manopera': ['pret manopera', 'valoare manopera', 'pret munca'],
+        'pret_utilaj': ['pret utilaj', 'pret utilaje', 'valoare utilaj', 'valoare utilaje'],
+        'pret_total': ['pret total', 'totalul', 'total fara tva', 'valoare totala',
+                       'total general', 'valoare lucrare'],
     },
     'sinonime': {
         'teava': 'conducta',
