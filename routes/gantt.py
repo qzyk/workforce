@@ -895,6 +895,33 @@ def obiectiv_export_xlsx(id):
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
+@gantt_bp.route('/obiectiv/<int:id>/planifica')
+@login_required
+def obiectiv_planifica(id):
+    """Planificare Gantt consolidata din obiectiv (F1): toate listele F3,
+    cu drill-down F1 -> F2 (obiect) -> F3 (lista) in WBS. Trece prin fluxul
+    existent (CSV intern -> pipeline -> rezultat cu diagrama/exporturi)."""
+    from models import Obiectiv
+    from services.gantt import planificare_obiectiv
+    ob = Obiectiv.query.get_or_404(id)
+    csv_bytes, raport_cons = planificare_obiectiv.csv_obiectiv(id)
+    if not raport_cons['nr_articole']:
+        flash('Nicio lista F3 parsabila in acest obiectiv. '
+              f"Erori: {raport_cons['erori']}.", 'warning')
+        return redirect(url_for('gantt.obiectiv_detalii', id=id))
+    if raport_cons['erori']:
+        liste_err = [l['lista'] for l in raport_cons['liste'] if l.get('eroare')]
+        flash(f"{raport_cons['erori']} liste F3 nu s-au putut parsa si au fost "
+              f"sarite: {', '.join(liste_err[:5])}", 'warning')
+    token = _salveaza_temp(csv_bytes, '.csv')
+    try:
+        rezultat, raport_import = _motor().genereaza_din_fisier(csv_bytes, '.csv')
+    except import_engine.EroareImport as e:
+        flash(f'Planificarea a esuat: {e}', 'danger')
+        return redirect(url_for('gantt.obiectiv_detalii', id=id))
+    return _render_rezultat(rezultat, raport_import, token, f'Obiectiv: {ob.nume}')
+
+
 @gantt_bp.route('/obiectiv/<int:id>/export.pdf')
 @login_required
 def obiectiv_export_pdf(id):
