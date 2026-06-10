@@ -856,3 +856,23 @@ def api_pipeline():
     except import_engine.EroareImport as e:
         return jsonify({'eroare': str(e)}), 422
     return jsonify(rezultat.to_dict())
+
+
+# ============================================================
+# Ingestie obiectiv: arbore Obiectiv (F1) -> Obiect (F2) -> GanttPlan (F3)
+# ============================================================
+
+@gantt_bp.route('/obiective')
+@login_required
+def obiective_lista():
+    from models import Obiectiv
+    obiective = Obiectiv.query.order_by(Obiectiv.data_creare.desc()).all()
+    return render_template('gantt/obiective_lista.html', obiective=obiective)
+
+
+@gantt_bp.route('/obiectiv/<int:id>')
+@login_required
+def obiectiv_detalii(id):
+    from models import Obiectiv
+    ob = Obiectiv.query.get_or_404(id)
+    return render_template('gantt/obiectiv_detalii.html', ob=ob)

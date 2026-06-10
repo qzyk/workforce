@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ ob.nume }} - Obiectiv{% endblock %}
+
+{% macro nr(v) %}{{ '{:,.2f}'.format((v or 0)|float).replace(',', '.') }}{% endmacro %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('gantt.index') }}">Planificare</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('gantt.obiective_lista') }}">Obiective</a></li>
+<li class="breadcrumb-item active">{{ ob.nume[:40] }}</li>
+{% endblock %}
+
+{% block content %}
+<h2 style="margin:0 0 4px;"><i class="fa-solid fa-folder-tree" style="color:var(--primary);"></i> {{ ob.nume }}</h2>
+
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin:16px 0;">
+    <div class="card-panel" style="padding:14px;">
+        <div style="font-size:.8rem; color:var(--text-muted);">Constructii (4.1)</div>
+        <div style="font-size:1.4rem; font-weight:600;">{{ nr(ob.valoare_constructii) }}</div>
+    </div>
+    <div class="card-panel" style="padding:14px;">
+        <div style="font-size:.8rem; color:var(--text-muted);">Obiecte (F2)</div>
+        <div style="font-size:1.4rem; font-weight:600;">{{ ob.obiecte.count() }}</div>
+    </div>
+</div>
+
+{% for o in ob.obiecte %}
+{% set ns = namespace(suma=0) %}
+<div class="card-panel" style="padding:0; overflow:hidden; margin-bottom:16px;">
+    <div style="padding:12px 14px; border-bottom:1px solid rgba(0,0,0,0.06); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <div>
+            <strong>[{{ o.cod }}] {{ o.nume }}</strong>
+            <span style="font-size:.72rem; padding:2px 8px; border-radius:10px; background:var(--gray-100); color:var(--gray-700); margin-left:6px;">{{ o.disciplina or '-' }}</span>
+        </div>
+        <div style="font-size:.82rem; color:var(--gray-600);">
+            F2: <strong>{{ nr(o.valoare_f2) }}</strong>
+            {% if o.valoare_f1 is not none %} · F1(4.1): {{ nr(o.valoare_f1) }}{% endif %}
+        </div>
+    </div>
+    <table style="width:100%; border-collapse:collapse; font-size:.88rem;">
+        <thead><tr style="background:rgba(0,0,0,0.03); text-align:left;">
+            <th style="padding:8px 12px;">Lista F3</th>
+            <th style="padding:8px 12px; text-align:right;">Cost (fara TVA)</th>
+        </tr></thead>
+        <tbody>
+        {% for pl in o.planuri %}
+            {% set ns.suma = ns.suma + (pl.cost_total or 0) %}
+            <tr style="border-top:1px solid rgba(0,0,0,0.05);">
+                <td style="padding:6px 12px;">{{ pl.nume }}{% if pl.nume_fisier %}<br><small style="color:var(--gray-500);">{{ pl.nume_fisier }}</small>{% endif %}</td>
+                <td style="padding:6px 12px; text-align:right; font-variant-numeric:tabular-nums;">{{ nr(pl.cost_total) }}</td>
+            </tr>
+        {% endfor %}
+            <tr style="border-top:2px solid rgba(0,0,0,0.1); font-weight:600;">
+                <td style="padding:6px 12px;">Total liste F3</td>
+                <td style="padding:6px 12px; text-align:right; font-variant-numeric:tabular-nums;">{{ nr(ns.suma) }}</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endfor %}
+{% endblock %}

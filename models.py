@@ -4415,6 +4415,61 @@ class GanttRelatieTemplate(db.Model):
                 f'{self.tip}+{self.decalaj}>')
 
 
+class Obiectiv(db.Model):
+    """Obiectiv de investitie (nivel F1 - centralizator pe obiectiv).
+
+    Radacina ierarhiei de devize: Obiectiv (F1) -> Obiect (F2) -> GanttPlan (F3).
+    Se poate lega optional de un Proiect existent (proiect_id). Strict aditiv."""
+    __tablename__ = 'obiectiv'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'), nullable=True, index=True)
+    cod = db.Column(db.String(50), nullable=True)
+    nume = db.Column(db.String(250), nullable=False)
+    descriere = db.Column(db.Text, nullable=True)
+    valoare_constructii = db.Column(db.Numeric(16, 2), nullable=True)  # cap 4.1 din F1
+    valoare_totala = db.Column(db.Numeric(16, 2), nullable=True)       # cap 4 / total
+    valoare_cm = db.Column(db.Numeric(16, 2), nullable=True)           # din care C+M
+    data = db.Column(db.Date, nullable=True)
+    nume_fisier_f1 = db.Column(db.String(255), nullable=True)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    proiect = db.relationship('Proiect',
+                              backref=db.backref('obiective', lazy='dynamic'))
+
+    def __repr__(self):
+        return f'<Obiectiv {self.id} {self.nume[:30]!r}>'
+
+
+class Obiect(db.Model):
+    """Obiect de investitie (nivel F2 - centralizator pe obiect / disciplina).
+
+    Apartine unui Obiectiv; grupeaza listele F3 (GanttPlan). `valoare_f2` =
+    valoarea declarata in F2 (sau linia obiectului din F1). Strict aditiv."""
+    __tablename__ = 'obiect'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    obiectiv_id = db.Column(db.Integer, db.ForeignKey('obiectiv.id'),
+                            nullable=False, index=True)
+    cod = db.Column(db.String(20), nullable=True)            # ex '001'
+    nume = db.Column(db.String(250), nullable=False)
+    disciplina = db.Column(db.String(40), nullable=True)     # arhitectura/structural/...
+    valoare_f2 = db.Column(db.Numeric(16, 2), nullable=True)
+    valoare_f1 = db.Column(db.Numeric(16, 2), nullable=True)  # linia obiectului in F1 (constructii)
+    ordine = db.Column(db.Integer, nullable=False, default=0)
+    nume_fisier_f2 = db.Column(db.String(255), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    obiectiv = db.relationship('Obiectiv',
+                               backref=db.backref('obiecte', lazy='dynamic',
+                                                  order_by='Obiect.ordine'))
+    planuri = db.relationship('GanttPlan', backref='obiect', lazy='dynamic')
+
+    def __repr__(self):
+        return f'<Obiect {self.cod} {self.nume[:30]!r} obiectiv={self.obiectiv_id}>'
+
+
 class GanttPlan(db.Model):
     """Plan Gantt salvat, legat (optional) de un proiect.
 
@@ -4427,6 +4482,7 @@ class GanttPlan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
     proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'), nullable=True, index=True)
+    obiect_id = db.Column(db.Integer, db.ForeignKey('obiect.id'), nullable=True, index=True)  # F2 (ingestie obiectiv)
     nume = db.Column(db.String(160), nullable=False)
     nume_fisier = db.Column(db.String(255), nullable=True)
     ext = db.Column(db.String(10), nullable=True)

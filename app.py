@@ -777,6 +777,23 @@ def create_app(config_name='default'):
         click.echo(format_text(raport))
 
     # --------------------------------------------------------
+    # COMANDA CLI: flask ingereaza-obiectiv (Ingestie obiectiv B2)
+    # --------------------------------------------------------
+    @app.cli.command('ingereaza-obiectiv')
+    @click.option('--dir', 'director', required=True, help='Folder cu F1 + F2-uri + F3-uri.')
+    @click.option('--nume', default=None, help='Numele obiectivului (default: numele folderului).')
+    @click.option('--proiect-id', default=None, type=int, help='Leaga obiectivul de un proiect.')
+    def ingereaza_obiectiv_command(director, nume, proiect_id):
+        """Construieste arborele Obiectiv -> Obiect -> GanttPlan dintr-un folder de devize.
+
+        Idempotent (re-rularea actualizeaza, nu dubleaza). Exemplu:
+            flask ingereaza-obiectiv --dir "/cale/folder_obiectiv" --nume "Academia"
+        """
+        from services.ingestie_obiectiv import ingereaza
+        stats = ingereaza(director, nume, proiect_id=proiect_id)
+        click.echo(f'[OK] Ingestie obiectiv: {stats}')
+
+    # --------------------------------------------------------
     # APScheduler register (Faza 14)
     # --------------------------------------------------------
     try:
