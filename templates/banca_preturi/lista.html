@@ -10,12 +10,18 @@
 {% block content %}
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:12px;">
     <h2 style="margin:0;"><i class="fa-solid fa-tags" style="color:var(--primary);"></i> Banca de preturi de resurse</h2>
+    {% if poate_scrie %}
+    <a href="{{ url_for('banca_preturi.nou') }}" class="btn btn-success">
+        <i class="fa-solid fa-plus"></i> Adauga pret
+    </a>
+    {% endif %}
 </div>
 
 <div class="card-panel" style="padding:12px; background:rgba(201,169,97,0.08); border:1px solid rgba(201,169,97,0.3); margin-bottom:18px; font-size:.85rem;">
     <i class="fa-solid fa-circle-info" style="color:var(--primary);"></i>
-    Preturi unitare de referinta extrase din devize reale (C6 materiale / C7 manopera / C8 utilaje / C9 transport / F4 echipamente).
-    Importul se face din consola: <code>flask import-preturi --dir &lt;folder&gt; --sursa "&lt;nume&gt;"</code>.
+    Preturi unitare de referinta din devize reale (C6 materiale / C7 manopera / C8 utilaje / C9 transport / F4 echipamente),
+    clasificate automat pe categorie de lucrare (editabile). Import in masa din consola:
+    <code>flask import-preturi --dir &lt;folder&gt; --sursa "&lt;nume&gt;"</code>.
 </div>
 
 <!-- Sumar pe tip -->
@@ -32,13 +38,19 @@
     {% endfor %}
 </div>
 
-<!-- Cautare -->
+<!-- Cautare + filtre -->
 <form method="GET" class="card-panel" style="padding:12px; margin-bottom:16px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-    <input type="text" name="q" value="{{ q }}" placeholder="Cauta cod sau denumire..." style="flex:1; min-width:200px; padding:8px 12px; border-radius:6px; border:1px solid var(--gray-300);">
+    <input type="text" name="q" value="{{ q }}" placeholder="Cauta cod sau denumire..." style="flex:1; min-width:180px; padding:8px 12px; border-radius:6px; border:1px solid var(--gray-300);">
     <select name="tip" style="padding:8px 12px; border-radius:6px; border:1px solid var(--gray-300);">
         <option value="">Toate tipurile</option>
         {% for tip_key, tip_label in tipuri %}
         <option value="{{ tip_key }}" {% if tip == tip_key %}selected{% endif %}>{{ tip_label }}</option>
+        {% endfor %}
+    </select>
+    <select name="categorie" style="padding:8px 12px; border-radius:6px; border:1px solid var(--gray-300);">
+        <option value="">Toate categoriile</option>
+        {% for c in categorii %}
+        <option value="{{ c }}" {% if categorie == c %}selected{% endif %}>{{ c }}</option>
         {% endfor %}
     </select>
     <button type="submit" class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Cauta</button>
@@ -52,10 +64,11 @@
                 <th>Tip</th>
                 <th>Cod</th>
                 <th>Denumire</th>
+                <th>Categorie</th>
                 <th>U.M.</th>
                 <th style="text-align:right;">Pret unitar</th>
                 <th>Sursa</th>
-                <th>Furnizor</th>
+                {% if poate_scrie %}<th style="text-align:right;">Actiuni</th>{% endif %}
             </tr>
         </thead>
         <tbody>
@@ -63,15 +76,28 @@
             <tr>
                 <td><span style="font-size:.72rem; padding:2px 8px; border-radius:10px; background:var(--gray-100); color:var(--gray-700);">{{ p.tip }}</span></td>
                 <td style="font-family:monospace; font-size:.82rem;">{{ p.cod }}</td>
-                <td style="font-size:.85rem;">{{ p.denumire[:70] }}</td>
+                <td style="font-size:.85rem;">{{ p.denumire[:60] }}</td>
+                <td>
+                    {% if p.categorie %}
+                    <a href="{{ url_for('banca_preturi.lista', categorie=p.categorie) }}" style="font-size:.74rem; padding:2px 8px; border-radius:10px; background:rgba(201,169,97,0.15); color:#8A6A12; text-decoration:none;">{{ p.categorie }}</a>
+                    {% else %}<span style="color:var(--gray-400);">—</span>{% endif %}
+                </td>
                 <td style="font-size:.82rem; color:var(--gray-600);">{{ p.um or '-' }}</td>
                 <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:600;">{{ nr(p.pret_unitar) }}</td>
                 <td style="font-size:.8rem; color:var(--gray-600);">{{ p.sursa or '-' }}</td>
-                <td style="font-size:.8rem; color:var(--gray-600);">{{ p.furnizor or '-' }}</td>
+                {% if poate_scrie %}
+                <td class="actions-cell" style="white-space:nowrap; text-align:right;">
+                    <a href="{{ url_for('banca_preturi.editeaza', id=p.id) }}" class="btn-action btn-edit" title="Editeaza"><i class="fa-solid fa-pen"></i></a>
+                    <form method="POST" action="{{ url_for('banca_preturi.sterge', id=p.id) }}" style="display:inline;" onsubmit="return confirm('Sigur stergi pretul {{ p.cod }}?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn-action" style="color:var(--danger);" title="Sterge"><i class="fa-solid fa-trash"></i></button>
+                    </form>
+                </td>
+                {% endif %}
             </tr>
             {% else %}
-            <tr><td colspan="7" style="padding:30px; text-align:center; color:var(--gray-500);">
-                Nicio inregistrare. Importa preturi cu <code>flask import-preturi</code>.
+            <tr><td colspan="{{ 8 if poate_scrie else 7 }}" style="padding:30px; text-align:center; color:var(--gray-500);">
+                Nicio inregistrare. Adauga manual sau importa cu <code>flask import-preturi</code>.
             </td></tr>
             {% endfor %}
         </tbody>

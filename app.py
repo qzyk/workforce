@@ -849,6 +849,20 @@ def create_app(config_name='default'):
         click.echo(f'[OK] Banca preturi <- "{sursa}": {stats}')
 
     # --------------------------------------------------------
+    # COMANDA CLI: flask clasifica-preturi (backfill categorie)
+    # --------------------------------------------------------
+    @app.cli.command('clasifica-preturi')
+    @click.option('--tot', is_flag=True, help='Reclasifica TOT (suprascrie si categoriile setate).')
+    def clasifica_preturi_command(tot):
+        """Clasifica pe categorie de lucrare inregistrarile din banca de preturi.
+
+        Default: doar inregistrarile fara categorie (protejeaza editarile manuale).
+        """
+        from services.banca_preturi import reclasifica
+        stats = reclasifica(doar_lipsa=not tot)
+        click.echo(f'[OK] Clasificare banca preturi: {stats}')
+
+    # --------------------------------------------------------
     # APScheduler register (Faza 14)
     # --------------------------------------------------------
     try:

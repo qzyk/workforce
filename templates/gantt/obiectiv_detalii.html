@@ -52,7 +52,12 @@
         {% for pl in o.planuri %}
             {% set ns.suma = ns.suma + (pl.cost_total or 0) %}
             <tr style="border-top:1px solid rgba(0,0,0,0.05);">
-                <td style="padding:6px 12px;">{{ pl.nume }}{% if pl.nume_fisier %}<br><small style="color:var(--gray-500);">{{ pl.nume_fisier }}</small>{% endif %}</td>
+                <td style="padding:6px 12px;">
+                    <a href="{{ url_for('gantt.plan', id_=pl.id) }}" title="Deschide planul (pipeline Gantt)" style="text-decoration:none; color:inherit;">
+                        <i class="fa-solid fa-chart-gantt" style="color:var(--primary); font-size:.8rem;"></i> {{ pl.nume }}
+                    </a>
+                    {% if pl.nume_fisier %}<br><small style="color:var(--gray-500);">{{ pl.nume_fisier }}</small>{% endif %}
+                </td>
                 <td style="padding:6px 12px; text-align:right; font-variant-numeric:tabular-nums;">{{ nr(pl.cost_total) }}</td>
             </tr>
         {% endfor %}

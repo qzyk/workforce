@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editeaza pret' if pret else 'Adauga pret' }} - Banca de preturi{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('banca_preturi.lista') }}">Banca de preturi</a></li>
+<li class="breadcrumb-item active">{{ 'Editeaza' if pret else 'Adauga' }}</li>
+{% endblock %}
+
+{% block content %}
+<h2 style="margin:0 0 18px;"><i class="fa-solid fa-tag" style="color:var(--primary);"></i>
+    {{ 'Editeaza pretul ' + pret.cod if pret else 'Adauga pret in banca' }}</h2>
+
+<div class="card-panel" style="max-width:720px; padding:22px;">
+    <form method="POST">
+        {{ form.hidden_tag() }}
+        {% macro camp(f, span=1) %}
+        <div style="grid-column: span {{ span }};">
+            <label style="display:block; font-size:.82rem; font-weight:600; margin-bottom:4px;">{{ f.label.text }}</label>
+            {{ f(style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid var(--gray-300);") }}
+            {% if f.description %}<small style="color:var(--gray-500);">{{ f.description }}</small>{% endif %}
+            {% for e in f.errors %}<small style="color:var(--danger); display:block;">{{ e }}</small>{% endfor %}
+        </div>
+        {% endmacro %}
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            {{ camp(form.tip) }}
+            {{ camp(form.cod) }}
+            {{ camp(form.denumire, span=2) }}
+            {{ camp(form.um) }}
+            {{ camp(form.categorie) }}
+            {{ camp(form.pret_unitar) }}
+            {{ camp(form.data_pret) }}
+            {{ camp(form.furnizor) }}
+            {{ camp(form.sursa) }}
+        </div>
+        <div style="margin-top:18px; display:flex; gap:10px;">
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Salveaza</button>
+            <a href="{{ url_for('banca_preturi.lista') }}" class="btn">Renunta</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

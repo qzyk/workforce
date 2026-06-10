@@ -131,8 +131,10 @@ def colecteaza_date(director: str, nume_obiectiv: Optional[str] = None) -> dict:
         obiecte=[],
     )
 
-    # codurile de obiect = cheile F2 (plus orice cod din F1 fara F2)
-    coduri = sorted(set(f2map) | set(obiecte_f1))
+    # codurile de obiect = cheile F2 + codurile din F1 + codurile deduse din
+    # F3-uri (tolerant: un obiectiv incarcat doar cu liste F3, fara F1/F2,
+    # isi construieste obiectele din prefixele fisierelor)
+    coduri = sorted(set(f2map) | set(obiecte_f1) | {ob for (ob, _s) in f3map})
     for cod in coduri:
         f2 = cf.parse_f2_file(f2map[cod]) if cod in f2map else {'sub_obiecte': [], 'total': None}
         nume_obj = (obiecte_f1.get(cod, {}).get('nume')

@@ -870,6 +870,50 @@ def obiective_lista():
     return render_template('gantt/obiective_lista.html', obiective=obiective)
 
 
+@gantt_bp.route('/obiective/incarca', methods=['POST'])
+@login_required
+def obiective_incarca():
+    """Ingestie obiectiv din UI: upload multiplu (F1 + F2-uri + F3-uri .xls/.xlsx).
+
+    Fisierele se salveaza intr-un director temporar cu numele originale
+    (clasificarea F1/F2/F3 se face dupa numele fisierului), apoi trec prin
+    acelasi flux ca CLI-ul `ingereaza-obiectiv` (idempotent)."""
+    import shutil
+    import tempfile
+    from werkzeug.utils import secure_filename
+    from services.ingestie_obiectiv import ingereaza
+
+    fisiere = [f for f in request.files.getlist('fisiere') if f and f.filename]
+    if not fisiere:
+        flash('Selecteaza fisierele obiectivului (F1 + F2-uri + F3-uri).', 'warning')
+        return redirect(url_for('gantt.obiective_lista'))
+    nume = (request.form.get('nume') or '').strip() or None
+
+    tmpdir = tempfile.mkdtemp(prefix='obiectiv_')
+    try:
+        salvate = 0
+        for f in fisiere:
+            fn = secure_filename(f.filename)
+            if not fn.lower().endswith(('.xls', '.xlsx')):
+                continue
+            f.save(os.path.join(tmpdir, fn))
+            salvate += 1
+        if not salvate:
+            flash('Niciun fisier .xls/.xlsx valid in selectie.', 'warning')
+            return redirect(url_for('gantt.obiective_lista'))
+        stats = ingereaza(tmpdir, nume, creat_de_id=current_user.id)
+        flash(f"Obiectiv \"{stats['nume_obiectiv']}\": {stats['nr_obiecte']} obiecte, "
+              f"{stats['nr_planuri']} liste F3 "
+              f"({stats['planuri_create']} noi, {stats['planuri_actualizate']} actualizate).",
+              'success')
+        return redirect(url_for('gantt.obiectiv_detalii', id=stats['obiectiv_id']))
+    except Exception as e:
+        flash(f'Ingestia a esuat: {e}', 'danger')
+        return redirect(url_for('gantt.obiective_lista'))
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 @gantt_bp.route('/obiectiv/<int:id>')
 @login_required
 def obiectiv_detalii(id):

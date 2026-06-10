@@ -1319,6 +1319,7 @@ class PretResursa(db.Model):
     cod = db.Column(db.String(80), nullable=False, index=True)
     denumire = db.Column(db.String(400), nullable=False)
     um = db.Column(db.String(20), nullable=True)
+    categorie = db.Column(db.String(60), nullable=True, index=True)  # categorie de lucrare (clasificata auto, editabila)
     pret_unitar = db.Column(db.Numeric(16, 4), nullable=False, default=0)
     moneda = db.Column(db.String(8), nullable=False, default='RON')
     sursa = db.Column(db.String(200), nullable=True, index=True)  # ex: nume proiect / fisier

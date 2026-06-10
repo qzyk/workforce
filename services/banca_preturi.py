@@ -134,6 +134,41 @@ def parse_extras_xls(path: str, tip: Optional[str] = None) -> list[dict]:
 
 
 # ============================================================
+# Clasificare pe categorie de lucrare
+# ============================================================
+
+def clasifica_resursa(tip: str, denumire: str, cod: Optional[str] = None,
+                      um: Optional[str] = None) -> str:
+    """Categorie de lucrare pentru o resursa din banca.
+
+    Materialele si echipamentele trec prin clasificatorul de devize existent
+    (beton, cabluri, conducte_sanitare...); manopera/utilajele/transportul au
+    categoria = tipul lor (meseriile/utilajele sunt deja granulare in denumire)."""
+    if tip in ('manopera', 'utilaj', 'transport'):
+        return tip
+    from services.deviz_pricing import clasifica_pozitie
+    return clasifica_pozitie(denumire or '', cod, 'general', um)
+
+
+def reclasifica(doar_lipsa: bool = True, tenant_id: Optional[int] = None,
+                commit: bool = True) -> dict:
+    """Backfill: clasifica inregistrarile existente. `doar_lipsa=True` nu atinge
+    categoriile setate deja (protejeaza editarile manuale)."""
+    q = PretResursa.query
+    if tenant_id is not None:
+        q = q.filter(PretResursa.tenant_id == tenant_id)
+    if doar_lipsa:
+        q = q.filter(db.or_(PretResursa.categorie.is_(None), PretResursa.categorie == ''))
+    n = 0
+    for p in q.all():
+        p.categorie = clasifica_resursa(p.tip, p.denumire, p.cod, p.um)
+        n += 1
+    if commit:
+        db.session.commit()
+    return {'clasificate': n}
+
+
+# ============================================================
 # Import in DB (upsert idempotent)
 # ============================================================
 
@@ -157,11 +192,16 @@ def _upsert(rows: Iterable[dict], sursa: str, *, proiect_id=None, tenant_id=None
             existing.furnizor = row.get('furnizor') or existing.furnizor
             existing.proiect_id = proiect_id or existing.proiect_id
             existing.data_pret = data_pret or existing.data_pret
+            if not existing.categorie:   # nu suprascrie editarile manuale
+                existing.categorie = clasifica_resursa(tip, existing.denumire,
+                                                       cod, existing.um)
             actualizat += 1
         else:
             db.session.add(PretResursa(
                 tenant_id=tenant_id, tip=tip, cod=cod,
                 denumire=row.get('denumire') or cod, um=row.get('um'),
+                categorie=clasifica_resursa(tip, row.get('denumire') or cod,
+                                            cod, row.get('um')),
                 pret_unitar=row['pret_unitar'], moneda='RON', sursa=sursa,
                 proiect_id=proiect_id, data_pret=data_pret,
                 furnizor=row.get('furnizor'), introdus_de=introdus_de,
@@ -275,15 +315,26 @@ def rezumat(tenant_id: Optional[int] = None) -> dict:
 
 
 def cauta(q: Optional[str] = None, tip: Optional[str] = None,
+          categorie: Optional[str] = None,
           tenant_id: Optional[int] = None, limit: int = 50) -> list:
-    """Cauta in banca dupa cod/denumire (LIKE). Filtru optional pe tip."""
+    """Cauta in banca dupa cod/denumire (LIKE). Filtre optionale tip/categorie."""
     query = PretResursa.query
     if tenant_id is not None:
         query = query.filter(PretResursa.tenant_id == tenant_id)
     if tip:
         query = query.filter(PretResursa.tip == tip)
+    if categorie:
+        query = query.filter(PretResursa.categorie == categorie)
     if q:
         like = f'%{q.strip()}%'
         query = query.filter(db.or_(PretResursa.cod.ilike(like),
                                     PretResursa.denumire.ilike(like)))
     return query.order_by(PretResursa.tip, PretResursa.cod).limit(limit).all()
+
+
+def categorii_existente(tenant_id: Optional[int] = None) -> list:
+    """Categoriile distincte din banca (pt dropdown filtru)."""
+    q = db.session.query(PretResursa.categorie).distinct()
+    if tenant_id is not None:
+        q = q.filter(PretResursa.tenant_id == tenant_id)
+    return sorted(c[0] for c in q.all() if c[0])

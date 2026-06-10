@@ -15,9 +15,23 @@
 
 <div class="card-panel" style="padding:12px; background:rgba(201,169,97,0.08); border:1px solid rgba(201,169,97,0.3); margin-bottom:18px; font-size:.85rem;">
     <i class="fa-solid fa-circle-info" style="color:var(--primary);"></i>
-    Arbore Obiectiv (F1) &rarr; Obiect (F2) &rarr; lista F3. Ingestie din consola:
+    Arbore Obiectiv (F1) &rarr; Obiect (F2) &rarr; lista F3. Incarca mai jos fisierele
+    obiectivului (centralizator F1, F2-urile pe obiect si listele F3) sau ruleaza din consola:
     <code>flask ingereaza-obiectiv --dir &lt;folder&gt; --nume "&lt;nume&gt;"</code>.
 </div>
+
+<!-- Ingestie din UI -->
+<form method="POST" action="{{ url_for('gantt.obiective_incarca') }}" enctype="multipart/form-data"
+      class="card-panel" style="padding:16px; margin-bottom:18px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="nume" placeholder="Nume obiectiv (ex: Academia de Politie)"
+           style="flex:1; min-width:220px; padding:8px 12px; border-radius:6px; border:1px solid var(--gray-300);">
+    <input type="file" name="fisiere" multiple accept=".xls,.xlsx"
+           style="padding:6px; font-size:.85rem;">
+    <button type="submit" class="btn btn-success"><i class="fa-solid fa-file-import"></i> Ingereaza obiectivul</button>
+    <small style="width:100%; color:var(--gray-500);">Selecteaza TOATE fisierele odata (F1 + F2-uri + F3-uri, .xls/.xlsx).
+        Numele fisierelor trebuie sa pastreze prefixele de cod (001_, 001_002_...). Re-incarcarea actualizeaza, nu dubleaza.</small>
+</form>
 
 <div class="card-panel" style="padding:0; overflow:hidden;">
     <table class="data-table" style="width:100%;">

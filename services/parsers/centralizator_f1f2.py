@@ -170,10 +170,21 @@ def total_f3_file(path: str) -> tuple[Decimal, int]:
 # ============================================================
 
 def _randuri_xls(path: str) -> list:
-    import xlrd
-    wb = xlrd.open_workbook(path)
-    sh = wb.sheet_by_index(0)
-    return [[sh.cell_value(r, c) for c in range(sh.ncols)] for r in range(sh.nrows)]
+    """Citeste primul sheet ca list[list]. Suporta .xls binar (xlrd) si
+    .xlsx (openpyxl) - xlrd 2.x nu mai citeste xlsx."""
+    try:
+        import xlrd
+        wb = xlrd.open_workbook(path)
+        sh = wb.sheet_by_index(0)
+        return [[sh.cell_value(r, c) for c in range(sh.ncols)] for r in range(sh.nrows)]
+    except Exception:
+        from openpyxl import load_workbook
+        wb = load_workbook(path, read_only=True, data_only=True)
+        ws = wb.worksheets[0]
+        randuri = [['' if v is None else v for v in row]
+                   for row in ws.iter_rows(values_only=True)]
+        wb.close()
+        return randuri
 
 
 def parse_f1_file(path: str) -> dict:
