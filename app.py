@@ -762,6 +762,21 @@ def create_app(config_name='default'):
             click.echo(f'[SKIP] {r.get("mesaj")}')
 
     # --------------------------------------------------------
+    # COMANDA CLI: flask reconciliere-obiectiv (Ingestie obiectiv B)
+    # --------------------------------------------------------
+    @app.cli.command('reconciliere-obiectiv')
+    @click.option('--dir', 'director', required=True, help='Folder cu F1 + F2-uri + F3-uri ale obiectivului.')
+    def reconciliere_obiectiv_command(director):
+        """Reconciliaza pe 3 niveluri (F3 -> F2 -> F1) devizele unui obiectiv.
+
+        Raport de QA pe devizele primite (nu scrie in DB). Exemplu:
+            flask reconciliere-obiectiv --dir "/cale/catre/folder_obiectiv"
+        """
+        from services.reconciliere_obiectiv import reconciliaza, format_text
+        raport = reconciliaza(director)
+        click.echo(format_text(raport))
+
+    # --------------------------------------------------------
     # APScheduler register (Faza 14)
     # --------------------------------------------------------
     try:
