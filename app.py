@@ -794,6 +794,31 @@ def create_app(config_name='default'):
         click.echo(f'[OK] Ingestie obiectiv: {stats}')
 
     # --------------------------------------------------------
+    # COMANDA CLI: flask export-obiectiv (Centralizator C)
+    # --------------------------------------------------------
+    @app.cli.command('export-obiectiv')
+    @click.option('--id', 'obiectiv_id', required=True, type=int, help='Id-ul obiectivului.')
+    @click.option('--dir', 'director', default=None, help='Folder cu C6-C9/F4 pt foi extra (optional).')
+    @click.option('--out', default='.', help='Folder de iesire.')
+    def export_obiectiv_command(obiectiv_id, director, out):
+        """Exporta centralizatorul de cheltuieli pe obiectiv: xlsx (+ C6-C9/F4 daca --dir) + pdf."""
+        import re as _re
+        from models import Obiectiv
+        from services.export_obiectiv import export_xlsx, export_pdf
+        ob = Obiectiv.query.get(obiectiv_id)
+        if not ob:
+            click.echo('[EROARE] Obiectiv inexistent.')
+            return
+        slug = _re.sub(r'[^A-Za-z0-9]+', '_', ob.nume or 'obiectiv')[:50].strip('_')
+        px = os.path.join(out, f'Centralizator_{slug}.xlsx')
+        pp = os.path.join(out, f'Centralizator_{slug}.pdf')
+        with open(px, 'wb') as fh:
+            fh.write(export_xlsx(obiectiv_id, director=director))
+        with open(pp, 'wb') as fh:
+            fh.write(export_pdf(obiectiv_id))
+        click.echo(f'[OK] {px}\n     {pp}')
+
+    # --------------------------------------------------------
     # APScheduler register (Faza 14)
     # --------------------------------------------------------
     try:

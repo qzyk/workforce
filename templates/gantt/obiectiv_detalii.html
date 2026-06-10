@@ -10,7 +10,13 @@
 {% endblock %}
 
 {% block content %}
-<h2 style="margin:0 0 4px;"><i class="fa-solid fa-folder-tree" style="color:var(--primary);"></i> {{ ob.nume }}</h2>
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:4px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-folder-tree" style="color:var(--primary);"></i> {{ ob.nume }}</h2>
+    <div style="display:flex; gap:8px;">
+        <a href="{{ url_for('gantt.obiectiv_export_xlsx', id=ob.id) }}" class="btn"><i class="fa-solid fa-file-excel"></i> Centralizator xlsx</a>
+        <a href="{{ url_for('gantt.obiectiv_export_pdf', id=ob.id) }}" class="btn"><i class="fa-solid fa-file-pdf"></i> Centralizator pdf</a>
+    </div>
+</div>
 
 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin:16px 0;">
     <div class="card-panel" style="padding:14px;">

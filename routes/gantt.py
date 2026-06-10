@@ -876,3 +876,33 @@ def obiectiv_detalii(id):
     from models import Obiectiv
     ob = Obiectiv.query.get_or_404(id)
     return render_template('gantt/obiectiv_detalii.html', ob=ob)
+
+
+def _slug_obiectiv(nume):
+    return re.sub(r'[^A-Za-z0-9]+', '_', nume or 'obiectiv').strip('_')[:50] or 'obiectiv'
+
+
+@gantt_bp.route('/obiectiv/<int:id>/export.xlsx')
+@login_required
+def obiectiv_export_xlsx(id):
+    from io import BytesIO
+    from models import Obiectiv
+    from services.export_obiectiv import export_xlsx
+    ob = Obiectiv.query.get_or_404(id)
+    data = export_xlsx(id)
+    return send_file(BytesIO(data), as_attachment=True,
+                     download_name=f'Centralizator_{_slug_obiectiv(ob.nume)}.xlsx',
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@gantt_bp.route('/obiectiv/<int:id>/export.pdf')
+@login_required
+def obiectiv_export_pdf(id):
+    from io import BytesIO
+    from models import Obiectiv
+    from services.export_obiectiv import export_pdf
+    ob = Obiectiv.query.get_or_404(id)
+    data = export_pdf(id)
+    return send_file(BytesIO(data), as_attachment=True,
+                     download_name=f'Centralizator_{_slug_obiectiv(ob.nume)}.pdf',
+                     mimetype='application/pdf')
