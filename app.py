@@ -89,6 +89,7 @@ def create_app(config_name='default'):
     from routes.locatii import locatii_bp  # Locatii proiect cu Mapbox
     from routes.gantt import gantt_bp  # Planificare Gantt din F3 (WBS + dependente + export P6/MSP)
     from routes.teren import teren_bp  # Captura rapida din teren (mobil-first)
+    from routes.banca_preturi import banca_preturi_bp  # Banca preturi resurse (gated 'banca-preturi')
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -107,6 +108,7 @@ def create_app(config_name='default'):
     app.register_blueprint(locatii_bp, url_prefix='/locatii')
     app.register_blueprint(gantt_bp)  # url_prefix '/gantt' definit in blueprint
     app.register_blueprint(teren_bp)  # url_prefix '/teren' definit in blueprint
+    app.register_blueprint(banca_preturi_bp)  # url_prefix '/banca-preturi' definit in blueprint
 
     # Context processor pentru token Mapbox public (vizibil in template-uri).
     # Token-ul public e safe sa apara in HTML (asta e flow-ul Mapbox standard).
@@ -817,6 +819,34 @@ def create_app(config_name='default'):
         with open(pp, 'wb') as fh:
             fh.write(export_pdf(obiectiv_id))
         click.echo(f'[OK] {px}\n     {pp}')
+
+    # --------------------------------------------------------
+    # COMANDA CLI: flask import-preturi (Banca de preturi)
+    # --------------------------------------------------------
+    @app.cli.command('import-preturi')
+    @click.option('--dir', 'director', default=None, help='Folder cu extrase .xls (C6/C7/C8/C9/F4).')
+    @click.option('--catalog', default=None, help='Fisier JSON deja extras (catalog.json).')
+    @click.option('--sursa', required=True, help='Eticheta sursa (ex nume proiect).')
+    @click.option('--proiect-id', default=None, type=int, help='Leaga preturile de un proiect.')
+    def import_preturi_command(director, catalog, sursa, proiect_id):
+        """Importa preturi de resurse din extrase reale in banca de preturi.
+
+        Exemple:
+            flask import-preturi --dir "/cale/catre/folder_xls" --sursa "Academia de Politie"
+            flask import-preturi --catalog /tmp/preturi_obiectiv/catalog.json --sursa "Academia"
+        """
+        from services import banca_preturi as bp
+        if catalog:
+            import json
+            with open(catalog, encoding='utf-8') as fh:
+                data = json.load(fh)
+            stats = bp.importa_din_catalog(data, sursa, proiect_id=proiect_id)
+        elif director:
+            stats = bp.importa_din_extrase(director, sursa, proiect_id=proiect_id)
+        else:
+            click.echo('[EROARE] Da --dir SAU --catalog.')
+            return
+        click.echo(f'[OK] Banca preturi <- "{sursa}": {stats}')
 
     # --------------------------------------------------------
     # APScheduler register (Faza 14)
