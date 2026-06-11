@@ -102,7 +102,10 @@ def test_lista_cu_filtru_categorie(app, authenticated_client):
     resp = authenticated_client.get('/banca-preturi/?categorie=armatura')
     assert resp.status_code == 200
     html = resp.data.decode()
-    assert 'M1' in html and 'M2' not in html
+    # marker pe celula de tabel, nu substring simplu: "M2" (2 caractere) poate
+    # aparea aleator in token-urile CSRF -> test flaky (prins cu 5 rulari)
+    assert '>M1</td>' in html
+    assert '>M2</td>' not in html
 
 
 # ------------------------------------------------------------------ upload obiectiv UI
