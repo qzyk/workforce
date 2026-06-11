@@ -887,7 +887,11 @@ def obiective_incarca():
     if not fisiere:
         flash('Selecteaza fisierele obiectivului (F1 + F2-uri + F3-uri).', 'warning')
         return redirect(url_for('gantt.obiective_lista'))
-    nume = (request.form.get('nume') or '').strip() or None
+    # Nume explicit intotdeauna: fara el, ingestia ar folosi numele folderului
+    # temporar (ex "obiectiv_x3opb34y") - bug prins pe prod.
+    nume = (request.form.get('nume') or '').strip()
+    if not nume:
+        nume = f'Obiectiv {date.today().strftime("%d.%m.%Y")}'
 
     tmpdir = tempfile.mkdtemp(prefix='obiectiv_')
     try:
