@@ -235,7 +235,7 @@ a:hover { color: var(--primary-light); }
     text-align: center;
 }
 
-.badge-warning { background: var(--secondary); color: #fff; }
+.badge-warning { background: #FBF1D6; color: #8A5A00; } /* DS faza 1: contrast AA (era alb pe orange) */
 .badge-danger { background: var(--danger); color: #fff; }
 
 .sidebar-divider { border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 20px; }
@@ -327,7 +327,7 @@ a:hover { color: var(--primary-light); }
     font-size: 13px;
 }
 
-.breadcrumb-item a { color: var(--gray-500); }
+.breadcrumb-item a { color: #6F7886; } /* DS faza 1: contrast AA (era gray-500) */
 .breadcrumb-item a:hover { color: var(--primary); }
 .breadcrumb-item.active { color: var(--gray-800); font-weight: 500; }
 .breadcrumb-item + .breadcrumb-item::before {
@@ -344,7 +344,7 @@ a:hover { color: var(--primary-light); }
 
 .header-clock {
     font-size: 13px;
-    color: var(--gray-500);
+    color: #6F7886; /* DS faza 1: contrast AA (era gray-500) */
     display: flex;
     align-items: center;
     gap: 6px;
@@ -483,7 +483,7 @@ a:hover { color: var(--primary-light); }
 }
 
 .user-dropdown-header strong { display: block; font-size: 13px; }
-.user-dropdown-header small { color: var(--gray-500); font-size: 12px; }
+.user-dropdown-header small { color: #6F7886; font-size: 12px; } /* DS faza 1: contrast AA (era gray-500) */
 
 .user-dropdown a {
     display: flex;
@@ -553,7 +553,7 @@ a:hover { color: var(--primary-light); }
     padding: 16px 24px;
     text-align: center;
     font-size: 12px;
-    color: var(--gray-500);
+    color: #6F7886; /* DS faza 1: contrast AA (era gray-500) */
     border-top: 1px solid var(--gray-200);
 }
 
@@ -610,7 +610,7 @@ a:hover { color: var(--primary-light); }
 .stat-gray .stat-icon { background: var(--gray-100); color: var(--gray-500); }
 
 .stat-info { flex: 1; }
-.stat-label { display: block; font-size: 12px; color: var(--gray-500); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-label { display: block; font-size: 12px; color: #6F7886; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; } /* DS faza 1: contrast AA (era gray-500) */
 .stat-value { display: block; font-size: 28px; font-weight: 800; color: var(--gray-900); line-height: 1.2; margin: 4px 0; }
 
 .stat-trend {
@@ -624,7 +624,7 @@ a:hover { color: var(--primary-light); }
 .stat-trend small { color: var(--gray-400); font-weight: 400; margin-left: 4px; }
 .trend-up { color: var(--success); }
 .trend-down { color: var(--danger); }
-.trend-flat { color: var(--gray-500); }
+.trend-flat { color: #6F7886; } /* DS faza 1: contrast AA (era gray-500) */
 
 .stat-sub-info { display: block; font-size: 12px; margin-top: 4px; }
 
@@ -885,7 +885,7 @@ a:hover { color: var(--primary-light); }
 .mini-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 16px; border-top: 1px solid var(--gray-200); }
 
 .mini-stat { text-align: center; }
-.mini-stat-label { display: block; font-size: 11px; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.mini-stat-label { display: block; font-size: 11px; color: #6F7886; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; } /* DS faza 1: contrast AA (era gray-500) */
 .mini-stat-value { font-size: 18px; font-weight: 700; color: var(--gray-800); }
 
 /* ============================================================
@@ -976,7 +976,7 @@ a:hover { color: var(--primary-light); }
     letter-spacing: 4px; color: var(--edifico-obsidian);
 }
 .login-subtitle {
-    font-size: 11px; color: var(--edifico-gold);
+    font-size: 11px; color: #8A6A12; /* DS faza 1: gold-ink, contrast AA pe cream (era #C9A961) */
     margin-top: 6px; letter-spacing: 2px;
     text-transform: uppercase;
 }
@@ -1089,7 +1089,7 @@ a:hover { color: var(--primary-light); }
     border-top: 1px solid var(--gray-200);
 }
 
-.demo-title { font-size: 12px; color: var(--gray-500); margin-bottom: 10px; }
+.demo-title { font-size: 12px; color: #6F7886; margin-bottom: 10px; } /* DS faza 1: contrast AA (era gray-500) */
 .demo-title i { color: var(--info); }
 
 .demo-accounts { display: flex; gap: 8px; }
@@ -1151,6 +1151,14 @@ a:hover { color: var(--primary-light); }
 }
 
 textarea.form-control { min-height: 80px; resize: vertical; }
+
+/* DS faza 1: placeholder lizibil — contrast AA (implicit browser-ul era gri ~1.9:1) */
+input::placeholder,
+textarea::placeholder,
+select::placeholder {
+    color: #6F7886;
+    opacity: 1; /* Firefox aplica opacity implicit pe placeholder */
+}
 
 /* ============================================================
    BUTTONS (General)
@@ -1455,7 +1463,7 @@ textarea.form-control { min-height: 80px; resize: vertical; }
 }
 .stats-bar .stat-mini .stat-label {
     font-size: 0.78rem;
-    color: var(--gray-500);
+    color: #6F7886; /* DS faza 1: contrast AA (era gray-500) */
     margin-top: 2px;
 }
 
@@ -1474,7 +1482,7 @@ textarea.form-control { min-height: 80px; resize: vertical; }
     cursor: pointer;
     font-size: 0.9rem;
     font-weight: 500;
-    color: var(--gray-500);
+    color: #6F7886; /* DS faza 1: contrast AA (era gray-500) */
     border-bottom: 3px solid transparent;
     margin-bottom: -2px;
     transition: var(--transition);
@@ -1617,7 +1625,7 @@ textarea.form-control { min-height: 80px; resize: vertical; }
 }
 .cal-stat-item .cal-stat-lbl {
     font-size: 0.75rem;
-    color: var(--gray-500);
+    color: #6F7886; /* DS faza 1: contrast AA (era gray-500) */
     margin-top: 2px;
 }
 
@@ -1877,7 +1885,7 @@ textarea.form-control { min-height: 80px; resize: vertical; }
 }
 .info-item .info-label {
     font-size: 0.78rem;
-    color: var(--gray-500);
+    color: #6F7886; /* DS faza 1: contrast AA (era gray-500) */
     text-transform: uppercase;
     letter-spacing: 0.5px;
     font-weight: 600;

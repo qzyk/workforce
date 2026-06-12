@@ -10,7 +10,7 @@
  * Versiune: bump cand schimbi assets statice ca clienti sa updateze cache-ul.
  */
 
-const CACHE_VERSION = 'edifico-v1';
+const CACHE_VERSION = 'edifico-v2'; /* bump: adaugat tokens.css (DS faza 1) */
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const OFFLINE_URL = '/offline';
@@ -18,6 +18,7 @@ const OFFLINE_URL = '/offline';
 // Assets esentiale pre-cache la install (pentru offline-first)
 const PRECACHE_URLS = [
   '/offline',
+  '/static/css/tokens.css',
   '/static/css/style.css',
   '/static/favicon.svg',
   '/static/img/edifico-logo-stacked.svg',

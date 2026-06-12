@@ -1,0 +1,59 @@
+/* Edifico Design System v1 — design tokens (faza 1, aditiv) */
+:root {
+  /* ===== BRAND CORE ===== */
+  --ed-color-gold:        #C9A961;
+  --ed-color-gold-light:  #E0BB6E;
+  --ed-color-gold-dark:   #A8893D;  /* pe alb doar >=18px bold sau non-text */
+  --ed-color-gold-ink:    #8A6A12;  /* gold text-safe pe alb: 4.6:1 */
+  --ed-color-navy:        #0B1426;
+  --ed-color-navy-deep:   #050A14;
+  --ed-color-navy-soft:   #152033;  /* hover/gradient pe hero */
+  --ed-color-cream:       #F5F1E8;
+  --ed-color-paper:       #FBF8F0;  /* fundal hint/tint */
+  --ed-color-sand:        #E8E3D5;  /* borduri pe suprafete deschise */
+  --ed-grad-gold: linear-gradient(135deg, #E0BB6E, #C9A961, #A8893D);
+  --ed-grad-navy: linear-gradient(135deg, var(--ed-color-navy), var(--ed-color-navy-soft));
+
+  /* ===== NEUTRE (contrast corectat) ===== */
+  --ed-color-text:        #1F2733;
+  --ed-color-text-soft:   #5B6573;   /* secundar — 7:1 pe alb */
+  --ed-color-text-faint:  #6F7886;   /* etichete 11-12px — 4.7:1 */
+  --ed-color-border:      #E0E0E0;
+  --ed-color-bg:          #F4F2ED;
+  --ed-color-surface:     #FFFFFF;
+
+  /* ===== STATUS (toate perechile trec AA pe propriul fundal) ===== */
+  --ed-color-success:     #2E7D32;  --ed-color-success-bg: #E8F5E9;
+  --ed-color-warning:     #8A5A00;  --ed-color-warning-bg: #FBF1D6;
+  --ed-color-danger:      #B71C1C;  --ed-color-danger-bg:  #FDECEA;
+  --ed-color-info:        #0D47A1;  --ed-color-info-bg:    #E3F2FD;
+
+  /* ===== SPACING (scara 4px) ===== */
+  --ed-space-1: 4px;  --ed-space-2: 8px;  --ed-space-3: 12px; --ed-space-4: 16px;
+  --ed-space-5: 20px; --ed-space-6: 24px; --ed-space-8: 32px; --ed-space-10: 40px;
+
+  /* ===== TIPOGRAFIE ===== */
+  --ed-font-ui:    'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ed-font-brand: 'Cinzel', 'Trajan Pro', 'Times New Roman', serif;
+  --ed-font-mono:  'SF Mono', ui-monospace, Menlo, monospace;
+  --ed-text-xs: 11px; --ed-text-sm: 12px; --ed-text-md: 13px; --ed-text-base: 14px;
+  --ed-text-lg: 16px; --ed-text-xl: 18px; --ed-text-2xl: 22px; --ed-text-3xl: 28px;
+  --ed-leading: 1.5;  --ed-tracking-label: .5px;
+
+  /* ===== FORME / ELEVATIE ===== */
+  --ed-radius-sm: 6px; --ed-radius: 10px; --ed-radius-lg: 12px;
+  --ed-radius-xl: 16px; --ed-radius-pill: 999px;
+  --ed-shadow-sm: 0 1px 3px rgba(11,20,38,.08);
+  --ed-shadow-md: 0 4px 12px rgba(11,20,38,.10);
+  --ed-shadow-lg: 0 8px 30px rgba(11,20,38,.12);
+
+  /* ===== MOTION & FOCUS ===== */
+  --ed-dur-fast: 150ms; --ed-dur: 250ms; --ed-ease: cubic-bezier(.4,0,.2,1);
+  --ed-focus-ring: 0 0 0 3px rgba(201,169,97,.45);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+:where(a, button, [tabindex], input, select, textarea):focus-visible {
+  outline: none; box-shadow: var(--ed-focus-ring); border-radius: var(--ed-radius-sm);
+}
