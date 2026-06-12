@@ -4,7 +4,7 @@
   --ed-color-gold:        #C9A961;
   --ed-color-gold-light:  #E0BB6E;
   --ed-color-gold-dark:   #A8893D;  /* pe alb doar >=18px bold sau non-text */
-  --ed-color-gold-ink:    #8A6A12;  /* gold text-safe pe alb: 4.6:1 */
+  --ed-color-gold-ink:    #80620F;  /* gold text-safe — 5.7:1 pe alb, 5.1:1 pe cream */
   --ed-color-navy:        #0B1426;
   --ed-color-navy-deep:   #050A14;
   --ed-color-navy-soft:   #152033;  /* hover/gradient pe hero */
@@ -16,8 +16,8 @@
 
   /* ===== NEUTRE (contrast corectat) ===== */
   --ed-color-text:        #1F2733;
-  --ed-color-text-soft:   #5B6573;   /* secundar — 7:1 pe alb */
-  --ed-color-text-faint:  #6F7886;   /* etichete 11-12px — 4.7:1 */
+  --ed-color-text-soft:   #5B6573;   /* secundar — 5.9:1 pe alb, 5.3:1 pe #f0f2f5 */
+  --ed-color-text-faint:  #5F6975;   /* etichete 11-12px — 5.6:1 pe alb, 5:1 pe #f0f2f5, 5.4:1 pe #fafafa */
   --ed-color-border:      #E0E0E0;
   --ed-color-bg:          #F4F2ED;
   --ed-color-surface:     #FFFFFF;
@@ -49,11 +49,15 @@
 
   /* ===== MOTION & FOCUS ===== */
   --ed-dur-fast: 150ms; --ed-dur: 250ms; --ed-ease: cubic-bezier(.4,0,.2,1);
-  --ed-focus-ring: 0 0 0 3px rgba(201,169,97,.45);
+  /* inel solid in doua straturi: halo alb + gold-ink (5.7:1 pe alb, 5.1:1 pe #f0f2f5 —
+     peste minimul 3:1 cerut de WCAG 1.4.11 pentru indicatori de focus) */
+  --ed-focus-ring: 0 0 0 2px #fff, 0 0 0 4px var(--ed-color-gold-ink);
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 :where(a, button, [tabindex], input, select, textarea):focus-visible {
-  outline: none; box-shadow: var(--ed-focus-ring); border-radius: var(--ed-radius-sm);
+  /* outline transparent (NU none): in forced-colors mode box-shadow e suprimat,
+     iar outline-ul transparent redevine vizibil — focusul nu dispare niciodata */
+  outline: 2px solid transparent; box-shadow: var(--ed-focus-ring); border-radius: var(--ed-radius-sm);
 }
