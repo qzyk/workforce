@@ -39,21 +39,35 @@ gantt_bp = Blueprint('gantt', __name__, url_prefix='/gantt')
 
 _DIR_TEMP = os.path.join(tempfile.gettempdir(), 'edifico_gantt')
 _EXT_OK = {'.xlsx', '.xlsm', '.xls', '.csv', '.xml'}
-_motor_cache = None
+_motor_cache: dict = {}        # tenant_id -> MotorPlanificare (config per tenant)
+
+
+def _tenant_curent():
+    """tenant_id-ul utilizatorului curent (None = global / fara tenant)."""
+    try:
+        return getattr(current_user, 'tenant_id', None)
+    except Exception:
+        return None
 
 
 def _motor() -> MotorPlanificare:
-    """Instanta MotorPlanificare reutilizata (config incarcat o singura data)."""
-    global _motor_cache
-    if _motor_cache is None:
-        _motor_cache = MotorPlanificare()
-    return _motor_cache
+    """Instanta MotorPlanificare reutilizata, PE TENANT (config per organizatie).
+
+    Bugfix: cache-ul global unic ignora regulile per-tenant pe fluxul implicit -
+    acum cheia include tenant_id, deci fiecare tenant isi vede propriile reguli.
+    """
+    tid = _tenant_curent()
+    motor = _motor_cache.get(tid)
+    if motor is None:
+        motor = _motor_cache[tid] = MotorPlanificare(tenant_id=tid)
+    return motor
 
 
 def _invalideaza_motor():
-    """Forteaza reincarcarea configului la urmatorul import (dupa editari in admin)."""
-    global _motor_cache
-    _motor_cache = None
+    """Forteaza reincarcarea configului la urmatorul import (dupa editari in admin).
+    Invalideaza tot cache-ul (toate tenanturile) - simplu si sigur; limitarea
+    cunoscuta ramane: doar procesul curent (pe PA e un singur proces web)."""
+    _motor_cache.clear()
 
 
 def _curata_temp(varsta_max_s: int = 7200):
