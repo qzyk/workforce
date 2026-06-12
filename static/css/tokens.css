@@ -4,7 +4,8 @@
   --ed-color-gold:        #C9A961;
   --ed-color-gold-light:  #E0BB6E;
   --ed-color-gold-dark:   #A8893D;  /* pe alb doar >=18px bold sau non-text */
-  --ed-color-gold-ink:    #80620F;  /* gold text-safe — 5.7:1 pe alb, 5.1:1 pe cream */
+  --ed-color-gold-ink:    #80620F;  /* gold text-safe — AA garantat DOAR pe fundaluri deschise:
+                                       5.72:1 pe alb, 5.07:1 pe cream #F5F1E8, 5.10:1 pe #f0f2f5 */
   --ed-color-navy:        #0B1426;
   --ed-color-navy-deep:   #050A14;
   --ed-color-navy-soft:   #152033;  /* hover/gradient pe hero */
@@ -16,8 +17,9 @@
 
   /* ===== NEUTRE (contrast corectat) ===== */
   --ed-color-text:        #1F2733;
-  --ed-color-text-soft:   #5B6573;   /* secundar — 5.9:1 pe alb, 5.3:1 pe #f0f2f5 */
-  --ed-color-text-faint:  #5F6975;   /* etichete 11-12px — 5.6:1 pe alb, 5:1 pe #f0f2f5, 5.4:1 pe #fafafa */
+  --ed-color-text-soft:   #5B6573;   /* secundar — 5.91:1 pe alb, 5.27:1 pe #f0f2f5 */
+  --ed-color-text-faint:  #5F6975;   /* etichete 11-12px — 5.58:1 pe alb, 4.97:1 pe #f0f2f5,
+                                        5.35:1 pe #fafafa (toate >= AA 4.5:1) */
   --ed-color-border:      #E0E0E0;
   --ed-color-bg:          #F4F2ED;
   --ed-color-surface:     #FFFFFF;
@@ -49,15 +51,28 @@
 
   /* ===== MOTION & FOCUS ===== */
   --ed-dur-fast: 150ms; --ed-dur: 250ms; --ed-ease: cubic-bezier(.4,0,.2,1);
-  /* inel solid in doua straturi: halo alb + gold-ink (5.7:1 pe alb, 5.1:1 pe #f0f2f5 —
+  /* inel solid in doua straturi: halo alb + gold-ink (5.72:1 pe alb, 5.10:1 pe #f0f2f5 —
      peste minimul 3:1 cerut de WCAG 1.4.11 pentru indicatori de focus) */
   --ed-focus-ring: 0 0 0 2px #fff, 0 0 0 4px var(--ed-color-gold-ink);
 }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
+  /* durata aproape zero in loc de anularea animatiei (valoarea none ar ingheta
+     spinnerele fa-spin la primul frame — ex. templates/pontaje/panou.html are spinner
+     fara text insotitor, ar parea blocat); cu 0.01ms animatia "se termina" instant */
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 :where(a, button, [tabindex], input, select, textarea):focus-visible {
   /* outline transparent (NU none): in forced-colors mode box-shadow e suprimat,
      iar outline-ul transparent redevine vizibil — focusul nu dispare niciodata */
   outline: 2px solid transparent; box-shadow: var(--ed-focus-ring); border-radius: var(--ed-radius-sm);
+}
+:is(a, button, [tabindex], input, select, textarea):hover:focus-visible {
+  /* hover nu are voie sa stearga inelul de focus: reguli ca .btn:hover din style.css
+     (specificitate 0,2,0) suprascriau box-shadow-ul regulii :where(...):focus-visible
+     (0,1,0); :is(...):hover:focus-visible ridica specificitatea la (0,3,0) */
+  box-shadow: var(--ed-focus-ring);
 }

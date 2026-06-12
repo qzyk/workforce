@@ -62,6 +62,46 @@ def test_tokens_css_are_focus_visible_si_reduced_motion():
     assert 'prefers-reduced-motion' in continut
 
 
+def test_reduced_motion_nu_ingheata_spinnerele():
+    # animation: none ar bloca spinnerele fa-spin la primul frame (par agatate);
+    # pattern-ul standard scurteaza durata aproape la zero in loc sa o anuleze
+    continut = TOKENS.read_text(encoding='utf-8')
+    assert 'animation: none' not in continut, (
+        'reduced-motion nu trebuie sa foloseasca animation: none (ingheata fa-spin)'
+    )
+    assert 'animation-duration: 0.01ms' in continut
+    assert 'animation-iteration-count: 1' in continut
+    assert 'transition-duration: 0.01ms' in continut
+
+
+def test_focus_ring_rezista_la_hover():
+    # .btn:hover din style.css (specificitate 0,2,0) suprascria box-shadow-ul
+    # regulii :where(...):focus-visible (0,1,0) — regula compusa :is(...):hover:focus-visible
+    # (0,3,0) trebuie sa pastreze inelul si pe hover
+    continut = TOKENS.read_text(encoding='utf-8')
+    assert ':hover:focus-visible' in continut, (
+        'lipseste regula compusa care pastreaza inelul de focus pe hover'
+    )
+
+
+def test_style_css_consuma_tokenul_text_faint():
+    # aparitiile corectate folosesc var(--ed-color-text-faint, ...) ca schimbarile
+    # viitoare de token sa se propage; nu mai exista culoarea hardcodata singura
+    continut = STYLE.read_text(encoding='utf-8')
+    assert 'var(--ed-color-text-faint' in continut
+    culoare = _valoare_token('--ed-color-text-faint').lstrip('#')
+    hardcodate = re.findall(rf'color:\s*#{culoare}', continut, flags=re.IGNORECASE)
+    assert not hardcodate, (
+        f'{len(hardcodate)} aparitii color: #{culoare} fara var() in style.css'
+    )
+
+
+def test_placeholder_fara_select():
+    # select nu are atribut placeholder — selectorul select::placeholder era no-op
+    continut = STYLE.read_text(encoding='utf-8')
+    assert 'select::placeholder' not in continut
+
+
 def test_base_html_include_tokens_inainte_de_style():
     continut = BASE_HTML.read_text(encoding='utf-8')
     poz_tokens = continut.find("css/tokens.css")
@@ -78,7 +118,7 @@ def test_sw_precache_tokens_si_versiune_noua():
 
 
 def test_style_css_pastreaza_variabilele_vechi():
-    # strict aditiv: variabilele istorice raman definite si nedenumite
+    # strict aditiv: variabilele istorice raman definite si neredenumite
     continut = STYLE.read_text(encoding='utf-8')
     for variabila in (
         '--primary:',
