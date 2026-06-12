@@ -15,10 +15,11 @@ from services.gantt import store
 from services.gantt.diagrama import _calendar_lucrator
 
 
-def ferestre_categorii(rezultat, data_start: date) -> dict:
-    """{CATEGORIE: (data_start, data_sfarsit)} - fereastra min/max a activitatilor."""
+def ferestre_categorii(rezultat, data_start: date, calendar=None) -> dict:
+    """{CATEGORIE: (data_start, data_sfarsit)} - fereastra min/max a activitatilor.
+    `calendar` (optional): calendar de lucru real; None = doar Lu-Vi (istoric)."""
     durata = int((rezultat.statistici or {}).get('durata_totala_zile', 0) or 0)
-    cal = _calendar_lucrator(data_start, durata)
+    cal = _calendar_lucrator(data_start, durata, calendar)
 
     def dz(i: int) -> date:
         return cal[max(0, min(int(i), len(cal) - 1))]
@@ -34,11 +35,11 @@ def ferestre_categorii(rezultat, data_start: date) -> dict:
 
 
 def genereaza_din_rezultat(elemente, rezultat, data_start: date, mapare: dict,
-                           tenant_id=None, user_id=None) -> dict:
+                           tenant_id=None, user_id=None, calendar=None) -> dict:
     """Upsert bim_task_schedules pentru `elemente` din fereastra categoriei mapate.
     Intoarce {create, actualizate, sarite, categorii}."""
     from models import db, BIMTaskSchedule
-    ferestre = ferestre_categorii(rezultat, data_start)
+    ferestre = ferestre_categorii(rezultat, data_start, calendar)
     crt = act = sarit = 0
     for el in elemente:
         cat = mapare.get(el.tip_element)
@@ -81,7 +82,7 @@ _ORDINE_CONSTRUCTIE = [
 
 
 def genereaza_secventa(elemente, data_start: date, durata_zile: int,
-                       tenant_id=None, user_id=None) -> dict:
+                       tenant_id=None, user_id=None, calendar=None) -> dict:
     """Auto-secventiere (fara plan/categorii): elementele se 'construiesc' progresiv,
     ordonate dupa nivel (elevatie) apoi ordinea de constructie pe tip. Util pentru
     orice model (inclusiv structural, unde categoriile Gantt nu se potrivesc)."""
@@ -90,7 +91,7 @@ def genereaza_secventa(elemente, data_start: date, durata_zile: int,
     if not elemente:
         return {'create': 0, 'actualizate': 0, 'sarite': 0, 'mod': 'secventa'}
     durata = max(1, int(durata_zile or 1))
-    cal = _calendar_lucrator(data_start, durata)
+    cal = _calendar_lucrator(data_start, durata, calendar)
 
     def dz(i):
         return cal[max(0, min(int(i), len(cal) - 1))]

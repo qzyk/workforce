@@ -201,6 +201,16 @@ def _clasifica_sesiune() -> bool:
     return session.get('gantt_clasifica', True)
 
 
+def _calendar_activ(plan=None):
+    """CalendarLucru pentru fluxul curent DOAR cu flag-ul 'gantt-calendar' ON,
+    altfel None (comportament istoric, doar Lu-Vi)."""
+    try:
+        from services.gantt import calendar_db
+        return calendar_db.calendar_daca_activ(plan, _tenant_curent())
+    except Exception:
+        return None
+
+
 def _render_rezultat(rezultat, raport_import, token, nume_fisier, plan_id=None):
     """Randeaza preview-ul rezultat + diagrama Gantt (4D) + optiunea de salvare."""
     session['gantt_nume_fisier'] = nume_fisier
@@ -209,15 +219,24 @@ def _render_rezultat(rezultat, raport_import, token, nume_fisier, plan_id=None):
         proiecte = Proiect.query.order_by(Proiect.nume).all()
     except Exception:
         proiecte = []
+    plan = None
+    if plan_id:
+        try:
+            from models import db, GanttPlan
+            plan = db.session.get(GanttPlan, plan_id)
+        except Exception:
+            plan = None
+    calendar = _calendar_activ(plan)         # None cu flag OFF (zero regresie)
     from services.gantt import resurse_timp
     try:
-        resurse = resurse_timp.histograma_resurse(rezultat, date.today())
+        resurse = resurse_timp.histograma_resurse(rezultat, date.today(),
+                                                  calendar=calendar)
     except Exception:
         resurse = None
     return render_template(
         'gantt/rezultat.html', rezultat=rezultat, raport_import=raport_import,
         token=token, nume_fisier=nume_fisier,
-        diagrama=diagrama.sarcini_gantt(rezultat, date.today()),
+        diagrama=diagrama.sarcini_gantt(rezultat, date.today(), calendar=calendar),
         resurse=resurse,
         proiecte=proiecte, plan_id=plan_id, clasifica=_clasifica_sesiune())
 
@@ -308,10 +327,14 @@ def export_fisier(token, fmt):
         flash('Nu pot regenera planificarea pentru export. Reincarca fisierul F3.', 'warning')
         return redirect(url_for('gantt.index'))
     nume = session.get('gantt_nume', 'planificare')
+    # cu flag-ul 'gantt-calendar' ON: export cu date reale (start = azi, ca preview-ul)
+    calendar = _calendar_activ()
     try:
         data, mime, ext_out = export_engine.exporta(
             fmt, rezultat, nume_proiect=nume,
-            ore_pe_zi=_motor().setari.get('ore_pe_zi', 8))
+            ore_pe_zi=_motor().setari.get('ore_pe_zi', 8),
+            data_start=(date.today() if calendar is not None else None),
+            calendar=calendar)
     except ValueError:
         abort(404)
     import io
@@ -481,12 +504,16 @@ def plan_sterge(id_):
 def plan_export(id_, fmt):
     p = _plan_sau_404(id_)
     mapare, rand_antet = _mapare_din_plan(p)
+    # cu flag-ul 'gantt-calendar' ON: export cu date reale din data de start a planului
+    calendar = _calendar_activ(p)
     try:
         rezultat, _ = _pipeline_din_temp(p.continut, p.ext, mapare, rand_antet,
                                          preturi_boq=_preturi_plan(p))
         _aplica_arbore_salvat(rezultat, p.id)    # export-ul respecta WBS-ul editat
         data, mime, ext_out = export_engine.exporta(
-            fmt, rezultat, nume_proiect=p.nume, ore_pe_zi=_motor().setari.get('ore_pe_zi', 8))
+            fmt, rezultat, nume_proiect=p.nume, ore_pe_zi=_motor().setari.get('ore_pe_zi', 8),
+            data_start=((p.data_start or date.today()) if calendar is not None else None),
+            calendar=calendar)
     except (import_engine.EroareImport, ValueError):
         abort(404)
     import io

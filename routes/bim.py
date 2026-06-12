@@ -816,10 +816,12 @@ def genereaza_4d(model_id):
         flash(f'Nu pot citi planul: {e}', 'danger')
         return redirect(url_for('bim.viewer', model_id=model_id))
 
+    from services.gantt.calendar_db import calendar_daca_activ
     stats = bim_4d_bridge.genereaza_din_rezultat(
         _elemente_model(model), rezultat, plan.data_start or date.today(),
         gstore.mapare_tip_element(tid), tenant_id=tid,
-        user_id=getattr(current_user, 'id', None))
+        user_id=getattr(current_user, 'id', None),
+        calendar=calendar_daca_activ(plan, tid))   # None cu flag OFF (istoric)
     flash(f"4D generat din planul „{plan.nume}\": {stats['create']} create, "
           f"{stats['actualizate']} actualizate, {stats['sarite']} elemente fara categorie.",
           'success')
@@ -837,10 +839,13 @@ def genereaza_4d_secventa(model_id):
     except (TypeError, ValueError):
         durata = 90
     durata = max(5, min(durata, 2000))
+    from services.gantt.calendar_db import calendar_daca_activ
+    tid = getattr(current_user, 'tenant_id', None)
     stats = bim_4d_bridge.genereaza_secventa(
         _elemente_model(model), date.today(), durata,
-        tenant_id=getattr(current_user, 'tenant_id', None),
-        user_id=getattr(current_user, 'id', None))
+        tenant_id=tid,
+        user_id=getattr(current_user, 'id', None),
+        calendar=calendar_daca_activ(None, tid))   # None cu flag OFF (istoric)
     flash(f"Auto-secventiere pe {durata} zile: {stats['create']} create, "
           f"{stats['actualizate']} actualizate.", 'success')
     return redirect(url_for('bim.viewer', model_id=model_id))

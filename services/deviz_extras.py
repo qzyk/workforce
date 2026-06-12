@@ -123,7 +123,10 @@ def legatura_resurse(proiect_id: int) -> dict:
     durata = 1
     for a in rez.activitati:
         durata = max(durata, int(a.finish_zi or 0) + 1)
-    cal = _calendar_lucrator(data_start, durata)
+    # calendar de lucru real DOAR cu flag-ul 'gantt-calendar' ON (altfel None = Lu-Vi)
+    from services.gantt.calendar_db import calendar_daca_activ
+    calendar = calendar_daca_activ(plan, getattr(plan, 'tenant_id', None))
+    cal = _calendar_lucrator(data_start, durata, calendar)
 
     def dz(i):
         return cal[max(0, min(int(i), len(cal) - 1))]

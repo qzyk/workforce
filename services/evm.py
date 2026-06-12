@@ -62,12 +62,17 @@ def _utilaj_cumulativ(proiect_id: int):
     return serie, round(ore_tot, 1)
 
 
-def _pv_calendar(plan):
-    """([(date, procent_planificat)], BAC, utilaj_planificat) din curba S a planului."""
+def _pv_calendar(plan, calendar=None):
+    """([(date, procent_planificat)], BAC, utilaj_planificat) din curba S a planului.
+    `calendar` (optional): calendar de lucru real; None = doar Lu-Vi (istoric).
+    Cand flag-ul 'gantt-calendar' e ON, calendarul planului se aplica automat."""
     import json
     from services.gantt.pipeline import MotorPlanificare
     from services.gantt import import_engine
     from services.gantt.diagrama import _calendar_lucrator
+    if calendar is None:
+        from services.gantt.calendar_db import calendar_daca_activ
+        calendar = calendar_daca_activ(plan, getattr(plan, 'tenant_id', None))
 
     mapare = rand_antet = None
     if plan.mapare_json:
@@ -90,7 +95,7 @@ def _pv_calendar(plan):
                                    mapare_manuala=mapare, rand_antet_manual=rand_antet)
     st = motor.proceseaza(art).statistici
     durata = int(st.get('durata_totala_zile', 0) or 0)
-    cal = _calendar_lucrator(plan.data_start or date.today(), durata)
+    cal = _calendar_lucrator(plan.data_start or date.today(), durata, calendar)
 
     def dz(i):
         return cal[max(0, min(int(i), len(cal) - 1))]

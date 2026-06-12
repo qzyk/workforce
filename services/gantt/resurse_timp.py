@@ -27,14 +27,16 @@ def _chei(d: date):
             (iso[0], iso[1]), f'S{iso[1]:02d} {luni.day:02d}.{luni.month:02d}')
 
 
-def histograma_resurse(rezultat, data_start: date | None = None) -> dict:
-    """{'luna': [...], 'saptamana': [...], 'varf': {...}, 'bac': float}."""
+def histograma_resurse(rezultat, data_start: date | None = None,
+                       calendar=None) -> dict:
+    """{'luna': [...], 'saptamana': [...], 'varf': {...}, 'bac': float}.
+    `calendar` (optional): calendar de lucru real; None = doar Lu-Vi (istoric)."""
     activitati = [a for a in getattr(rezultat, 'activitati', []) if (a.valoare or 0) > 0]
     data_start = data_start or date.today()
     durata = 1
     for a in activitati:
         durata = max(durata, int(a.finish_zi or 0) + 1)
-    cal = _calendar_lucrator(data_start, durata)
+    cal = _calendar_lucrator(data_start, durata, calendar)
 
     def dz(i):
         return cal[max(0, min(int(i), len(cal) - 1))]

@@ -13,8 +13,14 @@ from datetime import date, timedelta
 _MAX_CAL = 20000   # plafon pentru calendarul precalculat (zile lucratoare)
 
 
-def _calendar_lucrator(data_start: date, nr_zile: int) -> list:
-    """Lista de date lucratoare (Lu-Vi) incepand de la prima zi lucratoare >= data_start."""
+def _calendar_lucrator(data_start: date, nr_zile: int, calendar=None) -> list:
+    """Lista de date lucratoare (Lu-Vi) incepand de la prima zi lucratoare >= data_start.
+
+    `calendar` (optional, CalendarLucru): cand e dat, foloseste calendarul de lucru
+    real (sare si sarbatorile / respecta exceptiile). None = comportamentul istoric.
+    """
+    if calendar is not None:
+        return calendar.lista_zile(data_start, nr_zile)
     n = min(max(nr_zile, 1) + 2, _MAX_CAL)
     cal = []
     cur = data_start
@@ -27,10 +33,12 @@ def _calendar_lucrator(data_start: date, nr_zile: int) -> list:
     return cal
 
 
-def sarcini_gantt(rezultat, data_start: date, max_sarcini: int = 600) -> dict:
-    """Construieste sarcinile pentru frappe-gantt din activitatile programate."""
+def sarcini_gantt(rezultat, data_start: date, max_sarcini: int = 600,
+                  calendar=None) -> dict:
+    """Construieste sarcinile pentru frappe-gantt din activitatile programate.
+    `calendar` (optional): calendar de lucru real; None = doar Lu-Vi (istoric)."""
     durata = int((rezultat.statistici or {}).get('durata_totala_zile', 0) or 0)
-    cal = _calendar_lucrator(data_start, durata)
+    cal = _calendar_lucrator(data_start, durata, calendar)
 
     def dz(i: int) -> str:
         i = max(0, min(int(i), len(cal) - 1))

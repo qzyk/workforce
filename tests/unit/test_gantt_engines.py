@@ -442,6 +442,93 @@ def test_program_forward_pass_si_lag():
     assert total == 6
 
 
+def test_program_lag_negativ():
+    """Lag negativ (fast-track): succesorul porneste inainte de finish-ul predecesorului."""
+    from services.gantt.program import programeaza
+    a = Activitate(id='A1', cod='1', nume='a', categorie_tehnologica='X', durata=3)
+    b = Activitate(id='A2', cod='2', nume='b', categorie_tehnologica='Y', durata=2)
+    b.predecesori.append(Dependenta('A1', 'FS', -1))   # incepe cu 1 zi inainte de finish(A1)
+    total = programeaza([a, b])
+    assert (b.start_zi, b.finish_zi) == (2, 4) and total == 4
+    # lag negativ mare -> start-ul nu coboara sub 0 (clamp)
+    c = Activitate(id='A3', cod='3', nume='c', categorie_tehnologica='Z', durata=2)
+    c.predecesori.append(Dependenta('A1', 'FS', -10))
+    programeaza([a, c])
+    assert c.start_zi == 0
+
+
+def test_program_durata_minima_1():
+    """Durata 0 / None se trateaza ca minim 1 zi (interval [start, finish) nevid)."""
+    from services.gantt.program import programeaza
+    a = Activitate(id='A1', cod='1', nume='a', categorie_tehnologica='X', durata=0)
+    b = Activitate(id='A2', cod='2', nume='b', categorie_tehnologica='Y', durata=None)
+    total = programeaza([a, b])
+    assert a.finish_zi - a.start_zi == 1
+    assert b.finish_zi - b.start_zi == 1
+    assert total == 1
+
+
+def test_program_ciclu_fallback_nu_crapa():
+    """Comportament documentat la ciclu: _ordine_topologica nu poate sorta nodurile
+    din ciclu si le adauga la final in ordinea de intrare (fallback). programeaza
+    nu intra in bucla infinita: predecesorii inca neprogramati conteaza cu
+    start_zi/finish_zi = 0 (valorile initiale). Ciclul e raportat de `valideaza`
+    inainte, in pipeline."""
+    from services.gantt.program import programeaza
+    a = Activitate(id='A1', cod='1', nume='a', categorie_tehnologica='X', durata=2)
+    b = Activitate(id='A2', cod='2', nume='b', categorie_tehnologica='Y', durata=3)
+    a.predecesori.append(Dependenta('A2', 'FS', 0))    # ciclu A1 <-> A2
+    b.predecesori.append(Dependenta('A1', 'FS', 0))
+    total = programeaza([a, b])
+    # A1 se programeaza primul (pred A2 are inca finish_zi=0) -> [0, 2)
+    assert (a.start_zi, a.finish_zi) == (0, 2)
+    # A2 vede A1 deja programat -> [2, 5)
+    assert (b.start_zi, b.finish_zi) == (2, 5)
+    assert total == 5
+
+
+def test_drum_critic_backward_ss():
+    """Backward pass pe relatie SS: lantul SS+lag e critic cap-coada."""
+    from services.gantt.program import programeaza, drum_critic
+    a = Activitate(id='A', cod='1', nume='a', categorie_tehnologica='X', durata=3)
+    b = Activitate(id='B', cod='2', nume='b', categorie_tehnologica='Y', durata=5)
+    b.predecesori.append(Dependenta('A', 'SS', 1))     # B incepe la 1 zi dupa startul A
+    total = programeaza([a, b])
+    assert (b.start_zi, b.finish_zi) == (1, 6) and total == 6
+    nr = drum_critic([a, b], total)
+    assert a.critic and b.critic and nr == 2
+    assert a.marja == 0 and b.marja == 0
+
+
+def test_drum_critic_backward_ff():
+    """Backward pass pe relatie FF: predecesorul legat FF de capatul planului e critic."""
+    from services.gantt.program import programeaza, drum_critic
+    a = Activitate(id='A', cod='1', nume='a', categorie_tehnologica='X', durata=1)
+    b = Activitate(id='B', cod='2', nume='b', categorie_tehnologica='Y', durata=6)
+    c = Activitate(id='C', cod='3', nume='c', categorie_tehnologica='Z', durata=3)
+    c.predecesori.append(Dependenta('B', 'FF', 0))     # C se termina odata cu B
+    total = programeaza([a, b, c])
+    assert (c.start_zi, c.finish_zi) == (3, 6) and total == 6
+    nr = drum_critic([a, b, c], total)
+    assert b.critic and c.critic and nr == 2
+    assert (not a.critic) and a.marja == 5             # A e scurt si fara succesori
+
+
+def test_drum_critic_backward_sf():
+    """Backward pass pe relatie SF (comportament curent documentat): lf-ul unui nod
+    cu succesori vine DOAR din succesori (poate depasi durata totala), deci lantul
+    SF primeste marja chiar daca predecesorul inchide planul."""
+    from services.gantt.program import programeaza, drum_critic
+    a = Activitate(id='A', cod='1', nume='a', categorie_tehnologica='X', durata=4)
+    b = Activitate(id='B', cod='2', nume='b', categorie_tehnologica='Y', durata=2)
+    b.predecesori.append(Dependenta('A', 'SF', 3))     # finish(B) >= start(A) + 3
+    total = programeaza([a, b])
+    assert (b.start_zi, b.finish_zi) == (1, 3) and total == 4
+    nr = drum_critic([a, b], total)
+    # comportament curent: lf(A) = lf(B) - lag + durata(A) = 4-3+4 = 5 > durata totala
+    assert a.marja == 1 and b.marja == 1 and nr == 0
+
+
 def test_curba_s_si_cost_in_pipeline():
     articole, _ = import_engine.importa(SAMPLE_CSV, '.csv')
     st = MotorPlanificare().proceseaza(articole).statistici

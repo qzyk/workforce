@@ -732,6 +732,24 @@ def create_app(config_name='default'):
         click.echo('[OK] Tipuri instalatii, documente proiect si categorii activitati incarcate!')
 
     # --------------------------------------------------------
+    # COMANDA CLI: flask init-gantt-calendar (Gantt Faza 1)
+    # --------------------------------------------------------
+    @app.cli.command('init-gantt-calendar')
+    def init_gantt_calendar_command():
+        """Creeaza calendarul Gantt implicit 'Calendar RO standard' (daca nu exista)
+        si sincronizeaza sarbatorile legale ca exceptii nelucratoare (idempotent).
+
+        Tabelele noi (gantt_calendar / gantt_calendar_exceptie) se creeaza cu
+        db.create_all() daca lipsesc - sigur pe prod (nu atinge tabele existente).
+        """
+        db.create_all()
+        from services.gantt.calendar_db import creeaza_calendar_implicit
+        cal, creat, nr = creeaza_calendar_implicit()
+        click.echo(f'[OK] Calendar "{cal.nume}" '
+                   f'{"creat" if creat else "existent"} (id={cal.id}).')
+        click.echo(f'[OK] {nr} sarbatori legale sincronizate ca exceptii nelucratoare.')
+
+    # --------------------------------------------------------
     # COMANDA CLI: flask job-notificari (Faza 14)
     # --------------------------------------------------------
     @app.cli.command('job-notificari')

@@ -66,6 +66,7 @@ KNOWN_FLAGS: dict[str, str] = {
     'planificare-gantt': 'Modul Planificare Gantt din F3 (WBS + dependente tehnologice + export P6/MS Project)',
     # Banca de preturi de resurse
     'banca-preturi': 'Banca de preturi de resurse (referinta din extrase reale C6/C7/C8/C9/F4)',
+    'gantt-calendar': 'Calendar de lucru real pentru Gantt (sarbatori legale RO, exceptii pe date, date Start/Finish in exporturi)',
 }
 
 

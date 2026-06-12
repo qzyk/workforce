@@ -4504,6 +4504,57 @@ class Obiect(db.Model):
         return f'<Obiect {self.cod} {self.nume[:30]!r} obiectiv={self.obiectiv_id}>'
 
 
+class GanttCalendar(db.Model):
+    """Calendar de lucru pentru planificarea Gantt (Faza 1 - calendar real).
+
+    `zile_lucratoare` = string de 7 caractere Luni..Duminica ('1' = lucratoare),
+    implicit '1111100' (Lu-Vi). `implicit` = calendarul folosit cand planul nu
+    are unul propriu. Exceptiile pe date (sarbatori, sambete lucratoare) stau in
+    GanttCalendarExceptie. Folosit DOAR cand flag-ul 'gantt-calendar' e ON.
+    """
+    __tablename__ = 'gantt_calendar'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    nume = db.Column(db.String(120), nullable=False)
+    zile_lucratoare = db.Column(db.String(7), default='1111100', nullable=False)
+    ore_pe_zi = db.Column(db.Integer, default=8, nullable=False)
+    implicit = db.Column(db.Boolean, default=False, nullable=False)
+    activ = db.Column(db.Boolean, default=True, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+
+    exceptii = db.relationship('GanttCalendarExceptie', backref='calendar',
+                               lazy='select', cascade='all, delete-orphan',
+                               order_by='GanttCalendarExceptie.data')
+
+    def __repr__(self):
+        return f'<GanttCalendar {self.id} {self.nume!r} implicit={self.implicit}>'
+
+
+class GanttCalendarExceptie(db.Model):
+    """Exceptie pe data concreta intr-un calendar de lucru Gantt.
+
+    `lucratoare` = False -> zi nelucratoare (ex. sarbatoare legala);
+    `lucratoare` = True  -> zi lucratoare (ex. sambata lucratoare / recuperare).
+    """
+    __tablename__ = 'gantt_calendar_exceptie'
+
+    id = db.Column(db.Integer, primary_key=True)
+    calendar_id = db.Column(db.Integer, db.ForeignKey('gantt_calendar.id'),
+                            nullable=False, index=True)
+    data = db.Column(db.Date, nullable=False)
+    lucratoare = db.Column(db.Boolean, default=False, nullable=False)
+    descriere = db.Column(db.String(200), nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('calendar_id', 'data', name='uix_gantt_calendar_exceptie'),
+    )
+
+    def __repr__(self):
+        return f'<GanttCalendarExceptie cal={self.calendar_id} {self.data} lucr={self.lucratoare}>'
+
+
 class GanttPlan(db.Model):
     """Plan Gantt salvat, legat (optional) de un proiect.
 
@@ -4523,6 +4574,8 @@ class GanttPlan(db.Model):
     continut = db.Column(db.LargeBinary, nullable=False)       # bytes-ul F3
     mapare_json = db.Column(db.Text, nullable=True)            # mapare manuala + rand_antet
     data_start = db.Column(db.Date, nullable=True)             # start planificare
+    calendar_id = db.Column(db.Integer, db.ForeignKey('gantt_calendar.id'),
+                            nullable=True)                     # calendar de lucru (optional)
     nr_activitati = db.Column(db.Integer, default=0, nullable=False)
     durata_zile = db.Column(db.Integer, default=0, nullable=False)
     cost_total = db.Column(db.Numeric(16, 2), default=0, nullable=False)

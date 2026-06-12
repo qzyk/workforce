@@ -40,6 +40,34 @@ def _index_activitati(activitati) -> dict:
     return {a.id: a for a in activitati}
 
 
+def _functie_date(activitati, data_start, calendar):
+    """dz(index_zi) -> date calendaristica, sau None cand nu avem data de start.
+
+    Mapeaza indecsii de zi 0-based (start_zi/finish_zi) pe date reale folosind
+    calendarul de lucru dat (CalendarLucru) sau, in lipsa lui, Lu-Vi simplu.
+    Cand `data_start` e None, exporturile raman IDENTICE cu istoricul (fara date).
+    """
+    if data_start is None:
+        return None
+    from .calendar import CalendarLucru
+    cal_lucru = calendar if calendar is not None else CalendarLucru()
+    durata = 1
+    for a in activitati:
+        durata = max(durata, int(getattr(a, 'finish_zi', 0) or 0))
+    zile = cal_lucru.lista_zile(data_start, durata)
+
+    def dz(i: int):
+        return zile[max(0, min(int(i), len(zile) - 1))]
+    return dz
+
+
+def _interval_activitate(a, dz):
+    """(data_start, data_finish) pentru o activitate programata (finish inclusiv)."""
+    s_idx = int(getattr(a, 'start_zi', 0) or 0)
+    f_idx = max(int(getattr(a, 'finish_zi', 0) or 0) - 1, s_idx)
+    return dz(s_idx), dz(f_idx)
+
+
 def _numerotare(noduri, activitati):
     """Atribuie UID (toate nodurile, preorder) si ID numeric (doar activitatile).
     Intoarce (uid_per_wbs, uid_per_act, idnum_per_act)."""
@@ -57,13 +85,19 @@ def _numerotare(noduri, activitati):
 
 
 # --------------------------------------------------------------------------- CSV
-def export_csv(activitati, noduri) -> bytes:
-    """CSV cu predecesori stil MS Project (ex: '12FS', '12FS+2 days', '12SS-1 day')."""
+def export_csv(activitati, noduri, data_start=None, calendar=None) -> bytes:
+    """CSV cu predecesori stil MS Project (ex: '12FS', '12FS+2 days', '12SS-1 day').
+    Cu `data_start` (si optional `calendar`): coloane suplimentare Start/Finish.
+    Fara ele, output IDENTIC cu istoricul."""
     _, _, idnum = _numerotare(noduri, activitati)
+    dz = _functie_date(activitati, data_start, calendar)
     out = io.StringIO()
     w = csv.writer(out, delimiter=',')
-    w.writerow(['ID', 'WBS', 'Activity Name', 'Duration', 'Predecessors', 'Category',
-                'Quantity', 'UM', 'Valoare', 'Material', 'Manopera', 'Utilaje'])
+    antet = ['ID', 'WBS', 'Activity Name', 'Duration', 'Predecessors', 'Category',
+             'Quantity', 'UM', 'Valoare', 'Material', 'Manopera', 'Utilaje']
+    if dz is not None:
+        antet += ['Start', 'Finish']
+    w.writerow(antet)
     for a in activitati:
         preds = []
         for d in a.predecesori:
@@ -75,25 +109,37 @@ def export_csv(activitati, noduri) -> bytes:
                 unit = 'day' if abs(d.decalaj) == 1 else 'days'
                 lag = f'{"+" if d.decalaj > 0 else "-"}{abs(d.decalaj)} {unit}'
             preds.append(f'{pid}{d.tip}{lag}')
-        w.writerow([
+        rand = [
             idnum.get(a.id, ''), a.wbs_id, a.nume, f'{a.durata} days',
             ';'.join(preds), a.categorie_tehnologica or '', _num(a.cantitate), a.um,
             _num(getattr(a, 'valoare', 0)), _num(getattr(a, 'valoare_material', 0)),
             _num(getattr(a, 'valoare_manopera', 0)), _num(getattr(a, 'valoare_utilaj', 0)),
-        ])
+        ]
+        if dz is not None:
+            ds, df = _interval_activitate(a, dz)
+            rand += [ds.isoformat(), df.isoformat()]
+        w.writerow(rand)
     return out.getvalue().encode('utf-8-sig')
 
 
 # ------------------------------------------------------------------ MS Project XML
-def export_msproject_xml(activitati, noduri, nume_proiect='Proiect', ore_pe_zi=8) -> bytes:
-    """MS Project 2003 XML (importabil in MS Project)."""
+def export_msproject_xml(activitati, noduri, nume_proiect='Proiect', ore_pe_zi=8,
+                         data_start=None, calendar=None) -> bytes:
+    """MS Project 2003 XML (importabil in MS Project).
+    Cu `data_start` (si optional `calendar`): emite Start/Finish (ISO) pe Task-uri
+    + StartDate pe proiect. Fara ele, output IDENTIC cu istoricul."""
     idx = _index_activitati(activitati)
     _, uid_act, _ = _numerotare(noduri, activitati)
+    dz = _functie_date(activitati, data_start, calendar)
+    ora_start = 8                                  # ziua de lucru incepe la 08:00
+    ora_finish = ora_start + int(ore_pe_zi)
     NS = 'http://schemas.microsoft.com/project'
     ET.register_namespace('', NS)
     proj = ET.Element(f'{{{NS}}}Project')
     _sub(proj, NS, 'Name', nume_proiect)
     _sub(proj, NS, 'Title', nume_proiect)
+    if dz is not None:
+        _sub(proj, NS, 'StartDate', f'{dz(0).isoformat()}T{ora_start:02d}:00:00')
     _sub(proj, NS, 'MinutesPerDay', str(int(ore_pe_zi) * 60))
     _sub(proj, NS, 'HoursPerDay', str(int(ore_pe_zi)))
     tasks = ET.SubElement(proj, f'{{{NS}}}Tasks')
@@ -111,6 +157,10 @@ def export_msproject_xml(activitati, noduri, nume_proiect='Proiect', ore_pe_zi=8
             durata = a.durata if a else 1
             _sub(t, NS, 'Summary', '0')
             _sub(t, NS, 'Manual', '0')
+            if a is not None and dz is not None:
+                ds, df = _interval_activitate(a, dz)
+                _sub(t, NS, 'Start', f'{ds.isoformat()}T{ora_start:02d}:00:00')
+                _sub(t, NS, 'Finish', f'{df.isoformat()}T{ora_finish:02d}:00:00')
             _sub(t, NS, 'Duration', f'PT{int(durata) * int(ore_pe_zi)}H0M0S')
             _sub(t, NS, 'DurationFormat', '7')
             if a:
@@ -131,9 +181,15 @@ def export_msproject_xml(activitati, noduri, nume_proiect='Proiect', ore_pe_zi=8
 
 
 # ------------------------------------------------------------------ Primavera P6 XML
-def export_primavera_xml(activitati, noduri, nume_proiect='Proiect', ore_pe_zi=8) -> bytes:
-    """Primavera P6 XML - subset compatibil (Project / WBS / Activity / Relationship)."""
+def export_primavera_xml(activitati, noduri, nume_proiect='Proiect', ore_pe_zi=8,
+                         data_start=None, calendar=None) -> bytes:
+    """Primavera P6 XML - subset compatibil (Project / WBS / Activity / Relationship).
+    Cu `data_start` (si optional `calendar`): emite PlannedStartDate/PlannedFinishDate.
+    Fara ele, output IDENTIC cu istoricul."""
     uid_wbs, _, _ = _numerotare(noduri, activitati)
+    dz = _functie_date(activitati, data_start, calendar)
+    ora_start = 8
+    ora_finish = ora_start + int(ore_pe_zi)
     root = ET.Element('APIBusinessObjects')
     proj = ET.SubElement(root, 'Project')
     _sub(proj, None, 'ObjectId', '1')
@@ -163,6 +219,10 @@ def export_primavera_xml(activitati, noduri, nume_proiect='Proiect', ore_pe_zi=8
         if parinte and parinte in uid_wbs:
             _sub(act, None, 'WBSObjectId', str(uid_wbs[parinte]))
         _sub(act, None, 'PlannedDuration', str(int(a.durata) * int(ore_pe_zi)))  # ore
+        if dz is not None:
+            ds, df = _interval_activitate(a, dz)
+            _sub(act, None, 'PlannedStartDate', f'{ds.isoformat()}T{ora_start:02d}:00:00')
+            _sub(act, None, 'PlannedFinishDate', f'{df.isoformat()}T{ora_finish:02d}:00:00')
         _sub(act, None, 'Status', 'Not Started')
 
     # Relatii
@@ -183,16 +243,23 @@ def export_json(rezultat) -> bytes:
 
 
 # ---- export prin nume de format (folosit de API / UI) ----
-def exporta(format_: str, rezultat, nume_proiect='Proiect', ore_pe_zi=8):
-    """Intoarce (bytes, mimetype, extensie) pentru formatul cerut."""
+def exporta(format_: str, rezultat, nume_proiect='Proiect', ore_pe_zi=8,
+            data_start=None, calendar=None):
+    """Intoarce (bytes, mimetype, extensie) pentru formatul cerut.
+    `data_start`/`calendar` (optionale): adauga date calendaristice Start/Finish
+    in CSV / MS Project XML / Primavera XML. Fara ele, output identic cu istoricul."""
     f = (format_ or '').lower()
     if f in ('csv',):
-        return export_csv(rezultat.activitati, rezultat.noduri_wbs), 'text/csv', 'csv'
+        return (export_csv(rezultat.activitati, rezultat.noduri_wbs,
+                           data_start=data_start, calendar=calendar),
+                'text/csv', 'csv')
     if f in ('msproject', 'msp', 'mpp', 'xml', 'msproject_xml'):
-        return (export_msproject_xml(rezultat.activitati, rezultat.noduri_wbs, nume_proiect, ore_pe_zi),
+        return (export_msproject_xml(rezultat.activitati, rezultat.noduri_wbs, nume_proiect, ore_pe_zi,
+                                     data_start=data_start, calendar=calendar),
                 'application/xml', 'xml')
     if f in ('primavera', 'p6', 'primavera_xml'):
-        return (export_primavera_xml(rezultat.activitati, rezultat.noduri_wbs, nume_proiect, ore_pe_zi),
+        return (export_primavera_xml(rezultat.activitati, rezultat.noduri_wbs, nume_proiect, ore_pe_zi,
+                                     data_start=data_start, calendar=calendar),
                 'application/xml', 'xml')
     if f in ('json',):
         return export_json(rezultat), 'application/json', 'json'
