@@ -1,7 +1,7 @@
-"""0018 gantt_calendar
+"""0021 gantt_calendar
 
-Revision ID: 0018_gantt_calendar
-Revises: 0017_extras_resursa
+Revision ID: 0021_gantt_calendar
+Revises: 0020_pret_resursa_categorie
 Create Date: 2026-06-12 00:00:00.000000
 
 Calendar de lucru pentru Gantt (Faza 1): sablon saptamanal + exceptii pe date
@@ -15,8 +15,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = '0018_gantt_calendar'
-down_revision: Union[str, Sequence[str], None] = '0017_extras_resursa'
+revision: str = '0021_gantt_calendar'
+down_revision: Union[str, Sequence[str], None] = '0020_pret_resursa_categorie'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

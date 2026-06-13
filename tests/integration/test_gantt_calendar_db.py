@@ -124,13 +124,14 @@ def test_cli_init_gantt_calendar(app):
             nume=calendar_db.NUME_CALENDAR_IMPLICIT, tenant_id=None).count() == 1
 
 
-# DDL-ul gantt_plan FARA calendar_id - exact schema de pe prod la 0017
-# (creata de migratia 0013_gantt_plan, inainte de 0018_gantt_calendar).
+# DDL-ul gantt_plan FARA calendar_id - schema dinainte de calendar
+# (creata de migratia 0013_gantt_plan, inainte de 0021_gantt_calendar).
 _DDL_GANTT_PLAN_VECHI = """
 CREATE TABLE gantt_plan (
     id INTEGER NOT NULL,
     tenant_id INTEGER,
     proiect_id INTEGER,
+    obiect_id INTEGER,
     nume VARCHAR(160) NOT NULL,
     nume_fisier VARCHAR(255),
     ext VARCHAR(10),
@@ -146,6 +147,7 @@ CREATE TABLE gantt_plan (
     PRIMARY KEY (id),
     FOREIGN KEY(creat_de_id) REFERENCES utilizatori (id),
     FOREIGN KEY(proiect_id) REFERENCES proiecte (id),
+    FOREIGN KEY(obiect_id) REFERENCES obiect (id),
     FOREIGN KEY(tenant_id) REFERENCES tenants (id)
 )
 """
@@ -206,9 +208,15 @@ def test_cli_adauga_coloana_calendar_id_pe_schema_veche(app):
     assert r2.exit_code == 0
     assert 'calendar_id exista deja' in r2.output
 
-    # 6. Curatenie: scoate planul de test (schema ramane cea completa)
+    # 6. Curatenie ROBUSTA: testul a recreat manual gantt_plan dintr-un DDL
+    # snapshot, care poate ramane in urma schemei reale (ex. coloane noi
+    # adaugate de alte module). Pentru a NU polua sesiunea (DB-ul e
+    # session-scoped si partajat cu restul testelor), dam DROP la tabelele
+    # atinse si le recreem din modelele CURENTE via db.create_all().
     with app.app_context():
-        from models import GanttPlan as GP
-        for p in GP.query.filter_by(nume='Plan vechi prod').all():
-            db.session.delete(p)
-        db.session.commit()
+        with db.engine.begin() as conn:
+            conn.execute(text('DROP TABLE IF EXISTS gantt_plan'))
+            conn.execute(text('DROP TABLE IF EXISTS gantt_calendar_exceptie'))
+            conn.execute(text('DROP TABLE IF EXISTS gantt_calendar'))
+        db.session.remove()
+        db.create_all()  # reface schema completa din models (toate coloanele)
