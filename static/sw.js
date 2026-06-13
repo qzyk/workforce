@@ -10,7 +10,7 @@
  * Versiune: bump cand schimbi assets statice ca clienti sa updateze cache-ul.
  */
 
-const CACHE_VERSION = 'edifico-v2'; /* bump: adaugat tokens.css (DS faza 1) */
+const CACHE_VERSION = 'edifico-v3'; /* bump: tokens.css (DS faza 1) + librarii viewer self-host (BIM faza 1) */
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const OFFLINE_URL = '/offline';
@@ -29,13 +29,31 @@ const PRECACHE_URLS = [
   '/static/img/pwa/apple-touch-icon.png',
 ];
 
+// Librarii viewer 3D vendorizate (self-host) - precache best-effort.
+// Sunt mari (~10MB) si optionale: le incarcam separat ca un esec sa NU
+// rupa instalarea service worker-ului (PRECACHE_URLS esential ramane garantat).
+const VIEWER_LIB_URLS = [
+  '/static/lib/xeokit-sdk@2.6.78/xeokit-sdk.es.min.js',
+  '/static/lib/web-ifc@0.0.50/web-ifc-api.js',
+  '/static/lib/web-ifc@0.0.50/web-ifc.wasm',
+  '/static/lib/web-ifc@0.0.50/web-ifc-mt.wasm',
+];
+
 // ============================================================
 // INSTALL: pre-cache asset-uri esentiale + skip waiting
 // ============================================================
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
+      .then((cache) => cache.addAll(PRECACHE_URLS)
+        // Librariile viewer (mari, optionale): best-effort, fiecare individual,
+        // ca un 404/timeout sa NU rupa instalarea SW-ului.
+        .then(() => Promise.allSettled(
+          VIEWER_LIB_URLS.map((u) =>
+            cache.add(u).catch((e) => console.warn('[SW] Lib viewer ne-cache-uita:', u, e))
+          )
+        ))
+      )
       .then(() => self.skipWaiting())
       .catch((err) => console.warn('[SW] Precache esuat partial:', err))
   );

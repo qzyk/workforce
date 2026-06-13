@@ -68,9 +68,35 @@
 
 {% block extra_js %}
 <script type="module">
-// Viewer federat xeokit-sdk via ES modules
-import { Viewer, WebIFCLoaderPlugin } from "https://cdn.jsdelivr.net/npm/@xeokit/xeokit-sdk/+esm";
-import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc/+esm";
+// Viewer federat xeokit-sdk via ES modules.
+// LOCAL-FIRST (self-host) cu FALLBACK CDN PINAT. Versiuni FIXE identice cu
+// viewer_xeokit: xeokit-sdk@2.6.78 + web-ifc@0.0.50 (NU mai folosim '/+esm'
+// nepinned, care se rupea silentios la orice release upstream).
+const XEOKIT_LOCAL = "{{ url_for('static', filename='lib/xeokit-sdk@2.6.78/xeokit-sdk.es.min.js') }}";
+const XEOKIT_CDN   = 'https://cdn.jsdelivr.net/npm/@xeokit/xeokit-sdk@2.6.78/dist/xeokit-sdk.es.min.js';
+const WEBIFC_LOCAL = "{{ url_for('static', filename='lib/web-ifc@0.0.50/web-ifc-api.js') }}";
+const WEBIFC_CDN   = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.50/web-ifc-api.js';
+const WASM_LOCAL   = "{{ url_for('static', filename='lib/web-ifc@0.0.50/') }}";
+const WASM_CDN     = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.50/';
+
+// Incarcare cu local-first + fallback CDN. Returneaza modulele + dir WASM aliniat.
+async function loadLibs() {
+    let xeokit, WebIFC, wasmDir;
+    try {
+        [xeokit, WebIFC] = await Promise.all([import(XEOKIT_LOCAL), import(WEBIFC_LOCAL)]);
+        wasmDir = WASM_LOCAL;
+    } catch (localErr) {
+        console.warn('Librarii locale indisponibile, fallback CDN pinat:', localErr);
+        [xeokit, WebIFC] = await Promise.all([import(XEOKIT_CDN), import(WEBIFC_CDN)]);
+        wasmDir = WASM_CDN;
+    }
+    return {
+        Viewer: xeokit.Viewer,
+        WebIFCLoaderPlugin: xeokit.WebIFCLoaderPlugin,
+        WebIFC,
+        wasmDir,
+    };
+}
 
 const container = document.getElementById('fedViewerContainer');
 const loading = document.getElementById('fedLoading');
@@ -90,6 +116,12 @@ const DISC_COLORS = {
 };
 
 try {
+    // Incarc librariile (local-first, fallback CDN pinat)
+    const { Viewer, WebIFCLoaderPlugin, WebIFC, wasmDir } = await loadLibs();
+    if (!Viewer || !WebIFCLoaderPlugin) {
+        throw new Error('xeokit-sdk: modulele necesare nu au fost gasite in bundle');
+    }
+
     // Init canvas pentru xeokit
     const canvas = document.createElement('canvas');
     canvas.style.width = '100%';
@@ -100,7 +132,7 @@ try {
     viewer.scene.canvas.backgroundColor = [0.1, 0.1, 0.1];
 
     const ifcAPI = new WebIFC.IfcAPI();
-    ifcAPI.SetWasmPath("https://cdn.jsdelivr.net/npm/web-ifc/");
+    ifcAPI.SetWasmPath(wasmDir);
     await ifcAPI.Init();
 
     const loader = new WebIFCLoaderPlugin(viewer, { WebIFC, IfcAPI: ifcAPI });

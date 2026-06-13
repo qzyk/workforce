@@ -108,10 +108,15 @@
 
 {% block extra_js %}
 <script type="module">
-// xeokit-sdk via ES Modules CDN (jsDelivr).
+// xeokit-sdk via ES Modules. LOCAL-FIRST (self-host) cu FALLBACK CDN PINAT.
 // Incarcare on-demand, nu blocheaza pagina daca nu e disponibil.
-const CDN = 'https://cdn.jsdelivr.net/npm/@xeokit/xeokit-sdk@2.6.78/dist/xeokit-sdk.es.min.js';
-const WEB_IFC_WASM_DIR = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.50/';
+// Versiuni pinate: xeokit-sdk@2.6.78 + web-ifc@0.0.50 (identice cu fallback-ul CDN).
+const LIB_LOCAL    = "{{ url_for('static', filename='lib/xeokit-sdk@2.6.78/xeokit-sdk.es.min.js') }}";
+const LIB_CDN      = 'https://cdn.jsdelivr.net/npm/@xeokit/xeokit-sdk@2.6.78/dist/xeokit-sdk.es.min.js';
+const WASM_LOCAL   = "{{ url_for('static', filename='lib/web-ifc@0.0.50/') }}";
+const WASM_CDN     = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.50/';
+// Setat la WASM_LOCAL daca SDK-ul local s-a incarcat, altfel WASM_CDN.
+let WEB_IFC_WASM_DIR = WASM_CDN;
 
 const container = document.getElementById('xvContainer');
 const canvas = document.getElementById('xvCanvas');
@@ -140,7 +145,17 @@ function showError(msg, detail) {
     let Viewer, WebIFCLoaderPlugin, AmbientLight, DirLight;
     try {
         setProgress(10, 'Incarc xeokit-sdk...');
-        const xeokit = await import(CDN);
+        let xeokit;
+        try {
+            // Local-first: bundle vendorizat in static/lib (offline-capable).
+            xeokit = await import(LIB_LOCAL);
+            WEB_IFC_WASM_DIR = WASM_LOCAL;
+        } catch (localErr) {
+            // Fallback: CDN pinat (aceeasi versiune).
+            console.warn('xeokit local indisponibil, fallback CDN:', localErr);
+            xeokit = await import(LIB_CDN);
+            WEB_IFC_WASM_DIR = WASM_CDN;
+        }
         ({ Viewer, WebIFCLoaderPlugin, AmbientLight, DirLight } = xeokit);
         if (!Viewer || !WebIFCLoaderPlugin) {
             throw new Error('xeokit-sdk: modulele necesare nu au fost gasite in bundle');

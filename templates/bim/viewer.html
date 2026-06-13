@@ -81,25 +81,33 @@ try {
     window.viewer = viewer;
     viewer.context.fitToFrame();
 
-    // Auto-highlight daca s-a specificat un GUID in URL
+    // Index O(1) GlobalId -> expressId, construit lazy o singura data.
+    // Inlocuieste vechiul scan O(n) (getProperties per element la fiecare cautare).
+    let guidIndex = null;
+    async function getGuidIndex() {
+        if (guidIndex) return guidIndex;
+        const idx = new Map();
+        const ifcManager = viewer.IFC.loader.ifcManager;
+        // Iteram o singura data toate IfcRoot-urile si mapam GlobalId -> expressId.
+        const allItems = await ifcManager.getAllItemsOfType(ifcModel.modelID, 0, false); // 0 = IfcRoot
+        for (const id of allItems) {
+            try {
+                const props = await viewer.IFC.getProperties(ifcModel.modelID, id, false);
+                if (props.GlobalId && props.GlobalId.value) {
+                    idx.set(props.GlobalId.value, id);
+                }
+            } catch (_) { /* skip */ }
+        }
+        guidIndex = idx;
+        window.viewerGuidIndex = idx;
+        return idx;
+    }
+
+    // Auto-highlight daca s-a specificat un GUID in URL (lookup O(1) in index)
     if (highlightGuid) {
         try {
-            // web-ifc oferă getExpressId din GlobalId via API
-            const ifcAPI = viewer.IFC.loader.ifcManager;
-            // Caut element cu acest GlobalId in modelul incarcat
-            const allItems = await ifcAPI.getAllItemsOfType(ifcModel.modelID, 0, false); // 0 = IfcRoot
-            // Mai eficient: parcurg proprietatile fiecarui ID si verific GlobalId
-            // (in IFC.js nu exista lookup direct pe GlobalId, deci facem scan)
-            let foundExpressId = null;
-            for (const id of allItems) {
-                try {
-                    const props = await viewer.IFC.getProperties(ifcModel.modelID, id, false);
-                    if (props.GlobalId && props.GlobalId.value === highlightGuid) {
-                        foundExpressId = id;
-                        break;
-                    }
-                } catch (_) { /* skip */ }
-            }
+            const idx = await getGuidIndex();
+            const foundExpressId = idx.has(highlightGuid) ? idx.get(highlightGuid) : null;
             if (foundExpressId !== null) {
                 await viewer.IFC.selector.pickIfcItemsByID(ifcModel.modelID, [foundExpressId], true);
                 const props = await viewer.IFC.getProperties(ifcModel.modelID, foundExpressId, true);
