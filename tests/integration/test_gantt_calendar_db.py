@@ -122,3 +122,93 @@ def test_cli_init_gantt_calendar(app):
     with app.app_context():
         assert GanttCalendar.query.filter_by(
             nume=calendar_db.NUME_CALENDAR_IMPLICIT, tenant_id=None).count() == 1
+
+
+# DDL-ul gantt_plan FARA calendar_id - exact schema de pe prod la 0017
+# (creata de migratia 0013_gantt_plan, inainte de 0018_gantt_calendar).
+_DDL_GANTT_PLAN_VECHI = """
+CREATE TABLE gantt_plan (
+    id INTEGER NOT NULL,
+    tenant_id INTEGER,
+    proiect_id INTEGER,
+    nume VARCHAR(160) NOT NULL,
+    nume_fisier VARCHAR(255),
+    ext VARCHAR(10),
+    continut BLOB NOT NULL,
+    mapare_json TEXT,
+    data_start DATE,
+    nr_activitati INTEGER NOT NULL,
+    durata_zile INTEGER NOT NULL,
+    cost_total NUMERIC(16, 2) NOT NULL,
+    creat_de_id INTEGER,
+    data_creare DATETIME NOT NULL,
+    data_actualizare DATETIME,
+    PRIMARY KEY (id),
+    FOREIGN KEY(creat_de_id) REFERENCES utilizatori (id),
+    FOREIGN KEY(proiect_id) REFERENCES proiecte (id),
+    FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+)
+"""
+
+
+def test_cli_adauga_coloana_calendar_id_pe_schema_veche(app):
+    """Simuleaza prod la 0017 (gantt_plan FARA calendar_id, fara tabele calendar)
+    si verifica ca CLI-ul adauga coloana cu ALTER idempotent.
+
+    Capcana reprodusa la review: db.create_all() creeaza doar tabelele lipsa,
+    NU adauga coloane pe tabele existente - fara ALTER, GanttPlan.query crapa
+    cu 'no such column: gantt_plan.calendar_id' imediat dupa deploy, chiar si
+    cu flag-ul 'gantt-calendar' OFF.
+    """
+    from datetime import datetime
+    from sqlalchemy import inspect, text
+    from sqlalchemy.exc import OperationalError
+    from models import db, GanttPlan
+
+    with app.app_context():
+        # 1. Aduce schema la starea prod 0017: gantt_plan vechi, fara calendar
+        with db.engine.begin() as conn:
+            conn.execute(text('DROP TABLE IF EXISTS gantt_plan'))
+            conn.execute(text('DROP TABLE IF EXISTS gantt_calendar_exceptie'))
+            conn.execute(text('DROP TABLE IF EXISTS gantt_calendar'))
+            conn.execute(text(_DDL_GANTT_PLAN_VECHI))
+            conn.execute(text('CREATE INDEX ix_gantt_plan_tenant_proiect '
+                              'ON gantt_plan (tenant_id, proiect_id)'))
+            # un rand existent, ca pe prod (plan salvat inainte de deploy)
+            conn.execute(text(
+                "INSERT INTO gantt_plan (nume, continut, nr_activitati, "
+                "durata_zile, cost_total, data_creare) "
+                "VALUES ('Plan vechi prod', x'00', 0, 0, 0, :acum)"),
+                {'acum': datetime.utcnow()})
+        db.session.remove()
+
+        # 2. Reproducere bug: modelul mapeaza calendar_id -> query-ul crapa
+        with pytest.raises(OperationalError):
+            GanttPlan.query.first()
+        db.session.rollback()
+
+    # 3. Ruleaza CLI-ul (pasul de deploy) - trebuie sa repare schema
+    runner = app.test_cli_runner()
+    r1 = runner.invoke(args=['init-gantt-calendar'])
+    assert r1.exit_code == 0
+    assert 'calendar_id adaugata' in r1.output
+
+    with app.app_context():
+        # 4. Coloana exista, query-ul pe GanttPlan nu mai crapa, datele au ramas
+        cols = {c['name'] for c in inspect(db.engine).get_columns('gantt_plan')}
+        assert 'calendar_id' in cols
+        plan = GanttPlan.query.first()
+        assert plan is not None and plan.nume == 'Plan vechi prod'
+        assert plan.calendar_id is None
+
+    # 5. Idempotent: a doua rulare nu mai face ALTER si nu da eroare
+    r2 = runner.invoke(args=['init-gantt-calendar'])
+    assert r2.exit_code == 0
+    assert 'calendar_id exista deja' in r2.output
+
+    # 6. Curatenie: scoate planul de test (schema ramane cea completa)
+    with app.app_context():
+        from models import GanttPlan as GP
+        for p in GP.query.filter_by(nume='Plan vechi prod').all():
+            db.session.delete(p)
+        db.session.commit()

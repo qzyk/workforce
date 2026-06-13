@@ -741,8 +741,30 @@ def create_app(config_name='default'):
 
         Tabelele noi (gantt_calendar / gantt_calendar_exceptie) se creeaza cu
         db.create_all() daca lipsesc - sigur pe prod (nu atinge tabele existente).
+
+        ATENTIE: db.create_all() NU adauga coloane pe tabele existente, iar pe
+        prod tabela gantt_plan exista deja (din 0013) fara calendar_id. Modelul
+        GanttPlan mapeaza coloana, deci fara ALTER orice query pe GanttPlan ar
+        crapa cu 'no such column: gantt_plan.calendar_id' - chiar si cu flag-ul
+        'gantt-calendar' OFF. De aceea adaugam coloana aici, idempotent, dupa
+        acelasi pattern ca migrate-bim.
         """
+        from sqlalchemy import inspect, text
         db.create_all()
+
+        # ALTER idempotent: adauga gantt_plan.calendar_id daca lipseste (schema veche)
+        insp = inspect(db.engine)
+        if 'gantt_plan' in insp.get_table_names():
+            cols = {c['name'] for c in insp.get_columns('gantt_plan')}
+            if 'calendar_id' not in cols:
+                with db.engine.begin() as conn:
+                    conn.execute(text(
+                        'ALTER TABLE gantt_plan ADD COLUMN calendar_id '
+                        'INTEGER REFERENCES gantt_calendar(id)'))
+                click.echo('[OK] Coloana gantt_plan.calendar_id adaugata (ALTER).')
+            else:
+                click.echo('[SKIP] Coloana gantt_plan.calendar_id exista deja.')
+
         from services.gantt.calendar_db import creeaza_calendar_implicit
         cal, creat, nr = creeaza_calendar_implicit()
         click.echo(f'[OK] Calendar "{cal.nume}" '
