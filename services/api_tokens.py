@@ -94,6 +94,12 @@ def authenticate_token(token: str) -> Optional[ApiToken]:
         return None
     if tok.is_expired:
         return None
+    # Tokenul e valid doar daca proprietarul mai exista si e activ. Asa,
+    # dezactivarea/concedierea unui utilizator ii invalideaza imediat tokenurile
+    # (fara revocare manuala) si evitam AttributeError pe owner orfan in rutele
+    # care folosesc tok.owner pentru autorizare (ex. api_model_version_file).
+    if not tok.owner or not getattr(tok.owner, 'activ', False):
+        return None
     # Update last_used (best-effort, nu blocam la eroare)
     try:
         tok.last_used_at = datetime.utcnow()

@@ -14,6 +14,7 @@ Verificam:
 """
 
 import os
+import uuid
 import pytest
 
 from models import db, BIMModelVersion, ModelBIM, ApiToken, Utilizator
@@ -31,7 +32,9 @@ def versiune_cu_fisier(app):
         db.session.add(m)
         db.session.commit()
 
-        rel_path = os.path.join('uploads', 'test_fileserve_model.ifc')
+        # Nume unic per invocare: evita race-ul cu DB-ul session-scoped si cu
+        # cleanup-ul autouse cand testul ruleaza alaturi de alte teste filesystem.
+        rel_path = os.path.join('uploads', f'test_fileserve_{uuid.uuid4().hex}.ifc')
         abs_path = os.path.join(app.root_path, rel_path)
         os.makedirs(os.path.dirname(abs_path), exist_ok=True)
         with open(abs_path, 'w', encoding='utf-8') as fh:
