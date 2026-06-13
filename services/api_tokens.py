@@ -103,6 +103,19 @@ def authenticate_token(token: str) -> Optional[ApiToken]:
     return tok
 
 
+def _extract_token() -> Optional[str]:
+    """
+    Extrage tokenul din header-ul request-ului curent.
+    Acceptam 'Authorization: Bearer <token>' sau 'X-Api-Token: <token>'.
+    Returneaza None daca nu exista niciun header de token.
+    """
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        return auth_header[7:].strip() or None
+    token = request.headers.get('X-Api-Token', '').strip()
+    return token or None
+
+
 def api_token_required(*required_scopes):
     """
     Decorator pentru a proteja o ruta cu autentificare API token.
@@ -118,13 +131,7 @@ def api_token_required(*required_scopes):
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
-            # Extragere token
-            auth_header = request.headers.get('Authorization', '')
-            token = None
-            if auth_header.startswith('Bearer '):
-                token = auth_header[7:].strip()
-            else:
-                token = request.headers.get('X-Api-Token', '').strip()
+            token = _extract_token()
             if not token:
                 return jsonify({'error': 'missing token. Use Authorization: Bearer <token> or X-Api-Token header'}), 401
 
@@ -148,3 +155,57 @@ def api_token_required(*required_scopes):
 
         return wrapper
     return decorator
+
+
+# ====================================================
+# Dual-auth (sesiune SAU token)
+# ====================================================
+
+class DualAuthError(Exception):
+    """Eroare de autentificare duala. Poarta un cod HTTP (401/403)."""
+
+    def __init__(self, message: str, status: int = 401):
+        super().__init__(message)
+        self.message = message
+        self.status = status
+
+
+def resolve_dual_auth(*required_scopes):
+    """
+    Rezolva autentificarea acceptand ORICARE dintre:
+    1. Token API valid (header) cu toate scope-urile cerute -> seteaza g.api_token / g.api_user.
+    2. Sesiune Flask-Login valida (utilizator logat).
+
+    Folosita pe rute consumate atat programatic (token) cat si din front-end
+    logat prin sesiune (ex. viewer federat). NU redirectioneaza la login;
+    in schimb ridica DualAuthError cu status 401/403 (raspuns potrivit pt API).
+
+    Returneaza tuple (sursa, utilizator):
+    - ('token', Utilizator)   daca a fost validat prin token
+    - ('sesiune', Utilizator) daca a fost validat prin sesiune
+
+    Reguli:
+    - Daca exista un header de token, are prioritate si trebuie sa fie valid
+      + sa aiba scope-urile cerute (altfel 401/403). Asa evitam ca un token
+      gresit sa "cada" silentios pe sesiune.
+    - Altfel, daca user-ul e logat prin sesiune -> trece.
+    - Altfel -> 401.
+    """
+    from flask_login import current_user
+
+    token = _extract_token()
+    if token:
+        tok = authenticate_token(token)
+        if not tok:
+            raise DualAuthError('invalid or expired token', 401)
+        for required in required_scopes:
+            if not tok.has_scope(required):
+                raise DualAuthError(f'insufficient scope: {required}', 403)
+        g.api_token = tok
+        g.api_user = tok.owner
+        return ('token', tok.owner)
+
+    if current_user and current_user.is_authenticated:
+        return ('sesiune', current_user)
+
+    raise DualAuthError('autentificare necesara: sesiune sau token API', 401)

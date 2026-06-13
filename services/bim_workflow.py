@@ -195,14 +195,19 @@ def get_published_versions_for_santier(santier_id: int) -> list[BIMModelVersion]
     """
     Toate versiunile 'published' pentru toate modelele unui santier.
     Folosit la federation viewer.
+
+    Tenant scoping: in mod 'off' query-ul ramane identic; in 'strict'
+    filtreaza pe tenant_id-ul versiunii (BIMModelVersion are tenant_id nullable).
     """
     from models import ModelBIM
-    return (BIMModelVersion.query
-            .join(ModelBIM, ModelBIM.id == BIMModelVersion.model_id)
-            .filter(ModelBIM.santier_id == santier_id,
-                    BIMModelVersion.status == 'published')
-            .order_by(BIMModelVersion.disciplina,
-                      BIMModelVersion.data_publicare.desc())
+    from tenant import with_tenant_scope
+    q = (BIMModelVersion.query
+         .join(ModelBIM, ModelBIM.id == BIMModelVersion.model_id)
+         .filter(ModelBIM.santier_id == santier_id,
+                 BIMModelVersion.status == 'published'))
+    q = with_tenant_scope(q, BIMModelVersion)
+    return (q.order_by(BIMModelVersion.disciplina,
+                       BIMModelVersion.data_publicare.desc())
             .all())
 
 

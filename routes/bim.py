@@ -56,8 +56,12 @@ from services import openapi as openapi_svc
 from services import feature_flags as ff_svc
 from services import feature_flags
 from services import aps_viewer
+from tenant import with_tenant_scope
 
 bim_bp = Blueprint('bim', __name__, url_prefix='/bim')
+
+# Lungimea maxima a titlului unui eveniment real-time (truncare defensiva).
+BIM_EVENT_TITLE_MAX_LEN = 120
 
 
 # ============================================================
@@ -74,6 +78,44 @@ def manager_or_admin(f):
             return redirect(url_for('bim.dashboard'))
         return f(*args, **kwargs)
     return decorated
+
+
+# Mesaje per flag pentru gate-ul de feature (pastreaza textele istorice
+# afisate de fostele helpere _ensure_*_enabled).
+_FEATURE_MESAJE = {
+    'bim-model-versioning': 'Feature-ul versioning nu e activat pentru acest tenant.',
+    'bim-rule-engine':      'Rule engine nu e activat pentru acest tenant.',
+    'bim-clash-detection':  'Clash detection nu e activat pentru acest tenant.',
+    'bim-4d-schedule':      '4D Schedule nu e activat pentru acest tenant.',
+    'bim-5d-cost':          '5D Cost nu e activat pentru acest tenant.',
+    'bim-iot-sensors':      'IoT/Digital Twin nu e activat pentru acest tenant.',
+    'bim-issue-kanban':     'Kanban issues nu e activat pentru acest tenant.',
+}
+
+
+def feature_required(flag, mesaj=None):
+    """
+    Decorator care blocheaza accesul la o ruta daca feature flag-ul `flag`
+    e dezactivat (default OFF). Inlocuieste helperele repetitive
+    _ensure_*_enabled().
+
+    Comportament identic cu fostele helpere: cand flag-ul e OFF, afiseaza un
+    flash 'info' si redirectioneaza la dashboard-ul BIM.
+
+    Se aplica DUPA @login_required / @manager_or_admin (cel mai aproape de
+    functie), pastrand ordinea: autentificare -> rol -> gate feature.
+    """
+    text = mesaj or _FEATURE_MESAJE.get(flag, 'Acest feature nu e activat pentru acest tenant.')
+
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            if not ff_svc.is_enabled(flag):
+                flash(text, 'info')
+                return redirect(url_for('bim.dashboard'))
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
 
 
 # ============================================================
@@ -1032,21 +1074,12 @@ def api_elemente_catalog():
 # Cand flag-ul e OFF rutele raman accesibile dar UI-ul nu le link-uieste.
 # ============================================================
 
-def _ensure_versioning_enabled():
-    """Helper: redirect la dashboard daca flag-ul e off."""
-    if not ff_svc.is_enabled('bim-model-versioning'):
-        flash('Feature-ul versioning nu e activat pentru acest tenant.', 'info')
-        return redirect(url_for('bim.dashboard'))
-    return None
-
 
 @bim_bp.route('/model/<int:model_id>/versiuni')
 @login_required
+@feature_required('bim-model-versioning')
 def model_versiuni(model_id):
     """Lista versiunilor unui ModelBIM (workflow CDE)."""
-    redir = _ensure_versioning_enabled()
-    if redir:
-        return redir
     model = ModelBIM.query.get_or_404(model_id)
     versiuni = (BIMModelVersion.query
                 .filter_by(model_id=model_id)
@@ -1058,11 +1091,9 @@ def model_versiuni(model_id):
 
 @bim_bp.route('/model/<int:model_id>/versiune-noua', methods=['GET', 'POST'])
 @login_required
+@feature_required('bim-model-versioning')
 def model_versiune_noua(model_id):
     """Creeaza o versiune noua pentru model (status='wip' initial)."""
-    redir = _ensure_versioning_enabled()
-    if redir:
-        return redir
     model = ModelBIM.query.get_or_404(model_id)
 
     if request.method == 'POST':
@@ -1089,14 +1120,12 @@ def model_versiune_noua(model_id):
 
 @bim_bp.route('/model-version/<int:version_id>/transition', methods=['POST'])
 @login_required
+@feature_required('bim-model-versioning')
 def model_version_transition(version_id):
     """
     Aplica o tranzitie de status (wip->shared, shared->published, etc.).
     Necesita CSRF + autorizare (vezi bim_workflow.can_user_transition).
     """
-    redir = _ensure_versioning_enabled()
-    if redir:
-        return redir
 
     v = BIMModelVersion.query.get_or_404(version_id)
     new_status = request.form.get('status', '').strip().lower()
@@ -1189,13 +1218,32 @@ def viewer_federat(santier_id):
 
 
 @bim_bp.route('/api/model-version/<int:version_id>/file')
-@login_required
 def api_model_version_file(version_id):
-    """Trimite fisierul IFC al unei versiuni specifice (pentru viewer federat)."""
-    v = BIMModelVersion.query.get_or_404(version_id)
-    # Numai versiunile partajate sau publicate sunt servite (sau de catre creator)
-    if v.status not in ('shared', 'published') and v.creat_de_id != current_user.id:
-        if current_user.rol not in ('admin', 'manager'):
+    """
+    Trimite fisierul IFC al unei versiuni specifice (pentru viewer federat).
+
+    Acces DUAL (vezi tokens_svc.resolve_dual_auth):
+    - sesiune Flask-Login valida (consumat de viewer_federat.html, front-end logat), SAU
+    - token API valid cu scope 'bim:read' (consum programatic).
+    Anonim (fara sesiune si fara token) -> 401; token fara scope -> 403.
+    """
+    try:
+        sursa, utilizator = tokens_svc.resolve_dual_auth('bim:read')
+    except tokens_svc.DualAuthError as e:
+        return jsonify({'error': e.message}), e.status
+
+    # Tenant scoping: in mod 'off' query-ul ramane identic; in 'strict' filtreaza pe tenant.
+    v = with_tenant_scope(
+        BIMModelVersion.query.filter_by(id=version_id), BIMModelVersion
+    ).first()
+    if v is None:
+        abort(404)
+
+    # Numai versiunile partajate sau publicate sunt servite (sau de catre creator,
+    # ori de un admin/manager). Pastram check-ul de status/rol existent, dar
+    # folosim utilizatorul rezolvat (sesiune sau owner-ul tokenului).
+    if v.status not in ('shared', 'published') and v.creat_de_id != utilizator.id:
+        if getattr(utilizator, 'rol', None) not in ('admin', 'manager'):
             abort(403)
     if not v.fisier_path:
         abort(404)
@@ -1209,20 +1257,12 @@ def api_model_version_file(version_id):
 # RULE ENGINE (Faza 4)
 # ============================================================
 
-def _ensure_rules_enabled():
-    if not ff_svc.is_enabled('bim-rule-engine'):
-        flash('Rule engine nu e activat pentru acest tenant.', 'info')
-        return redirect(url_for('bim.dashboard'))
-    return None
-
 
 @bim_bp.route('/rules')
 @login_required
+@feature_required('bim-rule-engine')
 def rules_lista():
-    redir = _ensure_rules_enabled()
-    if redir:
-        return redir
-    rules = BIMRule.query.order_by(BIMRule.cod).all()
+    rules = with_tenant_scope(BIMRule.query, BIMRule).order_by(BIMRule.cod).all()
     counts = {}
     for r in rules:
         counts[r.id] = RuleViolation.query.filter_by(rule_id=r.id, status='noua').count()
@@ -1233,10 +1273,8 @@ def rules_lista():
 @bim_bp.route('/rule/nou', methods=['GET', 'POST'])
 @login_required
 @manager_or_admin
+@feature_required('bim-rule-engine')
 def rule_nou():
-    redir = _ensure_rules_enabled()
-    if redir:
-        return redir
     if request.method == 'POST':
         try:
             definition = json.loads(request.form.get('definitie_json', '{}'))
@@ -1269,10 +1307,8 @@ def rule_nou():
 @bim_bp.route('/rules/run', methods=['POST'])
 @login_required
 @manager_or_admin
+@feature_required('bim-rule-engine')
 def rules_run():
-    redir = _ensure_rules_enabled()
-    if redir:
-        return redir
     santier_id = request.form.get('santier_id', type=int)
     scope = {'santier_id': santier_id} if santier_id else None
     try:
@@ -1289,10 +1325,8 @@ def rules_run():
 
 @bim_bp.route('/violations')
 @login_required
+@feature_required('bim-rule-engine')
 def violations_lista():
-    redir = _ensure_rules_enabled()
-    if redir:
-        return redir
     status = request.args.get('status', 'noua')
     q = RuleViolation.query
     if status:
@@ -1322,20 +1356,13 @@ def violation_promote(violation_id):
 # CLASH DETECTION (Faza 4)
 # ============================================================
 
-def _ensure_clash_enabled():
-    if not ff_svc.is_enabled('bim-clash-detection'):
-        flash('Clash detection nu e activat pentru acest tenant.', 'info')
-        return redirect(url_for('bim.dashboard'))
-    return None
-
 
 @bim_bp.route('/clash')
 @login_required
+@feature_required('bim-clash-detection')
 def clash_lista():
-    redir = _ensure_clash_enabled()
-    if redir:
-        return redir
-    runs = ClashRun.query.order_by(ClashRun.data_rulare.desc()).limit(50).all()
+    runs = (with_tenant_scope(ClashRun.query, ClashRun)
+            .order_by(ClashRun.data_rulare.desc()).limit(50).all())
     santiere = Santier.query.order_by(Santier.cod).all()
     return render_template('bim/clash_lista.html', runs=runs, santiere=santiere)
 
@@ -1343,10 +1370,8 @@ def clash_lista():
 @bim_bp.route('/clash/run', methods=['POST'])
 @login_required
 @manager_or_admin
+@feature_required('bim-clash-detection')
 def clash_run():
-    redir = _ensure_clash_enabled()
-    if redir:
-        return redir
     santier_id = request.form.get('santier_id', type=int)
     model_id = request.form.get('model_id', type=int)
     tip = request.form.get('tip', 'mixed')
@@ -1370,10 +1395,8 @@ def clash_run():
 
 @bim_bp.route('/clash/<int:run_id>')
 @login_required
+@feature_required('bim-clash-detection')
 def clash_detaliu(run_id):
-    redir = _ensure_clash_enabled()
-    if redir:
-        return redir
     run = ClashRun.query.get_or_404(run_id)
     severity_filter = request.args.get('severitate')
     q = ClashResult.query.filter_by(run_id=run_id)
@@ -1418,21 +1441,13 @@ def api_clash(run_id):
 # Activare: feature flag 'bim-4d-schedule' (default OFF).
 # ============================================================
 
-def _ensure_4d_enabled():
-    if not ff_svc.is_enabled('bim-4d-schedule'):
-        flash('4D Schedule nu e activat pentru acest tenant.', 'info')
-        return redirect(url_for('bim.dashboard'))
-    return None
-
 
 @bim_bp.route('/element/<int:element_id>/schedule', methods=['GET', 'POST'])
 @login_required
 @manager_or_admin
+@feature_required('bim-4d-schedule')
 def element_schedule_form(element_id):
     """Adauga sau editeaza schedule entries pentru un element."""
-    redir = _ensure_4d_enabled()
-    if redir:
-        return redir
     element = ElementBIM.query.get_or_404(element_id)
     schedules = (BIMTaskSchedule.query
                  .filter_by(element_bim_id=element_id)
@@ -1469,11 +1484,9 @@ def element_schedule_form(element_id):
 @bim_bp.route('/schedule/<int:schedule_id>/progres', methods=['POST'])
 @login_required
 @manager_or_admin
+@feature_required('bim-4d-schedule')
 def schedule_update_progress(schedule_id):
     """Actualizeaza progresul (0..100) pentru un schedule entry."""
-    redir = _ensure_4d_enabled()
-    if redir:
-        return redir
     sched = BIMTaskSchedule.query.get_or_404(schedule_id)
     try:
         progres = int(request.form.get('progres_pct', 0))
@@ -1488,11 +1501,9 @@ def schedule_update_progress(schedule_id):
 
 @bim_bp.route('/santier/<int:santier_id>/4d-timeline')
 @login_required
+@feature_required('bim-4d-schedule')
 def santier_4d_timeline(santier_id):
     """Timeline Gantt-style pentru toate schedule-urile unui santier."""
-    redir = _ensure_4d_enabled()
-    if redir:
-        return redir
     santier = Santier.query.get_or_404(santier_id)
     timeline = fourd_svc.get_timeline_for_santier(santier_id)
     progress = fourd_svc.compute_santier_progress(santier_id)
@@ -1526,21 +1537,13 @@ def api_visible_at(santier_id):
 # Activare: feature flag 'bim-5d-cost' (default OFF).
 # ============================================================
 
-def _ensure_5d_enabled():
-    if not ff_svc.is_enabled('bim-5d-cost'):
-        flash('5D Cost nu e activat pentru acest tenant.', 'info')
-        return redirect(url_for('bim.dashboard'))
-    return None
-
 
 @bim_bp.route('/element/<int:element_id>/cost', methods=['GET', 'POST'])
 @login_required
 @manager_or_admin
+@feature_required('bim-5d-cost')
 def element_cost_form(element_id):
     """Adauga sau editeaza cost items pentru un element."""
-    redir = _ensure_5d_enabled()
-    if redir:
-        return redir
     element = ElementBIM.query.get_or_404(element_id)
     items = (BIMCostItem.query
              .filter_by(element_bim_id=element_id)
@@ -1583,11 +1586,9 @@ def element_cost_form(element_id):
 
 @bim_bp.route('/santier/<int:santier_id>/5d-dashboard')
 @login_required
+@feature_required('bim-5d-cost')
 def santier_5d_dashboard(santier_id):
     """Dashboard cost cu breakdown per disciplina/cladire/tip element + plan vs real."""
-    redir = _ensure_5d_enabled()
-    if redir:
-        return redir
     santier = Santier.query.get_or_404(santier_id)
     breakdown_plan = fived_svc.cost_breakdown_santier(santier_id, tip='planificat')
     breakdown_real = fived_svc.cost_breakdown_santier(santier_id, tip='real')
@@ -1617,12 +1618,6 @@ def api_element_cost(element_id):
 # Ingest API foloseste token auth (X-Sensor-Token); restul rutelor
 # - sesiune normala Flask-Login.
 # ============================================================
-
-def _ensure_iot_enabled():
-    if not ff_svc.is_enabled('bim-iot-sensors'):
-        flash('IoT/Digital Twin nu e activat pentru acest tenant.', 'info')
-        return redirect(url_for('bim.dashboard'))
-    return None
 
 
 # ---------- INGEST API (token auth, CSRF exempt) ----------
@@ -1678,25 +1673,18 @@ def api_sensors_ingest():
         return jsonify({'error': f'ingest failed: {e}'}), 500
 
 
-# Exempt CSRF pentru ruta de ingest (API token-based, fara cookie session)
-try:
-    from flask_wtf.csrf import CSRFProtect  # type: ignore
-    from flask import current_app as _ca
-    # Vom inregistra exemption-ul in app.py / sau prin context dupa import
-except ImportError:
-    pass
+# NOTA: CSRF exemption pentru ruta de ingest e inregistrata in app.py
+# (csrf.exempt(app.view_functions['bim.api_sensors_ingest'])) dupa register_blueprint.
 
 
 # ---------- SENZOR CRUD (sesiune) ----------
 
 @bim_bp.route('/sensors')
 @login_required
+@feature_required('bim-iot-sensors')
 def sensors_lista():
     """Lista globala senzori."""
-    redir = _ensure_iot_enabled()
-    if redir:
-        return redir
-    senzori = Senzor.query.order_by(Senzor.cod).all()
+    senzori = with_tenant_scope(Senzor.query, Senzor).order_by(Senzor.cod).all()
     return render_template('bim/sensors_lista.html',
                            senzori=senzori, tipuri=Senzor.TIPURI)
 
@@ -1704,11 +1692,9 @@ def sensors_lista():
 @bim_bp.route('/sensor/nou', methods=['GET', 'POST'])
 @login_required
 @manager_or_admin
+@feature_required('bim-iot-sensors')
 def sensor_nou():
     """Creeaza un senzor nou cu API key auto-generat."""
-    redir = _ensure_iot_enabled()
-    if redir:
-        return redir
 
     element_id = request.args.get('element_bim_id', type=int)
     spatiu_id = request.args.get('spatiu_id', type=int)
@@ -1754,11 +1740,9 @@ def sensor_nou():
 
 @bim_bp.route('/sensor/<int:sensor_id>')
 @login_required
+@feature_required('bim-iot-sensors')
 def sensor_detaliu(sensor_id):
     """Detaliu senzor cu istoric + chart."""
-    redir = _ensure_iot_enabled()
-    if redir:
-        return redir
     senzor = Senzor.query.get_or_404(sensor_id)
     agg = request.args.get('agg', '1h')  # default agg pe oră
     history = iot_query_svc.get_history(sensor_id, agg=agg)
@@ -1787,11 +1771,9 @@ def sensor_rotate_key(sensor_id):
 
 @bim_bp.route('/alerts')
 @login_required
+@feature_required('bim-iot-sensors')
 def alerts_lista():
     """Alerte deschise + recent rezolvate."""
-    redir = _ensure_iot_enabled()
-    if redir:
-        return redir
     status = request.args.get('status', 'noua')
     q = SensorAlert.query
     if status:
@@ -1854,30 +1836,15 @@ def api_sensor_history(sensor_id):
 # Activare: bim-realtime-collab, bim-issue-kanban (default OFF)
 # ============================================================
 
-def _ensure_realtime_enabled():
-    if not ff_svc.is_enabled('bim-realtime-collab'):
-        flash('Real-time collab nu e activat pentru acest tenant.', 'info')
-        return redirect(url_for('bim.dashboard'))
-    return None
-
-
-def _ensure_kanban_enabled():
-    if not ff_svc.is_enabled('bim-issue-kanban'):
-        flash('Kanban issues nu e activat pentru acest tenant.', 'info')
-        return redirect(url_for('bim.dashboard'))
-    return None
-
 
 # ---------- KANBAN ----------
 
 @bim_bp.route('/kanban')
 @bim_bp.route('/kanban/santier/<int:santier_id>')
 @login_required
+@feature_required('bim-issue-kanban')
 def kanban(santier_id=None):
     """Kanban board pentru IssueBIM. Coloane = status workflow."""
-    redir = _ensure_kanban_enabled()
-    if redir:
-        return redir
 
     santier = Santier.query.get(santier_id) if santier_id else None
     q = IssueBIM.query
@@ -1965,7 +1932,8 @@ def issue_change_status(issue_id):
                 'issue_status_change',
                 santier_id=santier_id,
                 payload={'issue_id': issue.id, 'old_status': old_status,
-                         'new_status': new_status, 'titlu': issue.titlu[:120]},
+                         'new_status': new_status,
+                         'titlu': issue.titlu[:BIM_EVENT_TITLE_MAX_LEN]},
                 user_id=current_user.id,
                 commit=False,  # vom commit la final intr-o singura tranzactie
             )
