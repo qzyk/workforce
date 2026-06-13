@@ -1563,6 +1563,12 @@ class ElementBIM(db.Model):
     # JSON cu proprietati custom (PSet IFC sau alte atribute)
     proprietati_json = db.Column(db.Text, nullable=True)
 
+    # Bounding box axis-aligned din geometria IFC: {"min":[x,y,z],"max":[x,y,z]}.
+    # Populat la import doar cand flag-ul 'bim-pset-extraction' e ON. bbox_sursa
+    # spune de unde provine ('ifc_geom' pentru geometria tesalata ifcopenshell).
+    bbox_json = db.Column(db.Text, nullable=True)
+    bbox_sursa = db.Column(db.String(20), nullable=True)
+
     data_creare = db.Column(db.DateTime, default=datetime.utcnow)
     data_actualizare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -1600,6 +1606,35 @@ class ElementBIM(db.Model):
         ('elevator', 'Lift', 'mep_transport'),
         ('alte', 'Alte elemente', 'general'),
     ]
+
+    @property
+    def proprietati(self):
+        """Proprietatile IFC parsate din proprietati_json: {pset: {prop: val}}.
+
+        Returneaza {} cand JSON-ul lipseste sau e invalid (degradare gratioasa
+        pentru elementele vechi / importate cu flag-ul de extragere OFF)."""
+        if not self.proprietati_json:
+            return {}
+        try:
+            import json
+            data = json.loads(self.proprietati_json)
+            return data if isinstance(data, dict) else {}
+        except (ValueError, TypeError):
+            return {}
+
+    @property
+    def bbox(self):
+        """Bounding box parsat din bbox_json: {'min':[x,y,z],'max':[x,y,z]} sau None."""
+        if not self.bbox_json:
+            return None
+        try:
+            import json
+            data = json.loads(self.bbox_json)
+            if isinstance(data, dict) and 'min' in data and 'max' in data:
+                return data
+        except (ValueError, TypeError):
+            pass
+        return None
 
     @property
     def tip_label(self):

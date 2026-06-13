@@ -416,6 +416,9 @@ def create_app(config_name='default'):
             ('bim_elemente', 'source_system', 'VARCHAR(30)'),
             ('bim_elemente', 'model_bim_id', 'INTEGER REFERENCES bim_modele(id)'),
             ('bim_elemente', 'last_synced_at', 'DATETIME'),
+            # Faza 2: bounding box din geometria IFC (proprietati_json exista deja)
+            ('bim_elemente', 'bbox_json', 'TEXT'),
+            ('bim_elemente', 'bbox_sursa', 'VARCHAR(20)'),
             ('bim_assets', 'extern_id', 'VARCHAR(100)'),
             ('bim_assets', 'source_system', 'VARCHAR(30)'),
             ('bim_issues', 'extern_id', 'VARCHAR(100)'),

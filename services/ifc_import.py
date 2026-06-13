@@ -13,7 +13,11 @@ Mapping IFC -> BIM:
 - IfcWall, IfcDoor, IfcWindow, etc. -> ElementBIM (cu tip_element din map)
 """
 
+import json
+import logging
 from datetime import datetime
+
+_logger = logging.getLogger(__name__)
 
 # Map de la tip IFC la cod nostru tip_element
 IFC_TYPE_MAP = {
@@ -92,6 +96,144 @@ def detection_info():
     except Exception as e:
         info['import_error'] = f'{type(e).__name__}: {e}'
     return info
+
+
+# Plafon de elemente procesate geometric (bbox) per import - acelasi prag ca la
+# QTO (services.ifc_qto.qto_din_ifc max_geom=3000), ca sa nu incetinim importul
+# pe modele uriase. Peste plafon, elementele nu primesc bbox (raman fara bbox_json).
+MAX_GEOM_BBOX = 3000
+
+
+def _valoare_serializabila(v):
+    """Coboara o valoare IFC la ceva serializabil JSON (str pentru rest).
+
+    NominalValue.wrappedValue poate fi bool/int/float/str. Tipurile simple le
+    pastram ca atare; orice altceva (tuple, entitati, obiecte) devine str().
+    """
+    if v is None or isinstance(v, (bool, int, float, str)):
+        return v
+    try:
+        return str(v)
+    except Exception:
+        return None
+
+
+def extrage_psets(inst):
+    """Extrage Property Sets + Element Quantities ale unui element IFC.
+
+    Functie PURA si testabila fara ifcopenshell real: accepta orice obiect
+    element-like cu atributul .IsDefinedBy (lista de relatii duck-typed).
+    Parcurge inst.IsDefinedBy -> IfcRelDefinesByProperties -> RelatingPropertyDefinition:
+      - IfcPropertySet     -> HasProperties (IfcPropertySingleValue: .Name + .NominalValue.wrappedValue)
+      - IfcElementQuantity -> Quantities (IfcQuantityLength/Area/Volume/Count/Weight)
+
+    Returneaza {nume_pset: {nume_prop: valoare}}. Robust la None / atribute
+    lipsa (try/except per proprietate) - nu arunca niciodata, doar sare peste
+    ce nu poate citi. Dict gol daca elementul nu are nicio proprietate.
+    """
+    rezultat = {}
+    relatii = getattr(inst, 'IsDefinedBy', None) or []
+    for rel in relatii:
+        try:
+            if not rel.is_a('IfcRelDefinesByProperties'):
+                continue
+            pd = getattr(rel, 'RelatingPropertyDefinition', None)
+            if pd is None:
+                continue
+
+            if pd.is_a('IfcPropertySet'):
+                nume_pset = getattr(pd, 'Name', None) or 'Pset'
+                props = rezultat.setdefault(nume_pset, {})
+                for prop in (getattr(pd, 'HasProperties', None) or []):
+                    try:
+                        if not prop.is_a('IfcPropertySingleValue'):
+                            continue
+                        nume = getattr(prop, 'Name', None)
+                        if not nume:
+                            continue
+                        nv = getattr(prop, 'NominalValue', None)
+                        val = getattr(nv, 'wrappedValue', None) if nv is not None else None
+                        props[nume] = _valoare_serializabila(val)
+                    except Exception:
+                        continue
+
+            elif pd.is_a('IfcElementQuantity'):
+                nume_qto = getattr(pd, 'Name', None) or 'Quantities'
+                qtos = rezultat.setdefault(nume_qto, {})
+                # (tip IFC quantity, atribut cu valoarea)
+                _attr_qty = [
+                    ('IfcQuantityLength', 'LengthValue'),
+                    ('IfcQuantityArea', 'AreaValue'),
+                    ('IfcQuantityVolume', 'VolumeValue'),
+                    ('IfcQuantityCount', 'CountValue'),
+                    ('IfcQuantityWeight', 'WeightValue'),
+                ]
+                for q in (getattr(pd, 'Quantities', None) or []):
+                    try:
+                        nume = getattr(q, 'Name', None)
+                        if not nume:
+                            continue
+                        for ifc_qty, attr in _attr_qty:
+                            if q.is_a(ifc_qty):
+                                val = getattr(q, attr, None)
+                                qtos[nume] = _valoare_serializabila(val)
+                                break
+                    except Exception:
+                        continue
+        except Exception:
+            continue
+
+    # Elimina pset-urile ramase goale (ex. set fara proprietati citibile)
+    return {k: v for k, v in rezultat.items() if v}
+
+
+def extrage_bbox(inst, geom, settings, ushape=None):
+    """Bounding box (axis-aligned) din geometria tesalata a elementului.
+
+    Reutilizeaza motorul geometric din services.ifc_qto (_motor_geom): geom e
+    ifcopenshell.geom, settings = geom.settings(). ushape e acceptat pentru
+    simetrie cu QTO dar nu e folosit aici (citim direct verticele).
+
+    Returneaza {"min":[x,y,z], "max":[x,y,z]} in coordonate model (de regula
+    metri dupa unit-scaling ifcopenshell), sau None la esec / geometrie absenta.
+    """
+    if geom is None or settings is None:
+        return None
+    try:
+        sh = geom.create_shape(settings, inst)
+        verts = sh.geometry.verts  # lista plata [x0,y0,z0, x1,y1,z1, ...]
+        if not verts or len(verts) < 3:
+            return None
+        min_x = min_y = min_z = None
+        max_x = max_y = max_z = None
+        n = len(verts) - (len(verts) % 3)
+        for i in range(0, n, 3):
+            x, y, z = verts[i], verts[i + 1], verts[i + 2]
+            if min_x is None:
+                min_x = max_x = x
+                min_y = max_y = y
+                min_z = max_z = z
+            else:
+                if x < min_x:
+                    min_x = x
+                elif x > max_x:
+                    max_x = x
+                if y < min_y:
+                    min_y = y
+                elif y > max_y:
+                    max_y = y
+                if z < min_z:
+                    min_z = z
+                elif z > max_z:
+                    max_z = z
+        if min_x is None:
+            return None
+        return {
+            'min': [float(min_x), float(min_y), float(min_z)],
+            'max': [float(max_x), float(max_y), float(max_z)],
+        }
+    except Exception:
+        return None
 
 
 def import_ifc(file_path, santier_id=None, dry_run=False):
@@ -238,6 +380,27 @@ def import_ifc(file_path, santier_id=None, dry_run=False):
                                 db.session.flush()
                             statistici['spatii_create'] += 1
 
+    # Extragere Psets + bbox: doar cand flag-ul 'bim-pset-extraction' e ON.
+    # Cand OFF, comportamentul ramane IDENTIC cu cel istoric (import rapid, fara
+    # parcurgere de proprietati / geometrie). Evaluam flag-ul O(1), inainte de bucla.
+    extrage_proprietati = False
+    try:
+        from services.feature_flags import is_enabled
+        extrage_proprietati = is_enabled('bim-pset-extraction')
+    except Exception:
+        extrage_proprietati = False
+
+    # Motor geometric pentru bbox (lazy, doar daca extragem proprietati). Plafonat
+    # global la MAX_GEOM_BBOX ca sa nu incetinim importul modelelor mari.
+    geom = settings_geom = ushape = None
+    if extrage_proprietati:
+        try:
+            from services.ifc_qto import _motor_geom
+            geom, settings_geom, ushape = _motor_geom()
+        except Exception:
+            geom = settings_geom = ushape = None
+    geom_facute = 0   # buget global de elemente procesate geometric (bbox)
+
     # Elemente fizice (parcurgem direct, nu via spatial structure).
     # Preincarc GlobalId-urile existente o singura data (1 query) -> evit un SELECT
     # per element la modele mari (era O(N) query-uri de dedup; acum O(1) + set lookup).
@@ -262,6 +425,26 @@ def import_ifc(file_path, santier_id=None, dry_run=False):
                 ifc_global_id=inst.GlobalId,
                 status='proiectat',
             )
+
+            # Best-effort: extragere Psets + bbox. Orice exceptie pe un element
+            # e prinsa si logata - importul continua (NU stricam importul).
+            if extrage_proprietati:
+                try:
+                    psets = extrage_psets(inst)
+                    if psets:
+                        element.proprietati_json = json.dumps(psets, ensure_ascii=False)
+                except Exception as e:
+                    _logger.warning('extrage_psets a esuat pe %s: %s', inst.GlobalId, e)
+                if geom is not None and geom_facute < MAX_GEOM_BBOX:
+                    try:
+                        bbox = extrage_bbox(inst, geom, settings_geom, ushape)
+                        geom_facute += 1
+                        if bbox:
+                            element.bbox_json = json.dumps(bbox)
+                            element.bbox_sursa = 'ifc_geom'
+                    except Exception as e:
+                        _logger.warning('extrage_bbox a esuat pe %s: %s', inst.GlobalId, e)
+
             if not dry_run:
                 db.session.add(element)
             statistici['elemente_create'] += 1

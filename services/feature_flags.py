@@ -67,6 +67,9 @@ KNOWN_FLAGS: dict[str, str] = {
     # Banca de preturi de resurse
     'banca-preturi': 'Banca de preturi de resurse (referinta din extrase reale C6/C7/C8/C9/F4)',
     'gantt-calendar': 'Calendar de lucru real pentru Gantt (sarbatori legale RO, exceptii pe date, date Start/Finish in exporturi)',
+    # Extragere proprietati BIM la import IFC
+    'bim-pset-extraction': 'Extrage Property Sets (IfcPropertySet) + bounding box geometric la importul IFC '
+                           '(populeaza proprietati_json + bbox_json). Mareste efortul de import; default OFF.',
 }
 
 
