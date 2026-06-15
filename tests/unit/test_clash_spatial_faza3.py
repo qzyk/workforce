@@ -132,6 +132,68 @@ def test_grid_echivalent_cu_n2_random(app, admin):
         assert _set_perechi(grid) == _set_perechi(brute)
 
 
+def test_grid_echivalent_scale_mixte_forteaza_oversized(app, admin):
+    """
+    Echivalenta grid vs brute pe scale MIXTE care forteaza fallback-ul oversized.
+
+    Anvelopa uriasa 50x50x12 + multe elemente mici (~0.1m) -> mediana extinderii
+    coboara cell_size la 0.25m, deci anvelopa atinge milioane de celule si cade
+    pe ramura 'oversized'. Inainte de fix, anvelopa ajungea izolata intr-o celula
+    'GLOBAL' nepartajata cu celulele normale -> clash anvelopa<->stalp pierdut.
+    """
+    with app.app_context():
+        s = Santier(cod='S-OVS', nume='X'); db.session.add(s); db.session.flush()
+        c = Cladire(santier_id=s.id, cod='C1', nume='Y'); db.session.add(c); db.session.flush()
+        # Anvelopa care strapunge tot volumul (element 'oversized' fata de cell_size)
+        anvelopa = _el_bbox_col(c.id, 'ANV', 'wall', [0, 0, 0], [50, 50, 12])
+        # Stalp care intersecteaza anvelopa (clash real ce trebuie gasit)
+        stalp = _el_bbox_col(c.id, 'STALP', 'column', [10, 10, 0], [10.4, 10.4, 3])
+        # 80 usi mici care coboara mediana cell_size
+        for i in range(80):
+            x = 1.0 + i * 0.5
+            _el_bbox_col(c.id, f'USA{i}', 'door', [x, 0.0, 0.0], [x + 0.1, 0.1, 0.1])
+
+        elements = ElementBIM.query.filter_by(cladire_id=c.id).all()
+
+        # Garantam ca testul chiar exercita ramura oversized.
+        ewb = [(el, clash_detection._get_bbox(el)) for el in elements]
+        ewb = [(el, bb) for el, bb in ewb if bb]
+        cell_size = clash_detection._alege_cell_size([bb for _e, bb in ewb])
+        oversized = [el for el, bb in ewb
+                     if clash_detection._celule_atinse(bb, cell_size)
+                     == [clash_detection._OVERSIZED]]
+        assert oversized, 'testul trebuie sa forteze cel putin un element oversized'
+
+        grid = clash_detection._detect_geometric_clashes(elements)
+        brute = clash_detection._detect_geometric_clashes_bruteforce(elements)
+        assert _set_perechi(grid) == _set_perechi(brute)
+        assert len(grid) == len(brute)  # nicio pereche dublata
+        # Clash-ul anvelopa<->stalp trebuie sa fie prezent (nu pierdut in GLOBAL)
+        assert tuple(sorted((anvelopa.id, stalp.id))) in _set_perechi(grid)
+
+
+def test_run_clash_anvelopa_stalp_nu_se_pierde(app, admin):
+    """
+    End-to-end: anvelopa mare + stalp care o strapunge + multe usi mici =>
+    run_clash_detection trebuie sa raporteze clash-ul (nu total_clashes=0).
+    """
+    with app.app_context():
+        s = Santier(cod='S-OVS2', nume='X'); db.session.add(s); db.session.flush()
+        c = Cladire(santier_id=s.id, cod='C1', nume='Y'); db.session.add(c); db.session.flush()
+        _el_bbox_col(c.id, 'ANV', 'wall', [0, 0, 0], [50, 50, 12])
+        _el_bbox_col(c.id, 'STALP', 'column', [10, 10, 0], [10.4, 10.4, 3])
+        for i in range(80):
+            x = 1.0 + i * 0.5
+            _el_bbox_col(c.id, f'USA{i}', 'door', [x, 0.0, 0.0], [x + 0.1, 0.1, 0.1])
+
+        elements = ElementBIM.query.filter_by(cladire_id=c.id).all()
+        brute = clash_detection._detect_geometric_clashes_bruteforce(elements)
+        r = clash_detection.run_clash_detection(santier_id=s.id, tip='geometric', user=admin)
+        # Paritate cu brute force (sursa de adevar)
+        assert r['total_clashes'] == len(brute)
+        assert r['total_clashes'] >= 1
+
+
 # ====================================================
 # (2) Performanta spatial pe ~1500 elemente
 # ====================================================
@@ -233,6 +295,55 @@ def test_min_clearance_unitati_mm(app, admin):
         assert any('sub gabaritul' in v.get('mesaj', '') for v in viol)
 
 
+def test_min_clearance_sursa_vs_sursa_o_singura_violare(app, admin):
+    """
+    Mod sursa-vs-sursa (fara min_distance_to): doua duct-uri la 0.05m, prag 0.10m
+    -> O SINGURA violare pe perechea A-B (nu si A->B si B->A). Inainte de fix,
+    perechea ne-normalizata producea 2 violari pentru aceeasi pereche.
+    """
+    with app.app_context():
+        s = Santier(cod='S-CLR5', nume='X'); db.session.add(s); db.session.flush()
+        c = Cladire(santier_id=s.id, cod='C1', nume='Y'); db.session.add(c); db.session.flush()
+        _el_bbox_col(c.id, 'DA', 'duct', [0, 0, 0], [1, 0.2, 0.2])
+        _el_bbox_col(c.id, 'DB', 'duct', [1.05, 0, 0], [2, 0.2, 0.2])
+        # min_distance_to=None -> sursa vs sursa
+        rule, definition = _make_rule('duct', None, value_m=0.10)
+        viol = bim_rules._eval_min_clearance(rule, definition, {'santier_id': s.id})
+        sub = [v for v in viol if 'sub gabaritul' in v.get('mesaj', '')]
+        assert len(sub) == 1
+
+
+def test_min_clearance_anvelopa_oversized_gaseste_tubulatura(app, admin):
+    """
+    Tinta uriasa (placa/anvelopa) dilatata cu pragul cade pe ramura oversized.
+    Inainte de fix, distanta fata de tubulatura mica (in celule normale) nu se
+    calcula -> gabarit raportat FALS ca OK. Acum trebuie sa gaseasca violarea.
+    """
+    with app.app_context():
+        s = Santier(cod='S-CLR6', nume='X'); db.session.add(s); db.session.flush()
+        c = Cladire(santier_id=s.id, cod='C1', nume='Y'); db.session.add(c); db.session.flush()
+        # Placa mare la z=[0, 0.3]; tubulatura la 0.05m deasupra ei
+        _el_bbox_col(c.id, 'PLACA', 'wall', [0, 0, 0], [50, 50, 0.3])
+        _el_bbox_col(c.id, 'TUB', 'duct', [10, 10, 0.35], [10.1, 10.1, 0.45])
+        # Multe elemente mici ca sa coboare cell_size si sa forteze oversized pe placa
+        for i in range(80):
+            x = 1.0 + i * 0.5
+            _el_bbox_col(c.id, f'M{i}', 'pipe', [x, 0.0, 5.0], [x + 0.1, 0.1, 5.1])
+
+        rule, definition = _make_rule('duct', 'wall', value_m=0.10)
+
+        # Garantam ca placa dilatata cade pe oversized
+        from services import clash_detection as cd
+        placa = ElementBIM.query.filter_by(cod='PLACA').first()
+        bb = cd._get_bbox(placa)
+        bb_dil = {'min': [bb['min'][i] - 0.10 for i in range(3)],
+                  'max': [bb['max'][i] + 0.10 for i in range(3)]}
+        assert cd._celule_atinse(bb_dil, 0.25) == [cd._OVERSIZED]
+
+        viol = bim_rules._eval_min_clearance(rule, definition, {'santier_id': s.id})
+        assert any('sub gabaritul' in v.get('mesaj', '') for v in viol)
+
+
 # ====================================================
 # (4) Dedup intre rulari (ClashGroup)
 # ====================================================
@@ -281,6 +392,37 @@ def test_clash_dedup_disparut(app, admin):
         # Grupul ramane in DB (status pastrat 'activ')
         g = ClashGroup.query.first()
         assert g is not None and g.status == 'activ'
+
+
+def test_clash_dedup_disparute_scopuit_pe_santier(app, admin):
+    """
+    Delta 'disparute' e scopuita pe santierul scanat. Doua santiere separate
+    (S1: A-B, S2: C-D). Re-rularea pe S1 NU trebuie sa numere clash-ul C-D din S2
+    (neatins) ca 'disparut'. Inainte de fix, interogarea pe tenant_id (NULL pe
+    prod single-tenant) numara TOATE clash-urile active din alte santiere.
+    """
+    with app.app_context():
+        s1 = Santier(cod='S-SC1', nume='X'); db.session.add(s1); db.session.flush()
+        c1 = Cladire(santier_id=s1.id, cod='C1', nume='Y'); db.session.add(c1); db.session.flush()
+        _el_bbox_col(c1.id, 'A', 'wall', [0, 0, 0], [2, 2, 2])
+        _el_bbox_col(c1.id, 'B', 'duct', [1, 1, 1], [3, 3, 3])
+
+        s2 = Santier(cod='S-SC2', nume='X'); db.session.add(s2); db.session.flush()
+        c2 = Cladire(santier_id=s2.id, cod='C2', nume='Y'); db.session.add(c2); db.session.flush()
+        _el_bbox_col(c2.id, 'C', 'wall', [0, 0, 0], [2, 2, 2])
+        _el_bbox_col(c2.id, 'D', 'duct', [1, 1, 1], [3, 3, 3])
+
+        # Prima rulare pe ambele santiere -> cate un grup activ per santier
+        clash_detection.run_clash_detection(santier_id=s1.id, tip='geometric', user=admin)
+        clash_detection.run_clash_detection(santier_id=s2.id, tip='geometric', user=admin)
+        assert ClashGroup.query.filter_by(status='activ').count() == 2
+
+        # Re-rulare DOAR pe S1: A-B reapare (existent), C-D din S2 nu e atins ->
+        # NU trebuie numarat ca disparut.
+        r = clash_detection.run_clash_detection(santier_id=s1.id, tip='geometric', user=admin)
+        assert r['delta']['noi'] == 0
+        assert r['delta']['existente'] == 1
+        assert r['delta']['disparute'] == 0
 
 
 def test_clash_dedup_status_pastrat_la_reaparitie(app, admin):

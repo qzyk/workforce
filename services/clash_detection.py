@@ -53,9 +53,15 @@ DEFAULT_TOLERANCE_M = 0.001
 DEFAULT_CELL_SIZE_M = 2.0
 
 # Plafon de siguranta: peste atatea celule atinse de UN element (bbox urias fata
-# de cell_size, ex. un teren intreg), cadem inapoi la o singura "celula globala"
-# pentru acel element ca sa nu explodam memoria indexului.
+# de cell_size, ex. un teren intreg / anvelopa), nu mai indexam elementul pe
+# celule (ar exploda memoria indexului) - il marcam 'oversized' si il imperechem
+# cu TOATE celelalte elemente in _candidate_pairs. Asa nu pierdem nicio pereche.
 MAX_CELULE_PER_ELEMENT = 100_000
+
+# Sentinel intern returnat de _celule_atinse cand un element depaseste plafonul.
+# NU e o cheie de celula reala; semnaleaza ca elementul e 'oversized' si trebuie
+# tratat separat (perechi cu toata lumea), nu izolat intr-o celula proprie.
+_OVERSIZED = object()
 
 
 # ====================================================
@@ -170,11 +176,17 @@ def _alege_cell_size(bboxes: list[dict]) -> float:
     return min(50.0, max(0.25, mediana))
 
 
-def _celule_atinse(bbox: dict, cell_size: float) -> list[tuple]:
+def _celule_atinse(bbox: dict, cell_size: float) -> list:
     """
     Lista de chei de celula (ix, iy, iz) atinse de bbox, de la floor(min/cell)
-    la floor(max/cell) pe fiecare axa. Plafon de siguranta MAX_CELULE_PER_ELEMENT
-    pentru bbox-uri uriase (cadem inapoi la o singura celula 'globala').
+    la floor(max/cell) pe fiecare axa.
+
+    Plafon de siguranta MAX_CELULE_PER_ELEMENT pentru bbox-uri uriase fata de
+    cell_size (ex. teren / anvelopa / curtain wall): in loc sa indexam zeci de mii
+    de celule (explozie de memorie) SAU sa izolam elementul intr-o celula proprie
+    (care ar pierde perechile cu elementele indexate normal), returnam sentinelul
+    [_OVERSIZED]. Apelantul (_candidate_pairs) imperecheaza atunci elementul
+    'oversized' cu TOATE celelalte elemente, deci nu se pierde nicio pereche.
     """
     ranges = []
     nr_celule = 1
@@ -184,8 +196,9 @@ def _celule_atinse(bbox: dict, cell_size: float) -> list[tuple]:
         ranges.append((lo, hi))
         nr_celule *= (hi - lo + 1)
         if nr_celule > MAX_CELULE_PER_ELEMENT:
-            # bbox prea mare relativ la cell_size -> evitam explozia de celule
-            return [('GLOBAL',)]
+            # bbox prea mare relativ la cell_size -> nu il indexam pe celule;
+            # va fi tratat ca 'oversized' (perechi cu toata lumea).
+            return [_OVERSIZED]
     celule = []
     for ix in range(ranges[0][0], ranges[0][1] + 1):
         for iy in range(ranges[1][0], ranges[1][1] + 1):
@@ -201,10 +214,20 @@ def _candidate_pairs(elements_with_bbox: list, cell_size: float) -> set:
 
     Deduplicarea perechilor e intrinseca: folosim un set de (i, j) cu i<j, deci
     o pereche care imparte mai multe celule apare o singura data.
+
+    Elementele 'oversized' (bbox urias fata de cell_size, vezi _celule_atinse)
+    NU se indexeaza pe celule - ar pierde perechile cu elementele normale. In
+    schimb le imperechem explicit cu TOATE celelalte elemente (oversized x toti
+    + oversized x oversized), garantand ca nicio pereche reala nu e ratata.
     """
     grid: dict[tuple, list[int]] = {}
+    oversized: list[int] = []
     for idx, (_el, bb) in enumerate(elements_with_bbox):
-        for cheie in _celule_atinse(bb, cell_size):
+        celule = _celule_atinse(bb, cell_size)
+        if celule == [_OVERSIZED]:
+            oversized.append(idx)
+            continue
+        for cheie in celule:
             grid.setdefault(cheie, []).append(idx)
 
     candidati: set[tuple[int, int]] = set()
@@ -214,6 +237,19 @@ def _candidate_pairs(elements_with_bbox: list, cell_size: float) -> set:
         for i, j in combinations(ocupanti, 2):
             # i<j garantat de combinations pe lista crescatoare de indici
             candidati.add((i, j) if i < j else (j, i))
+
+    # Perechi pentru elementele oversized: cu toate celelalte elemente.
+    if oversized:
+        n = len(elements_with_bbox)
+        oversized_set = set(oversized)
+        for ov in oversized:
+            for k in range(n):
+                if k == ov:
+                    continue
+                # Evitam dublarea perechilor oversized-oversized (le adaugam o data)
+                if k in oversized_set and k < ov:
+                    continue
+                candidati.add((ov, k) if ov < k else (k, ov))
     return candidati
 
 
@@ -368,7 +404,8 @@ def _tip_grup(tip_result: str) -> str:
 
 
 def _upsert_clash_groups(detected: list[dict], run_id: int,
-                         tenant_id: Optional[int]) -> dict:
+                         tenant_id: Optional[int],
+                         scope_element_ids: Optional[set] = None) -> dict:
     """
     Upsert in ClashGroup pentru perechile detectate la aceasta rulare.
 
@@ -376,6 +413,13 @@ def _upsert_clash_groups(detected: list[dict], run_id: int,
     - pereche existenta -> update ultima_detectie + adauga run_id + severitate
     - perechi care nu mai apar (existau ca 'activ' dar nu sunt in run-ul curent)
       -> raman in DB, status pastrat, dar le numaram ca 'disparute' (stale)
+
+    scope_element_ids: multimea de element_id-uri scanate la aceasta rulare
+    (elementele din santier/model). Delta 'disparute' se numara DOAR pe grupurile
+    a caror pereche atinge acest scope - altfel, pe prod single-tenant (toti
+    tenant_id=NULL), re-rularea pe santierul S1 ar numara gresit ca 'disparute'
+    si clash-urile active din S2/S3 care nici nu au fost scanate. None = numara
+    pe tot tenant-ul (compatibilitate, ex. cand scope-ul nu e disponibil).
 
     Returneaza delta: {'noi': N, 'existente': M, 'disparute': K}.
     Statusul pus de utilizator (rezolvat/ignorat) NU e modificat la reaparitie.
@@ -419,13 +463,23 @@ def _upsert_clash_groups(detected: list[dict], run_id: int,
             grup.run_ids_json = json.dumps(run_ids)
             existente += 1
 
-    # Perechi disparute: grupuri 'activ' din acelasi tenant care nu au reaparut acum.
-    # Le numaram (stale), fara sa le stergem sau sa le schimbam statusul.
+    # Perechi disparute: grupuri 'activ' din acelasi tenant, scopuite la
+    # elementele scanate acum, care nu au reaparut. Le numaram (stale), fara sa
+    # le stergem sau sa le schimbam statusul.
     chei_curente = set(perechi_curente.keys())
     disparute = 0
-    grupuri_active = ClashGroup.query.filter_by(
-        tenant_id=tenant_id, status='activ',
-    ).all()
+    q_active = ClashGroup.query.filter_by(tenant_id=tenant_id, status='activ')
+    if scope_element_ids is not None:
+        # Numai grupuri a caror pereche atinge scope-ul rularii curente.
+        from sqlalchemy import or_
+        ids = list(scope_element_ids)
+        if not ids:
+            return {'noi': noi, 'existente': existente, 'disparute': 0}
+        q_active = q_active.filter(or_(
+            ClashGroup.element_a_id.in_(ids),
+            ClashGroup.element_b_id.in_(ids),
+        ))
+    grupuri_active = q_active.all()
     for g in grupuri_active:
         if (g.element_a_id, g.element_b_id, g.tip) not in chei_curente:
             disparute += 1
@@ -524,8 +578,12 @@ def run_clash_detection(*,
         db.session.add(cr)
         by_severity[d['severitate']] = by_severity.get(d['severitate'], 0) + 1
 
-    # Deduplicare intre rulari: upsert in ClashGroup + delta
-    delta = _upsert_clash_groups(detected, run.id, run.tenant_id)
+    # Deduplicare intre rulari: upsert in ClashGroup + delta.
+    # Scopuim delta 'disparute' la elementele scanate acum (santier/model), ca
+    # sa nu numaram ca disparute clash-urile altor santiere neatinse.
+    scope_element_ids = {el.id for el in elements}
+    delta = _upsert_clash_groups(detected, run.id, run.tenant_id,
+                                 scope_element_ids=scope_element_ids)
 
     # Update statistici pe run
     run.nr_clash_uri = len(detected)

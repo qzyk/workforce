@@ -262,6 +262,7 @@ def _eval_min_clearance(rule, definition, scope):
     cell_size = max(clash_svc._alege_cell_size(bboxes), prag_m, 0.25)
 
     grid: dict[tuple, list[int]] = {}
+    tinte_oversized: list[int] = []  # tinte dilatate care depasesc plafonul de celule
     for idx, (_el, bb) in enumerate(tinta_items):
         # Dilatam bbox-ul tinta cu pragul ca celulele candidate sa acopere
         # si vecinatatea (elemente la distanta < prag, nu doar suprapuse).
@@ -269,20 +270,36 @@ def _eval_min_clearance(rule, definition, scope):
             'min': [bb['min'][i] - prag_m for i in range(3)],
             'max': [bb['max'][i] + prag_m for i in range(3)],
         }
-        for cheie in clash_svc._celule_atinse(bb_dilatat, cell_size):
+        celule = clash_svc._celule_atinse(bb_dilatat, cell_size)
+        if celule == [clash_svc._OVERSIZED]:
+            # Tinta uriasa (placa/perete/anvelopa) - nu o indexam pe celule
+            # (ar pierde perechile cu sursele mici din celule normale). O
+            # comparam cu TOATE sursele.
+            tinte_oversized.append(idx)
+            continue
+        for cheie in celule:
             grid.setdefault(cheie, []).append(idx)
 
-    raportate = set()  # (sursa_id, tinta_id) deja raportate
+    toate_tintele_idx = range(len(tinta_items))
+    raportate = set()  # pereche neorientata {sursa_id, tinta_id} deja raportata
     for el_s, bb_s in sursa_map.values():
-        candidati_idx = set()
-        for cheie in clash_svc._celule_atinse(bb_s, cell_size):
-            for idx in grid.get(cheie, ()):
-                candidati_idx.add(idx)
+        celule_s = clash_svc._celule_atinse(bb_s, cell_size)
+        if celule_s == [clash_svc._OVERSIZED]:
+            # Sursa uriasa - nu pierdem perechile cu tintele normale: o comparam
+            # cu TOATE tintele (oversized sau nu).
+            candidati_idx = set(toate_tintele_idx)
+        else:
+            candidati_idx = set(tinte_oversized)
+            for cheie in celule_s:
+                for idx in grid.get(cheie, ()):
+                    candidati_idx.add(idx)
         for idx in candidati_idx:
             el_t, bb_t = tinta_items[idx]
             if el_t.id == el_s.id:
                 continue
-            pereche = (el_s.id, el_t.id)
+            # Normalizam perechea ca neorientata: in modul sursa-vs-sursa
+            # (min_distance_to lipsa) altfel raportam A-B si ca (A,B) si ca (B,A).
+            pereche = (el_s.id, el_t.id) if el_s.id < el_t.id else (el_t.id, el_s.id)
             if pereche in raportate:
                 continue
             dist = clash_svc._aabb_distance(bb_s, bb_t)
