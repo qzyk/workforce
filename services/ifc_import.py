@@ -187,14 +187,45 @@ def extrage_psets(inst):
     return {k: v for k, v in rezultat.items() if v}
 
 
+def _motor_geom_bbox():
+    """(geom_module, settings_world_coords) sau (None, None) daca lipseste.
+
+    Settings DEDICAT pentru bbox, cu 'use-world-coords' ACTIV: tesalarea aplica
+    ObjectPlacement-ul elementului, deci verticele ies in coordonate model (world),
+    NU in sistemul local al reprezentarii. Esential pentru ca doua elemente fizic
+    separate sa primeasca bbox-uri distincte (clash detection / min_clearance).
+
+    NU reutilizam settings-ul QTO (services.ifc_qto._motor_geom): acela e default,
+    iar in ifcopenshell 0.8.x 'use-world-coords' e False -> bbox in coordonate locale
+    (inselator: ziduri identice deplasate ar produce acelasi bbox). Pentru volum (QTO)
+    placement-ul e irelevant, deci QTO ramane neschimbat.
+    """
+    try:
+        import ifcopenshell.geom as geom
+    except Exception:
+        return None, None
+    s = geom.settings()
+    # API valid in 0.8.x: .set(string, valoare). Atributul USE_WORLD_COORDS NU exista.
+    try:
+        s.set('use-world-coords', True)
+    except Exception:
+        # Fallback best-effort pentru versiuni mai vechi cu enum-ul clasic.
+        try:
+            s.set(s.USE_WORLD_COORDS, True)
+        except Exception:
+            pass
+    return geom, s
+
+
 def extrage_bbox(inst, geom, settings, ushape=None):
     """Bounding box (axis-aligned) din geometria tesalata a elementului.
 
-    Reutilizeaza motorul geometric din services.ifc_qto (_motor_geom): geom e
-    ifcopenshell.geom, settings = geom.settings(). ushape e acceptat pentru
-    simetrie cu QTO dar nu e folosit aici (citim direct verticele).
+    'settings' TREBUIE sa aiba 'use-world-coords' activ (vezi _motor_geom_bbox):
+    altfel tesalarea ignora ObjectPlacement si verticele raman in coordonate LOCALE,
+    iar elemente deplasate primesc bbox coincident. ushape e acceptat pentru simetrie
+    cu QTO dar nu e folosit aici (citim direct verticele).
 
-    Returneaza {"min":[x,y,z], "max":[x,y,z]} in coordonate model (de regula
+    Returneaza {"min":[x,y,z], "max":[x,y,z]} in coordonate model/world (de regula
     metri dupa unit-scaling ifcopenshell), sau None la esec / geometrie absenta.
     """
     if geom is None or settings is None:
@@ -395,8 +426,9 @@ def import_ifc(file_path, santier_id=None, dry_run=False):
     geom = settings_geom = ushape = None
     if extrage_proprietati:
         try:
-            from services.ifc_qto import _motor_geom
-            geom, settings_geom, ushape = _motor_geom()
+            # Motor DEDICAT bbox cu world-coords (NU _motor_geom din QTO, care e
+            # default local-coords). ushape nu e necesar pentru bbox.
+            geom, settings_geom = _motor_geom_bbox()
         except Exception:
             geom = settings_geom = ushape = None
     geom_facute = 0   # buget global de elemente procesate geometric (bbox)

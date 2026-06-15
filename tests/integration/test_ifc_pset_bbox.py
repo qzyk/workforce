@@ -190,6 +190,87 @@ def test_bbox_extraction_cu_ifc_real(app, tmp_path, _flag_pset_on):
         assert max(dims) > 0.0
 
 
+def _scrie_ifc_doua_ziduri_deplasate(tmp_path):
+    """Creeaza un .ifc cu DOUA ziduri identice ca geometrie (length=4, height=3,
+    thickness=0.2), dar deplasate diferit in model: W1 la origine, W2 la (100,50,10) m
+    via ObjectPlacement. Returneaza (cale, offset_w2).
+
+    Scop: regresie pentru bug-ul de coordonate LOCALE - daca bbox-ul ignora
+    ObjectPlacement, ambele ziduri primesc bbox IDENTIC (inutilizabil pentru clash).
+    """
+    import numpy as np
+    import ifcopenshell
+    from ifcopenshell.api import run
+
+    f = ifcopenshell.file(schema='IFC4')
+    proj = run('root.create_entity', f, ifc_class='IfcProject', name='ProiectTest')
+    run('unit.assign_unit', f)
+    ctx = run('context.add_context', f, context_type='Model')
+    body = run('context.add_context', f, context_type='Model',
+               context_identifier='Body', target_view='MODEL_VIEW', parent=ctx)
+    site = run('root.create_entity', f, ifc_class='IfcSite', name='SantierTest')
+    building = run('root.create_entity', f, ifc_class='IfcBuilding', name='CladireTest')
+    storey = run('root.create_entity', f, ifc_class='IfcBuildingStorey', name='Parter')
+    run('aggregate.assign_object', f, products=[site], relating_object=proj)
+    run('aggregate.assign_object', f, products=[building], relating_object=site)
+    run('aggregate.assign_object', f, products=[storey], relating_object=building)
+
+    offset = (100.0, 50.0, 10.0)
+
+    def _zid(nume, dx_dy_dz):
+        w = run('root.create_entity', f, ifc_class='IfcWallStandardCase', name=nume)
+        run('spatial.assign_container', f, products=[w], relating_structure=storey)
+        repr_ = run('geometry.add_wall_representation', f, context=body,
+                    length=4.0, height=3.0, thickness=0.2)
+        run('geometry.assign_representation', f, product=w, representation=repr_)
+        m = np.eye(4)
+        m[0, 3], m[1, 3], m[2, 3] = dx_dy_dz
+        run('geometry.edit_object_placement', f, product=w, matrix=m)
+        return w
+
+    _zid('Perete-W1', (0.0, 0.0, 0.0))
+    _zid('Perete-W2', offset)
+
+    cale = str(tmp_path / 'doua_ziduri.ifc')
+    f.write(cale)
+    return cale, offset
+
+
+def test_bbox_world_coords_ziduri_deplasate_distincte(app, tmp_path, _flag_pset_on):
+    """REGRESIE: doua ziduri identice deplasate in model TREBUIE sa primeasca
+    bbox-uri DISTINCTE (coordonate world, NU locale).
+
+    Cu bug-ul (settings QTO default, use-world-coords=False) ambele primeau acelasi
+    bbox {min:[0,0,0], max:[4,0.2,3]} -> inutilizabil pentru clash/min_clearance.
+    Aici verificam ca W2 e deplasat fata de W1 cu exact offset-ul din model.
+    """
+    pytest.importorskip('ifcopenshell')
+    import numpy as np
+    from services.ifc_import import import_ifc
+    from models import ElementBIM
+    cale, offset = _scrie_ifc_doua_ziduri_deplasate(tmp_path)
+    with app.app_context():
+        rez = import_ifc(cale)
+        assert rez['status'] == 'ok', rez
+        ziduri = ElementBIM.query.filter_by(tip_element='wall').order_by(ElementBIM.cod).all()
+        assert len(ziduri) == 2
+        bboxuri = {z.nume: json.loads(z.bbox_json) for z in ziduri if z.bbox_json}
+        assert set(bboxuri) == {'Perete-W1', 'Perete-W2'}, bboxuri
+
+        b1, b2 = bboxuri['Perete-W1'], bboxuri['Perete-W2']
+        # bbox-urile NU sunt identice (ar fi fost, cu bug-ul de coordonate locale)
+        assert b1 != b2
+        # W2 e deplasat fata de W1 cu exact offset-ul model pe fiecare axa
+        for i in range(3):
+            assert b2['min'][i] - b1['min'][i] == pytest.approx(offset[i], abs=1e-6)
+            assert b2['max'][i] - b1['max'][i] == pytest.approx(offset[i], abs=1e-6)
+        # dimensiunile (latimi) raman egale: aceeasi geometrie, doar deplasata
+        dims1 = [b1['max'][i] - b1['min'][i] for i in range(3)]
+        dims2 = [b2['max'][i] - b2['min'][i] for i in range(3)]
+        assert dims1 == pytest.approx(dims2, abs=1e-6)
+        assert np.max(dims1) == pytest.approx(4.0, abs=1e-6)  # length=4 ajunge in bbox
+
+
 def test_regresie_flag_off_nu_extrage_nimic(app, tmp_path):
     """Flag OFF (default) -> proprietati_json + bbox_json raman None (identic cu azi)."""
     pytest.importorskip('ifcopenshell')
