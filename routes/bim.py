@@ -2034,6 +2034,50 @@ def issue_change_status(issue_id):
     return redirect(request.referrer or url_for('bim.kanban'))
 
 
+# ---------- VIEW-STATE (Faza 4) ----------
+
+@bim_bp.route('/issue/<int:issue_id>/view-state', methods=['POST'])
+@login_required
+def issue_view_state(issue_id):
+    """
+    Salveaza view-state-ul (camera + componente vizibile + clipping) pe un issue.
+
+    Body JSON: {"camera": {"eye":[x,y,z], "look":[x,y,z], "up":[x,y,z], "fov":60},
+    "visible_guids": [...], "clipping": [{"pos":[..], "dir":[..]}]}. Sursa pentru
+    viewpoint.bcfv la export BCF (flag bim-bcf-full ON). CSRF gestionat de
+    Flask-WTF (fetch din pagina logata trimite token-ul); fara API token aici.
+    """
+    issue = IssueBIM.query.get_or_404(issue_id)
+
+    payload = request.get_json(silent=True)
+    if payload is None:
+        return jsonify({'error': 'JSON invalid sau lipsa'}), 400
+
+    cam = payload.get('camera') if isinstance(payload, dict) else None
+    if not isinstance(cam, dict) or not cam.get('eye') or not cam.get('look'):
+        return jsonify({'error': 'camera.eye si camera.look sunt obligatorii'}), 400
+
+    # Pastram doar cheile cunoscute (camera + visibility + clipping)
+    vp = {'camera': {
+        'eye': cam.get('eye'),
+        'look': cam.get('look'),
+        'up': cam.get('up') or [0, 0, 1],
+        'fov': cam.get('fov', 60),
+    }}
+    if payload.get('visible_guids'):
+        vp['visible_guids'] = payload['visible_guids']
+    if payload.get('clipping'):
+        vp['clipping'] = payload['clipping']
+
+    avea_viewpoint = bool(issue.viewpoint_json)
+    issue.viewpoint_json = json.dumps(vp)
+    audit_svc.log_update('issue_bim', issue.id,
+                          old_values={'viewpoint_set': avea_viewpoint},
+                          new_values={'viewpoint_set': True})
+    db.session.commit()
+    return jsonify({'ok': True, 'issue_id': issue.id})
+
+
 # ---------- COMMENTS ----------
 
 @bim_bp.route('/issue/<int:issue_id>/comments', methods=['GET', 'POST'])
