@@ -18,6 +18,11 @@
 {% endblock %}
 
 {% block content %}
+<div style="margin-bottom:14px; padding:9px 14px; background:var(--ed-color-sand, #FFF8E1); border-left:3px solid var(--ed-color-gold, var(--warning)); border-radius:var(--ed-radius-sm, 6px); font-size:0.84rem; color:var(--ed-color-text-soft, var(--gray-600));">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    <strong>Viewer clasic (depreciat)</strong> &mdash; foloseste viewerul xeokit (mai rapid, clipping + masuratori).
+    <a href="{{ url_for('bim.viewer', model_id=model.id) }}" style="color:var(--ed-color-gold, var(--primary)); font-weight:600;">Deschide viewerul xeokit &raquo;</a>
+</div>
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
     <div>
         <h2 style="margin:0;"><i class="fa-solid fa-cube" style="color:var(--primary);"></i> {{ model.nume }}</h2>

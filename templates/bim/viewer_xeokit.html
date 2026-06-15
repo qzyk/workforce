@@ -15,8 +15,9 @@
 .xv-info code { background:rgba(255,255,255,0.15); padding:2px 6px; border-radius:3px; font-size:0.78rem; }
 .xv-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; color:#fff; z-index:5; }
 .xv-toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
-.xv-btn { padding:6px 12px; background:#fff; border:1px solid var(--gray-300); border-radius:6px; cursor:pointer; font-size:0.85rem; }
-.xv-btn:hover { background:var(--gray-100); }
+.xv-btn { padding:6px 12px; background:#fff; border:1px solid var(--ed-color-border, var(--gray-300)); border-radius:var(--ed-radius-sm, 6px); cursor:pointer; font-size:0.85rem; }
+.xv-btn:hover { background:var(--ed-color-sand, var(--gray-100)); }
+.xv-btn-activ { background:var(--ed-color-gold, var(--primary)); color:var(--ed-color-navy, #0B1426); border-color:var(--ed-color-gold, var(--primary)); }
 .xv-progress { width:280px; height:4px; background:rgba(255,255,255,0.15); border-radius:2px; overflow:hidden; margin-top:4px; }
 .xv-progress-bar { height:100%; background:var(--primary); width:0%; transition:width 0.2s; }
 .xv-error { background:rgba(255,90,90,0.15); border:1px solid #ff5a5a; color:#fff; padding:14px 18px; border-radius:8px; max-width:420px; }
@@ -40,6 +41,10 @@
         <button class="xv-btn" id="xvFitBtn"><i class="fa-solid fa-expand"></i> Fit</button>
         <button class="xv-btn" id="xvIsoBtn"><i class="fa-solid fa-cube"></i> Iso</button>
         <button class="xv-btn" id="xvOrthoBtn"><i class="fa-solid fa-square"></i> Ortho/Persp</button>
+        <button class="xv-btn" id="xvSectionBtn" title="Activeaza un plan de sectiune (clipping)" style="display:none;"><i class="fa-solid fa-scissors"></i> Sectiune</button>
+        <button class="xv-btn" id="xvMeasureBtn" title="Masoara distanta intre doua puncte" style="display:none;"><i class="fa-solid fa-ruler"></i> Masoara</button>
+        <button class="xv-btn" id="xvResetToolsBtn" title="Curata sectiunile si masuratorile" style="display:none;"><i class="fa-solid fa-eraser"></i> Reset</button>
+        <button class="xv-btn" id="xvSaveViewBtn" title="Salveaza vederea curenta pe issue" style="display:none;"><i class="fa-solid fa-bookmark"></i> Salveaza vederea pe issue</button>
         <a href="{{ url_for('bim.qto', model_id=model.id) }}" class="xv-btn" title="Antemasuratoare din model"><i class="fa-solid fa-list-check"></i> QTO</a>
         <a href="{{ url_for('bim.viewer', model_id=model.id) }}?legacy=1" class="xv-btn" title="Viewer vechi (web-ifc)">Legacy viewer</a>
     </div>
@@ -143,6 +148,7 @@ function showError(msg, detail) {
 
 (async () => {
     let Viewer, WebIFCLoaderPlugin, AmbientLight, DirLight;
+    let SectionPlanesPlugin, DistanceMeasurementsPlugin, DistanceMeasurementsMouseControl;
     try {
         setProgress(10, 'Incarc xeokit-sdk...');
         let xeokit;
@@ -156,7 +162,9 @@ function showError(msg, detail) {
             xeokit = await import(LIB_CDN);
             WEB_IFC_WASM_DIR = WASM_CDN;
         }
-        ({ Viewer, WebIFCLoaderPlugin, AmbientLight, DirLight } = xeokit);
+        ({ Viewer, WebIFCLoaderPlugin, AmbientLight, DirLight,
+           SectionPlanesPlugin, DistanceMeasurementsPlugin,
+           DistanceMeasurementsMouseControl } = xeokit);
         if (!Viewer || !WebIFCLoaderPlugin) {
             throw new Error('xeokit-sdk: modulele necesare nu au fost gasite in bundle');
         }
@@ -227,6 +235,149 @@ function showError(msg, detail) {
         viewer.camera.projection = (viewer.camera.projection === 'ortho') ? 'perspective' : 'ortho';
     });
 
+    // ---------------- Clipping (sectiune) + Masuratori (Faza 4) ----------------
+    // Degradare gratioasa: daca un plugin nu e in bundle, ascundem butonul.
+    let sectionPlanes = null;
+    let nrSectiuni = 0;
+    const sectionBtn = document.getElementById('xvSectionBtn');
+    const measureBtn = document.getElementById('xvMeasureBtn');
+    const resetToolsBtn = document.getElementById('xvResetToolsBtn');
+
+    if (SectionPlanesPlugin) {
+        try {
+            sectionPlanes = new SectionPlanesPlugin(viewer, { overviewVisible: true });
+            sectionBtn.style.display = '';
+            resetToolsBtn.style.display = '';
+            sectionBtn.addEventListener('click', () => {
+                // Plan de clipping in centrul modelului, normal pe Y (mutabil din control)
+                const aabb = viewer.scene.aabb;
+                const center = [
+                    (aabb[0] + aabb[3]) / 2,
+                    (aabb[1] + aabb[4]) / 2,
+                    (aabb[2] + aabb[5]) / 2,
+                ];
+                const id = 'xvSection_' + (nrSectiuni++);
+                const plane = sectionPlanes.createSectionPlane({
+                    id: id, pos: center, dir: [0, -1, 0],
+                });
+                if (sectionPlanes.showControl) {
+                    sectionPlanes.showControl(plane.id);
+                }
+            });
+        } catch (e) {
+            console.warn('SectionPlanesPlugin indisponibil', e);
+            sectionBtn.style.display = 'none';
+            sectionPlanes = null;
+        }
+    } else {
+        console.warn('SectionPlanesPlugin nu e in bundle - buton ascuns');
+    }
+
+    let distMeasure = null;
+    let distControl = null;
+    if (DistanceMeasurementsPlugin) {
+        try {
+            distMeasure = new DistanceMeasurementsPlugin(viewer, {});
+            measureBtn.style.display = '';
+            resetToolsBtn.style.display = '';
+            measureBtn.addEventListener('click', () => {
+                // Toggle control activ (mouse): doua click-uri pun o masuratoare
+                if (distControl && distControl.active) {
+                    distControl.deactivate();
+                    measureBtn.classList.remove('xv-btn-activ');
+                    return;
+                }
+                try {
+                    if (!distControl) {
+                        distControl = DistanceMeasurementsMouseControl
+                            ? new DistanceMeasurementsMouseControl(distMeasure, {})
+                            : distMeasure.control;  // fallback API mai vechi
+                    }
+                    if (distControl && distControl.activate) distControl.activate();
+                    measureBtn.classList.add('xv-btn-activ');
+                } catch (e2) {
+                    console.warn('control masuratoare indisponibil', e2);
+                    measureBtn.style.display = 'none';
+                }
+            });
+        } catch (e) {
+            console.warn('DistanceMeasurementsPlugin indisponibil', e);
+            measureBtn.style.display = 'none';
+            distMeasure = null;
+        }
+    } else {
+        console.warn('DistanceMeasurementsPlugin nu e in bundle - buton ascuns');
+    }
+
+    if (sectionPlanes || distMeasure) {
+        resetToolsBtn.addEventListener('click', () => {
+            try {
+                if (sectionPlanes && sectionPlanes.clear) sectionPlanes.clear();
+                nrSectiuni = 0;
+            } catch (e) { console.warn('reset sectiuni', e); }
+            try {
+                if (distControl && distControl.deactivate) distControl.deactivate();
+                if (distMeasure && distMeasure.clear) distMeasure.clear();
+                measureBtn.classList.remove('xv-btn-activ');
+            } catch (e) { console.warn('reset masuratori', e); }
+        });
+    }
+
+    // ---------------- Save view-state pe issue (Faza 4) ----------------
+    // Vizibil doar daca exista ?issue=<id> in URL (context issue).
+    const issueId = urlParams.get('issue');
+    const saveViewBtn = document.getElementById('xvSaveViewBtn');
+    if (issueId && /^\d+$/.test(issueId)) {
+        saveViewBtn.style.display = '';
+        saveViewBtn.addEventListener('click', async () => {
+            const cam = viewer.camera;
+            const visibleGuids = [];
+            try {
+                for (const m of Object.values(viewer.metaScene.metaObjects || {})) {
+                    const obj = m.originalSystemId && viewer.scene.objects[m.id];
+                    if (obj && obj.visible) visibleGuids.push(m.originalSystemId);
+                }
+            } catch (e) { /* best-effort */ }
+            const clipping = [];
+            try {
+                if (sectionPlanes) {
+                    for (const sp of Object.values(sectionPlanes.sectionPlanes || {})) {
+                        clipping.push({ pos: Array.from(sp.pos), dir: Array.from(sp.dir) });
+                    }
+                }
+            } catch (e) { /* best-effort */ }
+            const payload = {
+                camera: {
+                    eye: Array.from(cam.eye), look: Array.from(cam.look),
+                    up: Array.from(cam.up),
+                    fov: (cam.perspective && cam.perspective.fov) || 60,
+                },
+                visible_guids: visibleGuids,
+                clipping: clipping,
+            };
+            saveViewBtn.disabled = true;
+            try {
+                const r = await fetch("{{ url_for('bim.issue_view_state', issue_id=0) }}".replace('/0/', '/' + issueId + '/'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': "{{ csrf_token() }}",
+                    },
+                    body: JSON.stringify(payload),
+                });
+                if (r.ok) {
+                    info.innerHTML += `<br><small style="color:#aaff88;">Vedere salvata pe issue #${issueId}</small>`;
+                } else {
+                    info.innerHTML += `<br><small style="color:#ffcc66;">Salvare esuata (${r.status})</small>`;
+                }
+            } catch (e) {
+                console.warn('save view-state failed', e);
+            } finally {
+                saveViewBtn.disabled = false;
+            }
+        });
+    }
+
     // Picking + info
     viewer.scene.input.on('mouseclicked', (coords) => {
         const hit = viewer.scene.pick({ canvasPos: coords });
@@ -240,16 +391,26 @@ function showError(msg, detail) {
             GUID: <code>${(guid + '').substring(0, 24)}...</code>`;
     });
 
-    // Auto-highlight daca highlight=GUID e in URL
+    // Auto-highlight daca highlight=GUID e in URL: izoleaza (xray restul),
+    // evidentiaza si centreaza camera pe element (reverse navigate element->3D).
     if (highlightGuid && viewer.metaScene) {
         try {
             const metaIds = Object.values(viewer.metaScene.metaObjects)
                 .filter(m => m.originalSystemId === highlightGuid)
                 .map(m => m.id);
-            if (metaIds.length) {
-                viewer.scene.setObjectsHighlighted(metaIds, true);
-                viewer.cameraFlight.flyTo({ aabb: viewer.scene.getAABB(metaIds) });
-                info.innerHTML += `<br><small style="color:#aaff88;">Element selectat din workforce</small>`;
+            // Doar obiectele care au efectiv geometrie in scena
+            const targetIds = metaIds.filter(id => viewer.scene.objects[id]);
+            if (targetIds.length) {
+                // Izolare: xray pe tot, scoatem xray-ul de pe tinta + evidentiem
+                viewer.scene.setObjectsXRayed(viewer.scene.objectIds, true);
+                viewer.scene.setObjectsXRayed(targetIds, false);
+                viewer.scene.setObjectsHighlighted(targetIds, true);
+                viewer.scene.setObjectsSelected(targetIds, true);
+                const aabb = viewer.scene.getAABB(targetIds);
+                if (viewer.cameraFlight && viewer.cameraFlight.flyTo) {
+                    viewer.cameraFlight.flyTo({ aabb: aabb });
+                }
+                info.innerHTML += `<br><small style="color:#aaff88;">Element izolat din workforce</small>`;
             } else {
                 info.innerHTML += `<br><small style="color:#ffcc66;">GUID ${highlightGuid.substring(0,8)}... nu a fost gasit</small>`;
             }
