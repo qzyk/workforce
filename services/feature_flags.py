@@ -48,6 +48,9 @@ KNOWN_FLAGS: dict[str, str] = {
     # Faza 5
     'bim-4d-schedule': '4D scheduling (link element -> task)',
     'bim-5d-cost': '5D cost (link element -> cost item)',
+    # Faza 5a - governance livrare informationala
+    'bim-ids': 'Validator IDS (Information Delivery Specification, ISO 19650): '
+               'verifica Property Sets-urile cerute pe faza de livrare. Default OFF.',
     # Faza 6
     'bim-iot-sensors': 'Digital Twin: ingest sensor data + live overlay',
     # Faza 7

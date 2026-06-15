@@ -28,6 +28,7 @@ from werkzeug.utils import secure_filename
 
 from models import (
     BIMModelVersion, BIMRule, RuleViolation, ClashRun, ClashResult, ClashGroup,
+    BIMIDSSpec, BIMIDSViolation,
     BIMTaskSchedule, BIMCostItem,
     Senzor, SensorReading, SensorAlert,
     BIMComment, UserPresence, RealtimeEvent,
@@ -41,6 +42,7 @@ from services import bim_quality
 from services import audit as audit_svc
 from services import bim_workflow
 from services import bim_rules as rules_svc
+from services import bim_ids as ids_svc
 from services import clash_detection as clash_svc
 from services import bim_4d as fourd_svc
 from services import bim_5d as fived_svc
@@ -85,6 +87,7 @@ def manager_or_admin(f):
 _FEATURE_MESAJE = {
     'bim-model-versioning': 'Feature-ul versioning nu e activat pentru acest tenant.',
     'bim-rule-engine':      'Rule engine nu e activat pentru acest tenant.',
+    'bim-ids':              'Validatorul IDS nu e activat pentru acest tenant.',
     'bim-clash-detection':  'Clash detection nu e activat pentru acest tenant.',
     'bim-4d-schedule':      '4D Schedule nu e activat pentru acest tenant.',
     'bim-5d-cost':          '5D Cost nu e activat pentru acest tenant.',
@@ -1350,6 +1353,94 @@ def violation_promote(violation_id):
         db.session.rollback()
         flash(f'Eroare la promovare: {e}', 'danger')
     return redirect(url_for('bim.violations_lista'))
+
+
+# ============================================================
+# IDS VALIDATOR (Faza 5a) - Information Delivery Specification ISO 19650
+# Gate pe flag 'bim-ids' (default OFF). Oglindeste rutele rule engine.
+# ============================================================
+
+
+@bim_bp.route('/ids')
+@login_required
+@feature_required('bim-ids')
+def ids_lista():
+    """Lista specificatiilor IDS (per tenant)."""
+    specs = with_tenant_scope(BIMIDSSpec.query, BIMIDSSpec).order_by(
+        BIMIDSSpec.faza, BIMIDSSpec.nume).all()
+    counts = {}
+    for s in specs:
+        counts[s.id] = BIMIDSViolation.query.filter_by(spec_id=s.id).count()
+    return render_template('bim/ids_lista.html', specs=specs, counts=counts,
+                           faze=BIMIDSSpec.FAZE)
+
+
+@bim_bp.route('/ids/nou', methods=['GET', 'POST'])
+@login_required
+@manager_or_admin
+@feature_required('bim-ids')
+def ids_nou():
+    """Creeaza o IDS spec noua (definitie JSON: clase_ifc + proprietati_cerute)."""
+    if request.method == 'POST':
+        try:
+            definition = json.loads(request.form.get('definitie_json', '{}'))
+        except (ValueError, TypeError):
+            flash('JSON invalid in definitie.', 'danger')
+            return redirect(request.url)
+        try:
+            spec = ids_svc.create_spec(
+                nume=request.form.get('nume', '').strip(),
+                definition=definition,
+                faza=request.form.get('faza', 'proiectare'),
+                descriere=request.form.get('descriere', '').strip(),
+                user=current_user,
+            )
+            flash(f'Specificatie IDS "{spec.nume}" creata.', 'success')
+            return redirect(url_for('bim.ids_detaliu', spec_id=spec.id))
+        except ValueError as e:
+            flash(str(e), 'danger')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Eroare la creare: {e}', 'danger')
+    return render_template('bim/ids_formular.html', faze=BIMIDSSpec.FAZE)
+
+
+@bim_bp.route('/ids/<int:spec_id>')
+@login_required
+@feature_required('bim-ids')
+def ids_detaliu(spec_id):
+    """Detaliul unei IDS spec + ultimele violari detectate."""
+    spec = with_tenant_scope(
+        BIMIDSSpec.query.filter_by(id=spec_id), BIMIDSSpec).first_or_404()
+    violari = (BIMIDSViolation.query.filter_by(spec_id=spec.id)
+               .order_by(BIMIDSViolation.data_detectie.desc())
+               .limit(500).all())
+    santiere = Santier.query.order_by(Santier.cod).all()
+    return render_template('bim/ids_detaliu.html', spec=spec, violari=violari,
+                           definitie=spec.get_definition(), santiere=santiere)
+
+
+@bim_bp.route('/ids/<int:spec_id>/run', methods=['POST'])
+@login_required
+@manager_or_admin
+@feature_required('bim-ids')
+def ids_run(spec_id):
+    """Ruleaza validarea unei IDS spec -> genereaza BIMIDSViolation-uri."""
+    spec = with_tenant_scope(
+        BIMIDSSpec.query.filter_by(id=spec_id), BIMIDSSpec).first_or_404()
+    santier_id = request.form.get('santier_id', type=int)
+    scope = {'santier_id': santier_id} if santier_id else None
+    try:
+        result = ids_svc.valideaza_spec(spec, scope=scope, user=current_user)
+        flash(
+            f'Validare IDS finalizata: {result["total_elemente"]} elemente, '
+            f'{result["total_violations"]} neconformitati ({result["duration_ms"]}ms).',
+            'success' if result['total_violations'] == 0 else 'warning',
+        )
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la validare IDS: {e}', 'danger')
+    return redirect(url_for('bim.ids_detaliu', spec_id=spec.id))
 
 
 # ============================================================

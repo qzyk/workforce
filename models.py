@@ -2367,6 +2367,196 @@ class RuleViolation(db.Model):
 
 
 # ============================================================
+# IDS VALIDATOR (Faza 5a BIM - Information Delivery Specification)
+# Oglindeste pattern-ul Rule Engine, dar verifica CONFORMITATEA livrarii
+# informationale (ISO 19650 / buildingSMART IDS): pe o faza de livrare,
+# elementele relevante au Property Sets-urile CERUTE (din Faza 2) cu
+# valorile/tipurile asteptate? Genereaza BIMIDSViolation (analog RuleViolation).
+# ============================================================
+
+class BIMIDSSpec(db.Model):
+    """
+    O specificatie IDS (Information Delivery Specification). Defineste ce
+    informatie e CERUTA pe o faza de livrare ISO 19650 (proiectare / executie
+    / predare): ce clase IFC + ce Pset-uri + ce proprietati trebuie sa existe.
+
+    Stocata ca JSON pentru flexibilitate. Exemplu definitie_json:
+        {
+          "clase_ifc": ["wall"],
+          "proprietati_cerute": [
+            {"pset": "Pset_WallCommon", "nume": "FireRating",
+             "obligatoriu": true, "valoare": "REI 120"}
+          ]
+        }
+    'valoare' e optionala (cere o valoare exacta); 'tipar' (regex) e optional;
+    'obligatoriu' default True. Daca nici 'valoare' nici 'tipar' nu e dat,
+    se verifica doar PREZENTA proprietatii (non-empty).
+    """
+    __tablename__ = 'bim_ids_spec'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    nume = db.Column(db.String(200), nullable=False)
+    descriere = db.Column(db.Text, nullable=True)
+
+    # Faza de livrare ISO 19650 (proiectare / executie / predare / alta)
+    faza = db.Column(db.String(30), default='proiectare', nullable=False, index=True)
+
+    # Specificatia full (clase_ifc + proprietati_cerute) in JSON
+    definitie_json = db.Column(db.Text, nullable=False)
+
+    activ = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    FAZE = [
+        ('proiectare', 'Proiectare'),
+        ('executie', 'Executie'),
+        ('predare', 'Predare (as-built)'),
+        ('alta', 'Alta faza'),
+    ]
+    SEVERITATI = [('minora', 'Minora'), ('majora', 'Majora'), ('critica', 'Critica')]
+
+    def get_definition(self):
+        """Parseaza definitie_json -> dict."""
+        import json
+        try:
+            return json.loads(self.definitie_json or '{}')
+        except (ValueError, TypeError):
+            return {}
+
+    @property
+    def label_faza(self):
+        for cod, label in self.FAZE:
+            if cod == self.faza:
+                return label
+        return self.faza
+
+    def __repr__(self):
+        return f'<BIMIDSSpec {self.nume} faza={self.faza}>'
+
+
+class BIMIDSViolation(db.Model):
+    """
+    O neconformitate fata de o IDS spec, detectata la validare.
+    Oglindeste RuleViolation: leaga spec-ul de elementul neconform.
+    """
+    __tablename__ = 'bim_ids_violation'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    spec_id = db.Column(db.Integer, db.ForeignKey('bim_ids_spec.id'), nullable=False, index=True)
+    element_bim_id = db.Column(db.Integer, db.ForeignKey('bim_elemente.id'), nullable=True, index=True)
+
+    # Run-ul care a produs violarea (pentru a filtra ultima validare)
+    run_id = db.Column(db.String(36), nullable=True, index=True)
+
+    mesaj = db.Column(db.String(500), nullable=False)
+    # 'minora' | 'majora' | 'critica'
+    severitate = db.Column(db.String(20), default='majora', nullable=False, index=True)
+    detalii_json = db.Column(db.Text, nullable=True)
+
+    data_detectie = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    spec = db.relationship('BIMIDSSpec', foreign_keys=[spec_id],
+                           backref=db.backref('violari', lazy='dynamic',
+                                              cascade='all, delete-orphan'))
+    element_bim = db.relationship('ElementBIM', foreign_keys=[element_bim_id])
+
+    __table_args__ = (
+        db.Index('ix_ids_violation_spec_run', 'spec_id', 'run_id'),
+    )
+
+    def __repr__(self):
+        return f'<BIMIDSViolation spec={self.spec_id} elem={self.element_bim_id} sev={self.severitate}>'
+
+
+# ============================================================
+# TRANSMITTALS ISO 19650 (Faza 5a BIM)
+# Tracking de livrare informationala: cine a primit ce versiune de model,
+# cand. Un transmittal leaga o BIMModelVersion de o lista de destinatari si
+# urmareste statusul livrarii (pregatit -> trimis -> primit / respins).
+# ============================================================
+
+class BIMTransmittal(db.Model):
+    """
+    Un transmittal ISO 19650: inregistrare de transfer informational pentru o
+    versiune de model BIM catre unul sau mai multi destinatari/roluri.
+
+    destinatari_json: lista JSON de destinatari (nume / rol / organizatie).
+    Statusul urmareste ciclul de livrare.
+    """
+    __tablename__ = 'bim_transmittal'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    model_version_id = db.Column(db.Integer, db.ForeignKey('bim_model_versions.id'),
+                                 nullable=False, index=True)
+
+    cod = db.Column(db.String(50), nullable=False)  # ex: 'TR-2026-001'
+    nume = db.Column(db.String(200), nullable=True)
+
+    # Lista de destinatari/roluri serializata JSON
+    destinatari_json = db.Column(db.Text, nullable=True)
+
+    # 'pregatit' | 'trimis' | 'primit' | 'respins'
+    status = db.Column(db.String(20), default='pregatit', nullable=False, index=True)
+
+    observatii = db.Column(db.Text, nullable=True)
+
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    data_trimitere = db.Column(db.DateTime, nullable=True)
+
+    model_version = db.relationship('BIMModelVersion',
+                                    foreign_keys=[model_version_id],
+                                    backref=db.backref('transmittals', lazy='dynamic',
+                                                       cascade='all, delete-orphan'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    STATUSURI = [
+        ('pregatit', 'Pregatit'),
+        ('trimis', 'Trimis'),
+        ('primit', 'Primit'),
+        ('respins', 'Respins'),
+    ]
+
+    # Tranzitii valide (status_curent -> set status posibili)
+    TRANZITII_VALIDE = {
+        'pregatit': {'trimis'},
+        'trimis':   {'primit', 'respins'},
+        'primit':   set(),    # terminal
+        'respins':  {'trimis'},  # se poate re-trimite dupa corectii
+    }
+
+    def get_destinatari(self):
+        """Parseaza destinatari_json -> lista (sau []) defensiv."""
+        import json
+        if not self.destinatari_json:
+            return []
+        try:
+            data = json.loads(self.destinatari_json)
+            return data if isinstance(data, list) else []
+        except (ValueError, TypeError):
+            return []
+
+    @property
+    def label_status(self):
+        for cod, label in self.STATUSURI:
+            if cod == self.status:
+                return label
+        return self.status
+
+    def can_transition_to(self, new_status: str) -> bool:
+        return new_status in self.TRANZITII_VALIDE.get(self.status, set())
+
+    def __repr__(self):
+        return f'<BIMTransmittal {self.cod} v={self.model_version_id} [{self.status}]>'
+
+
+# ============================================================
 # CLASH DETECTION (Faza 4)
 # ClashRun = o sesiune de detectie. ClashResult = un clash concret
 # intre 2 elemente. Pe modele fara geometrie completa, fallback la

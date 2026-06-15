@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}IDS: {{ spec.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.ids_lista') }}">IDS</a></li>
+<li class="breadcrumb-item active">{{ spec.nume }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.sev-minora  { background:#e2e3e5; color:#383d41; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-majora  { background:#fff3cd; color:#856404; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+.sev-critica { background:#dc3545; color:white; padding:2px 8px; border-radius:10px; font-size:0.78rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2 style="margin:0;"><i class="fa-solid fa-clipboard-check" style="color:var(--primary);"></i> {{ spec.nume }}</h2>
+        <div style="font-size:0.85rem; color:var(--gray-500); margin-top:4px;">
+            Faza: <strong>{{ spec.label_faza }}</strong>{% if spec.descriere %} | {{ spec.descriere }}{% endif %}
+        </div>
+    </div>
+    {% if current_user.rol in ['admin', 'manager'] %}
+    <form method="POST" action="{{ url_for('bim.ids_run', spec_id=spec.id) }}" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group" style="margin:0;">
+            <label style="font-size:0.8rem;">Santier (optional)</label>
+            <select name="santier_id">
+                <option value="">Toate elementele</option>
+                {% for s in santiere %}
+                <option value="{{ s.id }}">{{ s.cod }} - {{ s.nume }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-play"></i> Valideaza</button>
+    </form>
+    {% endif %}
+</div>
+
+<div class="card-panel" style="margin-bottom:16px;">
+    <div class="card-panel-body" style="padding:18px;">
+        <h4 style="margin-top:0;">Definitie</h4>
+        <div style="font-size:0.88rem; margin-bottom:8px;">
+            <strong>Clase IFC:</strong>
+            {% if definitie.clase_ifc %}{{ definitie.clase_ifc|join(', ') }}{% else %}<em>toate</em>{% endif %}
+        </div>
+        {% if definitie.proprietati_cerute %}
+        <table class="data-table">
+            <thead>
+                <tr><th>Pset</th><th>Proprietate</th><th>Obligatorie</th><th>Valoare ceruta</th><th>Tipar</th></tr>
+            </thead>
+            <tbody>
+                {% for c in definitie.proprietati_cerute %}
+                <tr>
+                    <td><code>{{ c.pset or '(orice)' }}</code></td>
+                    <td><strong>{{ c.nume }}</strong></td>
+                    <td>{% if c.get('obligatoriu', True) %}Da{% else %}Nu{% endif %}</td>
+                    <td>{{ c.valoare if c.valoare is not none else '-' }}</td>
+                    <td>{% if c.tipar %}<code>{{ c.tipar }}</code>{% else %}-{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color:var(--gray-500);">Nicio proprietate ceruta definita.</p>
+        {% endif %}
+    </div>
+</div>
+
+<h3><i class="fa-solid fa-triangle-exclamation" style="color:var(--warning);"></i> Neconformitati ({{ violari|length }})</h3>
+{% if violari %}
+<div class="card-panel">
+    <div class="card-panel-body" style="padding:0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Detectat</th>
+                    <th>Sev.</th>
+                    <th>Mesaj</th>
+                    <th>Element</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in violari %}
+                <tr>
+                    <td style="font-size:0.82rem;">{{ v.data_detectie.strftime('%d.%m %H:%M') if v.data_detectie else '-' }}</td>
+                    <td><span class="sev-{{ v.severitate }}">{{ v.severitate }}</span></td>
+                    <td>{{ v.mesaj }}</td>
+                    <td>
+                        {% if v.element_bim %}
+                        <a href="{{ url_for('bim.element_detaliu', id=v.element_bim_id) }}">{{ v.element_bim.cod }}</a>
+                        {% else %}-{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="empty-state" style="padding:40px; text-align:center; background:white; border-radius:10px;">
+    <i class="fa-solid fa-circle-check" style="font-size:2.5rem; color:var(--success);"></i>
+    <p style="margin-top:12px; color:var(--gray-500);">Nicio neconformitate detectata (sau validarea nu a fost inca rulata).</p>
+</div>
+{% endif %}
+{% endblock %}

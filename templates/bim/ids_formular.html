@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Specificatie IDS noua{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.ids_lista') }}">IDS</a></li>
+<li class="breadcrumb-item active">Specificatie noua</li>
+{% endblock %}
+
+{% block content %}
+<h2><i class="fa-solid fa-clipboard-check"></i> Specificatie IDS noua</h2>
+
+<form method="POST" class="card-panel" style="max-width:780px; margin-top:16px;">
+    <div class="card-panel-body" style="padding:24px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-group">
+            <label>Nume <span style="color:var(--danger);">*</span></label>
+            <input type="text" name="nume" required maxlength="200" placeholder="ex: Pereti rezistenta foc la executie" />
+        </div>
+
+        <div class="form-group">
+            <label>Descriere</label>
+            <textarea name="descriere" rows="2"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Faza de livrare <span style="color:var(--danger);">*</span></label>
+            <select name="faza" required>
+                {% for cod, label in faze %}
+                <option value="{{ cod }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Definitie JSON <span style="color:var(--danger);">*</span></label>
+            <textarea name="definitie_json" id="definitieJson" rows="14" required
+                style="font-family:monospace; font-size:0.85rem;"></textarea>
+            <small style="color:var(--gray-500);">
+                <code>clase_ifc</code>: tipurile de element vizate (gol = toate).
+                <code>proprietati_cerute</code>: lista de
+                <code>{pset, nume, obligatoriu, valoare?, tipar?}</code>.
+            </small>
+        </div>
+
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <a href="{{ url_for('bim.ids_lista') }}" class="btn btn-outline">Anuleaza</a>
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Creeaza specificatie</button>
+        </div>
+    </div>
+</form>
+
+<script>
+const EXEMPLU = {
+    clase_ifc: ["wall"],
+    severitate: "majora",
+    proprietati_cerute: [
+        { pset: "Pset_WallCommon", nume: "FireRating", obligatoriu: true, valoare: "REI 120" },
+        { pset: "Pset_WallCommon", nume: "IsExternal", obligatoriu: true }
+    ]
+};
+const ta = document.getElementById('definitieJson');
+if (!ta.value.trim()) { ta.value = JSON.stringify(EXEMPLU, null, 2); }
+</script>
+{% endblock %}

@@ -431,6 +431,8 @@ def create_app(config_name='default'):
             # Faza 3: toleranta AABB per rulare (NULL -> fallback istoric 1mm).
             # Tabela bim_clash_group e creata de db.create_all() de mai sus.
             ('bim_clash_runs', 'tolerance_mm', 'INTEGER'),
+            # Faza 5a: tabelele bim_ids_spec, bim_ids_violation si bim_transmittal
+            # sunt create de db.create_all() de mai sus (tabele noi, fara ALTER).
         ]
 
         adaugate = 0

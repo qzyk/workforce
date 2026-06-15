@@ -61,8 +61,9 @@ def cleanup_test_data(app):
     from models import (
         db, Santier, Cladire, Nivel, Zona, Spatiu, ElementBIM, Asset,
         IssueBIM, ModelBIM, ExternalMapping, RaportActivitate, Tenant,
-        AuditLog, FeatureFlag, BIMModelVersion,
+        AuditLog, FeatureFlag, BIMModelVersion, BIMTransmittal,
         BIMRule, RuleViolation, ClashRun, ClashResult, ClashGroup,
+        BIMIDSSpec, BIMIDSViolation,
         BIMTaskSchedule, BIMCostItem,
         Senzor, SensorReading, SensorAlert,
         BIMComment, UserPresence, RealtimeEvent,
@@ -71,9 +72,10 @@ def cleanup_test_data(app):
     with app.app_context():
         try:
             # WIPE total tabele BIM (le recreem la nevoie in fixture-uri specifice)
-            for cls in (AuditLog, FeatureFlag, BIMModelVersion,
+            for cls in (AuditLog, FeatureFlag, BIMTransmittal, BIMModelVersion,
                         SensorAlert, SensorReading, Senzor,
                         ClashResult, ClashGroup, ClashRun, RuleViolation, BIMRule,
+                        BIMIDSViolation, BIMIDSSpec,
                         BIMCostItem, BIMTaskSchedule,
                         BIMComment, UserPresence, RealtimeEvent,
                         BIMRoleAssignment, ApiToken,
