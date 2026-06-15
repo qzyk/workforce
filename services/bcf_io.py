@@ -34,11 +34,13 @@ _logger = logging.getLogger(__name__)
 
 BCF_VERSION = '2.1'
 
-# Namespace custom Edifico pentru a pastra exact 'look' (distanta) la round-trip.
-# CameraDirection standard BCF e doar directia normalizata -> daca reconstruim
-# look = eye + dir am pierde distanta. Pastram look explicit intr-un element
-# custom; alte tool-uri BCF ignora elementele necunoscute (interop pastrat).
-_EDIFICO_LOOKAT_TAG = 'EdificoCameraLookAt'
+# viewpoint.bcfv ramane STRICT BCF 2.1 valid: PerspectiveCamera contine exact
+# cele 4 elemente standard (CameraViewPoint, CameraDirection, CameraUpVector,
+# FieldOfView), fara extensii custom -> valideaza la XSD (buildingSMART BCF-XML
+# test suite, Solibri, BIMcollab). CameraDirection e doar directia normalizata,
+# deci 'look' se reconstruieste la import ca eye + directie: vederea (eye +
+# directie + up + fov) e identica, doar distanta pana la punctul look NU e
+# exprimabila in BCF 2.1 (nu exista camp pentru ea in standard).
 
 
 # ====================================================
@@ -178,9 +180,10 @@ def _make_viewpoint_xml(viewpoint: dict) -> Optional[str]:
     Genereaza viewpoint.bcfv (VisualizationInfo BCF 2.1) dintr-un dict viewpoint.
 
     Mapare: eye -> CameraViewPoint, normalize(look-eye) -> CameraDirection,
-    up -> CameraUpVector, fov -> FieldOfView. Pastram 'look' exact intr-un
-    element custom (vezi _EDIFICO_LOOKAT_TAG) pentru round-trip fara pierdere de
-    distanta. Optional: Components (vizibilitate) + ClippingPlanes.
+    up -> CameraUpVector, fov -> FieldOfView. PerspectiveCamera contine STRICT
+    cele 4 elemente standard BCF 2.1 (fara extensii custom) -> valideaza la XSD.
+    Punctul 'look' nu e transportabil in BCF (doar directia) -> la reimport se
+    reconstruieste eye + directie. Optional: Components (vizibilitate) + ClippingPlanes.
 
     Returneaza XML string sau None daca nu exista camera valida.
     """
@@ -209,8 +212,6 @@ def _make_viewpoint_xml(viewpoint: dict) -> Optional[str]:
     _vec3(cam_el, 'CameraDirection', direction)
     _vec3(cam_el, 'CameraUpVector', up)
     ET.SubElement(cam_el, 'FieldOfView').text = repr(float(cam.get('fov', 60)))
-    # Look exact pastrat (custom Edifico, ignorat de alte tool-uri)
-    _vec3(cam_el, _EDIFICO_LOOKAT_TAG, look)
 
     # ClippingPlanes (optional)
     clipping = (viewpoint or {}).get('clipping') or []
@@ -236,9 +237,9 @@ def _parse_viewpoint_xml(xml_data: str) -> Optional[dict]:
     Parseaza viewpoint.bcfv (VisualizationInfo) -> dict viewpoint_json.
 
     Reconstruieste camera: eye=CameraViewPoint, up=CameraUpVector, fov=FieldOfView.
-    Pentru 'look': foloseste elementul custom EdificoCameraLookAt daca exista
-    (round-trip exact); altfel fallback la look = eye + CameraDirection (distanta
-    pierduta, dar directia pastrata). Citeste si visibility + clipping daca exista.
+    'look' = eye + CameraDirection (BCF 2.1 transporta doar directia, nu distanta
+    pana la punctul vizat; vederea rezultata e identica). Citeste si visibility +
+    clipping daca exista.
     """
     try:
         root = ET.fromstring(xml_data)
@@ -257,12 +258,12 @@ def _parse_viewpoint_xml(xml_data: str) -> Optional[dict]:
     if eye is None:
         return None
 
-    look = _read_vec3(cam_el.find(_EDIFICO_LOOKAT_TAG))
-    if look is None and direction is not None:
-        # Fallback: distanta unitara (look = eye + dir normalizat)
-        look = [eye[0] + direction[0], eye[1] + direction[1], eye[2] + direction[2]]
-    if look is None:
+    # BCF 2.1 nu transporta punctul look, doar directia. Reconstruim look pe raza
+    # eye -> directie (distanta unitara). Vederea (eye + directie + up + fov) e
+    # identica; doar distanta pana la look nu e exprimabila in standard.
+    if direction is None:
         return None
+    look = [eye[0] + direction[0], eye[1] + direction[1], eye[2] + direction[2]]
 
     fov_txt = cam_el.findtext('FieldOfView')
     try:
