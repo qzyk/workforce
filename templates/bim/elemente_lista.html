@@ -66,6 +66,7 @@
                     <th>Nume</th>
                     <th>Locatie</th>
                     <th>Status</th>
+                    <th title="Are Property Sets IFC extrase">Pset</th>
                     <th>IFC GUID</th>
                 </tr>
             </thead>
@@ -84,6 +85,13 @@
                         <span class="badge-status badge-{{ 'aprobat' if e.status in ['executat','verificat','receptionat'] else ('respins' if e.status == 'defect' else 'draft') }}">
                             {{ e.status|replace('_', ' ')|title }}
                         </span>
+                    </td>
+                    <td style="text-align:center;">
+                        {% if e.proprietati_json %}
+                        <i class="fa-solid fa-circle-check" title="Are Property Sets IFC" style="color:var(--ed-color-gold, var(--primary));"></i>
+                        {% else %}
+                        <span style="color:var(--gray-300);">-</span>
+                        {% endif %}
                     </td>
                     <td style="font-size:0.7rem; color:var(--gray-500); font-family:monospace;">{{ e.ifc_global_id[:12] + '...' if e.ifc_global_id and e.ifc_global_id|length > 12 else (e.ifc_global_id or '-') }}</td>
                 </tr>

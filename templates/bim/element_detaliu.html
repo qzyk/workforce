@@ -148,6 +148,49 @@
     {% endif %}
 </div>
 
+{# Properties panel: arbore Pset -> {prop: valoare}. Inofensiv cand lipseste. #}
+{% set _props = element.proprietati %}
+{% set _bbox = element.bbox %}
+{% if _props or _bbox %}
+<div class="card-panel" style="margin-top:16px;">
+    <div class="card-panel-header"><h3><i class="fa-solid fa-list-check"></i> Proprietati IFC</h3></div>
+    <div class="card-panel-body" style="padding:18px;">
+        {% if _bbox %}
+        <div style="margin-bottom:14px; font-size:0.85rem; color:var(--ed-color-text-soft, var(--gray-500));">
+            <strong style="color:var(--ed-color-text, inherit);"><i class="fa-solid fa-cube"></i> Bounding box</strong>
+            <span style="font-family:var(--ed-font-mono, monospace); margin-left:8px;">
+                min [{{ '%.2f'|format(_bbox.min[0]) }}, {{ '%.2f'|format(_bbox.min[1]) }}, {{ '%.2f'|format(_bbox.min[2]) }}]
+                &nbsp; max [{{ '%.2f'|format(_bbox.max[0]) }}, {{ '%.2f'|format(_bbox.max[1]) }}, {{ '%.2f'|format(_bbox.max[2]) }}]
+            </span>
+        </div>
+        {% endif %}
+        {% if _props %}
+        <div style="display:flex; flex-direction:column; gap:12px;">
+            {% for nume_pset, proprietati in _props.items() %}
+            <details open style="border:1px solid var(--ed-color-border, var(--gray-200)); border-radius:var(--ed-radius-sm, 6px); overflow:hidden;">
+                <summary style="cursor:pointer; padding:8px 12px; background:var(--ed-color-sand, var(--gray-50)); font-weight:600; font-size:0.88rem; color:var(--ed-color-gold-ink, var(--gray-700));">
+                    <i class="fa-solid fa-folder-tree" style="margin-right:6px; color:var(--ed-color-gold, var(--primary));"></i>{{ nume_pset }}
+                    <small style="color:var(--ed-color-text-faint, var(--gray-500)); font-weight:400;">({{ proprietati|length }})</small>
+                </summary>
+                <dl style="display:grid; grid-template-columns:minmax(140px, 240px) 1fr; gap:6px 16px; margin:0; padding:12px; font-size:0.85rem;">
+                    {% for nume_prop, valoare in proprietati.items() %}
+                    <dt style="color:var(--ed-color-text-soft, var(--gray-500));">{{ nume_prop }}</dt>
+                    <dd style="margin:0; word-break:break-word;">
+                        {% if valoare is sameas true %}Da
+                        {% elif valoare is sameas false %}Nu
+                        {% elif valoare is none %}-
+                        {% else %}{{ valoare }}{% endif %}
+                    </dd>
+                    {% endfor %}
+                </dl>
+            </details>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 <div class="card-panel" style="margin-top:16px;">
     <div class="card-panel-header"><h3><i class="fa-solid fa-clipboard-list"></i> Activitati workforce ({{ rapoarte|length }})</h3></div>
     <div class="card-panel-body" style="padding:0;">
