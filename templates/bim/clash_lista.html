@@ -23,6 +23,8 @@
             <option value="geometric">Doar geometric (AABB)</option>
             <option value="logic">Doar logic (GUID, spatii)</option>
         </select>
+        <input type="number" name="tolerance_mm" min="0" step="1" placeholder="toleranta mm (gol=1)"
+               title="Toleranta AABB in mm. Gol -> 1mm istoric." style="padding:6px; width:160px;">
         <button type="submit" class="btn btn-primary"><i class="fa-solid fa-play"></i> Lanseaza</button>
     </form>
     {% endif %}
@@ -74,7 +76,9 @@
 
 <div style="margin-top:14px; padding:12px; background:#FFF8E1; border-left:3px solid var(--warning); border-radius:6px; font-size:0.88rem;">
     <i class="fa-solid fa-circle-info"></i>
-    Detectia geometrica (AABB) ruleaza doar pe elemente cu bbox in <code>proprietati_json</code>.
-    Detectia logica (GUID duplicat, supraincarcare spatii) functioneaza intotdeauna.
+    Detectia geometrica (AABB) ruleaza pe elemente cu bounding box (coordonate world,
+    extras la importul IFC), accelerata cu index spatial pe grid. Detectia logica
+    (GUID duplicat, supraincarcare spatii) functioneaza intotdeauna. Clash-urile sunt
+    deduplicate intre rulari (noi / existente / disparute).
 </div>
 {% endblock %}

@@ -164,15 +164,140 @@ def _eval_forbidden_in_zone(rule: BIMRule, definition: dict, scope: Optional[dic
     return violations
 
 
+def _prag_clearance_m(constraint: dict) -> Optional[float]:
+    """
+    Extrage pragul de gabarit in METRI din constraint. Acceptam doua forme:
+      - 'value_m'    -> deja in metri
+      - 'distanta_mm'-> in milimetri (bbox-ul e in metri, deci impartim la 1000)
+    Returneaza None daca nu e definit un prag valid (>0).
+    """
+    if constraint.get('value_m') is not None:
+        try:
+            v = float(constraint['value_m'])
+            return v if v > 0 else None
+        except (ValueError, TypeError):
+            return None
+    if constraint.get('distanta_mm') is not None:
+        try:
+            v = float(constraint['distanta_mm']) / 1000.0
+            return v if v > 0 else None
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
 def _eval_min_clearance(rule, definition, scope):
-    """Gabarit minim intre elemente. Necesita geometrie 3D (AABB) care nu e stocata
-    pe elemente -> nu evaluam automat. Intoarcem un flag CLAR (nu '0 violari' fals),
-    ca utilizatorul sa stie ca regula nu valideaza inca, nu ca a trecut."""
-    return [{
-        'mesaj': 'Regula de gabarit minim (min_clearance) nu e evaluata automat — '
-                 'necesita geometrie 3D (AABB) pe elemente. Verificare manuala recomandata.',
-        'detalii': {'rule_cod': rule.cod, 'status': 'neevaluat_necesita_geometrie'},
-    }]
+    """
+    Gabarit minim intre elemente, evaluat geometric pe AABB (Faza 3).
+
+    selector  : elementele "sursa" (ex. tubulatura).
+    constraint:
+        'min_distance_to' : tip_element tinta (ex. 'wall'). Optional - daca
+                            lipseste, comparam sursa cu sursa.
+        'value_m'         : prag in metri  (sau)
+        'distanta_mm'     : prag in mm (bbox in metri -> /1000).
+
+    Distanta AABB-AABB: gap_axa = max(a.min-b.max, b.min-a.max, 0);
+    distanta = sqrt(sum(gap^2)). Daca distanta < prag -> violare.
+
+    Folosim element.bbox (coordonate world, Faza 2). Daca un element nu are bbox,
+    ramane 'neevaluat' ONEST pentru el (nu pass fals). Accelerare cu acelasi
+    index spatial ca la clash, cu celulele dilatate cu pragul pentru a prinde
+    perechile "aproape, nu suprapuse".
+    """
+    from services import clash_detection as clash_svc
+
+    constraint = definition.get('constraint', {})
+    selector = definition.get('selector', {})
+    prag_m = _prag_clearance_m(constraint)
+    if prag_m is None:
+        return [{
+            'mesaj': f'Regula {rule.cod}: prag de gabarit (value_m / distanta_mm) lipsa sau invalid.',
+            'detalii': {'rule_cod': rule.cod, 'eroare_config': True},
+        }]
+
+    sursa = _select_elements(selector, scope)
+    if not sursa:
+        return []
+
+    tip_tinta = constraint.get('min_distance_to')
+    if tip_tinta:
+        tinta_selector = {'tip_element': tip_tinta}
+        # Pastram acelasi scope (santier) pentru tinta
+        tinta = _select_elements(tinta_selector, scope)
+    else:
+        tinta = list(sursa)
+
+    # Bbox-uri (din coloana Faza 2). Elementele fara bbox -> 'neevaluat' onest.
+    def _bbox_map(els):
+        out = {}
+        fara = []
+        for el in els:
+            bb = clash_svc._get_bbox(el)
+            if bb is None:
+                fara.append(el)
+            else:
+                out[el.id] = (el, bb)
+        return out, fara
+
+    sursa_map, sursa_fara = _bbox_map(sursa)
+    tinta_map, tinta_fara = _bbox_map(tinta)
+
+    violations = []
+
+    # Flag onest pentru elementele sursa fara geometrie (nu le declaram OK)
+    for el in sursa_fara:
+        violations.append({
+            'element_bim_id': el.id,
+            'mesaj': f'{el.cod}: gabarit neevaluat (lipseste bbox pe element).',
+            'detalii': {'rule_cod': rule.cod, 'status': 'neevaluat_lipsa_bbox'},
+        })
+
+    if not sursa_map or not tinta_map:
+        return violations
+
+    # Index spatial pe tinta, cu celula >= prag ca sa prindem perechile apropiate.
+    tinta_items = list(tinta_map.values())  # [(el, bb), ...]
+    bboxes = [bb for _el, bb in tinta_items] + [bb for _el, bb in sursa_map.values()]
+    cell_size = max(clash_svc._alege_cell_size(bboxes), prag_m, 0.25)
+
+    grid: dict[tuple, list[int]] = {}
+    for idx, (_el, bb) in enumerate(tinta_items):
+        # Dilatam bbox-ul tinta cu pragul ca celulele candidate sa acopere
+        # si vecinatatea (elemente la distanta < prag, nu doar suprapuse).
+        bb_dilatat = {
+            'min': [bb['min'][i] - prag_m for i in range(3)],
+            'max': [bb['max'][i] + prag_m for i in range(3)],
+        }
+        for cheie in clash_svc._celule_atinse(bb_dilatat, cell_size):
+            grid.setdefault(cheie, []).append(idx)
+
+    raportate = set()  # (sursa_id, tinta_id) deja raportate
+    for el_s, bb_s in sursa_map.values():
+        candidati_idx = set()
+        for cheie in clash_svc._celule_atinse(bb_s, cell_size):
+            for idx in grid.get(cheie, ()):
+                candidati_idx.add(idx)
+        for idx in candidati_idx:
+            el_t, bb_t = tinta_items[idx]
+            if el_t.id == el_s.id:
+                continue
+            pereche = (el_s.id, el_t.id)
+            if pereche in raportate:
+                continue
+            dist = clash_svc._aabb_distance(bb_s, bb_t)
+            if dist < prag_m:
+                raportate.add(pereche)
+                violations.append({
+                    'element_bim_id': el_s.id,
+                    'mesaj': (f'{el_s.cod} ({el_s.tip_element}) la {round(dist, 4)}m de '
+                              f'{el_t.cod} ({el_t.tip_element}) - sub gabaritul minim '
+                              f'de {prag_m}m'),
+                    'detalii': {'rule_cod': rule.cod, 'distanta_m': round(dist, 4),
+                                'prag_m': prag_m, 'element_tinta_id': el_t.id},
+                })
+
+    return violations
 
 
 # Mapping tip regula -> evaluator

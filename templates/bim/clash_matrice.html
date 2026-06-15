@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Matrice clash #{{ run.id }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.clash_lista') }}">Clash detection</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.clash_detaliu', run_id=run.id) }}">Run #{{ run.id }}</a></li>
+<li class="breadcrumb-item active">Matrice</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.matrice-clash { border-collapse:collapse; }
+.matrice-clash th, .matrice-clash td {
+    border:1px solid var(--ed-border, #e0e0e0); padding:6px 10px; text-align:center; font-size:0.82rem;
+}
+.matrice-clash th { background:var(--ed-surface, #f5f5f5); }
+.matrice-clash .diag { background:var(--ed-surface-2, #fafafa); }
+.matrice-clash .hit  { background:var(--ed-gold-weak, #fdf3da); font-weight:600; }
+.matrice-clash .zero { color:var(--ed-muted, #aaa); }
+.matrice-clash .axis { text-align:left; font-weight:600; background:var(--ed-surface, #f5f5f5); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-table-cells"></i> Matrice clash pe discipline - run #{{ run.id }}</h2>
+    <a href="{{ url_for('bim.clash_detaliu', run_id=run.id) }}" class="btn btn-outline">&larr; Inapoi la detalii</a>
+</div>
+
+<div style="font-size:0.85rem; color:var(--ed-muted, #666); margin-bottom:12px;">
+    Total clash-uri: <strong>{{ total }}</strong> | discipline implicate: <strong>{{ discipline|length }}</strong>
+</div>
+
+{% if discipline %}
+<div class="card-panel">
+    <div class="card-panel-body" style="overflow:auto;">
+        <table class="matrice-clash">
+            <thead>
+                <tr>
+                    <th></th>
+                    {% for d in discipline %}<th>{{ d }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for da in discipline %}
+                <tr>
+                    <td class="axis">{{ da }}</td>
+                    {% for db in discipline %}
+                        {% set cheie = (da, db) if da <= db else (db, da) %}
+                        {% set n = matrice.get(cheie, 0) %}
+                        <td class="{% if da == db %}diag {% endif %}{% if n %}hit{% else %}zero{% endif %}">{{ n }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="empty-state" style="padding:30px; text-align:center; background:white; border-radius:10px;">
+    <i class="fa-solid fa-table-cells" style="font-size:2rem; color:var(--ed-muted, #ccc);"></i>
+    <p style="margin-top:8px; color:var(--ed-muted, #666);">Niciun clash de afisat in matrice.</p>
+</div>
+{% endif %}
+{% endblock %}

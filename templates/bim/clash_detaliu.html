@@ -26,8 +26,17 @@
             {% if run.santier %}santier: <strong>{{ run.santier.cod }}</strong>{% elif run.model %}model: {{ run.model.nume }}{% endif %}
         </div>
     </div>
-    <a href="{{ url_for('bim.clash_lista') }}" class="btn btn-outline">← Toate rularile</a>
+    <div style="display:flex; gap:8px;">
+        <a href="{{ url_for('bim.clash_matrice', run_id=run.id) }}" class="btn btn-outline"><i class="fa-solid fa-table-cells"></i> Matrice discipline</a>
+        <a href="{{ url_for('bim.clash_lista') }}" class="btn btn-outline">← Toate rularile</a>
+    </div>
 </div>
+
+{% if run.tolerance_mm is not none %}
+<div style="font-size:0.82rem; color:var(--ed-muted, #666); margin-bottom:8px;">
+    Toleranta AABB folosita: <code>{{ run.tolerance_mm }}mm</code>
+</div>
+{% endif %}
 
 <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
     <strong style="align-self:center; margin-right:8px;">Severitati:</strong>
@@ -49,18 +58,39 @@
                     <th>Element A</th>
                     <th>Element B</th>
                     <th>Mesaj</th>
-                    <th>Status</th>
+                    <th>Status grup</th>
+                    {% if current_user.rol in ['admin', 'manager'] %}<th>Actiuni</th>{% endif %}
                 </tr>
             </thead>
             <tbody>
                 {% for r in rezultate %}
+                {% set a = r.element_a_id %}{% set b = r.element_b_id %}
+                {% set cheie = (a, b, r.tip) if a <= b else (b, a, r.tip) %}
+                {% set grup = (grupuri or {}).get(cheie) %}
                 <tr>
                     <td><span class="tip-pill">{{ r.tip }}</span></td>
                     <td><span class="sev-{{ r.severitate }}">{{ r.severitate }}</span></td>
                     <td>{% if r.element_a %}<a href="{{ url_for('bim.element_detaliu', id=r.element_a_id) }}">{{ r.element_a.cod }}</a>{% else %}#{{ r.element_a_id }}{% endif %}</td>
                     <td>{% if r.element_b %}<a href="{{ url_for('bim.element_detaliu', id=r.element_b_id) }}">{{ r.element_b.cod }}</a>{% else %}#{{ r.element_b_id }}{% endif %}</td>
                     <td style="font-size:0.88rem;">{{ r.mesaj }}</td>
-                    <td><span style="font-size:0.82rem;">{{ r.status }}</span></td>
+                    <td><span style="font-size:0.82rem;">{% if grup %}{{ grup.status }}{% if grup.issue_id %} (issue #{{ grup.issue_id }}){% endif %}{% else %}{{ r.status }}{% endif %}</span></td>
+                    {% if current_user.rol in ['admin', 'manager'] %}
+                    <td style="white-space:nowrap;">
+                        {% if grup %}
+                        <form method="POST" action="{{ url_for('bim.clash_group_status', group_id=grup.id) }}" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button name="status" value="rezolvat" class="btn btn-outline" style="font-size:0.72rem; padding:2px 6px;" title="Marcheaza rezolvat">Rezolvat</button>
+                            <button name="status" value="ignorat" class="btn btn-outline" style="font-size:0.72rem; padding:2px 6px;" title="Ignora">Ignora</button>
+                        </form>
+                        {% if not grup.issue_id %}
+                        <form method="POST" action="{{ url_for('bim.clash_group_promote', group_id=grup.id) }}" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button class="btn btn-outline" style="font-size:0.72rem; padding:2px 6px;" title="Promoveaza in issue">→ Issue</button>
+                        </form>
+                        {% endif %}
+                        {% endif %}
+                    </td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>

@@ -27,7 +27,7 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
 from models import (
-    BIMModelVersion, BIMRule, RuleViolation, ClashRun, ClashResult,
+    BIMModelVersion, BIMRule, RuleViolation, ClashRun, ClashResult, ClashGroup,
     BIMTaskSchedule, BIMCostItem,
     Senzor, SensorReading, SensorAlert,
     BIMComment, UserPresence, RealtimeEvent,
@@ -1375,15 +1375,21 @@ def clash_run():
     santier_id = request.form.get('santier_id', type=int)
     model_id = request.form.get('model_id', type=int)
     tip = request.form.get('tip', 'mixed')
+    # Toleranta AABB in mm (optional). Gol -> None -> fallback istoric 1mm.
+    tolerance_mm = request.form.get('tolerance_mm', type=int)
     if not santier_id and not model_id:
         flash('Trebuie ales santier sau model.', 'danger')
         return redirect(url_for('bim.clash_lista'))
     try:
         result = clash_svc.run_clash_detection(
-            santier_id=santier_id, model_id=model_id, tip=tip, user=current_user,
+            santier_id=santier_id, model_id=model_id, tip=tip,
+            tolerance_mm=tolerance_mm, user=current_user,
         )
+        delta = result.get('delta', {})
         flash(
-            f'Clash detection: {result["total_clashes"]} clash-uri ({result["duration_ms"]}ms).',
+            f'Clash detection: {result["total_clashes"]} clash-uri '
+            f'(noi: {delta.get("noi", 0)}, existente: {delta.get("existente", 0)}, '
+            f'disparute: {delta.get("disparute", 0)}) - {result["duration_ms"]}ms.',
             'success' if result['total_clashes'] == 0 else 'warning',
         )
         return redirect(url_for('bim.clash_detaliu', run_id=result['run_id']))
@@ -1403,8 +1409,88 @@ def clash_detaliu(run_id):
     if severity_filter:
         q = q.filter_by(severitate=severity_filter)
     rezultate = q.order_by(ClashResult.severitate.desc(), ClashResult.id).limit(500).all()
+    # Grupurile deduplicate care contin acest run (status pus de utilizator).
+    grupuri = {}
+    for g in (with_tenant_scope(ClashGroup.query, ClashGroup)
+              .order_by(ClashGroup.ultima_detectie.desc()).limit(1000).all()):
+        if run.id in g.get_run_ids():
+            cheie = clash_svc._normalize_pereche(g.element_a_id, g.element_b_id) + (g.tip,)
+            grupuri[cheie] = g
     return render_template('bim/clash_detaliu.html', run=run, rezultate=rezultate,
-                           severity_filter=severity_filter)
+                           severity_filter=severity_filter, grupuri=grupuri)
+
+
+@bim_bp.route('/clash/group/<int:group_id>/status', methods=['POST'])
+@login_required
+@manager_or_admin
+@feature_required('bim-clash-detection')
+def clash_group_status(group_id):
+    """Schimba statusul unui ClashGroup (activ/rezolvat/ignorat), cu audit."""
+    grup = with_tenant_scope(ClashGroup.query, ClashGroup).filter_by(id=group_id).first_or_404()
+    nou_status = request.form.get('status', '').strip()
+    valide = {s for s, _ in ClashGroup.STATUSURI}
+    if nou_status not in valide:
+        flash(f'Status invalid: {nou_status}.', 'danger')
+        return redirect(request.referrer or url_for('bim.clash_lista'))
+    vechi = grup.status
+    grup.status = nou_status
+    audit_svc.log('clash_group_status', 'bim_clash_group', grup.id,
+                  old_values={'status': vechi}, new_values={'status': nou_status})
+    db.session.commit()
+    flash(f'Clash #{grup.id} marcat "{nou_status}".', 'success')
+    return redirect(request.referrer or url_for('bim.clash_lista'))
+
+
+@bim_bp.route('/clash/group/<int:group_id>/promote-to-issue', methods=['POST'])
+@login_required
+@manager_or_admin
+@feature_required('bim-clash-detection')
+def clash_group_promote(group_id):
+    """Promoveaza un ClashGroup intr-un IssueBIM (paritate cu violation->issue)."""
+    grup = with_tenant_scope(ClashGroup.query, ClashGroup).filter_by(id=group_id).first_or_404()
+    try:
+        issue_id = clash_svc.clash_group_to_issue(grup, current_user)
+        flash(f'Clash promovat in issue #{issue_id}.', 'success')
+    except PermissionError as e:
+        flash(str(e), 'danger')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la promovare: {e}', 'danger')
+    return redirect(request.referrer or url_for('bim.clash_lista'))
+
+
+@bim_bp.route('/clash/<int:run_id>/matrice')
+@login_required
+@feature_required('bim-clash-detection')
+def clash_matrice(run_id):
+    """Matrice de clash pe discipline: nr clash-uri intre perechi de categorii."""
+    run = ClashRun.query.get_or_404(run_id)
+    rezultate = ClashResult.query.filter_by(run_id=run_id).all()
+
+    # Categoria disciplinei vine din ElementBIM.tip_categorie (cache pe element_id).
+    cache_categ = {}
+
+    def _categ(element_id):
+        if element_id in cache_categ:
+            return cache_categ[element_id]
+        el = ElementBIM.query.get(element_id)
+        cat = el.tip_categorie if el else 'general'
+        cache_categ[element_id] = cat
+        return cat
+
+    matrice = {}        # (cat_a, cat_b) normalizat -> count
+    discipline = set()
+    for r in rezultate:
+        ca = _categ(r.element_a_id)
+        cb = _categ(r.element_b_id)
+        discipline.add(ca); discipline.add(cb)
+        cheie = (ca, cb) if ca <= cb else (cb, ca)
+        matrice[cheie] = matrice.get(cheie, 0) + 1
+
+    discipline = sorted(discipline)
+    return render_template('bim/clash_matrice.html', run=run,
+                           discipline=discipline, matrice=matrice,
+                           total=len(rezultate))
 
 
 @bim_bp.route('/api/clash/<int:run_id>')

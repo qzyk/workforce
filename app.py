@@ -426,6 +426,9 @@ def create_app(config_name='default'):
             ('bim_modele', 'extern_id', 'VARCHAR(100)'),
             ('bim_modele', 'source_system', 'VARCHAR(30)'),
             ('bim_modele', 'last_synced_at', 'DATETIME'),
+            # Faza 3: toleranta AABB per rulare (NULL -> fallback istoric 1mm).
+            # Tabela bim_clash_group e creata de db.create_all() de mai sus.
+            ('bim_clash_runs', 'tolerance_mm', 'INTEGER'),
         ]
 
         adaugate = 0

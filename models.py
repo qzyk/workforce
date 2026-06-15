@@ -2380,6 +2380,11 @@ class ClashRun(db.Model):
     # Tipul detectiei: 'geometric' (AABB) | 'logic' (GUID/spatiu/props) | 'mixed'
     tip = db.Column(db.String(20), default='mixed', nullable=False)
 
+    # Toleranta de intersectie AABB in milimetri (Faza 3). NULL -> fallback la
+    # toleranta istorica de 1mm (0.001m), deci rezultatul ramane neschimbat fata
+    # de rularile vechi. Configurabila per rulare pentru a relaxa/strange clash-ul.
+    tolerance_mm = db.Column(db.Integer, nullable=True)
+
     # Statistici rezultate (populate la finalul rularii)
     nr_clash_uri = db.Column(db.Integer, default=0)
     nr_critica = db.Column(db.Integer, default=0)
@@ -2444,6 +2449,75 @@ class ClashResult(db.Model):
 
     def __repr__(self):
         return f'<ClashResult run={self.run_id} {self.element_a_id}<->{self.element_b_id} {self.tip}>'
+
+
+class ClashGroup(db.Model):
+    """
+    Grup persistent de clash intre doua elemente, deduplicat intre rulari (Faza 3).
+
+    Un ClashResult e efemer (apartine unei rulari). ClashGroup urmareste perechea
+    (element_a, element_b, tip) in timp: cand apare la mai multe rulari nu se
+    dubleaza, ci se actualizeaza ultima_detectie + lista de run_ids. Statusul
+    (activ/rezolvat/ignorat) il pune utilizatorul si se pastreaza intre rulari,
+    chiar daca clash-ul reapare. Perechile sunt stocate normalizat (a<b) ca sa
+    nu existe (A,B) si (B,A) ca grupuri separate.
+    """
+    __tablename__ = 'bim_clash_group'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    # Perechea de elemente, normalizata: element_a_id < element_b_id
+    element_a_id = db.Column(db.Integer, db.ForeignKey('bim_elemente.id'), nullable=False, index=True)
+    element_b_id = db.Column(db.Integer, db.ForeignKey('bim_elemente.id'), nullable=False, index=True)
+
+    # Tipul clash-ului: 'hard' (geometric) | 'clearance' (sub gabarit) | 'duplicate' | 'soft'
+    tip = db.Column(db.String(20), default='hard', nullable=False, index=True)
+
+    # Status pus de utilizator, pastrat intre rulari:
+    # 'activ' (nerezolvat) | 'rezolvat' | 'ignorat'
+    status = db.Column(db.String(20), default='activ', nullable=False, index=True)
+
+    # Severitatea ultimei detectii (informativ, se actualizeaza la fiecare rulare)
+    severitate = db.Column(db.String(20), default='medie', nullable=False)
+
+    prima_detectie = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    ultima_detectie = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    # Lista de run_id-uri (JSON) in care a aparut aceasta pereche
+    run_ids_json = db.Column(db.Text, nullable=True)
+
+    # Daca a fost promovat in IssueBIM
+    issue_id = db.Column(db.Integer, db.ForeignKey('bim_issues.id'), nullable=True)
+
+    element_a = db.relationship('ElementBIM', foreign_keys=[element_a_id])
+    element_b = db.relationship('ElementBIM', foreign_keys=[element_b_id])
+    issue = db.relationship('IssueBIM', foreign_keys=[issue_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'element_a_id', 'element_b_id', 'tip',
+                            name='uq_clash_group_pereche'),
+        db.Index('ix_clash_group_status', 'status'),
+    )
+
+    STATUSURI = [
+        ('activ', 'Activ'),
+        ('rezolvat', 'Rezolvat'),
+        ('ignorat', 'Ignorat'),
+    ]
+
+    def get_run_ids(self):
+        """Lista de run_id-uri (int) in care a aparut perechea."""
+        if not self.run_ids_json:
+            return []
+        try:
+            import json
+            data = json.loads(self.run_ids_json)
+            return data if isinstance(data, list) else []
+        except (ValueError, TypeError):
+            return []
+
+    def __repr__(self):
+        return f'<ClashGroup {self.element_a_id}<->{self.element_b_id} {self.tip} {self.status}>'
 
 
 # ============================================================
