@@ -73,6 +73,7 @@
                     </td>
                     <td>
                         <div class="workflow-actions">
+                            <a href="{{ url_for('bim.transmittals_lista', version_id=v.id) }}" class="btn btn-outline" title="Transmittals ISO 19650"><i class="fa-solid fa-paper-plane"></i> Transmittals</a>
                             {% if v.status == 'wip' %}
                                 <form method="POST" action="{{ url_for('bim.model_version_transition', version_id=v.id) }}" onsubmit="return confirm('Partajezi versiunea {{ v.versiune }} (shared)?');">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

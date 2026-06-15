@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Transmittals - {{ versiune.versiune }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('bim.dashboard') }}">BIM</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('bim.model_versiuni', model_id=versiune.model_id) }}">Versiuni</a></li>
+<li class="breadcrumb-item active">Transmittals: {{ versiune.versiune }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.status-badge { display:inline-block; padding:3px 10px; border-radius:10px; font-size:0.78rem; font-weight:600; text-transform:uppercase; }
+.t-pregatit { background:#e2e3e5; color:#383d41; }
+.t-trimis   { background:#cce5ff; color:#004085; }
+.t-primit   { background:#d4edda; color:#155724; }
+.t-respins  { background:#f8d7da; color:#721c24; }
+.tr-actions { display:flex; gap:6px; flex-wrap:wrap; }
+.tr-actions form { display:inline; }
+.tr-actions button { font-size:0.78rem; padding:4px 10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2 style="margin:0;"><i class="fa-solid fa-paper-plane" style="color:var(--primary);"></i> Transmittals</h2>
+        <div style="font-size:0.85rem; color:var(--gray-500); margin-top:4px;">
+            Versiune: <strong>{{ versiune.versiune }}</strong>
+            {% if versiune.disciplina %}| {{ versiune.disciplina }}{% endif %}
+            | {{ transmittals|length }} transmittals
+        </div>
+    </div>
+</div>
+
+{% if current_user.rol in ['admin', 'manager'] %}
+<form method="POST" action="{{ url_for('bim.transmittal_nou', version_id=versiune.id) }}"
+      class="card-panel" style="max-width:780px; margin-bottom:16px;">
+    <div class="card-panel-body" style="padding:18px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <h4 style="margin-top:0;">Transmittal nou</h4>
+        <div style="display:grid; grid-template-columns:1fr 2fr; gap:12px;">
+            <div class="form-group">
+                <label>Cod <span style="color:var(--danger);">*</span></label>
+                <input type="text" name="cod" required maxlength="50" placeholder="TR-2026-001" />
+            </div>
+            <div class="form-group">
+                <label>Nume</label>
+                <input type="text" name="nume" maxlength="200" placeholder="Predare faza DTAC" />
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Destinatari (o linie per destinatar / rol / organizatie)</label>
+            <textarea name="destinatari" rows="3" placeholder="Beneficiar - SC Exemplu SRL&#10;Verificator MLPAT"></textarea>
+        </div>
+        <div class="form-group">
+            <label>Observatii</label>
+            <textarea name="observatii" rows="2"></textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end;">
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Creeaza transmittal</button>
+        </div>
+    </div>
+</form>
+{% endif %}
+
+{% if transmittals %}
+<div class="card-panel">
+    <div class="card-panel-body" style="padding:0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Cod</th>
+                    <th>Nume</th>
+                    <th>Destinatari</th>
+                    <th>Status</th>
+                    <th>Creat</th>
+                    <th>Trimis</th>
+                    <th>Actiuni</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in transmittals %}
+                <tr>
+                    <td><strong>{{ t.cod }}</strong></td>
+                    <td>{{ t.nume or '-' }}</td>
+                    <td>
+                        {% set dest = t.get_destinatari() %}
+                        {% if dest %}
+                        <ul style="margin:0; padding-left:18px; font-size:0.82rem;">
+                            {% for d in dest %}<li>{{ d }}</li>{% endfor %}
+                        </ul>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td><span class="status-badge t-{{ t.status }}">{{ t.label_status }}</span></td>
+                    <td style="font-size:0.82rem;">
+                        {{ t.data_creare.strftime('%d.%m.%Y') if t.data_creare else '-' }}
+                        {% if t.creat_de %}<br><small style="color:var(--gray-500);">{{ t.creat_de.nume }} {{ t.creat_de.prenume }}</small>{% endif %}
+                    </td>
+                    <td style="font-size:0.82rem;">{{ t.data_trimitere.strftime('%d.%m.%Y %H:%M') if t.data_trimitere else '-' }}</td>
+                    <td>
+                        {% if current_user.rol in ['admin', 'manager'] %}
+                        <div class="tr-actions">
+                            {% if t.status == 'pregatit' %}
+                                <form method="POST" action="{{ url_for('bim.transmittal_status', transmittal_id=t.id) }}" onsubmit="return confirm('Marchezi transmittal-ul {{ t.cod }} ca trimis?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="status" value="trimis">
+                                    <button type="submit" class="btn btn-primary">→ Trimis</button>
+                                </form>
+                            {% elif t.status == 'trimis' %}
+                                <form method="POST" action="{{ url_for('bim.transmittal_status', transmittal_id=t.id) }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="status" value="primit">
+                                    <button type="submit" class="btn btn-success" style="background:var(--success); color:white;">→ Primit</button>
+                                </form>
+                                <form method="POST" action="{{ url_for('bim.transmittal_status', transmittal_id=t.id) }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="status" value="respins">
+                                    <button type="submit" class="btn btn-outline" style="color:var(--danger); border-color:var(--danger);">→ Respins</button>
+                                </form>
+                            {% elif t.status == 'respins' %}
+                                <form method="POST" action="{{ url_for('bim.transmittal_status', transmittal_id=t.id) }}" onsubmit="return confirm('Re-trimiti transmittal-ul {{ t.cod }}?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="status" value="trimis">
+                                    <button type="submit" class="btn btn-outline">→ Re-trimite</button>
+                                </form>
+                            {% elif t.status == 'primit' %}
+                                <span style="color:var(--gray-500); font-size:0.85rem;">terminal</span>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="empty-state" style="padding:40px; text-align:center; background:white; border-radius:10px;">
+    <i class="fa-solid fa-paper-plane" style="font-size:2.5rem; color:var(--gray-300);"></i>
+    <p style="margin-top:12px; color:var(--gray-500);">Niciun transmittal pentru aceasta versiune.</p>
+</div>
+{% endif %}
+
+<div style="margin-top:16px; padding:14px; background:#E3F2FD; border-left:3px solid var(--primary); border-radius:6px; font-size:0.88rem;">
+    <strong>Transmittals (ISO 19650):</strong>
+    <code>PREGATIT</code> → <code>TRIMIS</code> → <code>PRIMIT</code> | <code>RESPINS</code> → <code>TRIMIS</code>.
+    Inregistreaza cine a primit ce versiune de model, cand.
+</div>
+{% endblock %}

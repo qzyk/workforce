@@ -28,7 +28,7 @@ from werkzeug.utils import secure_filename
 
 from models import (
     BIMModelVersion, BIMRule, RuleViolation, ClashRun, ClashResult, ClashGroup,
-    BIMIDSSpec, BIMIDSViolation,
+    BIMIDSSpec, BIMIDSViolation, BIMTransmittal,
     BIMTaskSchedule, BIMCostItem,
     Senzor, SensorReading, SensorAlert,
     BIMComment, UserPresence, RealtimeEvent,
@@ -43,6 +43,7 @@ from services import audit as audit_svc
 from services import bim_workflow
 from services import bim_rules as rules_svc
 from services import bim_ids as ids_svc
+from services import bim_transmittals as transmittals_svc
 from services import clash_detection as clash_svc
 from services import bim_4d as fourd_svc
 from services import bim_5d as fived_svc
@@ -1174,6 +1175,77 @@ def api_model_versiuni(model_id):
             'descriere': v.descriere,
         } for v in versiuni],
     })
+
+
+# ============================================================
+# TRANSMITTALS ISO 19650 (Faza 5a) - tracking livrare informationala
+# Extind workflow-ul de versionare; gate pe acelasi flag 'bim-model-versioning'.
+# ============================================================
+
+
+@bim_bp.route('/model-version/<int:version_id>/transmittals')
+@login_required
+@feature_required('bim-model-versioning')
+def transmittals_lista(version_id):
+    """Lista transmittals pentru o versiune de model."""
+    v = BIMModelVersion.query.get_or_404(version_id)
+    transmittals = (BIMTransmittal.query
+                    .filter_by(model_version_id=version_id)
+                    .order_by(BIMTransmittal.data_creare.desc())
+                    .all())
+    return render_template('bim/transmittals_lista.html', versiune=v,
+                           transmittals=transmittals,
+                           statusuri=BIMTransmittal.STATUSURI)
+
+
+@bim_bp.route('/model-version/<int:version_id>/transmittal-nou', methods=['POST'])
+@login_required
+@manager_or_admin
+@feature_required('bim-model-versioning')
+def transmittal_nou(version_id):
+    """Creeaza un transmittal (stare 'pregatit') pentru o versiune de model."""
+    v = BIMModelVersion.query.get_or_404(version_id)
+    # Destinatari: textarea cu o linie per destinatar -> lista
+    raw = request.form.get('destinatari', '').strip()
+    destinatari = [linie.strip() for linie in raw.splitlines() if linie.strip()] or None
+    try:
+        tr = transmittals_svc.create_transmittal(
+            v,
+            cod=request.form.get('cod', '').strip(),
+            nume=request.form.get('nume', '').strip(),
+            destinatari=destinatari,
+            observatii=request.form.get('observatii', '').strip(),
+            user=current_user,
+        )
+        flash(f'Transmittal "{tr.cod}" creat (pregatit).', 'success')
+    except transmittals_svc.TransmittalError as e:
+        flash(str(e), 'danger')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la creare transmittal: {e}', 'danger')
+    return redirect(url_for('bim.transmittals_lista', version_id=version_id))
+
+
+@bim_bp.route('/transmittal/<int:transmittal_id>/status', methods=['POST'])
+@login_required
+@manager_or_admin
+@feature_required('bim-model-versioning')
+def transmittal_status(transmittal_id):
+    """Schimba statusul unui transmittal (trimis / primit / respins), cu audit."""
+    tr = BIMTransmittal.query.get_or_404(transmittal_id)
+    new_status = request.form.get('status', '').strip().lower()
+    observatii = request.form.get('observatii', '').strip() or None
+    try:
+        transmittals_svc.schimba_status(tr, new_status, current_user,
+                                        observatii=observatii)
+        flash(f'Transmittal "{tr.cod}" -> {tr.label_status}.', 'success')
+    except transmittals_svc.TransmittalError as e:
+        flash(str(e), 'danger')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Eroare la tranzitie transmittal: {e}', 'danger')
+    return redirect(url_for('bim.transmittals_lista',
+                            version_id=tr.model_version_id))
 
 
 # ============================================================
