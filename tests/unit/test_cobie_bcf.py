@@ -3,6 +3,7 @@ Teste unit pentru COBie export + BCF round-trip.
 """
 
 import io
+import json
 import zipfile
 
 import pytest
@@ -11,6 +12,7 @@ from openpyxl import load_workbook
 from models import (db, Santier, Cladire, Nivel, Spatiu, ElementBIM,
                     IssueBIM, BIMComment, Utilizator)
 from services import cobie_export, bcf_io
+from services import feature_flags as ff
 
 
 @pytest.fixture
@@ -195,3 +197,120 @@ def test_bcf_severity_mapping():
     assert bcf_io._map_severity('critica') == 'Critical'
     assert bcf_io._reverse_severity('Low') == 'mica'
     assert bcf_io._reverse_severity('High') == 'mare'
+
+
+# ====================================================
+# BCF VIEWPOINT round-trip (Faza 4) - flag bim-bcf-full
+# ====================================================
+
+# Valori ASIMETRICE intentionat: prind erori de mapare axe (x/y/z) + distanta.
+_CAMERA = {
+    'eye': [10.0, 20.0, 30.0],
+    'look': [1.0, 2.0, 3.0],
+    'up': [0.0, 0.0, 1.0],
+    'fov': 55.0,
+}
+
+
+def _vec_aprox(a, b, tol=1e-4):
+    return all(abs(x - y) <= tol for x, y in zip(a, b))
+
+
+def test_bcf_viewpoint_roundtrip(app, hierarchy, admin):
+    """
+    Issue cu camera cunoscuta -> export (flag ON) -> .bcfzip contine viewpoint.bcfv
+    cu CameraViewPoint corect -> import in issue nou -> camera (eye/look/up)
+    pastrata in toleranta float. Miezul fazei.
+    """
+    with app.app_context():
+        ff.set_flag('bim-bcf-full', True)
+        IssueBIM.query.delete(); db.session.commit()
+
+        issue = IssueBIM(titlu='Viewpoint test', tip='neconformitate',
+                         severitate='mare', status='deschis',
+                         element_bim_id=hierarchy['el_id'],
+                         raportat_de_id=admin.id,
+                         viewpoint_json=json.dumps({
+                             'camera': _CAMERA,
+                             'visible_guids': ['1xY2zA3B4C5D6E7F8GHIJK'],
+                             'clipping': [{'pos': [0, 0, 1.5], 'dir': [0, 0, -1]}],
+                         }))
+        db.session.add(issue); db.session.commit()
+
+        buf = bcf_io.export_bcfzip([issue.id])
+        db.session.refresh(issue)
+        export_guid = issue.bcf_topic_guid
+
+        # 1. .bcfzip contine viewpoint.bcfv si markup-ul il refera
+        zf = zipfile.ZipFile(buf, 'r')
+        names = zf.namelist()
+        bcfv = [n for n in names if n.endswith('viewpoint.bcfv')]
+        assert len(bcfv) == 1, f'lipseste viewpoint.bcfv: {names}'
+        markup = zf.read(f'{export_guid}/markup.bcf').decode('utf-8')
+        assert 'Viewpoints' in markup and 'viewpoint.bcfv' in markup
+
+        # 2. CameraViewPoint din .bcfv reflecta eye (10,20,30)
+        vp_xml = zf.read(bcfv[0]).decode('utf-8')
+        assert 'PerspectiveCamera' in vp_xml
+        assert 'CameraViewPoint' in vp_xml
+        parsed = bcf_io._parse_viewpoint_xml(vp_xml)
+        assert _vec_aprox(parsed['camera']['eye'], _CAMERA['eye'])
+
+        # 3. Import intr-un issue nou (guid nou) -> camera pastrata
+        IssueBIM.query.delete(); db.session.commit()
+        buf.seek(0)
+        stats = bcf_io.import_bcfzip(buf, user=admin)
+        assert stats['created'] == 1
+
+        iss2 = IssueBIM.query.filter_by(bcf_topic_guid=export_guid).first()
+        assert iss2 is not None and iss2.viewpoint_json
+        vp = json.loads(iss2.viewpoint_json)
+        # eye, look, up TOATE verificate (nu doar ca fisierul exista)
+        assert _vec_aprox(vp['camera']['eye'], _CAMERA['eye'])
+        assert _vec_aprox(vp['camera']['look'], _CAMERA['look'])  # distanta pastrata
+        assert _vec_aprox(vp['camera']['up'], _CAMERA['up'])
+        assert abs(vp['camera']['fov'] - _CAMERA['fov']) < 1e-3
+        # visibility + clipping pastrate
+        assert vp.get('visible_guids') == ['1xY2zA3B4C5D6E7F8GHIJK']
+        assert vp['clipping'][0]['pos'] == [0, 0, 1.5]
+
+        ff.set_flag('bim-bcf-full', False)
+
+
+def test_bcf_export_regresie_flag_off(app, hierarchy, admin):
+    """
+    Cu flag 'bim-bcf-full' OFF, chiar daca issue are viewpoint_json, .bcfzip e ca
+    azi: doar markup.bcf, FARA viewpoint.bcfv, FARA element Viewpoints in markup.
+    """
+    with app.app_context():
+        ff.set_flag('bim-bcf-full', False)
+        IssueBIM.query.delete(); db.session.commit()
+
+        issue = IssueBIM(titlu='Regresie flag off', tip='neconformitate',
+                         severitate='medie', status='deschis',
+                         element_bim_id=hierarchy['el_id'],
+                         raportat_de_id=admin.id,
+                         viewpoint_json=json.dumps({'camera': _CAMERA}))
+        db.session.add(issue); db.session.commit()
+
+        buf = bcf_io.export_bcfzip([issue.id])
+        zf = zipfile.ZipFile(buf, 'r')
+        names = zf.namelist()
+        assert 'bcf.version' in names
+        assert not any(n.endswith('viewpoint.bcfv') for n in names), \
+            'cu flag OFF nu trebuie sa existe viewpoint.bcfv'
+        db.session.refresh(issue)
+        markup = zf.read(f'{issue.bcf_topic_guid}/markup.bcf').decode('utf-8')
+        assert 'Viewpoints' not in markup, 'markup-ul nu trebuie sa refere viewpoint'
+
+
+def test_bcf_viewpoint_xml_helpers():
+    """_make_viewpoint_xml + _parse_viewpoint_xml: round-trip pur la nivel XML."""
+    xml = bcf_io._make_viewpoint_xml({'camera': _CAMERA})
+    assert xml is not None
+    parsed = bcf_io._parse_viewpoint_xml(xml)
+    assert _vec_aprox(parsed['camera']['eye'], _CAMERA['eye'])
+    assert _vec_aprox(parsed['camera']['look'], _CAMERA['look'])
+    assert _vec_aprox(parsed['camera']['up'], _CAMERA['up'])
+    # camera fara look/eye -> None (degradare gratioasa)
+    assert bcf_io._make_viewpoint_xml({'camera': {'eye': [1, 2, 3]}}) is None

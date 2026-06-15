@@ -423,6 +423,8 @@ def create_app(config_name='default'):
             ('bim_assets', 'source_system', 'VARCHAR(30)'),
             ('bim_issues', 'extern_id', 'VARCHAR(100)'),
             ('bim_issues', 'source_system', 'VARCHAR(30)'),
+            # Faza 4: view-state pe issue (camera + visibility + clipping) -> BCF viewpoint
+            ('bim_issues', 'viewpoint_json', 'TEXT'),
             ('bim_modele', 'extern_id', 'VARCHAR(100)'),
             ('bim_modele', 'source_system', 'VARCHAR(30)'),
             ('bim_modele', 'last_synced_at', 'DATETIME'),

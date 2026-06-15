@@ -1778,6 +1778,12 @@ class IssueBIM(db.Model):
     extern_id = db.Column(db.String(100), nullable=True, index=True)  # ID in alt issue tracker
     source_system = db.Column(db.String(30), nullable=True)
 
+    # Faza 4 BIM: view-state pe issue (camera + componente vizibile + clipping).
+    # JSON serializat: {"camera": {"eye":[x,y,z], "look":[x,y,z], "up":[x,y,z],
+    # "fov":60}, "visible_guids": [...], "clipping": [{"pos":[..], "dir":[..]}]}.
+    # Sursa pentru viewpoint.bcfv la export BCF (flag bim-bcf-full ON). Nullable.
+    viewpoint_json = db.Column(db.Text, nullable=True)
+
     data_creare = db.Column(db.DateTime, default=datetime.utcnow)
     data_actualizare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
