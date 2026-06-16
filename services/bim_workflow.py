@@ -43,8 +43,65 @@ TRANZITII_PRIVILEGIATE = {
 }
 
 
+# Maparea tranzitiilor privilegiate la actiuni RBAC (services/rbac.py).
+# Folosita doar cand flag-ul 'bim-rbac-fine' e ON. share-ul (wip->shared)
+# nu e privilegiat, dar il mapam pentru completitudine cand verificam fin.
+TRANZITIE_LA_ACTIUNE_RBAC = {
+    ('wip', 'shared'): 'version:share',
+    ('shared', 'published'): 'version:publish',
+    ('shared', 'rejected'): 'version:reject',
+    ('published', 'archived'): 'version:archive',
+    ('shared', 'archived'): 'version:archive',
+    ('wip', 'archived'): 'version:archive',
+    ('rejected', 'archived'): 'version:archive',
+    ('rejected', 'wip'): 'version:publish',  # restart workflow: tratat ca privilegiu de publish
+}
+
+
 def _user_is_manager_or_admin(user) -> bool:
     return bool(user) and getattr(user, 'rol', None) in ('admin', 'manager')
+
+
+def _rbac_fine_enabled() -> bool:
+    """True cand flag-ul 'bim-rbac-fine' e activ (per tenant sau global)."""
+    try:
+        from services import feature_flags as ff
+        return ff.is_enabled('bim-rbac-fine')
+    except Exception:
+        return False
+
+
+def _scope_din_versiune(version: BIMModelVersion) -> dict:
+    """
+    Extrage scope-ul (santier_id / cladire_id / disciplina) din versiune,
+    pentru a-l da lui rbac.has_permission. Disciplina e pe versiune; santier
+    si cladire vin de pe modelul parinte (best-effort, degradare gratioasa)."""
+    santier_id = None
+    cladire_id = None
+    try:
+        model = version.model
+        if model is not None:
+            santier_id = getattr(model, 'santier_id', None)
+            cladire_id = getattr(model, 'cladire_id', None)
+    except Exception:
+        pass
+    return {
+        'santier_id': santier_id,
+        'cladire_id': cladire_id,
+        'disciplina': version.disciplina,
+    }
+
+
+def _permite_rbac_fin(user, version: BIMModelVersion, action: str) -> bool:
+    """
+    Verifica permisiunea fina prin rbac.has_permission pe scope-ul versiunii.
+    Import lazy ca sa nu cuplam workflow-ul de rbac la incarcare."""
+    try:
+        from services import rbac
+    except Exception:
+        return False
+    scope = _scope_din_versiune(version)
+    return rbac.has_permission(user, action, **scope)
 
 
 def _user_is_creator(user, version: BIMModelVersion) -> bool:
@@ -68,15 +125,37 @@ def can_user_transition(user, version: BIMModelVersion, new_status: str) -> tupl
 
     transition_key = (version.status, new_status)
 
-    # Tranzitiile privilegiate cer rol elevat
+    rbac_fin = _rbac_fine_enabled()
+
+    # Tranzitiile privilegiate cer autorizare.
+    # - flag 'bim-rbac-fine' OFF (default): rol elevat admin/manager (comportament istoric).
+    # - flag ON: permisiune RBAC fina pe scope-ul disciplinei/santierului versiunii,
+    #   SAU rol elevat admin/manager (admin-ul tenant bypaseaza oricum in has_permission).
     if transition_key in TRANZITII_PRIVILEGIATE:
-        if not _user_is_manager_or_admin(user):
-            return False, 'Doar managerii / administratorii pot face aceasta tranzitie.'
+        if rbac_fin:
+            action = TRANZITIE_LA_ACTIUNE_RBAC.get(transition_key)
+            if action and _permite_rbac_fin(user, version, action):
+                pass  # autorizat fin
+            elif _user_is_manager_or_admin(user):
+                pass  # fallback pe rolul global (admin/manager raman privilegiati)
+            else:
+                disc = version.disciplina or 'aceasta disciplina'
+                return False, (
+                    f'Nu ai permisiunea RBAC pentru aceasta tranzitie pe disciplina {disc}. '
+                    f'Necesita un rol BIM cu "{action}" pe scope-ul versiunii.'
+                )
+        else:
+            if not _user_is_manager_or_admin(user):
+                return False, 'Doar managerii / administratorii pot face aceasta tranzitie.'
 
     # Caz special: shared -> wip (rollback to draft).
-    # Permis creatorului versiunii sau admin/manager.
+    # Permis creatorului versiunii sau admin/manager. Cu flag fin ON, si
+    # detinatorilor de permisiune 'version:share' pe disciplina (echipa task team).
     if transition_key == ('shared', 'wip'):
-        if not (_user_is_creator(user, version) or _user_is_manager_or_admin(user)):
+        autorizat = _user_is_creator(user, version) or _user_is_manager_or_admin(user)
+        if not autorizat and rbac_fin:
+            autorizat = _permite_rbac_fin(user, version, 'version:share')
+        if not autorizat:
             return False, 'Doar autorul sau un manager poate retrage o versiune din shared.'
 
     return True, 'OK'
