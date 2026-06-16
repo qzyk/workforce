@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 import pytest
 from openpyxl import load_workbook
 
-from models import (db, Santier, Cladire, Nivel, Spatiu, ElementBIM,
+from models import (db, Santier, Cladire, Nivel, Zona, Spatiu, ElementBIM,
                     IssueBIM, BIMComment, Utilizator)
 from services import cobie_export, bcf_io
 from services import feature_flags as ff
@@ -35,14 +35,24 @@ def hierarchy(app):
         n = Nivel(cladire_id=c.id, cod='P', nume='Parter', elevatie_m=0,
                   inaltime_m=3.0)
         db.session.add(n); db.session.flush()
-        sp = Spatiu(nivel_id=n.id, cod='SP1', nume='Birou', tip_spatiu='Office')
+        # Zona (grupare logica) cu un spatiu membru -> COBie Zone cu date reale
+        z = Zona(cladire_id=c.id, nivel_id=n.id, cod='ZN1', nume='Zona birouri',
+                 tip_zona='functional')
+        db.session.add(z); db.session.flush()
+        sp = Spatiu(nivel_id=n.id, zona_id=z.id, cod='SP1', nume='Birou',
+                    tip_spatiu='Office')
         db.session.add(sp); db.session.flush()
+        # Doua elemente cu categorii diferite -> 2 sisteme COBie distincte
         el = ElementBIM(cladire_id=c.id, spatiu_id=sp.id,
                         cod='W001', tip_element='wall', status='construit',
                         nume='Perete 1', ifc_global_id='1xY2zA3B4C5D6E7F8GHIJK')
-        db.session.add(el); db.session.commit()
-        yield {'santier_id': s.id, 'cladire_id': c.id,
-               'nivel_id': n.id, 'spatiu_id': sp.id, 'el_id': el.id}
+        el2 = ElementBIM(cladire_id=c.id, spatiu_id=sp.id,
+                         cod='AHU001', tip_element='AHU', status='construit',
+                         nume='Centrala tratare aer')
+        db.session.add_all([el, el2]); db.session.commit()
+        yield {'santier_id': s.id, 'cladire_id': c.id, 'zona_id': z.id,
+               'nivel_id': n.id, 'spatiu_id': sp.id, 'el_id': el.id,
+               'el2_id': el2.id}
 
 
 # ====================================================
@@ -50,12 +60,65 @@ def hierarchy(app):
 # ====================================================
 
 def test_cobie_export_has_required_sheets(app, hierarchy, admin):
+    """Workbook-ul COBie contine SETUL COMPLET de 10 sheet-uri suportate."""
     with app.app_context():
         buf = cobie_export.generate_cobie_workbook(hierarchy['santier_id'],
                                                     generated_by='test@local')
         wb = load_workbook(buf)
-        expected = {'Facility', 'Floor', 'Space', 'Type', 'Component', 'Contact'}
+        expected = {'Facility', 'Floor', 'Space', 'Zone', 'Type', 'Component',
+                    'System', 'Contact', 'Job', 'Resource'}
         assert set(wb.sheetnames) == expected
+
+
+def test_cobie_zone_sheet_has_data_and_members(app, hierarchy, admin):
+    """Zone are date reale din modelul Zona + SpaceNames cu spatiul membru."""
+    with app.app_context():
+        buf = cobie_export.generate_cobie_workbook(hierarchy['santier_id'])
+        wb = load_workbook(buf)
+        ws = wb['Zone']
+        # header verificat exact (COBie 2.4)
+        header = [c.value for c in ws[1]]
+        assert header[:5] == ['Name', 'CreatedBy', 'CreatedOn', 'Category', 'SpaceNames']
+        assert ws.max_row == 2  # header + 1 zona
+        row = list(ws.iter_rows(min_row=2, max_row=2, values_only=True))[0]
+        assert row[0] == 'ZN1'
+        assert row[3] == 'functional'
+        # SpaceNames trebuie sa contina codul spatiului membru
+        assert 'SP1' in str(row[4])
+
+
+def test_cobie_system_groups_by_category(app, hierarchy, admin):
+    """System deriva sisteme din categoria tipului: wall->structural, AHU->mep_hvac."""
+    with app.app_context():
+        buf = cobie_export.generate_cobie_workbook(hierarchy['santier_id'])
+        wb = load_workbook(buf)
+        ws = wb['System']
+        header = [c.value for c in ws[1]]
+        assert header[:5] == ['Name', 'CreatedBy', 'CreatedOn', 'Category', 'ComponentNames']
+        # 2 categorii distincte -> 2 randuri (structural + mep_hvac)
+        rows = list(ws.iter_rows(min_row=2, values_only=True))
+        names = {r[0] for r in rows}
+        assert 'SYSTEM-structural' in names
+        assert 'SYSTEM-mep_hvac' in names
+        # componentele corecte in fiecare sistem
+        by_name = {r[0]: r for r in rows}
+        assert 'W001' in str(by_name['SYSTEM-structural'][4])
+        assert 'AHU001' in str(by_name['SYSTEM-mep_hvac'][4])
+
+
+def test_cobie_job_resource_present_header_only(app, hierarchy, admin):
+    """Job si Resource sunt prezente cu antet corect, dar 0 randuri de date."""
+    with app.app_context():
+        buf = cobie_export.generate_cobie_workbook(hierarchy['santier_id'])
+        wb = load_workbook(buf)
+        for sheet, first_cols in (
+            ('Job', ['Name', 'CreatedBy', 'CreatedOn', 'Category', 'Status']),
+            ('Resource', ['Name', 'CreatedBy', 'CreatedOn', 'Category']),
+        ):
+            ws = wb[sheet]
+            assert ws.max_row == 1, f'{sheet} ar trebui sa aiba doar antetul'
+            header = [c.value for c in ws[1]]
+            assert header[:len(first_cols)] == first_cols
 
 
 def test_cobie_facility_row(app, hierarchy, admin):

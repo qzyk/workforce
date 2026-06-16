@@ -4,13 +4,21 @@ COBie export (Construction Operations Building Information Exchange).
 Genereaza un fisier Excel cu structura COBie standard pentru facility
 management handover. Coloane conform COBie 2.4.
 
-Tab-uri principale generate:
+Tab-uri generate (COBie 2.4, set complet de 10 sheet-uri suportate):
 - Facility (santier)
 - Floor (nivel)
 - Space (spatiu)
-- Component (element_bim) - din modelele BIM
+- Zone (grupare logica de spatii - din modelul Zona)
 - Type (tip element clasificat)
+- Component (element_bim) - din modelele BIM
+- System (grupare functionala de componente, derivata din categoria tipului)
 - Contact (utilizatori implicati)
+- Job (mentenanta/operare) - fara sursa de date in modele -> header + 0 randuri
+- Resource (resurse de mentenanta) - fara sursa de date -> header + 0 randuri
+
+Job si Resource sunt emise cu antet corect chiar daca 0 randuri: un workbook
+COBie valid asteapta sheet-urile prezente. Cand vom avea un model de mentenanta
+(planuri PPM / resurse FM) le vom popula din relatiile respective.
 """
 
 from __future__ import annotations
@@ -23,7 +31,7 @@ from typing import Optional
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
-from models import (db, Santier, Cladire, Nivel, Spatiu, ElementBIM,
+from models import (db, Santier, Cladire, Nivel, Zona, Spatiu, ElementBIM,
                      Utilizator, Asset)
 
 
@@ -56,6 +64,32 @@ COBIE_CONTACT_COLS = ['Email', 'CreatedBy', 'CreatedOn', 'Category', 'Company',
                       'Phone', 'ExtSystem', 'ExtObject', 'ExtIdentifier',
                       'GivenName', 'FamilyName', 'Street', 'PostalBox',
                       'Town', 'StateRegion', 'PostalCode', 'Country', 'Category']
+# COBie 2.4 - Zone: grupare logica de spatii (SpaceNames = lista membri).
+COBIE_ZONE_COLS = ['Name', 'CreatedBy', 'CreatedOn', 'Category', 'SpaceNames',
+                   'ExtSystem', 'ExtObject', 'ExtIdentifier', 'Description']
+# COBie 2.4 - System: grupare functionala de componente (ComponentNames = membri).
+COBIE_SYSTEM_COLS = ['Name', 'CreatedBy', 'CreatedOn', 'Category', 'ComponentNames',
+                     'ExtSystem', 'ExtObject', 'ExtIdentifier', 'Description']
+# COBie 2.4 - Job: activitati de mentenanta/operare planificate.
+COBIE_JOB_COLS = ['Name', 'CreatedBy', 'CreatedOn', 'Category', 'Status', 'TypeName',
+                  'Description', 'Duration', 'DurationUnit', 'Start', 'TaskStartUnit',
+                  'Frequency', 'FrequencyUnit', 'ExtSystem', 'ExtObject',
+                  'ExtIdentifier', 'TaskNumber', 'Priors', 'ResourceNames']
+# COBie 2.4 - Resource: resurse (materiale/unelte/personal) folosite la Jobs.
+COBIE_RESOURCE_COLS = ['Name', 'CreatedBy', 'CreatedOn', 'Category',
+                       'ExtSystem', 'ExtObject', 'ExtIdentifier', 'Description']
+
+
+# Maparea tip_element -> categorie (din ElementBIM.TIPURI) pentru a deriva
+# sistemele COBie (System grupeaza componentele pe functie/categorie).
+def _categorie_tip(tip_element: str) -> str:
+    """Categoria functionala a unui tip de element (ex. 'mep_hvac', 'structural').
+
+    Cade pe 'general' cand tipul nu e in nomenclatorul ElementBIM.TIPURI."""
+    for cod, _label, categorie in ElementBIM.TIPURI:
+        if cod == tip_element:
+            return categorie
+    return 'general'
 
 
 def _write_header(ws, columns: list[str]):
@@ -167,6 +201,26 @@ def generate_cobie_workbook(santier_id: int, *, generated_by: Optional[str] = No
     _autosize(ws)
 
     # =========================
+    # ZONE (grupare logica de spatii - din modelul Zona)
+    # SpaceNames = lista codurilor spatiilor membre (separator ',').
+    # =========================
+    ws = wb.create_sheet('Zone')
+    _write_header(ws, COBIE_ZONE_COLS)
+    for cladire in cladiri:
+        for zona in Zona.query.filter_by(cladire_id=cladire.id).order_by(Zona.cod).all():
+            spatii_membre = [sp.cod for sp in
+                             Spatiu.query.filter_by(zona_id=zona.id).order_by(Spatiu.cod).all()]
+            ws.append([
+                zona.cod,
+                created_by, now_str,
+                zona.tip_zona or 'Zone',
+                ','.join(spatii_membre),
+                'workforce-bim', 'Zona', zona.extern_id or str(zona.id),
+                zona.descriere or zona.nume or '',
+            ])
+    _autosize(ws)
+
+    # =========================
     # TYPE (un Type per tip_element distinct)
     # =========================
     ws = wb.create_sheet('Type')
@@ -216,6 +270,30 @@ def generate_cobie_workbook(santier_id: int, *, generated_by: Optional[str] = No
     _autosize(ws)
 
     # =========================
+    # SYSTEM (grupare functionala de componente, derivata din categoria tipului)
+    # ComponentNames = codurile componentelor din acel sistem. Un sistem per
+    # categorie distincta gasita pe elemente (ex. mep_hvac, structural, ...).
+    # =========================
+    ws = wb.create_sheet('System')
+    _write_header(ws, COBIE_SYSTEM_COLS)
+    sisteme: dict[str, list[str]] = {}
+    if cladiri_ids:
+        for el in ElementBIM.query.filter(ElementBIM.cladire_id.in_(cladiri_ids)).all():
+            categorie = _categorie_tip(el.tip_element)
+            sisteme.setdefault(categorie, []).append(el.cod)
+    for categorie in sorted(sisteme.keys()):
+        componente = sorted(sisteme[categorie])
+        ws.append([
+            f'SYSTEM-{categorie}',
+            created_by, now_str,
+            categorie,
+            ','.join(componente),
+            'workforce-bim', 'ElementBIM.categorie', categorie,
+            f'Sistem functional {categorie} ({len(componente)} componente)',
+        ])
+    _autosize(ws)
+
+    # =========================
     # CONTACT (utilizatorii care au creat asset-uri / incarcat modele)
     # =========================
     ws = wb.create_sheet('Contact')
@@ -233,6 +311,23 @@ def generate_cobie_workbook(santier_id: int, *, generated_by: Optional[str] = No
             u.prenume or '', u.nume or '',
             '', '', '', '', '', '', '',  # Address fields
         ])
+    _autosize(ws)
+
+    # =========================
+    # JOB (mentenanta/operare) - fara sursa de date in modelele actuale.
+    # Emis cu antet corect + 0 randuri pentru un workbook COBie complet.
+    # Se va popula cand vom avea planuri de mentenanta (PPM) in model.
+    # =========================
+    ws = wb.create_sheet('Job')
+    _write_header(ws, COBIE_JOB_COLS)
+    _autosize(ws)
+
+    # =========================
+    # RESOURCE (resurse pt Jobs) - fara sursa de date in modelele actuale.
+    # Emis cu antet corect + 0 randuri (idem Job).
+    # =========================
+    ws = wb.create_sheet('Resource')
+    _write_header(ws, COBIE_RESOURCE_COLS)
     _autosize(ws)
 
     # Salveaza in memorie
