@@ -108,6 +108,25 @@ def test_element_fara_proprietatea_ceruta_genereaza_violare(app, admin):
         assert det['proprietate'] == 'FireRating'
 
 
+def test_revalidare_nu_acumuleaza_violarile(app, admin):
+    """Re-rularea aceleiasi spec (flux normal ISO 19650 dupa corectii) NU trebuie
+    sa dubleze violarile: o validare reflecta starea curenta, nu istoricul."""
+    with app.app_context():
+        s = Santier(cod='S-IDS-RE', nume='X'); db.session.add(s); db.session.flush()
+        c = Cladire(santier_id=s.id, cod='C1', nume='Y'); db.session.add(c); db.session.flush()
+        _make_element(c.id, 'W-RE', tip='wall',
+                      proprietati={'Pset_WallCommon': {'IsExternal': True}})
+        spec = _spec(admin, {'clase_ifc': ['wall'],
+                             'proprietati_cerute': [
+                                 {'pset': 'Pset_WallCommon', 'nume': 'FireRating'}]})
+        # 3 rulari succesive pe acelasi element neconform
+        for _ in range(3):
+            res = bim_ids.valideaza_spec(spec, user=admin)
+            assert res['total_violations'] == 1
+        # Totalul din DB ramane 1 (o singura neconformitate reala), NU 3 cumulat
+        assert BIMIDSViolation.query.filter_by(spec_id=spec.id).count() == 1
+
+
 def test_element_fara_proprietati_json_e_lipsa_date_nu_pass_fals(app, admin):
     with app.app_context():
         s = Santier(cod='S-IDS3', nume='X'); db.session.add(s); db.session.flush()

@@ -262,6 +262,12 @@ def valideaza_spec(spec: BIMIDSSpec, scope: Optional[dict] = None,
     by_status: dict[str, int] = {}
     tenant_id = getattr(user, 'tenant_id', None) if user else None
 
+    # O validare reflecta STAREA CURENTA a spec-ului, nu istoricul cumulat:
+    # stergem violarile rularilor anterioare inainte de a le insera pe cele noi
+    # (analog ClashResult per run). Altfel count-ul si tabelul s-ar umfla la
+    # fiecare re-validare - fluxul normal ISO 19650 (re-rulare dupa corectii).
+    BIMIDSViolation.query.filter_by(spec_id=spec.id).delete(synchronize_session=False)
+
     for vd in violations_data:
         sev = vd.get('severitate', severitate_default)
         violation = BIMIDSViolation(
