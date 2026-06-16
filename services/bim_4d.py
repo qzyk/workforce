@@ -101,6 +101,141 @@ def update_progress(schedule: BIMTaskSchedule, progres_pct: int, *,
 
 
 # ====================================================
+# SYNC plan <-> actuals (4D)
+# Propaga progresul real raportat din executie (RaportActivitate) catre
+# schedule-urile 4D legate de acelasi element BIM. Reutilizeaza update_progress.
+# ====================================================
+
+def _flag_4d_enabled() -> bool:
+    """True cand flag-ul '4D schedule' e activ (per tenant sau global)."""
+    try:
+        from services import feature_flags as ff
+        return ff.is_enabled('bim-4d-schedule')
+    except Exception:
+        return False
+
+
+def _progres_real_pe_element() -> dict:
+    """
+    {element_bim_id: procent_max} agregat din RaportActivitate.
+
+    Un element poate avea mai multe rapoarte (zile/echipe diferite). Luam
+    MAXIMUL procent_realizare: elementul e cel putin atat de avansat cat
+    indica cel mai avansat raport. Ignoram rapoartele fara procent_realizare
+    (nu suprascriem un progres existent cu 0 implicit)."""
+    from models import RaportActivitate
+    agregat: dict[int, int] = {}
+    rapoarte = (RaportActivitate.query
+                .filter(RaportActivitate.element_bim_id.isnot(None),
+                        RaportActivitate.procent_realizare.isnot(None))
+                .all())
+    for r in rapoarte:
+        pct = max(0, min(100, int(r.procent_realizare)))
+        eid = r.element_bim_id
+        if pct > agregat.get(eid, -1):
+            agregat[eid] = pct
+    return agregat
+
+
+def sync_actuals_pentru_element(element_bim_id: int, *, user=None,
+                                commit: bool = True) -> dict:
+    """
+    Sincronizeaza progresul real al unui singur element catre toate schedule-urile lui.
+
+    Sursa: MAXIMUL RaportActivitate.procent_realizare pe acel element.
+    Tinta: BIMTaskSchedule.progres_pct (via update_progress, care auto-deriva status).
+
+    Idempotent: re-rularea cu aceleasi date nu produce schimbari (update_progress
+    actualizeaza doar la diferenta). Returneaza {actualizate, fara_schimbare, progres}."""
+    from models import RaportActivitate
+
+    rezultat = {'actualizate': 0, 'fara_schimbare': 0, 'progres': None}
+    if not _flag_4d_enabled():
+        return rezultat
+
+    pct_row = (db.session.query(db.func.max(RaportActivitate.procent_realizare))
+               .filter(RaportActivitate.element_bim_id == element_bim_id,
+                       RaportActivitate.procent_realizare.isnot(None))
+               .scalar())
+    if pct_row is None:
+        return rezultat  # niciun raport cu procent -> nimic de sincronizat
+    progres = max(0, min(100, int(pct_row)))
+    rezultat['progres'] = progres
+
+    schedules = BIMTaskSchedule.query.filter_by(element_bim_id=element_bim_id).all()
+    for sched in schedules:
+        if sched.progres_pct == progres:
+            rezultat['fara_schimbare'] += 1
+            continue
+        update_progress(sched, progres, user=user, commit=False)
+        rezultat['actualizate'] += 1
+
+    if commit and rezultat['actualizate']:
+        db.session.commit()
+    return rezultat
+
+
+def sync_actuals_din_rapoarte(*, santier_id: Optional[int] = None,
+                              user=None, commit: bool = True) -> dict:
+    """
+    Sincronizeaza in masa progresul real (RaportActivitate.procent_realizare) catre
+    schedule-urile 4D, prin element_bim_id comun. Gate pe flag 'bim-4d-schedule'.
+
+    Daca santier_id e dat, se limiteaza la elementele acelui santier; altfel global.
+    Idempotent. Returneaza {elemente, actualizate, fara_schimbare, sarite}.
+
+    Acoperire (de ce e MAJOR in audit): pana acum progres_pct era manual si
+    decuplat de executia reala. Aceasta punte inchide bucla plan<->actuals 4D."""
+    rezultat = {'elemente': 0, 'actualizate': 0, 'fara_schimbare': 0, 'sarite': 0}
+    if not _flag_4d_enabled():
+        return rezultat
+
+    agregat = _progres_real_pe_element()
+    if not agregat:
+        return rezultat
+
+    # Restrangere optionala la elementele unui santier
+    elemente_permise = None
+    if santier_id is not None:
+        cladiri_ids = [c.id for c in Cladire.query.filter_by(santier_id=santier_id).all()]
+        if not cladiri_ids:
+            return rezultat
+        elemente_permise = {
+            e.id for e in ElementBIM.query
+            .filter(ElementBIM.cladire_id.in_(cladiri_ids)).all()
+        }
+
+    for element_bim_id, progres in agregat.items():
+        if elemente_permise is not None and element_bim_id not in elemente_permise:
+            continue
+        schedules = BIMTaskSchedule.query.filter_by(
+            element_bim_id=element_bim_id).all()
+        if not schedules:
+            rezultat['sarite'] += 1
+            continue
+        rezultat['elemente'] += 1
+        for sched in schedules:
+            if sched.progres_pct == progres:
+                rezultat['fara_schimbare'] += 1
+                continue
+            update_progress(sched, progres, user=user, commit=False)
+            rezultat['actualizate'] += 1
+
+    if commit and rezultat['actualizate']:
+        db.session.commit()
+    try:
+        from services import audit
+        audit.log('sync_actuals', 'bim_task_schedule', None,
+                  new_values={'santier_id': santier_id,
+                              'elemente': rezultat['elemente'],
+                              'actualizate': rezultat['actualizate']},
+                  commit=True)
+    except Exception:
+        pass
+    return rezultat
+
+
+# ====================================================
 # QUERY: 4D Timeline
 # ====================================================
 
