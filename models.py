@@ -459,7 +459,17 @@ class Concediu(db.Model):
     observatii = db.Column(db.Text)
     data_creare = db.Column(db.DateTime, default=datetime.utcnow)
 
-    aprobator = db.relationship('Utilizator', backref='concedii_aprobate')
+    # Faza wf-1: coloane aditive nullable pentru workflow complet de aprobare.
+    # data_aprobare = momentul aprobarii/respingerii; motiv_respingere = nota la respingere;
+    # introdus_de = utilizatorul care a creat cererea (audit minim).
+    data_aprobare = db.Column(db.DateTime)
+    motiv_respingere = db.Column(db.Text)
+    introdus_de = db.Column(db.Integer, db.ForeignKey('utilizatori.id'))
+
+    aprobator = db.relationship('Utilizator', foreign_keys=[aprobat_de],
+                                backref='concedii_aprobate')
+    autor = db.relationship('Utilizator', foreign_keys=[introdus_de],
+                            backref='concedii_introduse')
 
     TIPURI = [
         ('CO', 'Concediu de odihna'),

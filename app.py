@@ -90,6 +90,7 @@ def create_app(config_name='default'):
     from routes.gantt import gantt_bp  # Planificare Gantt din F3 (WBS + dependente + export P6/MSP)
     from routes.teren import teren_bp  # Captura rapida din teren (mobil-first)
     from routes.banca_preturi import banca_preturi_bp  # Banca preturi resurse (gated 'banca-preturi')
+    from routes.concedii import concedii_bp  # Gestiune concedii / absente (gated 'concedii')
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -109,6 +110,7 @@ def create_app(config_name='default'):
     app.register_blueprint(gantt_bp)  # url_prefix '/gantt' definit in blueprint
     app.register_blueprint(teren_bp)  # url_prefix '/teren' definit in blueprint
     app.register_blueprint(banca_preturi_bp)  # url_prefix '/banca-preturi' definit in blueprint
+    app.register_blueprint(concedii_bp)  # url_prefix '/concedii' definit in blueprint (gated 'concedii')
 
     # Context processor pentru token Mapbox public (vizibil in template-uri).
     # Token-ul public e safe sa apara in HTML (asta e flow-ul Mapbox standard).
@@ -433,6 +435,11 @@ def create_app(config_name='default'):
             ('bim_clash_runs', 'tolerance_mm', 'INTEGER'),
             # Faza 5a: tabelele bim_ids_spec, bim_ids_violation si bim_transmittal
             # sunt create de db.create_all() de mai sus (tabele noi, fara ALTER).
+            # Workforce Faza 1: coloane aditive nullable pe tabela existenta 'concedii'
+            # (workflow complet de aprobare). Pe prod se aplica prin migrate-bim.
+            ('concedii', 'data_aprobare', 'DATETIME'),
+            ('concedii', 'motiv_respingere', 'TEXT'),
+            ('concedii', 'introdus_de', 'INTEGER REFERENCES utilizatori(id)'),
         ]
 
         adaugate = 0

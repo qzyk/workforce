@@ -75,6 +75,9 @@ KNOWN_FLAGS: dict[str, str] = {
     # Extragere proprietati BIM la import IFC
     'bim-pset-extraction': 'Extrage Property Sets (IfcPropertySet) + bounding box geometric la importul IFC '
                            '(populeaza proprietati_json + bbox_json). Mareste efortul de import; default OFF.',
+    # Workforce Faza 1 - gestiune concedii / absente
+    'concedii': 'Modul Concedii (gestiune absente): lista + creare cereri, workflow '
+                'aprobare/respingere, calendar vizual de absente. Default OFF.',
 }
 
 
