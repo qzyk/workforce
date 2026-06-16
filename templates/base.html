@@ -95,6 +95,14 @@
                         {% endif %}
                     </a>
                 </li>
+                {% if feature_enabled('concedii') %}
+                <li>
+                    <a href="{{ url_for('concedii.lista') }}" class="{% if request.endpoint and 'concedii' in request.endpoint %}active{% endif %}">
+                        <i class="fa-solid fa-umbrella-beach"></i>
+                        <span>{{ _('Concedii') }}</span>
+                    </a>
+                </li>
+                {% endif %}
                 <li>
                     <a href="{{ url_for('teren.index') }}" class="{% if request.endpoint and request.endpoint.startswith('teren') %}active{% endif %}">
                         <i class="fa-solid fa-helmet-safety"></i>

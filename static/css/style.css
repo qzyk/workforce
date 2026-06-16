@@ -762,7 +762,7 @@ a:hover { color: var(--primary-light); }
 }
 
 .badge-active, .badge-aprobat { background: #e8f5e9; color: var(--success); }
-.badge-pending, .badge-trimis { background: #fff3e0; color: #e65100; }
+.badge-pending, .badge-trimis, .badge-cerut { background: #fff3e0; color: #e65100; }
 .badge-draft { background: var(--gray-100); color: var(--gray-600); }
 .badge-danger, .badge-expirat, .badge-respins { background: #ffebee; color: var(--danger); }
 .badge-in_curand { background: #fff8e1; color: #f57f17; }

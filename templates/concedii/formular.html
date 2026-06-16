@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Cerere concediu - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('concedii.lista') }}">Concedii</a>
+<span>/</span>
+<span class="active">Cerere noua</span>
+{% endblock %}
+
+{% block content %}
+<h2 style="margin:0 0 18px;"><i class="fa-solid fa-umbrella-beach" style="color:var(--primary);"></i>
+    Cerere de concediu</h2>
+
+<div class="card-panel" style="max-width:720px; padding:22px;">
+    <form method="POST">
+        {{ form.hidden_tag() }}
+        {% macro camp(f, span=1) %}
+        <div style="grid-column: span {{ span }};">
+            <label style="display:block; font-size:.82rem; font-weight:600; margin-bottom:4px;">{{ f.label.text }}</label>
+            {{ f(style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid var(--gray-300);") }}
+            {% if f.description %}<small style="color:var(--gray-500);">{{ f.description }}</small>{% endif %}
+            {% for e in f.errors %}<small style="color:var(--danger); display:block;">{{ e }}</small>{% endfor %}
+        </div>
+        {% endmacro %}
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            {{ camp(form.angajat_id, span=2) }}
+            {{ camp(form.tip, span=2) }}
+            {{ camp(form.data_start) }}
+            {{ camp(form.data_sfarsit) }}
+            {{ camp(form.observatii, span=2) }}
+        </div>
+        <p style="margin-top:12px; font-size:.82rem; color:var(--gray-500);">
+            <i class="fa-solid fa-circle-info"></i>
+            Numarul de zile lucratoare se calculeaza automat (exclude weekend-urile si sarbatorile legale).
+            Cererea se inregistreaza cu status "Cerut" si poate fi aprobata de un manager.
+        </p>
+        <div style="margin-top:18px; display:flex; gap:10px;">
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Inregistreaza cererea</button>
+            <a href="{{ url_for('concedii.lista') }}" class="btn">Renunta</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

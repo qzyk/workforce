@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Concedii - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<span class="active">Concedii</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-umbrella-beach" style="color: var(--primary);"></i> Concedii
+        {% if in_asteptare > 0 %}
+        <span style="background: var(--warning); color: white; font-size: 0.8rem; padding: 2px 10px; border-radius: 12px; vertical-align: middle;">{{ in_asteptare }} in asteptare</span>
+        {% endif %}
+    </h2>
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('concedii.calendar_view') }}" class="btn btn-outline"><i class="fa-solid fa-calendar-days"></i> Calendar</a>
+        <a href="{{ url_for('concedii.nou') }}" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Cerere noua</a>
+    </div>
+</div>
+
+<!-- Filtre -->
+<div class="card-panel" style="margin-bottom: 20px;">
+    <div class="card-panel-body">
+        <form method="GET" action="{{ url_for('concedii.lista') }}">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; align-items: end;">
+                <div class="form-group">
+                    <label class="form-label">Angajat</label>
+                    <select name="angajat_id" class="form-select">
+                        <option value="">Toti</option>
+                        {% for a in angajati %}
+                        <option value="{{ a.id }}" {{ 'selected' if angajat_id_filtru == a.id|string }}>{{ a.nume_complet }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tip</label>
+                    <select name="tip" class="form-select">
+                        <option value="">Toate</option>
+                        {% for val, label in tipuri %}
+                        <option value="{{ val }}" {{ 'selected' if tip_filtru == val }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select">
+                        <option value="">Toate</option>
+                        {% for val, label in statusuri %}
+                        <option value="{{ val }}" {{ 'selected' if status_filtru == val }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="display: flex; gap: 8px;">
+                    <button type="submit" class="btn btn-primary" style="flex:1;"><i class="fa-solid fa-search"></i> Filtreaza</button>
+                    <a href="{{ url_for('concedii.lista') }}" class="btn btn-outline"><i class="fa-solid fa-rotate-left"></i></a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Tabel concedii -->
+<div class="card-panel">
+    <div class="card-panel-body">
+        {% if concedii %}
+        <div style="overflow-x: auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Angajat</th>
+                        <th>Tip</th>
+                        <th>Perioada</th>
+                        <th>Zile</th>
+                        <th>Status</th>
+                        <th>Observatii</th>
+                        <th style="text-align: right;">Actiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in concedii %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('angajati.detalii', id=c.angajat_id) }}">{{ c.angajat.nume_complet }}</a>
+                        </td>
+                        <td>{{ dict(tipuri).get(c.tip, c.tip) }}</td>
+                        <td>{{ c.data_start.strftime('%d.%m.%Y') }} - {{ c.data_sfarsit.strftime('%d.%m.%Y') }}</td>
+                        <td style="font-weight: 600;">{{ c.nr_zile }}</td>
+                        <td><span class="badge-status badge-{{ c.status }}">{{ dict(statusuri).get(c.status, c.status) }}</span></td>
+                        <td style="max-width: 220px; font-size: 0.85rem; color: var(--gray-600);">
+                            {{ c.observatii or '' }}
+                            {% if c.status == 'respins' and c.motiv_respingere %}
+                            <div style="color: var(--danger);"><i class="fa-solid fa-circle-info"></i> {{ c.motiv_respingere }}</div>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: right;">
+                            {% if c.status == 'cerut' and poate_aproba %}
+                            <form method="POST" action="{{ url_for('concedii.aproba', id=c.id) }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="next" value="{{ url_for('concedii.lista') }}">
+                                <button type="submit" class="btn btn-sm btn-success"><i class="fa-solid fa-check"></i> Aproba</button>
+                            </form>
+                            <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('respinge-{{ c.id }}').style.display='block'"><i class="fa-solid fa-xmark"></i> Respinge</button>
+                            <div id="respinge-{{ c.id }}" style="display: none; margin-top: 8px; text-align: left;">
+                                <form method="POST" action="{{ url_for('concedii.respinge', id=c.id) }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="next" value="{{ url_for('concedii.lista') }}">
+                                    <input type="text" name="motiv" class="form-control" placeholder="Motiv respingere (optional)" style="margin-bottom: 6px;">
+                                    <button type="submit" class="btn btn-sm btn-danger"><i class="fa-solid fa-ban"></i> Confirma respingere</button>
+                                </form>
+                            </div>
+                            {% else %}
+                            <span style="color: var(--gray-400); font-size: 0.85rem;">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding: 40px;">
+            <i class="fa-solid fa-umbrella-beach" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
+            <h3>Niciun concediu</h3>
+            <p>Nu exista cereri de concediu care sa corespunda filtrelor.</p>
+            <a href="{{ url_for('concedii.nou') }}" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Adauga cerere</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Calendar Absente - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('concedii.lista') }}">Concedii</a>
+<span>/</span>
+<span class="active">Calendar{{ ' - ' + angajat.nume_complet if angajat else '' }}</span>
+{% endblock %}
+
+{% block content %}
+<h2 style="margin-bottom: 20px;">
+    <i class="fa-solid fa-calendar-days" style="color: var(--primary);"></i>
+    Calendar absente{% if angajat %} - {{ angajat.nume_complet }}{% endif %}
+</h2>
+
+<!-- Selectie angajat -->
+<div class="card-panel" style="margin-bottom: 20px;">
+    <div class="card-panel-body">
+        <form method="GET" action="{{ url_for('concedii.calendar_view') }}" style="display: flex; gap: 16px; align-items: end; flex-wrap: wrap;">
+            <div class="form-group" style="flex: 1; min-width: 250px;">
+                <label class="form-label">Selecteaza Angajat</label>
+                <select name="angajat_id" class="form-select" onchange="this.form.submit()">
+                    <option value="">-- Selecteaza angajat --</option>
+                    {% for a in angajati %}
+                    <option value="{{ a.id }}" {{ 'selected' if angajat_id == a.id }}>{{ a.nume_complet }} ({{ a.functie }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <input type="hidden" name="luna" value="{{ luna }}">
+            <input type="hidden" name="anul" value="{{ anul }}">
+        </form>
+    </div>
+</div>
+
+{% if angajat %}
+<!-- Navigare luna -->
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-calendar"></i> Calendar</h3>
+        <div class="cal-month-nav">
+            {% set prev_month = luna - 1 if luna > 1 else 12 %}
+            {% set prev_year = anul if luna > 1 else anul - 1 %}
+            {% set next_month = luna + 1 if luna < 12 else 1 %}
+            {% set next_year = anul if luna < 12 else anul + 1 %}
+            <a href="{{ url_for('concedii.calendar_view', angajat_id=angajat_id, luna=prev_month, anul=prev_year) }}" class="btn btn-sm btn-outline">
+                <i class="fa-solid fa-chevron-left"></i>
+            </a>
+            <span style="font-weight: 600; min-width: 140px; text-align: center;">
+                {% set month_names = ['', 'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie', 'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie'] %}
+                {{ month_names[luna] }} {{ anul }}
+            </span>
+            <a href="{{ url_for('concedii.calendar_view', angajat_id=angajat_id, luna=next_month, anul=next_year) }}" class="btn btn-sm btn-outline">
+                <i class="fa-solid fa-chevron-right"></i>
+            </a>
+        </div>
+    </div>
+    <div class="card-panel-body">
+        <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+            <!-- Calendar grid -->
+            <div style="flex: 1; min-width: 320px;">
+                <div class="pontaj-calendar" style="grid-template-columns: repeat(7, 1fr);">
+                    {% for zi in ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du'] %}
+                    <div class="cal-header" style="{{ 'color: var(--danger);' if loop.index > 5 }}">{{ zi }}</div>
+                    {% endfor %}
+
+                    {% for _ in range(first_dow) %}
+                    <div class="cal-day empty"></div>
+                    {% endfor %}
+
+                    {% for cd in calendar_data %}
+                    <div class="cal-day cal-day-abs {{ cd.tip }} {{ cd.tip_concediu|lower if cd.tip_concediu }} {{ 'pending' if cd.concediu and cd.concediu.status == 'cerut' }} {{ 'today' if cd.is_today }}"
+                         title="{% if cd.concediu %}{{ cd.tip_concediu }} ({{ cd.concediu.status }}){% endif %}">
+                        <span class="cal-day-num">{{ cd.zi }}</span>
+                        {% if cd.tip_concediu %}
+                        <span style="font-size: 0.62rem; font-weight: 700;">{{ cd.tip_concediu }}</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Legend -->
+                <div class="cal-legend" style="margin-top: 12px;">
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #1565C0;"></span> CO (concediu odihna)</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #00838F;"></span> CM (medical)</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #6A1B9A;"></span> Altele</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #FFE082;"></span> In asteptare</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: #FFCDD2;"></span> Sarbatoare</div>
+                    <div class="cal-legend-item"><span class="cal-legend-dot" style="background: var(--gray-200);"></span> Weekend</div>
+                </div>
+            </div>
+
+            <!-- Statistici -->
+            <div style="width: 280px;">
+                <div class="card-panel" style="margin: 0;">
+                    <div class="card-panel-header">
+                        <h3 style="font-size: 0.9rem;"><i class="fa-solid fa-chart-bar"></i> Zile aprobate (luna)</h3>
+                    </div>
+                    <div class="card-panel-body">
+                        <div class="cal-stats">
+                            <div class="cal-stat-item">
+                                <span class="cal-stat-label">Total zile</span>
+                                <span class="cal-stat-value" style="color: var(--primary);">{{ stats.total_zile }}</span>
+                            </div>
+                            <div class="cal-stat-item">
+                                <span class="cal-stat-label">Zile CO</span>
+                                <span class="cal-stat-value" style="color: #1565C0;">{{ stats.zile_co }}</span>
+                            </div>
+                            <div class="cal-stat-item">
+                                <span class="cal-stat-label">Zile CM</span>
+                                <span class="cal-stat-value" style="color: #00838F;">{{ stats.zile_cm }}</span>
+                            </div>
+                            <div class="cal-stat-item">
+                                <span class="cal-stat-label">Alte tipuri</span>
+                                <span class="cal-stat-value" style="color: #6A1B9A;">{{ stats.zile_alte }}</span>
+                            </div>
+                        </div>
+                        <a href="{{ url_for('concedii.nou', angajat_id=angajat_id) }}" class="btn btn-primary" style="width: 100%; margin-top: 14px;"><i class="fa-solid fa-plus"></i> Cerere noua</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card-panel">
+    <div class="card-panel-body">
+        <div class="empty-state" style="padding: 40px;">
+            <i class="fa-solid fa-calendar-days" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
+            <h3>Selectati un angajat</h3>
+            <p>Alegeti un angajat din lista de mai sus pentru a vedea calendarul de absente.</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.cal-day-abs.co { background: #1565C0; color: white; }
+.cal-day-abs.cm { background: #00838F; color: white; }
+.cal-day-abs.fara_plata, .cal-day-abs.maternitate, .cal-day-abs.paternitate { background: #6A1B9A; color: white; }
+.cal-day-abs.pending { opacity: 0.55; outline: 2px dashed #FFB300; outline-offset: -2px; }
+.cal-day-abs.sarbatoare { background: #FFCDD2; color: var(--danger); }
+.cal-day-abs.weekend { background: var(--gray-100); color: var(--gray-400); }
+.cal-day-abs.lucratoare { background: white; color: var(--gray-500); }
+
+.cal-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.8rem; color: var(--gray-600); }
+.cal-legend-item { display: flex; align-items: center; gap: 4px; }
+.cal-legend-dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+</style>
+{% endblock %}

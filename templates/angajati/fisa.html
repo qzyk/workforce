@@ -369,6 +369,12 @@
         <div class="card-panel">
             <div class="card-panel-header">
                 <h3><i class="fa-solid fa-history"></i> Istoric Angajat</h3>
+                {% if feature_enabled('concedii') %}
+                <div style="display: flex; gap: 6px;">
+                    <a href="{{ url_for('concedii.lista', angajat_id=angajat.id) }}" class="btn btn-sm btn-outline" title="Vezi concediile angajatului"><i class="fa-solid fa-umbrella-beach"></i> Concedii</a>
+                    <a href="{{ url_for('concedii.nou', angajat_id=angajat.id) }}" class="btn btn-sm btn-primary" title="Cerere noua de concediu"><i class="fa-solid fa-plus"></i></a>
+                </div>
+                {% endif %}
             </div>
             <div class="card-panel-body">
                 <div style="position: relative; padding-left: 30px;">
