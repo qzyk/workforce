@@ -61,6 +61,8 @@ KNOWN_FLAGS: dict[str, str] = {
     'bim-cobie-export': 'Export COBie',
     'bim-bcf-full': 'Import/Export BCF 2.1/3.0 complet',
     'bim-public-api': 'API publica versionata cu tokens',
+    'bim-api-rate-limit': 'Rate-limit in-memory pe token API (429 + Retry-After la '
+                          'depasirea pragului). Single-worker PA, fara Redis. Default OFF.',
     # Faza 9 - Contract & Project Controls
     'controale-contract': 'Modul Contract Controls (contracte, termene, oferte, situatii, revendicari, PV)',
     'controale-contract-import-msproject': 'Activeaza import MS Project XML in programe referinta',

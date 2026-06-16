@@ -1305,7 +1305,10 @@ def api_model_version_file(version_id):
     try:
         sursa, utilizator = tokens_svc.resolve_dual_auth('bim:read')
     except tokens_svc.DualAuthError as e:
-        return jsonify({'error': e.message}), e.status
+        resp = jsonify({'error': e.message})
+        if e.status == 429 and getattr(e, 'retry_after', 0):
+            resp.headers['Retry-After'] = str(e.retry_after)
+        return resp, e.status
 
     # Tenant scoping: in mod 'off' query-ul ramane identic; in 'strict' filtreaza pe tenant.
     v = with_tenant_scope(
