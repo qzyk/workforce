@@ -55,6 +55,37 @@ table.ev td { padding:7px 10px; border-top:1px solid #ECE7DA; text-align:right; 
     {% endif %}
 </div>
 
+{% if feature_enabled('evm-prognoza') and evm.prognoza %}
+{% set pg = evm.prognoza %}
+<div class="ev-card">
+    <div style="font-weight:700; color:#0B1426; margin-bottom:12px;">
+        <i class="fa-solid fa-chart-line" style="color:#C9A961;"></i> Prognoza la finalizare (forecast EVM)
+    </div>
+    <div class="ev-stats" style="margin-bottom:0;">
+        <div class="ev-stat">
+            <div class="v">{{ '{:,.0f}'.format(pg.eac) }}</div>
+            <div class="l">EAC (cost estimat final, lei)</div>
+        </div>
+        <div class="ev-stat">
+            <div class="v">{{ '{:,.0f}'.format(pg.etc) }}</div>
+            <div class="l">ETC (cost ramas, lei)</div>
+        </div>
+        <div class="ev-stat">
+            <div class="v {{ 'ev-good' if pg.vac >= 0 else 'ev-bad' }}">{{ '{:,.0f}'.format(pg.vac) }}</div>
+            <div class="l">VAC (abatere buget, lei)</div>
+        </div>
+        <div class="ev-stat">
+            <div class="v {{ idx(pg.tcpi) }}">{{ pg.tcpi if pg.tcpi is not none else '—' }}</div>
+            <div class="l">TCPI (eficienta necesara)</div>
+        </div>
+    </div>
+    <small style="color:var(--gray-500); display:block; margin-top:10px;">
+        EAC = BAC / CPI{% if pg.eac_varianta == 'atipica' %} (varianta atipica: AC + (BAC − EV), fara cost real inca){% endif %} ·
+        VAC &gt; 0 = sub buget la final · TCPI &lt; 1 = mai e marja pe restul lucrarii.
+    </small>
+</div>
+{% endif %}
+
 {% if evm.utilaj and (evm.utilaj.planificat or evm.utilaj.real) %}
 <div class="ev-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
     <div>

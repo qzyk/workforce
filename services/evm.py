@@ -122,6 +122,52 @@ def _pv_la_data(pv_pts, d: date) -> float:
     return proc
 
 
+def _prognoza(bac: float, ev: float, ac: float, pv: float) -> dict:
+    """Indicatori de prognoza EVM (forecast la finalizare). Functie PURA.
+
+    Toate valorile sunt in lei (BAC = buget total, EV = valoare castigata,
+    AC = cost real cumulat, PV = valoare planificata la zi).
+
+    Indicatori:
+      EAC  (Estimate At Completion) = costul total estimat la finalizare.
+      ETC  (Estimate To Complete)   = costul ramas estimat = EAC - AC.
+      VAC  (Variance At Completion)  = abaterea de buget la final = BAC - EAC.
+      TCPI (To Complete Performance Index) = eficienta necesara pe restul lucrarii
+            ca sa te incadrezi in BAC = (BAC - EV) / (BAC - AC).
+
+    Varianta de EAC aleasa:
+      Folosim formula CPI-based EAC = BAC / CPI, care presupune ca abaterea de cost
+      curenta (CPI) e *tipica* si se va mentine pana la final (cazul standard si cel
+      mai des recomandat de PMBOK pentru proiecte cu trend stabil).
+      Cand CPI nu se poate calcula (AC = 0, deci nu exista cost real inca), cadem pe
+      varianta "atipica" EAC = AC + (BAC - EV), care presupune ca restul lucrarii se
+      executa conform bugetului (abaterea curenta a fost un eveniment izolat).
+    Tratam diviziunile cu 0 in stilul existent (vezi evm.py: SPI/CPI) -> None.
+    """
+    bac = float(bac or 0)
+    ev = float(ev or 0)
+    ac = float(ac or 0)
+    cpi = (ev / ac) if ac else None
+    # EAC: varianta CPI-based daca avem CPI valid, altfel atipica (rest la buget)
+    if cpi:
+        eac = bac / cpi
+    else:
+        eac = ac + (bac - ev)
+    etc = eac - ac
+    vac = bac - eac
+    # TCPI: cat de eficient trebuie sa mergem pe restul lucrarii ca sa prindem BAC.
+    # Diviziune cu 0 cand bugetul ramas (BAC - AC) e 0 (ai cheltuit deja tot BAC).
+    rest_buget = bac - ac
+    tcpi = ((bac - ev) / rest_buget) if rest_buget else None
+    return {
+        'eac': round(eac, 0),
+        'etc': round(etc, 0),
+        'vac': round(vac, 0),
+        'tcpi': round(tcpi, 2) if tcpi is not None else None,
+        'eac_varianta': 'cpi' if cpi else 'atipica',
+    }
+
+
 def risc_proiect(proiect_id: int) -> dict:
     """Evaluare RAPIDA de risc (fara re-rularea pipeline-ului): SPI/CPI din ultima
     situatie vs plan (PV liniar din durata). {spi, cpi, status, ev_pct} sau None."""
@@ -196,6 +242,13 @@ def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
             'spi': round(ev_pct / pv_pct, 2) if pv_pct else None,
             'cpi': round(ev_val / ac, 2) if ac else None,
         })
+    # Prognoza EVM (forecast la finalizare) din ultima situatie (EV/AC reale).
+    # None cand nu exista situatii inca (nu avem actuals pentru forecast).
+    prognoza = None
+    if serie:
+        ultim = serie[-1]
+        prognoza = _prognoza(bac=bac, ev=ultim['ev_val'], ac=ultim['ac'],
+                             pv=ultim['pv_val'])
     return {
         'bac': round(bac, 0), 'plan_nume': plan.nume, 'nr_situatii': len(situatii),
         'manopera': {'cost': round(man_total, 0), 'ore': pont_ore},
@@ -203,5 +256,6 @@ def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
                    'ore': util_ore, 'planificat_ore': round(util_plan_ore, 1),
                    'sursa': util_sursa},
         'serie': serie, 'ultim': (serie[-1] if serie else None),
+        'prognoza': prognoza,
         'pv_curba': [{'data': dt.isoformat(), 'procent': round(p, 1)} for dt, p in pv_pts],
     }

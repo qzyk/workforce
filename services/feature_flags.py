@@ -78,6 +78,10 @@ KNOWN_FLAGS: dict[str, str] = {
     # Workforce Faza 1 - gestiune concedii / absente
     'concedii': 'Modul Concedii (gestiune absente): lista + creare cereri, workflow '
                 'aprobare/respingere, calendar vizual de absente. Default OFF.',
+    # Deviz Faza 1 - indicatori prognoza EVM
+    'evm-prognoza': 'Afiseaza indicatorii de prognoza EVM (forecast la finalizare): '
+                    'EAC (cost estimat final), ETC (cost ramas), VAC (abatere buget), '
+                    'TCPI (eficienta necesara). Calcul derivat, fara schema noua. Default OFF.',
 }
 
 

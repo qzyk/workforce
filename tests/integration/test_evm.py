@@ -1,6 +1,8 @@
 """Teste pentru EVM (plan Gantt vs situatii) la nivel de proiect."""
 from datetime import date
 
+from services.feature_flags import set_flag
+
 SAMPLE = (
     b"cod_articol;denumire;um;cantitate;obiect;tronson;categorie\n"
     b"A1;Sapatura mecanizata;mc;100;O;T;Terasamente\n"
@@ -119,3 +121,81 @@ def test_evm_fara_plan(authenticated_client, app):
             if pr:
                 db.session.delete(pr)
                 db.session.commit()
+
+
+# ----------------------------------------------------- Prognoza EVM (flag nou)
+
+def _seed_proiect_cu_situatie(db, Proiect, Contract, GanttPlan, SituatieLunara):
+    """Proiect cu plan + o situatie lunara -> evm.prognoza e populat. Ret pid."""
+    p = Proiect(cod_proiect='EVM-PG', nume='Prognoza', data_start=date(2026, 1, 1))
+    db.session.add(p); db.session.flush()
+    c = Contract(proiect_id=p.id, nr_contract='C-PG', data_semnare=date(2026, 1, 1))
+    db.session.add(c); db.session.flush()
+    db.session.add(GanttPlan(nume='Pl', continut=SAMPLE, ext='.csv', nr_activitati=2,
+                             durata_zile=100, cost_total=100000, proiect_id=p.id,
+                             data_start=date(2026, 1, 1)))
+    db.session.add(SituatieLunara(proiect_id=p.id, contract_id=c.id, an=2026, luna=2,
+                                  data_emitere=date(2026, 2, 28), procent_avans_total=40,
+                                  valoare_cumulat_la_zi=50000))
+    db.session.commit()
+    return p.id
+
+
+def _cleanup_proiect(db, pid, Proiect, Contract, GanttPlan, SituatieLunara):
+    for M in (SituatieLunara, GanttPlan, Contract):
+        for x in M.query.filter_by(proiect_id=pid).all():
+            db.session.delete(x)
+    pr = db.session.get(Proiect, pid)
+    if pr:
+        db.session.delete(pr)
+    db.session.commit()
+
+
+def test_prognoza_serviciu_in_evm_proiect(app):
+    """evm_proiect populeaza cheia 'prognoza' din ultima situatie (EV/AC reale)."""
+    from models import db, Proiect, Contract, GanttPlan, SituatieLunara
+    from services.evm import evm_proiect
+    with app.app_context():
+        pid = _seed_proiect_cu_situatie(db, Proiect, Contract, GanttPlan, SituatieLunara)
+        data = evm_proiect(pid)
+        assert data['prognoza'] is not None
+        pg = data['prognoza']
+        # cheile EVM forecast exista
+        for k in ('eac', 'etc', 'vac', 'tcpi'):
+            assert k in pg
+        _cleanup_proiect(db, pid, Proiect, Contract, GanttPlan, SituatieLunara)
+
+
+def test_prognoza_ruta_flag_off(authenticated_client, app):
+    """Flag OFF: ruta /evm NU afiseaza sectiunea de prognoza; restul EVM neschimbat."""
+    from models import db, Proiect, Contract, GanttPlan, SituatieLunara
+    with app.app_context():
+        set_flag('evm-prognoza', False)
+        pid = _seed_proiect_cu_situatie(db, Proiect, Contract, GanttPlan, SituatieLunara)
+    try:
+        r = authenticated_client.get(f'/proiecte/{pid}/evm')
+        assert r.status_code == 200
+        assert b'Earned Value' in r.data            # restul paginii EVM intact
+        assert b'Prognoza la finalizare' not in r.data
+        assert 'EAC (cost estimat final'.encode() not in r.data
+    finally:
+        with app.app_context():
+            _cleanup_proiect(db, pid, Proiect, Contract, GanttPlan, SituatieLunara)
+
+
+def test_prognoza_ruta_flag_on(authenticated_client, app):
+    """Flag ON: ruta /evm afiseaza sectiunea de prognoza cu indicatorii."""
+    from models import db, Proiect, Contract, GanttPlan, SituatieLunara
+    with app.app_context():
+        set_flag('evm-prognoza', True)
+        pid = _seed_proiect_cu_situatie(db, Proiect, Contract, GanttPlan, SituatieLunara)
+    try:
+        r = authenticated_client.get(f'/proiecte/{pid}/evm')
+        assert r.status_code == 200
+        assert b'Prognoza la finalizare' in r.data
+        assert 'EAC (cost estimat final'.encode() in r.data
+        assert b'TCPI' in r.data
+    finally:
+        with app.app_context():
+            set_flag('evm-prognoza', False)
+            _cleanup_proiect(db, pid, Proiect, Contract, GanttPlan, SituatieLunara)
