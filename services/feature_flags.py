@@ -53,6 +53,11 @@ KNOWN_FLAGS: dict[str, str] = {
                'verifica Property Sets-urile cerute pe faza de livrare. Default OFF.',
     # Faza 6
     'bim-iot-sensors': 'Digital Twin: ingest sensor data + live overlay',
+    # IoT Faza 1 - inchidere bucla alerta -> notificare
+    'iot-alert-notify': 'La o alerta noua/escaladata de senzor, trimite notificare '
+                        'in-app catre manageri/admini + publica eveniment SSE '
+                        '(sensor_alert) + email best-effort daca SMTP e configurat. '
+                        'Cu OFF, ingestul ramane tacut (comportament istoric). Default OFF.',
     # Faza 7
     'bim-realtime-collab': 'Colaborare real-time via SSE (presence + comments)',
     'bim-issue-kanban': 'Kanban board pentru issue management',

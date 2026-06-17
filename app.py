@@ -440,6 +440,8 @@ def create_app(config_name='default'):
             ('concedii', 'data_aprobare', 'DATETIME'),
             ('concedii', 'motiv_respingere', 'TEXT'),
             ('concedii', 'introdus_de', 'INTEGER REFERENCES utilizatori(id)'),
+            # IoT Faza 1: idempotenta dispatch notificare pe alertele de senzor.
+            ('bim_sensor_alerts', 'notificat_la', 'DATETIME'),
         ]
 
         adaugate = 0

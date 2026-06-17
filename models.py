@@ -3091,6 +3091,11 @@ class SensorAlert(db.Model):
     data_rezolvare = db.Column(db.DateTime, nullable=True)
     confirmat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
 
+    # IoT Faza 1: momentul in care alerta a fost notificata (in-app/SSE/email).
+    # NULL = inca nenotificata. Folosit pentru idempotenta dispatch-ului
+    # (nu re-notificam o alerta deja notificata). Coloana aditiva nullable.
+    notificat_la = db.Column(db.DateTime, nullable=True)
+
     senzor = db.relationship('Senzor', foreign_keys=[senzor_id],
                              backref=db.backref('alerte', lazy='dynamic'))
     issue = db.relationship('IssueBIM', foreign_keys=[issue_id])
