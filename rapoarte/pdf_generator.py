@@ -8,6 +8,9 @@ import os
 import calendar
 from datetime import date, datetime, timedelta
 
+# Paleta de brand centralizata (Rapoarte Faza 1).
+from rapoarte import brand
+
 try:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, A3, landscape
@@ -23,40 +26,13 @@ except ImportError:
 
 
 def _get_styles():
-    styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(
-        name='TitleCustom', fontSize=16, fontName='Helvetica-Bold',
-        textColor=colors.HexColor('#1A237E'), alignment=TA_CENTER, spaceAfter=12
-    ))
-    styles.add(ParagraphStyle(
-        name='SubtitleCustom', fontSize=11, fontName='Helvetica-Bold',
-        textColor=colors.HexColor('#424242'), alignment=TA_CENTER, spaceAfter=8
-    ))
-    styles.add(ParagraphStyle(
-        name='InfoLabel', fontSize=9, fontName='Helvetica-Bold',
-        textColor=colors.HexColor('#1A237E')
-    ))
-    styles.add(ParagraphStyle(
-        name='Footer', fontSize=7, fontName='Helvetica-Oblique',
-        textColor=colors.gray, alignment=TA_CENTER
-    ))
-    return styles
+    """Stiluri PDF brandate Edifico (navy/gold + serif). Delegat la rapoarte.brand."""
+    return brand.pdf_paragraph_styles()
 
 
-TABLE_STYLE_BASE = TableStyle([
-    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1A237E')),
-    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-    ('FONTSIZE', (0, 0), (-1, 0), 8),
-    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-    ('FONTSIZE', (0, 1), (-1, -1), 7),
-    ('GRID', (0, 0), (-1, -1), 0.5, colors.gray),
-    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
-    ('TOPPADDING', (0, 0), (-1, -1), 3),
-    ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-])
+def _table_style_base():
+    """TableStyle brandat Edifico (header gold/navy, zebra crem). Instanta noua."""
+    return brand.pdf_table_style()
 
 
 # ============================================================
@@ -156,17 +132,17 @@ def generate_pdf_foaie_prezenta(proiect_id, luna, an):
 
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
-    style_cmds = list(TABLE_STYLE_BASE.getCommands())
+    style_cmds = list(_table_style_base().getCommands())
 
     # Weekend columns coloring
     for zi in range(1, nr_zile + 1):
         col_idx = zi + 2
         if zi in sarbatori:
-            style_cmds.append(('BACKGROUND', (col_idx, 0), (col_idx, 0), colors.HexColor('#C62828')))
+            style_cmds.append(('BACKGROUND', (col_idx, 0), (col_idx, 0), colors.HexColor(brand.SARBATOARE_HEX)))
         elif zi in weekends:
-            style_cmds.append(('BACKGROUND', (col_idx, 0), (col_idx, 0), colors.HexColor('#455A64')))
+            style_cmds.append(('BACKGROUND', (col_idx, 0), (col_idx, 0), colors.HexColor(brand.NAVY_HEX)))
             for r_idx in range(1, len(table_data)):
-                style_cmds.append(('BACKGROUND', (col_idx, r_idx), (col_idx, r_idx), colors.HexColor('#EEEEEE')))
+                style_cmds.append(('BACKGROUND', (col_idx, r_idx), (col_idx, r_idx), colors.HexColor(brand.WEEKEND_HEX)))
 
     table.setStyle(TableStyle(style_cmds))
     elements.append(table)
@@ -277,9 +253,9 @@ def generate_pdf_stat_plata(proiect_id, luna, an):
 
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
-    style_cmds = list(TABLE_STYLE_BASE.getCommands())
+    style_cmds = list(_table_style_base().getCommands())
     last_row = len(table_data) - 1
-    style_cmds.append(('BACKGROUND', (0, last_row), (-1, last_row), colors.HexColor('#E8EAF6')))
+    style_cmds.append(('BACKGROUND', (0, last_row), (-1, last_row), colors.HexColor(brand.CREAM_HEX)))
     style_cmds.append(('FONTNAME', (0, last_row), (-1, last_row), 'Helvetica-Bold'))
     table.setStyle(TableStyle(style_cmds))
 
@@ -381,9 +357,9 @@ def generate_pdf_pontaj_individual(angajat_id, data_start, data_sfarsit):
     col_widths = [8*mm, 22*mm, 22*mm, 15*mm, 15*mm, 14*mm, 16*mm, 16*mm, 18*mm]
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
-    style_cmds = list(TABLE_STYLE_BASE.getCommands())
+    style_cmds = list(_table_style_base().getCommands())
     last_row = len(table_data) - 1
-    style_cmds.append(('BACKGROUND', (0, last_row), (-1, last_row), colors.HexColor('#E8EAF6')))
+    style_cmds.append(('BACKGROUND', (0, last_row), (-1, last_row), colors.HexColor(brand.CREAM_HEX)))
     style_cmds.append(('FONTNAME', (0, last_row), (-1, last_row), 'Helvetica-Bold'))
     table.setStyle(TableStyle(style_cmds))
 

@@ -87,6 +87,11 @@ KNOWN_FLAGS: dict[str, str] = {
     'evm-prognoza': 'Afiseaza indicatorii de prognoza EVM (forecast la finalizare): '
                     'EAC (cost estimat final), ETC (cost ramas), VAC (abatere buget), '
                     'TCPI (eficienta necesara). Calcul derivat, fara schema noua. Default OFF.',
+    # Rapoarte Faza 1 - email cu atasament
+    'rapoarte-email': 'Permite trimiterea/schedularea rapoartelor (Excel/PDF) pe email '
+                      'cu atasament, best-effort daca SMTP e configurat. Brandingul '
+                      'exporturilor se aplica oricum (cosmetic); acest flag controleaza '
+                      'doar trimiterea pe email. Default OFF.',
 }
 
 

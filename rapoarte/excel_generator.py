@@ -10,29 +10,36 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, numbers
 from openpyxl.utils import get_column_letter
 
+# Paleta de brand centralizata (Rapoarte Faza 1). Single source of truth pentru
+# culori/fonturi - acelasi brand ca services/situatii.py & export_obiectiv.py.
+from rapoarte import brand
+
 
 # ============================================================
-# STILURI COMUNE
+# STILURI COMUNE (paleta Edifico: navy 0B1426 / gold C9A961 / cream F5F1E8)
 # ============================================================
 
 THIN_BORDER = Border(
-    left=Side(style='thin'), right=Side(style='thin'),
-    top=Side(style='thin'), bottom=Side(style='thin')
+    left=Side(style='thin', color=brand.GREY_LINE),
+    right=Side(style='thin', color=brand.GREY_LINE),
+    top=Side(style='thin', color=brand.GREY_LINE),
+    bottom=Side(style='thin', color=brand.GREY_LINE),
 )
-HEADER_FONT = Font(bold=True, color='FFFFFF', size=10, name='Arial')
-HEADER_FILL = PatternFill(start_color='1A237E', end_color='1A237E', fill_type='solid')
-TITLE_FONT = Font(bold=True, size=14, name='Arial', color='1A237E')
-SUBTITLE_FONT = Font(bold=True, size=11, name='Arial')
-DATA_FONT = Font(size=9, name='Arial')
-TOTAL_FONT = Font(bold=True, size=10, name='Arial')
-TOTAL_FILL = PatternFill(start_color='E8EAF6', end_color='E8EAF6', fill_type='solid')
+# Header tabel: text navy pe fundal gold (era text alb pe indigo)
+HEADER_FONT = Font(bold=True, color=brand.NAVY, size=10, name=brand.EXCEL_BODY_FONT)
+HEADER_FILL = PatternFill('solid', fgColor=brand.GOLD)
+TITLE_FONT = Font(bold=True, size=14, name=brand.EXCEL_TITLE_FONT, color=brand.NAVY)
+SUBTITLE_FONT = Font(bold=True, size=11, name=brand.EXCEL_BODY_FONT, color=brand.NAVY)
+DATA_FONT = Font(size=9, name=brand.EXCEL_BODY_FONT)
+TOTAL_FONT = Font(bold=True, size=10, name=brand.EXCEL_BODY_FONT, color=brand.NAVY)
+TOTAL_FILL = PatternFill('solid', fgColor=brand.CREAM)
 
-WEEKEND_FILL = PatternFill(start_color='E0E0E0', end_color='E0E0E0', fill_type='solid')
-SARBATOARE_FILL = PatternFill(start_color='FFCDD2', end_color='FFCDD2', fill_type='solid')
-SUPL_FILL = PatternFill(start_color='FFF3E0', end_color='FFF3E0', fill_type='solid')
-RED_FILL = PatternFill(start_color='FFCDD2', end_color='FFCDD2', fill_type='solid')
-YELLOW_FILL = PatternFill(start_color='FFF9C4', end_color='FFF9C4', fill_type='solid')
-GREEN_FILL = PatternFill(start_color='C8E6C9', end_color='C8E6C9', fill_type='solid')
+WEEKEND_FILL = PatternFill('solid', fgColor=brand.WEEKEND)
+SARBATOARE_FILL = PatternFill('solid', fgColor=brand.STARE_EXPIRAT)
+SUPL_FILL = PatternFill('solid', fgColor=brand.STARE_IN_CURAND)
+RED_FILL = PatternFill('solid', fgColor=brand.STARE_EXPIRAT)
+YELLOW_FILL = PatternFill('solid', fgColor=brand.STARE_IN_CURAND)
+GREEN_FILL = PatternFill('solid', fgColor=brand.STARE_VALABIL)
 
 CENTER = Alignment(horizontal='center', vertical='center')
 LEFT = Alignment(horizontal='left', vertical='center')
@@ -121,7 +128,7 @@ def generate_foaie_prezenta(proiect_id, luna, an, include_supl=True, app=None):
     row = 1
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=nr_zile + 5)
     cell = ws.cell(row=row, column=1, value='EDIFICO WORKFORCE SRL')
-    cell.font = Font(bold=True, size=16, name='Arial', color='1A237E')
+    cell.font = Font(bold=True, size=16, name=brand.EXCEL_TITLE_FONT, color=brand.NAVY)
     cell.alignment = CENTER
 
     row = 2
@@ -148,15 +155,15 @@ def generate_foaie_prezenta(proiect_id, luna, an, include_supl=True, app=None):
         d = date(an, luna, zi)
         day_name = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sa', 'Du'][d.weekday()]
         cell = ws.cell(row=row, column=col, value=f'{zi}\n{day_name}')
-        cell.font = Font(bold=True, size=8, color='FFFFFF', name='Arial')
+        cell.font = Font(bold=True, size=8, color=brand.NAVY, name=brand.EXCEL_BODY_FONT)
         cell.fill = HEADER_FILL
         cell.alignment = WRAP_CENTER
         cell.border = THIN_BORDER
 
         if zi in weekends:
-            cell.fill = PatternFill(start_color='455A64', end_color='455A64', fill_type='solid')
+            cell.fill = PatternFill('solid', fgColor=brand.WEEKEND)
         if zi in sarbatori:
-            cell.fill = PatternFill(start_color='C62828', end_color='C62828', fill_type='solid')
+            cell.fill = PatternFill('solid', fgColor=brand.SARBATOARE)
 
     total_col = nr_zile + 4
     semn_col = nr_zile + 5
@@ -273,7 +280,7 @@ def generate_stat_plata(proiect_id, luna, an, include_bonusuri=False):
 
     # Header
     ws.merge_cells('A1:M1')
-    ws.cell(row=1, column=1, value='EDIFICO WORKFORCE SRL').font = Font(bold=True, size=14, name='Arial', color='1A237E')
+    ws.cell(row=1, column=1, value='EDIFICO WORKFORCE SRL').font = Font(bold=True, size=14, name=brand.EXCEL_TITLE_FONT, color=brand.NAVY)
     ws['A1'].alignment = CENTER
 
     ws.merge_cells('A2:M2')
@@ -612,7 +619,7 @@ def _build_centralizator_sheet(ws, titlu, luna, an, nr_zile, month_names, proiec
         d = date(an, luna, zi)
         cell = _style_data_cell(ws, row, col, zi, font=HEADER_FONT, fill=HEADER_FILL)
         if d.weekday() >= 5:
-            cell.fill = PatternFill(start_color='455A64', end_color='455A64', fill_type='solid')
+            cell.fill = PatternFill('solid', fgColor=brand.WEEKEND)
 
     _style_data_cell(ws, row, nr_zile + 4, 'TOTAL', font=HEADER_FONT, fill=HEADER_FILL)
 
