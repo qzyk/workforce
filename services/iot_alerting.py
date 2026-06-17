@@ -22,7 +22,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from models import db, SensorAlert, Senzor, Utilizator
+from models import db, SensorAlert, Senzor, Utilizator, Cladire, Spatiu
 from services import feature_flags as ff_svc
 from services import notificari_app as notif_svc
 from services import realtime as rt_svc
@@ -65,6 +65,50 @@ def _payload_alerta(alert: SensorAlert, senzor: Optional[Senzor]) -> dict:
         'mesaj': alert.mesaj,
         'status': alert.status,
     }
+
+
+def _resolve_scope(senzor: Optional[Senzor]) -> tuple[Optional[int], Optional[int]]:
+    """
+    Rezolva (santier_id, proiect_id) din lantul de locatie al senzorului.
+
+    Senzorul e mereu atasat unei locatii (element / spatiu / cladire, vezi
+    create_senzor). Urcam lantul pana la cladire -> santier:
+
+      cladire           -> cladire.santier_id
+      element_bim       -> element.cladire_id (sau via nivel/spatiu)
+      spatiu            -> spatiu.nivel.cladire_id
+
+    Cu santier-ul rezolvat luam si proiect_id (santier.proiect_id, optional).
+    Scope-ul e necesar ca abonatii SSE scoped (?santier_id=X via
+    /api/events/stream) sa primeasca evenimentul 'sensor_alert'. La fel ca la
+    issue_status_change. Daca lantul nu se poate rezolva -> (None, None).
+    """
+    if senzor is None:
+        return None, None
+
+    cladire = None
+    if senzor.cladire_id:
+        cladire = senzor.cladire or Cladire.query.get(senzor.cladire_id)
+    elif senzor.element_bim_id:
+        el = senzor.element_bim
+        if el is not None:
+            cladire_id = el.cladire_id
+            if cladire_id is None and el.nivel is not None:
+                cladire_id = el.nivel.cladire_id
+            if cladire_id is None and el.spatiu is not None \
+                    and el.spatiu.nivel is not None:
+                cladire_id = el.spatiu.nivel.cladire_id
+            if cladire_id is not None:
+                cladire = Cladire.query.get(cladire_id)
+    elif senzor.spatiu_id:
+        spatiu = senzor.spatiu or Spatiu.query.get(senzor.spatiu_id)
+        if spatiu is not None and spatiu.nivel is not None \
+                and spatiu.nivel.cladire_id is not None:
+            cladire = Cladire.query.get(spatiu.nivel.cladire_id)
+
+    if cladire is None:
+        return None, None
+    return cladire.santier_id, cladire.santier.proiect_id if cladire.santier else None
 
 
 def dispatch_alert(alert: SensorAlert, *,
@@ -112,10 +156,17 @@ def dispatch_alert(alert: SensorAlert, *,
     payload = _payload_alerta(alert, senzor)
     link_url = f'/bim/alerts?status={alert.status}'
 
+    # Rezolvam scope-ul (santier_id / proiect_id) din lantul locatiei, ca la
+    # issue_status_change. Fara scope, abonatii SSE scoped (?santier_id=X) NU
+    # primesc niciodata alerta - vezi services/realtime.get_events_since.
+    santier_id, proiect_id = _resolve_scope(senzor)
+
     # (a) Eveniment SSE - commit=False ca sa intre in tranzactia ingestului.
     try:
         rt_svc.publish_event(
             'sensor_alert',
+            santier_id=santier_id,
+            proiect_id=proiect_id,
             payload=payload,
             tenant_id=alert.tenant_id,
             commit=False,

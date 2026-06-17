@@ -17,6 +17,7 @@ from models import (db, Senzor, SensorAlert, ElementBIM, Cladire, Santier,
                     Utilizator, NotificareApp, RealtimeEvent)
 from services import iot_ingest
 from services import iot_alerting
+from services import realtime as rt
 from services import feature_flags as ff
 
 
@@ -99,6 +100,41 @@ def test_alerta_noua_creeaza_notificare_si_eveniment(app, element, manager, flag
         # notificat_la marcat (idempotenta).
         alert = SensorAlert.query.get(result['alert_id'])
         assert alert.notificat_la is not None
+
+
+def test_alerta_ajunge_la_abonat_scoped_pe_santier(app, element, manager, flag_on):
+    """
+    Regresie scope SSE: evenimentul 'sensor_alert' trebuie sa poarte
+    santier_id rezolvat din lantul senzorului (element -> cladire -> santier),
+    altfel abonatii scoped (?santier_id=X via /api/events/stream) nu il primesc.
+    Exercitiem chiar calea de consum: realtime.get_events_since(santier_id=X).
+    """
+    with app.app_context():
+        # Aflam santier-ul din lantul element -> cladire.
+        el = ElementBIM.query.get(element)
+        cladire = Cladire.query.get(el.cladire_id)
+        santier_id = cladire.santier_id
+        assert santier_id is not None
+
+        cursor = rt.get_latest_event_id()
+
+        s = _make_senzor(element, manager, 'AL-SCOPE')
+        result = iot_ingest.ingest_reading(s, 40.0)
+        assert result['alert_created'] is True
+
+        # Evenimentul publicat poarta santier_id-ul corect.
+        ev = RealtimeEvent.query.filter_by(event_type='sensor_alert').order_by(
+            RealtimeEvent.id.desc()).first()
+        assert ev is not None
+        assert ev.santier_id == santier_id
+
+        # Abonatul scoped pe santier primeste alerta.
+        livrate = rt.get_events_since(cursor, santier_id=santier_id)
+        assert any(e.event_type == 'sensor_alert' for e in livrate)
+
+        # Abonatul scoped pe ALT santier NU o primeste (filtru corect).
+        livrate_alt = rt.get_events_since(cursor, santier_id=santier_id + 9999)
+        assert not any(e.event_type == 'sensor_alert' for e in livrate_alt)
 
 
 def test_smtp_neconfigurat_fallback_fara_crash(app, element, manager, flag_on, monkeypatch):
