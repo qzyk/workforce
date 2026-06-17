@@ -140,7 +140,9 @@ def generate_pdf_foaie_prezenta(proiect_id, luna, an):
         if zi in sarbatori:
             style_cmds.append(('BACKGROUND', (col_idx, 0), (col_idx, 0), colors.HexColor(brand.SARBATOARE_HEX)))
         elif zi in weekends:
-            style_cmds.append(('BACKGROUND', (col_idx, 0), (col_idx, 0), colors.HexColor(brand.NAVY_HEX)))
+            # Header weekend: fundal deschis (WEEKEND_HEX) ca textul navy sa ramana lizibil.
+            # NAVY_HEX aici facea navy-pe-navy => numarul zilei dispare.
+            style_cmds.append(('BACKGROUND', (col_idx, 0), (col_idx, 0), colors.HexColor(brand.WEEKEND_HEX)))
             for r_idx in range(1, len(table_data)):
                 style_cmds.append(('BACKGROUND', (col_idx, r_idx), (col_idx, r_idx), colors.HexColor(brand.WEEKEND_HEX)))
 
