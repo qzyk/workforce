@@ -153,6 +153,8 @@ def ingest_reading(senzor: Senzor, valoare: float, *,
     # Threshold check
     alert_id = None
     violation = None
+    alert_obj = None       # SensorAlert generat/escaladat (pentru dispatch notificare)
+    alert_escaladat = False  # True daca o alerta existenta a crescut in severitate
     if calitate == 'ok' and senzor.threshold_min is not None and valoare < float(senzor.threshold_min):
         violation = 'sub_min'
     elif calitate == 'ok' and senzor.threshold_max is not None and valoare > float(senzor.threshold_max):
@@ -188,6 +190,9 @@ def ingest_reading(senzor: Senzor, valoare: float, *,
                 existing.valoare = valoare
                 existing.mesaj = (f'{senzor.cod}: valoare {valoare}{senzor.unitate} '
                                   f'iese din threshold ({violation}: {threshold_val})')
+                # Escaladare: re-notificam (vezi dispatch mai jos).
+                alert_escaladat = True
+                alert_obj = existing
             alert_id = existing.id
         else:
             alert = SensorAlert(
@@ -205,6 +210,7 @@ def ingest_reading(senzor: Senzor, valoare: float, *,
             db.session.add(alert)
             db.session.flush()
             alert_id = alert.id
+            alert_obj = alert
 
             # Audit pe alerta noua (NU pe fiecare reading - too verbose)
             audit_svc.log('sensor_alert_created', 'bim_sensor_alert', alert.id,
@@ -213,6 +219,19 @@ def ingest_reading(senzor: Senzor, valoare: float, *,
                               'tip': violation, 'severitate': severitate,
                               'valoare': valoare, 'threshold': threshold_val,
                           })
+
+    # IoT Faza 1: inchide bucla alerta -> notificare. Doar la alerta noua sau
+    # escaladata. dispatch_alert e gated de flag 'iot-alert-notify' (default OFF);
+    # cu OFF e no-op (zero notificari, comportament istoric). commit=False ca sa
+    # se uneasca cu commit-ul de mai jos (un singur write pe SQLite). Best-effort:
+    # orice eroare e prinsa, nu rupe ingestul.
+    if alert_obj is not None:
+        try:
+            from services import iot_alerting as iot_alerting_svc
+            iot_alerting_svc.dispatch_alert(
+                alert_obj, escalada=alert_escaladat, commit=False)
+        except Exception as e:
+            _logger.warning('ingest_reading dispatch_alert a esuat: %s', e)
 
     if commit:
         db.session.commit()
