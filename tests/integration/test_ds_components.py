@@ -25,10 +25,54 @@ def test_ghid_ds_randeaza_200(authenticated_client):
 
 
 def test_ghid_ds_confirm_form_foloseste_modal_global(authenticated_client):
-    """confirm_form deleaga la modalul global confirmDelete (nu confirm() nativ)."""
+    """confirm_form deleaga la modalul global (data-confirm-*), nu la confirm() nativ.
+
+    Markup-ul NU mai foloseste un onclick inline (care se rupea cand mesajul avea
+    ghilimele): url + mesaj vin prin atribute data-*, iar listener-ul delegat din
+    main.js apeleaza confirmDelete.
+    """
     r = authenticated_client.get('/ghid/ds')
     assert r.status_code == 200
-    assert b'confirmDelete(' in r.data
+    assert b'data-confirm-url=' in r.data
+    assert b'data-confirm-mesaj=' in r.data
+    # nu mai exista onclick inline cu confirmDelete (sursa bug-ului de quoting)
+    assert b'onclick="confirmDelete(' not in r.data
+
+
+def test_confirm_form_markup_valid_cu_mesaj_cu_ghilimele(app):
+    """Mesaj cu apostrof + ghilimele: atributul data-* ramane intreg (HTML-escaped),
+    iar dupa decodarea browserului redevine exact mesajul initial.
+
+    Reproduce defectul vechi: {{ mesaj | tojson }} intr-un onclick="..." inchidea
+    atributul prematur la prima ghilimea dubla. Acum nu mai e cazul.
+    """
+    import html as _html
+    import re
+    tpl = '{% import "_components.html" as ed %}{{ ed.confirm_form(url="/sterge/1", mesaj=m) }}'
+    mesaj = 'Stergi "Hala" + L\'element?'
+    with app.test_request_context():
+        out = render_template_string(tpl, m=mesaj)
+    # niciun onclick inline; doar atribute data-*
+    assert 'onclick' not in out
+    assert 'data-confirm-url="/sterge/1"' in out
+    # atributul nu e rupt de ghilimele: o singura pereche data-confirm-mesaj="..."
+    m = re.search(r'data-confirm-mesaj="([^"]*)"', out)
+    assert m is not None, out
+    # ghilimelele duble din mesaj sunt escapate ca entitate, nu lasate brute
+    assert '"Hala"' not in m.group(1)
+    # dupa decodarea HTML (ce vede browserul) redevine mesajul exact
+    assert _html.unescape(m.group(1)) == mesaj
+
+
+def test_confirm_form_default_foloseste_ghilimele_simple_in_apel(app):
+    """confirm_form fara mesaj (cazul frecvent): butonul are mesajul implicit in
+    data-confirm-mesaj, fara sa strice markup-ul. Verifica si butonul valid <button>."""
+    tpl = '{% import "_components.html" as ed %}{{ ed.confirm_form(url="/x") }}'
+    with app.test_request_context():
+        out = render_template_string(tpl)
+    assert 'data-confirm-url="/x"' in out
+    assert 'Sunteti sigur' in out  # mesajul implicit ajunge in atribut
+    assert '<button type="button"' in out
 
 
 def test_macros_argumente_minime_nu_arunca(app):

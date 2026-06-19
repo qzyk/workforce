@@ -153,10 +153,13 @@ ed-btn ed-btn--{{ varianta }}{% if size %} ed-btn--{{ size }}{% endif %}{% if bl
 
 {# ---------- CONFIRM FORM (stergere) ----------
    Buton care deschide modalul global brandat (confirmDelete din main.js) in loc
-   de confirm() nativ. NU randeaza un <form> propriu: modalul global posteaza la url. #}
+   de confirm() nativ. NU randeaza un <form> propriu: modalul global posteaza la url.
+   Url + mesaj se transmit prin atribute data-* (decodate corect de browser pentru
+   ORICE mesaj, inclusiv cu apostrof/ghilimele), iar un listener delegat din main.js
+   apeleaza confirmDelete. Asa evitam quoting-ul fragil dintr-un onclick inline. #}
 {% macro confirm_form(url='', mesaj='Sunteti sigur ca doriti sa stergeti acest element?', label='Sterge', icon='trash', varianta='danger', size='sm') %}
 {%- set cls -%}ed-btn ed-btn--{{ varianta }}{% if size %} ed-btn--{{ size }}{% endif %}{%- endset -%}
-<button type="button" class="{{ cls }}" onclick="confirmDelete('{{ url }}', {{ mesaj | tojson }})">
+<button type="button" class="{{ cls }}" data-confirm-url="{{ url }}" data-confirm-mesaj="{{ mesaj }}">
   {% if icon %}<i class="fa-solid fa-{{ icon }}"></i>{% endif %}{{ label }}
 </button>
 {% endmacro %}

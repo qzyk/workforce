@@ -166,6 +166,17 @@
         if (modal) modal.classList.remove('show');
     };
 
+    // Listener delegat pentru butoanele DS (macro confirm_form): url + mesaj vin
+    // prin data-confirm-url / data-confirm-mesaj, deci nu mai e nevoie de onclick
+    // inline (evitam problemele de quoting cu apostrof/ghilimele in mesaj).
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('[data-confirm-url]');
+        if (btn) {
+            e.preventDefault();
+            confirmDelete(btn.getAttribute('data-confirm-url'), btn.getAttribute('data-confirm-mesaj'));
+        }
+    });
+
     // Close modal on overlay click
     const deleteModal = document.getElementById('deleteModal');
     if (deleteModal) {
