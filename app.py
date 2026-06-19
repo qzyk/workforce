@@ -177,7 +177,7 @@ def create_app(config_name='default'):
     # Exempt CSRF pentru API-ul Gantt (JSON/multipart, consum programatic)
     for _ep in ('gantt.api_import', 'gantt.api_classify', 'gantt.api_wbs',
                 'gantt.api_dependencies', 'gantt.api_validate', 'gantt.api_export',
-                'gantt.api_pipeline'):
+                'gantt.api_pipeline', 'gantt.plan_progres'):
         try:
             csrf.exempt(app.view_functions[_ep])
         except KeyError:
@@ -442,6 +442,11 @@ def create_app(config_name='default'):
             ('concedii', 'introdus_de', 'INTEGER REFERENCES utilizatori(id)'),
             # IoT Faza 1: idempotenta dispatch notificare pe alertele de senzor.
             ('bim_sensor_alerts', 'notificat_la', 'DATETIME'),
+            # Gantt Faza 2 (tracking): coloane aditive nullable pe tabele existente.
+            # Tabelele noi gantt_baseline / gantt_progres sunt create de db.create_all().
+            ('gantt_plan', 'baseline_activ_id', 'INTEGER REFERENCES gantt_baseline(id)'),
+            ('gantt_wbs_nod', 'cheie_activitate', 'VARCHAR(64)'),
+            ('bim_task_schedules', 'cheie_activitate', 'VARCHAR(64)'),
         ]
 
         adaugate = 0

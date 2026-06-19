@@ -12,6 +12,7 @@ import time
 from typing import Optional
 
 from .modele import Activitate, RezultatPlanificare
+from .normalizare import cheie_stabila
 from .clasificare import Clasificator
 from .wbs import genereaza_wbs
 from .dependinte import genereaza_dependinte
@@ -82,6 +83,10 @@ class MotorPlanificare:
                 valoare_manopera=vman,
                 valoare_utilaj=vuti,
                 cost_estimat=estimat,
+                # cheie stabila (Faza 2 tracking): hash din cod+denumire+obiect+tronson,
+                # independent de ordinea randurilor -> stabil la re-import.
+                cheie=cheie_stabila(art.cod_articol, art.denumire,
+                                    art.obiect, art.tronson),
             ))
         return activitati
 

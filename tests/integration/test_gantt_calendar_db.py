@@ -194,11 +194,14 @@ def test_cli_adauga_coloana_calendar_id_pe_schema_veche(app):
     r1 = runner.invoke(args=['init-gantt-calendar'])
     assert r1.exit_code == 0
     assert 'calendar_id adaugata' in r1.output
+    # Pasul de deploy reconciliaza si coloanele aditive ulterioare (ex. Faza 2
+    # tracking: gantt_plan.baseline_activ_id) prin migrate-bim (ALTER idempotent).
+    assert runner.invoke(args=['migrate-bim']).exit_code == 0
 
     with app.app_context():
         # 4. Coloana exista, query-ul pe GanttPlan nu mai crapa, datele au ramas
         cols = {c['name'] for c in inspect(db.engine).get_columns('gantt_plan')}
-        assert 'calendar_id' in cols
+        assert 'calendar_id' in cols and 'baseline_activ_id' in cols
         plan = GanttPlan.query.first()
         assert plan is not None and plan.nume == 'Plan vechi prod'
         assert plan.calendar_id is None

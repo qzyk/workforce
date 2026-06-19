@@ -2774,6 +2774,11 @@ class BIMTaskSchedule(db.Model):
                                       db.ForeignKey('rapoarte_activitati.id'),
                                       nullable=True, index=True)
 
+    # Faza 2 tracking (Gantt): cheia stabila a activitatii Gantt corespunzatoare,
+    # pentru a urca progresul fizic pe element inapoi in plan (4D -> tracking).
+    # Nullable -> backward compat (4D-ul actual e pe categorie, fara aceasta cheie).
+    cheie_activitate = db.Column(db.String(64), nullable=True, index=True)
+
     data_creare = db.Column(db.DateTime, default=datetime.utcnow)
     data_modificare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
@@ -4896,6 +4901,12 @@ class GanttPlan(db.Model):
     data_start = db.Column(db.Date, nullable=True)             # start planificare
     calendar_id = db.Column(db.Integer, db.ForeignKey('gantt_calendar.id'),
                             nullable=True)                     # calendar de lucru (optional)
+    # Faza 2 tracking: baseline-ul activ (plan de referinta inghetat) pentru comparatie.
+    # Nullable -> backward compat; populat dupa POST /gantt/plan/<id>/baseline.
+    baseline_activ_id = db.Column(db.Integer,
+                                  db.ForeignKey('gantt_baseline.id', use_alter=True,
+                                                name='fk_gantt_plan_baseline_activ'),
+                                  nullable=True)
     nr_activitati = db.Column(db.Integer, default=0, nullable=False)
     durata_zile = db.Column(db.Integer, default=0, nullable=False)
     cost_total = db.Column(db.Numeric(16, 2), default=0, nullable=False)
@@ -4935,6 +4946,9 @@ class GanttWbsNod(db.Model):
     nume = db.Column(db.String(300), nullable=False)
     ordine = db.Column(db.Integer, nullable=False, default=0)
     activitate_ref = db.Column(db.String(20), nullable=True)   # id activitate (frunza)
+    # Faza 2 tracking: cheia stabila a activitatii (rezista la re-import, vs.
+    # activitate_ref=A000001 care depinde de ordinea randurilor). Nullable -> backward compat.
+    cheie_activitate = db.Column(db.String(64), nullable=True)
     data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     plan = db.relationship('GanttPlan',
@@ -4945,6 +4959,80 @@ class GanttWbsNod(db.Model):
 
     def __repr__(self):
         return f'<GanttWbsNod {self.id} {self.tip} {self.nume!r} plan={self.plan_id}>'
+
+
+class GanttBaseline(db.Model):
+    """Plan de referinta (baseline) inghetat pentru un plan Gantt (Faza 2 tracking).
+
+    Captureaza un snapshot al planului la un moment dat: pentru fiecare activitate
+    (pe cheia stabila) start_zi/finish_zi/durata/valoare, plus curba S si meta
+    (BAC, durata totala, data de start). Comparatia curent-vs-baseline se face pe
+    cheia stabila, deci rezista la re-import (chei disparute / noi raportate, nu eroare).
+    Folosit DOAR cand flag-ul 'gantt-tracking' e ON.
+    """
+    __tablename__ = 'gantt_baseline'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    plan_id = db.Column(db.Integer, db.ForeignKey('gantt_plan.id'),
+                        nullable=False, index=True)
+    nume = db.Column(db.String(120), nullable=False)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    # meta-snapshot pentru afisare rapida (fara a desface continut_json)
+    bac = db.Column(db.Numeric(16, 2), default=0, nullable=False)         # Budget At Completion
+    durata_zile = db.Column(db.Integer, default=0, nullable=False)
+    data_start = db.Column(db.Date, nullable=True)
+    # snapshot complet: {'activitati': {cheie: {start_zi, finish_zi, durata, valoare}},
+    #                    'curba_s': [...], 'meta': {...}}
+    continut_json = db.Column(db.Text, nullable=False)
+
+    plan = db.relationship('GanttPlan', foreign_keys=[plan_id],
+                           backref=db.backref('baselines', lazy='dynamic',
+                                              cascade='all, delete-orphan'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    def __repr__(self):
+        return f'<GanttBaseline {self.id} {self.nume!r} plan={self.plan_id}>'
+
+
+class GanttProgres(db.Model):
+    """Jurnal de progres fizic pe activitate Gantt (Faza 2 tracking, append-only).
+
+    Fiecare rand = o masuratoare de progres la o data, pe cheia stabila a
+    activitatii (independenta de id-ul A000001). Pastram istoricul (nu actualizam
+    randuri vechi); progresul curent al unei activitati = ultima inregistrare
+    dupa (data, data_creare). Folosit DOAR cand flag-ul 'gantt-tracking' e ON.
+    """
+    __tablename__ = 'gantt_progres'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    plan_id = db.Column(db.Integer, db.ForeignKey('gantt_plan.id'),
+                        nullable=False, index=True)
+    cheie_activitate = db.Column(db.String(64), nullable=False, index=True)
+    data = db.Column(db.Date, nullable=False)                  # data masuratorii (data de stare)
+    procent_fizic = db.Column(db.Numeric(5, 2), default=0, nullable=False)   # 0..100
+    cantitate_realizata = db.Column(db.Numeric(14, 3), nullable=True)
+    data_start_real = db.Column(db.Date, nullable=True)
+    data_finish_real = db.Column(db.Date, nullable=True)
+    # sursa: 'manual' | 'situatie' (din SituatieLunara) | 'element_bim' (urcat din 4D)
+    sursa = db.Column(db.String(20), default='manual', nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    plan = db.relationship('GanttPlan', foreign_keys=[plan_id],
+                           backref=db.backref('progrese', lazy='dynamic',
+                                              cascade='all, delete-orphan'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    __table_args__ = (
+        db.Index('ix_gantt_progres_plan_cheie', 'plan_id', 'cheie_activitate'),
+    )
+
+    def __repr__(self):
+        return (f'<GanttProgres plan={self.plan_id} {self.cheie_activitate} '
+                f'{self.data} {self.procent_fizic}%>')
 
 
 class ProiectSantier(db.Model):

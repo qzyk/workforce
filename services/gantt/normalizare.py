@@ -6,6 +6,7 @@ Normalizare text pentru import si clasificare:
 
 Folosit atat la import (curatarea articolelor) cat si la clasificare (potrivirea cheilor).
 """
+import hashlib
 import re
 import unicodedata
 
@@ -31,3 +32,22 @@ def normalizeaza(text: str, lower: bool = True) -> str:
 def normalizeaza_cheie(text: str) -> str:
     """Cheie de comparatie pentru deduplicare (cod articol normalizat agresiv)."""
     return re.sub(r'[^a-z0-9]', '', normalizeaza(text))
+
+
+def cheie_stabila(cod: str, denumire: str, obiect: str = '', tronson: str = '') -> str:
+    """Cheie stabila de activitate (Faza 2 tracking).
+
+    Hash determinist (sha1, primii 16 hexa) din componentele normalizate ale
+    activitatii: cod articol + denumire + obiect + tronson. NU depinde de
+    ordinea randurilor din F3, deci ramane stabila la re-import (atata timp cat
+    aceste 4 atribute nu se schimba). Folosita pentru a lega baseline-ul,
+    progresul fizic si elementele 4D de o activitate, independent de id-ul
+    secvential A000001 (volatil).
+    """
+    parti = '|'.join([
+        normalizeaza_cheie(cod),
+        normalizeaza(denumire),
+        normalizeaza(obiect),
+        normalizeaza(tronson),
+    ])
+    return hashlib.sha1(parti.encode('utf-8')).hexdigest()[:16]

@@ -104,6 +104,11 @@ class Activitate:
     finish_zi: int = 0
     critic: bool = False                       # pe drumul critic (slack 0)
     marja: int = 0                             # marja totala (slack) in zile
+    # cheie stabila de activitate (Faza 2 tracking): hash determinist din
+    # cod + denumire + obiect + tronson, INDEPENDENT de ordinea randurilor din F3.
+    # Pune o baza solida pentru baseline / progres / legatura 4D (vs. id-ul A000001
+    # volatil). Calculata in pipeline (cheie_stabila); '' = necalculata (backward compat).
+    cheie: str = ''
     predecesori: list = field(default_factory=list)   # list[Dependenta]
 
     def to_dict(self) -> dict:
@@ -137,6 +142,7 @@ class Activitate:
             finish_zi=int(d.get('finish_zi', 0) or 0),
             critic=bool(d.get('critic', False)),
             marja=int(d.get('marja', 0) or 0),
+            cheie=str(d.get('cheie', '') or ''),
         )
         a.predecesori = [Dependenta.from_dict(p) for p in (d.get('predecesori') or [])]
         return a

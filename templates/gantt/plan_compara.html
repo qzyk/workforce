@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Comparatie baseline — {{ p.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('gantt.index') }}">Planificare Gantt</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('gantt.planuri') }}">Planuri</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('gantt.plan_tracking', id_=p.id) }}">{{ p.nume }}</a></li>
+<li class="breadcrumb-item active">Comparatie baseline</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.cmp-sec { background:#fff; border:1px solid #E8E3D5; border-radius:10px; margin-bottom:18px; overflow:hidden; }
+.cmp-sec-h { background:linear-gradient(135deg,#0B1426,#16243d); color:#F5F1E8; padding:12px 16px; font-weight:700; }
+.cmp-stats { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+.cmp-stat { background:#fff; border:1px solid #E8E3D5; border-radius:10px; padding:12px 18px; min-width:150px; }
+.cmp-stat .v { font-size:1.4rem; font-weight:800; color:#0B1426; }
+.cmp-stat .l { font-size:.78rem; color:#8a8273; text-transform:uppercase; letter-spacing:.04em; }
+table.cmp { width:100%; border-collapse:collapse; font-size:.84rem; }
+table.cmp th { background:#F5F1E8; text-align:right; padding:7px 9px; }
+table.cmp th.l, table.cmp td.l { text-align:left; }
+table.cmp td { border-top:1px solid #ECE7DA; padding:6px 9px; text-align:right; white-space:nowrap; }
+.dl-pos { color:#B71C1C; font-weight:700; }   /* intarziere */
+.dl-neg { color:#2e7d32; font-weight:700; }   /* avans */
+.cmp-pill { display:inline-block; background:#F5F1E8; border:1px solid #E8E3D5; border-radius:5px; padding:1px 6px; font-size:.72rem; color:#6b6b6b; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-code-compare" style="color:#C9A961;"></i> Curent vs baseline „{{ baseline.nume }}"</h2>
+    <a href="{{ url_for('gantt.plan_tracking', id_=p.id) }}" class="cmp-pill" style="text-decoration:none; padding:7px 12px;"><i class="fa-solid fa-arrow-left"></i> Inapoi la urmarire</a>
+</div>
+
+<div class="cmp-stats">
+    <div class="cmp-stat">
+        <div class="v {% if comparatie.delta_durata_zile > 0 %}dl-pos{% elif comparatie.delta_durata_zile < 0 %}dl-neg{% endif %}">{{ '%+d'|format(comparatie.delta_durata_zile) }}z</div>
+        <div class="l">Delta durata ({{ comparatie.baseline_durata_zile }} &rarr; {{ comparatie.curent_durata_zile }})</div>
+    </div>
+    <div class="cmp-stat">
+        <div class="v">{{ '{:+,.0f}'.format(comparatie.delta_bac) }}</div>
+        <div class="l">Delta BAC (lei)</div>
+    </div>
+    <div class="cmp-stat"><div class="v">{{ comparatie.nr_noi }}</div><div class="l">Activitati noi</div></div>
+    <div class="cmp-stat"><div class="v">{{ comparatie.nr_disparute }}</div><div class="l">Activitati disparute</div></div>
+</div>
+
+{% if comparatie.nr_noi or comparatie.nr_disparute %}
+<div class="cmp-sec">
+    <div class="cmp-sec-h"><i class="fa-solid fa-triangle-exclamation"></i> Diferente de structura fata de baseline</div>
+    <div style="padding:12px 16px; font-size:.85rem; color:#0B1426;">
+        Fisierul F3 s-a modificat intre timp. Comparatia se face pe cheia stabila de activitate;
+        {{ comparatie.nr_noi }} activitati noi si {{ comparatie.nr_disparute }} disparute sunt
+        raportate aici (nu blocheaza comparatia restului).
+    </div>
+</div>
+{% endif %}
+
+<div class="cmp-sec">
+    <div class="cmp-sec-h"><i class="fa-solid fa-arrow-right-arrow-left"></i> Abateri pe activitate (sortate dupa delta finish)</div>
+    <div style="max-height:560px; overflow:auto;">
+        <table class="cmp">
+            <thead><tr>
+                <th class="l">Cod</th><th class="l">Denumire</th>
+                <th>Start B</th><th>Start C</th><th>&Delta; start</th>
+                <th>Finish B</th><th>Finish C</th><th>&Delta; finish</th>
+                <th>&Delta; durata</th><th>&Delta; valoare</th>
+            </tr></thead>
+            <tbody>
+            {% for r in comparatie.randuri[:600] %}
+                <tr>
+                    <td class="l">{{ r.cod }}</td>
+                    <td class="l">{{ r.nume }}</td>
+                    <td>{{ r.baseline_start }}</td><td>{{ r.curent_start }}</td>
+                    <td class="{% if r.delta_start > 0 %}dl-pos{% elif r.delta_start < 0 %}dl-neg{% endif %}">{{ '%+d'|format(r.delta_start) }}</td>
+                    <td>{{ r.baseline_finish }}</td><td>{{ r.curent_finish }}</td>
+                    <td class="{% if r.delta_finish > 0 %}dl-pos{% elif r.delta_finish < 0 %}dl-neg{% endif %}">{{ '%+d'|format(r.delta_finish) }}</td>
+                    <td>{{ '%+d'|format(r.delta_durata) }}</td>
+                    <td>{{ '{:+,.0f}'.format(r.delta_valoare) }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% if not comparatie.randuri %}<p style="padding:14px 16px; color:#8a8273;">Nicio activitate comuna intre curent si baseline.</p>{% endif %}
+    </div>
+</div>
+{% endblock %}

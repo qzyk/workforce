@@ -211,6 +211,37 @@ def _calendar_activ(plan=None):
         return None
 
 
+def _tracking_on() -> bool:
+    """True cand flag-ul 'gantt-tracking' e activ pentru tenantul curent."""
+    try:
+        from services.feature_flags import is_enabled
+        return bool(is_enabled('gantt-tracking', _tenant_curent()))
+    except Exception:
+        return False
+
+
+def _progrese_active(plan_id):
+    """{cheie: procent} pentru bare, DOAR cu flag ON; None altfel (progres 0 istoric)."""
+    if not plan_id:
+        return None
+    try:
+        from services.gantt import tracking_db
+        return tracking_db.progrese_active(plan_id, _tenant_curent())
+    except Exception:
+        return None
+
+
+def _baseline_activ(plan):
+    """Snapshot baseline activ pentru overlay, DOAR cu flag ON; None altfel."""
+    if plan is None:
+        return None
+    try:
+        from services.gantt import tracking_db
+        return tracking_db.baseline_activ(plan, _tenant_curent())
+    except Exception:
+        return None
+
+
 def _render_rezultat(rezultat, raport_import, token, nume_fisier, plan_id=None):
     """Randeaza preview-ul rezultat + diagrama Gantt (4D) + optiunea de salvare."""
     session['gantt_nume_fisier'] = nume_fisier
@@ -233,11 +264,15 @@ def _render_rezultat(rezultat, raport_import, token, nume_fisier, plan_id=None):
                                                   calendar=calendar)
     except Exception:
         resurse = None
+    # Faza 2 tracking: progres real pe bare + overlay baseline, DOAR cu flag ON.
+    progrese = _progrese_active(plan_id)     # None cu flag OFF -> bare cu progres 0
+    baseline = _baseline_activ(plan)         # None cu flag OFF -> fara overlay
     return render_template(
         'gantt/rezultat.html', rezultat=rezultat, raport_import=raport_import,
         token=token, nume_fisier=nume_fisier,
-        diagrama=diagrama.sarcini_gantt(rezultat, date.today(), calendar=calendar),
-        resurse=resurse,
+        diagrama=diagrama.sarcini_gantt(rezultat, date.today(), calendar=calendar,
+                                        progrese=progrese, baseline=baseline),
+        resurse=resurse, tracking_on=_tracking_on(),
         proiecte=proiecte, plan_id=plan_id, clasifica=_clasifica_sesiune())
 
 
@@ -478,7 +513,7 @@ def plan(id_):
         flash(f'Nu pot deschide planul: {e}', 'danger')
         return redirect(url_for('gantt.planuri'))
     _aplica_arbore_salvat(rezultat, p.id)        # WBS editat are prioritate fata de auto
-    token = _salveaza_temp(p.continut, p.ext)   # pt. butoanele de export din rezultat
+    token = _salveaza_temp(p.continut, p.ext)    # pt. butoanele de export din rezultat
     session['gantt_token'] = token
     session['gantt_ext'] = p.ext
     session['gantt_nume'] = p.nume
@@ -519,6 +554,134 @@ def plan_export(id_, fmt):
     import io
     return send_file(io.BytesIO(data), mimetype=mime, as_attachment=True,
                      download_name=f'planificare_{p.nume}.{ext_out}')
+
+
+# ===================== TRACKING (Faza 2: baseline + progres) =====================
+def _rezultat_plan(p):
+    """Re-ruleaza pipeline-ul determinist pe sursa unui plan salvat (cu preturi 5D
+    si arbore WBS editat). Intoarce RezultatPlanificare sau None la eroare de import."""
+    mapare, rand_antet = _mapare_din_plan(p)
+    try:
+        rezultat, _ = _pipeline_din_temp(p.continut, p.ext, mapare, rand_antet,
+                                         preturi_boq=_preturi_plan(p))
+    except import_engine.EroareImport:
+        return None
+    _aplica_arbore_salvat(rezultat, p.id)
+    return rezultat
+
+
+@gantt_bp.route('/plan/<int:id_>/baseline', methods=['POST'])
+@login_required
+def plan_baseline(id_):
+    """Ingheata baseline-ul curent al planului (plan de referinta)."""
+    if not _tracking_on():
+        abort(404)
+    p = _plan_sau_404(id_)
+    rezultat = _rezultat_plan(p)
+    if rezultat is None:
+        flash('Nu pot regenera planul pentru baseline. Reincarca fisierul F3.', 'danger')
+        return redirect(url_for('gantt.plan', id_=p.id))
+    from services.gantt import tracking_db
+    from services import audit
+    nume = (request.form.get('nume') or '').strip() or None
+    bl = tracking_db.inghetare_baseline(
+        p, rezultat, nume=nume, tenant_id=_tenant_curent(),
+        creat_de_id=getattr(current_user, 'id', None))
+    audit.log('create', 'gantt_baseline', bl.id,
+              new_values={'plan_id': p.id, 'nume': bl.nume}, commit=True)
+    flash(f'Baseline "{bl.nume}" inghetat. Comparatia curent-vs-baseline e disponibila '
+          'in pagina de urmarire.', 'success')
+    return redirect(url_for('gantt.plan_tracking', id_=p.id))
+
+
+@gantt_bp.route('/plan/<int:id_>/baseline/<int:bid>')
+@login_required
+def plan_baseline_compara(id_, bid):
+    """Comparatie curent vs baseline (chei disparute / noi raportate, nu eroare)."""
+    if not _tracking_on():
+        abort(404)
+    p = _plan_sau_404(id_)
+    from models import db, GanttBaseline
+    bl = db.session.get(GanttBaseline, bid)
+    if bl is None or bl.plan_id != p.id:
+        abort(404)
+    rezultat = _rezultat_plan(p)
+    if rezultat is None:
+        flash('Nu pot regenera planul pentru comparatie.', 'danger')
+        return redirect(url_for('gantt.plan_tracking', id_=p.id))
+    import json
+    from services.gantt import tracking
+    snap = json.loads(bl.continut_json) if bl.continut_json else {}
+    comparatie = tracking.compara_baseline(rezultat, snap)
+    return render_template('gantt/plan_compara.html', p=p, baseline=bl,
+                           comparatie=comparatie)
+
+
+@gantt_bp.route('/plan/<int:id_>/tracking')
+@login_required
+def plan_tracking(id_):
+    """Pagina de urmarire executie: introducere progres bulk + comparatie baseline."""
+    if not _tracking_on():
+        abort(404)
+    p = _plan_sau_404(id_)
+    rezultat = _rezultat_plan(p)
+    if rezultat is None:
+        flash('Nu pot deschide planul pentru urmarire. Reincarca fisierul F3.', 'danger')
+        return redirect(url_for('gantt.planuri'))
+    from services.gantt import tracking_db, tracking
+    progrese_det = tracking_db.progrese_detaliat(p.id)
+    progrese_simplu = {ck: v['procent'] for ck, v in progrese_det.items()}
+    # sumar EV / durata ramasa pe baza progresului curent
+    sumar = tracking.aplica_progres(
+        list(rezultat.activitati or []),
+        {ck: {'procent': v['procent']} for ck, v in progrese_det.items()},
+        data_stare=date.today())
+    from models import GanttBaseline
+    baselines = (GanttBaseline.query.filter_by(plan_id=p.id)
+                 .order_by(GanttBaseline.data_creare.desc()).all())
+    return render_template('gantt/plan_tracking.html', p=p, rezultat=rezultat,
+                           activitati=(rezultat.activitati or []),
+                           progrese=progrese_simplu, progrese_det=progrese_det,
+                           sumar=sumar, baselines=baselines)
+
+
+@gantt_bp.route('/plan/<int:id_>/progres', methods=['POST'])
+@login_required
+def plan_progres(id_):
+    """Adauga progres fizic (bulk). Accepta JSON (API) sau form (din pagina tracking)."""
+    if not _tracking_on():
+        abort(404)
+    p = _plan_sau_404(id_)
+    intrari = []
+    data_stare = None
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        intrari = body.get('progrese') or body.get('intrari') or []
+        try:
+            data_stare = date.fromisoformat(body['data_stare'][:10]) if body.get('data_stare') else None
+        except (ValueError, TypeError, KeyError):
+            data_stare = None
+    else:
+        # form bulk: campuri "pct_<cheie>" (+ optional data_stare comuna)
+        try:
+            data_stare = date.fromisoformat(request.form['data_stare'][:10]) \
+                if request.form.get('data_stare') else None
+        except (ValueError, TypeError, KeyError):
+            data_stare = None
+        for k, v in request.form.items():
+            if k.startswith('pct_') and (v or '').strip() != '':
+                intrari.append({'cheie': k[4:], 'procent': v})
+    from services.gantt import tracking_db
+    from services import audit
+    nr = tracking_db.adauga_progres_bulk(
+        p, intrari, data_stare=data_stare, sursa='manual',
+        tenant_id=_tenant_curent(), creat_de_id=getattr(current_user, 'id', None))
+    audit.log('update', 'gantt_plan', p.id,
+              new_values={'progres_intrari': nr}, commit=True)
+    if request.is_json:
+        return jsonify({'ok': True, 'adaugate': nr})
+    flash(f'{nr} inregistrari de progres salvate.', 'success')
+    return redirect(url_for('gantt.plan_tracking', id_=p.id))
 
 
 # ===================== EDITOR WBS (pe plan salvat) =====================

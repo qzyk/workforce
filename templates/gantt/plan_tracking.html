@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Urmarire executie — {{ p.nume }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('gantt.index') }}">Planificare Gantt</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('gantt.planuri') }}">Planuri</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('gantt.plan', id_=p.id) }}">{{ p.nume }}</a></li>
+<li class="breadcrumb-item active">Urmarire executie</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.tk-sec { background:#fff; border:1px solid #E8E3D5; border-radius:10px; margin-bottom:18px; overflow:hidden; }
+.tk-sec-h { background:linear-gradient(135deg,#0B1426,#16243d); color:#F5F1E8; padding:12px 16px; font-weight:700; }
+.tk-stats { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+.tk-stat { background:#fff; border:1px solid #E8E3D5; border-radius:10px; padding:12px 18px; min-width:130px; }
+.tk-stat .v { font-size:1.5rem; font-weight:800; color:#0B1426; }
+.tk-stat .v.gold { color:#A8893D; }
+.tk-stat .l { font-size:.78rem; color:#8a8273; text-transform:uppercase; letter-spacing:.04em; }
+table.tk { width:100%; border-collapse:collapse; font-size:.86rem; }
+table.tk th { background:#F5F1E8; text-align:left; padding:8px 10px; position:sticky; top:0; }
+table.tk td { border-top:1px solid #ECE7DA; padding:6px 10px; }
+table.tk input[type=number] { width:78px; border:1px solid #E8E3D5; border-radius:6px; padding:5px 7px; text-align:right; }
+.tk-dl { background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; border:none; padding:8px 16px; border-radius:8px; font-weight:700; cursor:pointer; text-decoration:none; }
+.tk-pill { display:inline-block; background:#F5F1E8; border:1px solid #E8E3D5; border-radius:5px; padding:1px 6px; font-size:.74rem; color:#6b6b6b; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+    <h2 style="margin:0;"><i class="fa-solid fa-bullseye" style="color:#C9A961;"></i> Urmarire executie — {{ p.nume }}</h2>
+    <a href="{{ url_for('gantt.plan', id_=p.id) }}" class="tk-pill" style="text-decoration:none; padding:7px 12px;"><i class="fa-solid fa-arrow-left"></i> Inapoi la plan</a>
+</div>
+
+<div class="tk-stats">
+    <div class="tk-stat"><div class="v gold">{{ sumar.procent_mediu }}%</div><div class="l">Progres mediu (ponderat)</div></div>
+    <div class="tk-stat"><div class="v">{{ sumar.nr_in_curs }}</div><div class="l">In curs</div></div>
+    <div class="tk-stat"><div class="v">{{ sumar.nr_gata }}</div><div class="l">Finalizate</div></div>
+    <div class="tk-stat"><div class="v">{{ '{:,.0f}'.format(sumar.ev) }}</div><div class="l">EV (lei realizat)</div></div>
+    <div class="tk-stat"><div class="v">{{ '{:,.0f}'.format(sumar.bac) }}</div><div class="l">BAC (lei total)</div></div>
+</div>
+
+<!-- Baseline -->
+<div class="tk-sec">
+    <div class="tk-sec-h" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <span><i class="fa-solid fa-camera"></i> Baseline (plan de referinta)</span>
+        <form method="POST" action="{{ url_for('gantt.plan_baseline', id_=p.id) }}" style="display:flex; gap:8px; align-items:center;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" name="nume" placeholder="nume baseline (optional)"
+                   style="border:1px solid #c9c2ad; border-radius:6px; padding:6px 9px; color:#0B1426;">
+            <button type="submit" class="tk-dl"><i class="fa-solid fa-snowflake"></i> Ingheata baseline curent</button>
+        </form>
+    </div>
+    <div style="padding:12px 16px;">
+        {% if baselines %}
+        <table class="tk">
+            <thead><tr><th>Nume</th><th>Creat</th><th style="text-align:right;">Durata (zile)</th><th style="text-align:right;">BAC (lei)</th><th></th></tr></thead>
+            <tbody>
+            {% for bl in baselines %}
+                <tr>
+                    <td>{{ bl.nume }}{% if p.baseline_activ_id == bl.id %} <span class="tk-pill" style="background:#2e7d32; color:#fff; border-color:#2e7d32;">activ</span>{% endif %}</td>
+                    <td>{{ bl.data_creare.strftime('%Y-%m-%d %H:%M') if bl.data_creare }}</td>
+                    <td style="text-align:right;">{{ bl.durata_zile }}</td>
+                    <td style="text-align:right;">{{ '{:,.0f}'.format(bl.bac) }}</td>
+                    <td style="text-align:right;"><a href="{{ url_for('gantt.plan_baseline_compara', id_=p.id, bid=bl.id) }}" style="color:#A8893D; font-weight:600; text-decoration:none;"><i class="fa-solid fa-code-compare"></i> Compara cu curent</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color:#8a8273; margin:0;"><i class="fa-solid fa-circle-info"></i> Niciun baseline inca. Ingheata planul curent pentru a urmari abaterile fata de referinta.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Introducere progres bulk -->
+<div class="tk-sec">
+    <div class="tk-sec-h"><i class="fa-solid fa-list-check"></i> Progres fizic pe activitate</div>
+    <div style="padding:12px 16px;">
+        <form method="POST" action="{{ url_for('gantt.plan_progres', id_=p.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+                <label style="font-size:.85rem; color:#0B1426;">Data de stare:
+                    <input type="date" name="data_stare"
+                           style="border:1px solid #E8E3D5; border-radius:6px; padding:6px 9px;">
+                </label>
+                <button type="submit" class="tk-dl"><i class="fa-solid fa-floppy-disk"></i> Salveaza progresul</button>
+                <span style="font-size:.8rem; color:#8a8273;">Append-only: fiecare salvare adauga o masuratoare noua (istoricul ramane).</span>
+            </div>
+            <div style="max-height:520px; overflow:auto; border:1px solid #ECE7DA; border-radius:8px;">
+            <table class="tk">
+                <thead><tr><th>WBS</th><th>Cod</th><th>Denumire</th><th>Cat.</th><th style="text-align:right;">Durata</th><th style="text-align:right;">Progres %</th></tr></thead>
+                <tbody>
+                {% for a in activitati[:600] %}
+                    <tr>
+                        <td><span class="tk-pill">{{ a.wbs_id }}</span></td>
+                        <td>{{ a.cod }}</td>
+                        <td>{{ a.nume }}</td>
+                        <td>{{ a.categorie_tehnologica or '-' }}</td>
+                        <td style="text-align:right;">{{ a.durata }}z</td>
+                        <td style="text-align:right;">
+                            <input type="number" name="pct_{{ a.cheie }}" min="0" max="100" step="1"
+                                   value="{% if a.cheie in progrese %}{{ progrese[a.cheie]|round(0)|int }}{% endif %}"
+                                   placeholder="0">
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% if activitati|length > 600 %}<p style="font-size:.8rem; color:#8a8273;">Afisez primele 600 din {{ activitati|length }} activitati.</p>{% endif %}
+        </form>
+    </div>
+</div>
+{% endblock %}
