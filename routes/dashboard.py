@@ -440,3 +440,28 @@ def cauta():
 def ghid():
     """Ghid de utilizator (pentru incepatori, fara termeni tehnici)."""
     return render_template('ghid.html')
+
+
+class _PaginatieDemo:
+    """Obiect de paginare demonstrativ pentru bancul de componente (/ghid/ds).
+    Imita interfata Flask-SQLAlchemy Pagination folosita de macro-ul pagination:
+    .pages, .page, .prev_num, .next_num, .has_prev, .has_next, .iter_pages()."""
+    pages = 5
+    page = 2
+    prev_num = 1
+    next_num = 3
+    has_prev = True
+    has_next = True
+
+    def iter_pages(self):
+        # None = elipsa „..." in lista de pagini
+        return [1, 2, 3, None, 5]
+
+
+@dashboard_bp.route('/ghid/ds')
+@login_required
+def ghid_ds():
+    """Banc de testare vizuala pentru biblioteca de componente (Edifico DS).
+    Randeaza toate macro-urile din _components.html cu date demonstrative.
+    Pagina interna de referinta pentru dezvoltatori; nu schimba productia."""
+    return render_template('ghid_ds.html', demo_pag=_PaginatieDemo())

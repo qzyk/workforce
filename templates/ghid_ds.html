@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% import "_components.html" as ed %}
+{% import "_macros.html" as macros %}
+{% block title %}Edifico DS - banc componente{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard.ghid') }}">Ghid</a></li>
+<li class="breadcrumb-item active">Design System</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* doar layout local pentru bancul de testare (nu face parte din DS) */
+  .ds-sectiune { margin-bottom: 32px; }
+  .ds-sectiune > h2.ds-titlu {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--ed-color-gold-ink, #80620F); font-weight: 700;
+    border-bottom: 2px solid var(--ed-color-sand, #E8E3D5);
+    padding-bottom: 6px; margin: 0 0 16px;
+  }
+  .ds-rand { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+{{ ed.hero('Edifico Design System', subtitlu='Banc de testare vizuala pentru biblioteca de componente (faza 2). Toate elementele de mai jos sunt randate prin macro-urile din _components.html peste tokens.css + components.css.', icon='swatchbook') }}
+
+{# ---------- PAGE HEADER ---------- #}
+<div class="ds-sectiune">
+  <h2 class="ds-titlu">page_header</h2>
+  {% call ed.page_header('diagram-project', 'Titlu de pagina', subtitlu='Subtitlu descriptiv al paginii cu context suplimentar.') %}
+    {{ ed.btn('Actiune', varianta='gold', icon='plus') }}
+    {{ ed.btn('Secundar', varianta='outline', icon='download') }}
+  {% endcall %}
+</div>
+
+{# ---------- BUTOANE ---------- #}
+<div class="ds-sectiune" id="ds-butoane">
+  <h2 class="ds-titlu">btn (5 variante + dimensiuni)</h2>
+  <div class="ds-rand">
+    {{ ed.btn('Primary', varianta='primary', icon='check') }}
+    {{ ed.btn('Gold (CTA)', varianta='gold', icon='star') }}
+    {{ ed.btn('Outline', varianta='outline', icon='pen') }}
+    {{ ed.btn('Danger', varianta='danger', icon='trash') }}
+    {{ ed.btn('Ghost', varianta='ghost', icon='ellipsis') }}
+  </div>
+  <div class="ds-rand">
+    {{ ed.btn('Small', varianta='primary', size='sm') }}
+    {{ ed.btn('Normal', varianta='primary') }}
+    {{ ed.btn('Large', varianta='primary', size='lg') }}
+    {{ ed.btn('Link', url=url_for('dashboard.ghid'), varianta='outline', icon='arrow-up-right-from-square') }}
+  </div>
+</div>
+
+{# ---------- STAT CARDS ---------- #}
+<div class="ds-sectiune" id="ds-stat">
+  <h2 class="ds-titlu">stat_card</h2>
+  <div class="ds-grid">
+    {{ ed.stat_card('Proiecte active', '5/8', icon='diagram-project', accent='gold', url=url_for('dashboard.ghid_ds')) }}
+    {{ ed.stat_card('Cost manopera', '312k', icon='coins', accent='navy', trend={'dir':'up','text':'+4% vs luna trecuta'}) }}
+    {{ ed.stat_card('SPI mediu', '0.93', icon='gauge', accent='warning', trend={'dir':'down','text':'-2%'}) }}
+    {{ ed.stat_card('Pontaje aprobate', '128', icon='circle-check', accent='success', trend={'dir':'flat','text':'stabil'}) }}
+  </div>
+</div>
+
+{# ---------- CARD ---------- #}
+<div class="ds-sectiune" id="ds-card">
+  <h2 class="ds-titlu">card (cu slot)</h2>
+  {% call ed.card('Card cu titlu si iconita', icon='layer-group') %}
+    <p style="margin:0;">Continutul cardului randat prin <code>{% raw %}{% call ed.card(...) %}{% endraw %}</code>. Foloseste suprafata alba, bordura sand si umbra fina din tokens.</p>
+  {% endcall %}
+</div>
+
+{# ---------- BADGE-URI ---------- #}
+<div class="ds-sectiune" id="ds-badge">
+  <h2 class="ds-titlu">badge (mapare centralizata status -> culoare)</h2>
+  <div class="ds-rand">
+    {{ ed.badge('Activ', 'activ') }}
+    {{ ed.badge('Aprobat', 'aprobat') }}
+    {{ ed.badge('Trimis', 'trimis') }}
+    {{ ed.badge('Draft', 'draft') }}
+    {{ ed.badge('In asteptare', 'asteptare') }}
+    {{ ed.badge('Expirat', 'expirat') }}
+    {{ ed.badge('Respins', 'respins') }}
+    {{ ed.badge('Inchis', 'inchis') }}
+    {{ ed.badge('Necunoscut', 'xyz') }}
+  </div>
+</div>
+
+{# ---------- DATA TABLE ---------- #}
+<div class="ds-sectiune" id="ds-table">
+  <h2 class="ds-titlu">data_table (responsive + card-view mobil sub 768px)</h2>
+  {% call ed.data_table(['Cod', 'Nume', 'Status', 'Avans']) %}
+    <tr>
+      <td data-label="Cod">RZD-001</td>
+      <td data-label="Nume">Hala Campina</td>
+      <td data-label="Status">{{ ed.badge('Activ', 'activ') }}</td>
+      <td data-label="Avans">62%</td>
+    </tr>
+    <tr>
+      <td data-label="Cod">RZD-003</td>
+      <td data-label="Nume">Depozit Otopeni</td>
+      <td data-label="Status">{{ ed.badge('Inchis', 'inchis') }}</td>
+      <td data-label="Avans">100%</td>
+    </tr>
+  {% endcall %}
+</div>
+
+{# ---------- EMPTY STATE ---------- #}
+<div class="ds-sectiune" id="ds-empty">
+  <h2 class="ds-titlu">empty_state (+ delegare din _macros.html)</h2>
+  {{ ed.empty_state('inbox', 'Nimic aici inca', 'Adauga primul element ca sa pornesti fluxul.', cta_url=url_for('dashboard.ghid_ds'), cta_label='Adauga', cta2_url=url_for('dashboard.ghid'), cta2_label='Inapoi') }}
+  <h3 style="font-size:13px; color:var(--ed-color-text-faint); margin:18px 0 6px;">Acelasi macro, apelat prin _macros.html (backward compat):</h3>
+  {{ macros.empty_state('folder-open', 'Compatibilitate _macros', 'Apelul vechi prin macros.empty_state inca functioneaza si deleaga.') }}
+</div>
+
+{# ---------- CONFIRM FORM ---------- #}
+<div class="ds-sectiune" id="ds-confirm">
+  <h2 class="ds-titlu">confirm_form (modal global, nu confirm() nativ)</h2>
+  <div class="ds-rand">
+    {{ ed.confirm_form(url=url_for('dashboard.ghid_ds'), mesaj='Sigur stergi acest element demonstrativ?', label='Sterge demo') }}
+  </div>
+</div>
+
+{# ---------- FORMULAR ---------- #}
+<div class="ds-sectiune" id="ds-form">
+  <h2 class="ds-titlu">form_section + form_field</h2>
+  {% call ed.form_section('Date generale') %}
+    {{ ed.form_field('Denumire', nume='denumire', obligatoriu=true, hint='Nume scurt si clar.', placeholder='ex. Hala depozitare') }}
+    {{ ed.form_field('Cod proiect', nume='cod', valoare='RZD-001') }}
+    {{ ed.form_field('Buget', nume='buget', tip='number', eroare='Valoarea trebuie sa fie pozitiva.') }}
+  {% endcall %}
+</div>
+
+{# ---------- FILTER BAR ---------- #}
+<div class="ds-sectiune" id="ds-filter">
+  <h2 class="ds-titlu">filter_bar</h2>
+  {% call ed.filter_bar() %}
+    {{ ed.form_field('Cauta', nume='q', placeholder='termen...') }}
+    {{ ed.form_field('Status', nume='status') }}
+    <span class="ed-filter-bar__spacer"></span>
+    {{ ed.btn('Filtreaza', varianta='primary', icon='filter', submit=true) }}
+  {% endcall %}
+</div>
+
+{# ---------- PAGINATION ---------- #}
+<div class="ds-sectiune" id="ds-pagination">
+  <h2 class="ds-titlu">pagination</h2>
+  {# demo_pag e un obiect de paginare demonstrativ trimis din ruta dashboard.ghid_ds #}
+  {{ ed.pagination(demo_pag, 'dashboard.ghid_ds') }}
+</div>
+
+{# ---------- STEPPER ---------- #}
+<div class="ds-sectiune" id="ds-stepper">
+  <h2 class="ds-titlu">stepper</h2>
+  {{ ed.stepper(['Proiect', 'Plan Gantt', 'Resurse', 'BIM', 'Raport'], activ=2) }}
+</div>
+
+{# ---------- TABS ---------- #}
+<div class="ds-sectiune" id="ds-tabs">
+  <h2 class="ds-titlu">tabs (cu aria)</h2>
+  {{ ed.tabs([
+    {'label': 'Detalii', 'icon': 'circle-info', 'url': url_for('dashboard.ghid_ds'), 'activ': true},
+    {'label': 'Pontaje', 'icon': 'clock', 'url': url_for('dashboard.ghid')},
+    {'label': 'Documente', 'icon': 'file', 'url': url_for('dashboard.ghid')}
+  ]) }}
+</div>
+
+{# ---------- NEXT HINT ---------- #}
+<div class="ds-sectiune" id="ds-hint">
+  <h2 class="ds-titlu">next_hint</h2>
+  {{ ed.next_hint('Pasul urmator: creeaza primul plan Gantt pentru acest proiect.', url=url_for('dashboard.ghid'), link_label='Deschide Gantt') }}
+</div>
+{% endblock %}

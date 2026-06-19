@@ -1,30 +1,18 @@
-{# Componente UI reutilizabile (U4). #}
+{# Componente UI reutilizabile (U4).
+   ISTORIC: aici traiau implementarile empty_state + next_hint. Din DS faza 2 ele
+   s-au mutat in _components.html (biblioteca centrala de componente). Acest fisier
+   RAMANE pentru compatibilitate inapoi: orice template care face
+   {% import "_macros.html" as macros %} continua sa functioneze neschimbat,
+   dar randarea vine acum prin _components.html (clase .ed-*, tokens --ed-*). #}
 
-{# Empty state cu CTA „pasul urmator". #}
+{% import "_components.html" as ed %}
+
+{# Empty state cu CTA „pasul urmator" - deleaga la ed.empty_state. #}
 {% macro empty_state(icon, titlu, mesaj, cta_url=None, cta_label=None, cta2_url=None, cta2_label=None) %}
-<div class="empty-state" style="padding:48px 20px; text-align:center;">
-    <i class="fa-solid fa-{{ icon }}" style="font-size:2.8rem; color:var(--gray-300);"></i>
-    <h3 style="margin:14px 0 6px; color:#0B1426;">{{ titlu }}</h3>
-    <p style="color:var(--gray-500); max-width:440px; margin:0 auto 18px;">{{ mesaj }}</p>
-    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-        {% if cta_url %}
-        <a href="{{ cta_url }}" style="display:inline-block; background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; padding:10px 18px; border-radius:8px; font-weight:700; text-decoration:none;">
-            <i class="fa-solid fa-arrow-right"></i> {{ cta_label or 'Incepe' }}
-        </a>
-        {% endif %}
-        {% if cta2_url %}
-        <a href="{{ cta2_url }}" style="display:inline-block; background:#F5F1E8; color:#0B1426; padding:10px 18px; border-radius:8px; font-weight:600; text-decoration:none; border:1px solid #E8E3D5;">
-            {{ cta2_label }}
-        </a>
-        {% endif %}
-    </div>
-</div>
+{{ ed.empty_state(icon=icon, titlu=titlu, mesaj=mesaj, cta_url=cta_url, cta_label=cta_label, cta2_url=cta2_url, cta2_label=cta2_label) }}
 {% endmacro %}
 
-{# Hint discret „pasul urmator" (bara aurie). #}
+{# Hint discret „pasul urmator" (bara aurie) - deleaga la ed.next_hint. #}
 {% macro next_hint(text, url=None, link_label=None) %}
-<div style="margin-bottom:14px; padding:11px 15px; background:#FBF8F0; border-left:3px solid #C9A961; border-radius:6px; font-size:.88rem; color:var(--gray-700);">
-    <i class="fa-solid fa-lightbulb" style="color:#C9A961;"></i> {{ text }}
-    {% if url %}<a href="{{ url }}" style="color:#A8893D; font-weight:700; text-decoration:none; margin-left:4px;">{{ link_label or 'Deschide' }} →</a>{% endif %}
-</div>
+{{ ed.next_hint(text=text, url=url, link_label=link_label) }}
 {% endmacro %}

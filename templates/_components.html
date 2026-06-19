@@ -1,0 +1,272 @@
+{# ============================================================
+   Edifico Design System v1 - biblioteca de componente (faza 2).
+   Macro-uri Jinja peste tokens.css + components.css. PUR ADITIV:
+   niciun template de productie nu e migrat in aceasta faza.
+
+   Import recomandat:
+     {% import "_components.html" as ed %}
+   apoi {{ ed.btn('Salveaza', varianta='primary', submit=true) }}
+
+   Stilurile sunt in static/css/components.css (clase .ed-*).
+   _macros.html ramane si deleaga catre aceste macro-uri (backward compat).
+   ============================================================ #}
+
+
+{# ---------- PAGE HEADER ----------
+   icon = nume FontAwesome (fara prefixul fa-), titlu, subtitlu optional.
+   caller() (slot) randeaza actiunile din dreapta (max 2 primare + dropdown). #}
+{% macro page_header(icon=None, titlu='', subtitlu=None) %}
+<div class="ed-page-header">
+  <div class="ed-page-header__main">
+    {% if icon %}<span class="ed-page-header__icon"><i class="fa-solid fa-{{ icon }}"></i></span>{% endif %}
+    <div>
+      <h1 class="ed-page-header__titlu">{{ titlu }}</h1>
+      {% if subtitlu %}<p class="ed-page-header__subtitlu">{{ subtitlu }}</p>{% endif %}
+    </div>
+  </div>
+  {% if caller is defined and caller %}
+  <div class="ed-page-header__actions">{{ caller() }}</div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# ---------- HERO (navy, titlu Cinzel) ---------- #}
+{% macro hero(titlu='', subtitlu=None, icon=None) %}
+<div class="ed-hero">
+  {% if icon %}<i class="fa-solid fa-{{ icon }} ed-hero__icon"></i>{% endif %}
+  <div class="ed-hero__body">
+    <h1 class="ed-hero__titlu">{{ titlu }}</h1>
+    {% if subtitlu %}<p class="ed-hero__subtitlu">{{ subtitlu }}</p>{% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+
+{# ---------- BUTON ----------
+   varianta: primary (navy) | gold (CTA unic/ecran) | outline | danger | ghost
+   size: sm | lg | None
+   url dat  -> <a>; submit=true -> <button type=submit>; altfel <button type=button>. #}
+{% macro btn(label='', url=None, varianta='primary', icon=None, size=None, submit=false, block=false, attrs='') %}
+{%- set cls -%}
+ed-btn ed-btn--{{ varianta }}{% if size %} ed-btn--{{ size }}{% endif %}{% if block %} ed-btn--block{% endif %}
+{%- endset -%}
+{%- if url -%}
+<a href="{{ url }}" class="{{ cls }}" {{ attrs | safe }}>{% if icon %}<i class="fa-solid fa-{{ icon }}"></i>{% endif %}{{ label }}</a>
+{%- else -%}
+<button type="{{ 'submit' if submit else 'button' }}" class="{{ cls }}" {{ attrs | safe }}>{% if icon %}<i class="fa-solid fa-{{ icon }}"></i>{% endif %}{{ label }}</button>
+{%- endif -%}
+{% endmacro %}
+
+
+{# ---------- STAT CARD ----------
+   accent: gold | navy | success | warning | danger
+   trend = dict optional {dir:'up'|'down'|'flat', text:'+4%'}.
+   url dat -> cardul devine link (recomandat: orice KPI e clickabil). #}
+{% macro stat_card(label='', valoare='', icon=None, accent='gold', trend=None, url=None) %}
+{%- set tag = 'a' if url else 'div' -%}
+<{{ tag }} class="ed-stat{% if accent != 'gold' %} ed-stat--{{ accent }}{% endif %}"{% if url %} href="{{ url }}"{% endif %}>
+  <div class="ed-stat__top">
+    <span class="ed-stat__label">{{ label }}</span>
+    {% if icon %}<i class="fa-solid fa-{{ icon }} ed-stat__icon"></i>{% endif %}
+  </div>
+  <div class="ed-stat__valoare">{{ valoare }}</div>
+  {% if trend %}
+  <div class="ed-stat__trend ed-stat__trend--{{ trend.dir | default('flat') }}">
+    {% if trend.dir == 'up' %}<i class="fa-solid fa-arrow-trend-up"></i>{% elif trend.dir == 'down' %}<i class="fa-solid fa-arrow-trend-down"></i>{% endif %}
+    {{ trend.text }}
+  </div>
+  {% endif %}
+</{{ tag }}>
+{% endmacro %}
+
+
+{# ---------- CARD cu slot ----------
+   {% call ed.card('Titlu', icon='gauge') %} ...continut... {% endcall %} #}
+{% macro card(titlu=None, icon=None) %}
+<div class="ed-card">
+  {% if titlu %}
+  <div class="ed-card__header">
+    {% if icon %}<i class="fa-solid fa-{{ icon }}"></i>{% endif %}
+    <h2 class="ed-card__titlu">{{ titlu }}</h2>
+  </div>
+  {% endif %}
+  <div class="ed-card__body">{{ caller() }}</div>
+</div>
+{% endmacro %}
+
+
+{# ---------- BADGE de status ----------
+   Mapare CENTRALIZATA status -> varianta de culoare. status e cheia logica
+   (din models: activ, aprobat, trimis, draft, inchis, expirat, ...).
+   text override-aza eticheta afisata (altfel se afiseaza status-ul). #}
+{% set _STATUS_MAP = {
+  'activ': 'success', 'deschis': 'success', 'aprobat': 'success', 'finalizat': 'success',
+  'gata': 'success', 'ok': 'success', 'valid': 'success', 'platit': 'success',
+  'trimis': 'info', 'in_lucru': 'info', 'in_curs': 'info', 'nou': 'info', 'draft': 'neutru',
+  'asteptare': 'warning', 'in_asteptare': 'warning', 'partial': 'warning', 'atentie': 'warning',
+  'scadent': 'warning', 'avertisment': 'warning',
+  'inactiv': 'neutru', 'inchis': 'neutru', 'anulat': 'neutru', 'arhivat': 'neutru',
+  'respins': 'danger', 'expirat': 'danger', 'critic': 'danger', 'eroare': 'danger',
+  'depasit': 'danger', 'restant': 'danger'
+} %}
+{% macro badge(text=None, status='neutru') %}
+{%- set s = (status | string | lower) -%}
+{%- set varianta = _STATUS_MAP.get(s, 'neutru') -%}
+<span class="ed-badge ed-badge--{{ varianta }}">{{ text if text is not none else status }}</span>
+{% endmacro %}
+
+
+{# ---------- DATA TABLE wrapper ----------
+   {% call ed.data_table(['Cod','Nume','Status']) %}
+     <tr><td data-label="Cod">...</td>...</tr>
+   {% endcall %}
+   antete = lista de headere. cards=true -> card-view pe mobil (sub 768px). #}
+{% macro data_table(antete=None, cards=true) %}
+<div class="ed-table-responsive">
+  <table class="ed-table{% if cards %} ed-table--cards{% endif %}">
+    {% if antete %}
+    <thead><tr>{% for h in antete %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    {% endif %}
+    <tbody>{{ caller() }}</tbody>
+  </table>
+</div>
+{% endmacro %}
+
+
+{# ---------- EMPTY STATE ----------
+   Centralizat aici (sursa de adevar). _macros.empty_state deleaga la asta. #}
+{% macro empty_state(icon='inbox', titlu='', mesaj='', cta_url=None, cta_label=None, cta2_url=None, cta2_label=None) %}
+<div class="ed-empty">
+  <i class="fa-solid fa-{{ icon }} ed-empty__icon"></i>
+  <h3 class="ed-empty__titlu">{{ titlu }}</h3>
+  {% if mesaj %}<p class="ed-empty__mesaj">{{ mesaj }}</p>{% endif %}
+  {% if cta_url or cta2_url %}
+  <div class="ed-empty__actions">
+    {% if cta_url %}{{ btn(cta_label or 'Incepe', url=cta_url, varianta='gold', icon='arrow-right') }}{% endif %}
+    {% if cta2_url %}{{ btn(cta2_label or 'Inapoi', url=cta2_url, varianta='outline') }}{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# ---------- CONFIRM FORM (stergere) ----------
+   Buton care deschide modalul global brandat (confirmDelete din main.js) in loc
+   de confirm() nativ. NU randeaza un <form> propriu: modalul global posteaza la url. #}
+{% macro confirm_form(url='', mesaj='Sunteti sigur ca doriti sa stergeti acest element?', label='Sterge', icon='trash', varianta='danger', size='sm') %}
+{%- set cls -%}ed-btn ed-btn--{{ varianta }}{% if size %} ed-btn--{{ size }}{% endif %}{%- endset -%}
+<button type="button" class="{{ cls }}" onclick="confirmDelete('{{ url }}', {{ mesaj | tojson }})">
+  {% if icon %}<i class="fa-solid fa-{{ icon }}"></i>{% endif %}{{ label }}
+</button>
+{% endmacro %}
+
+
+{# ---------- FORM FIELD ----------
+   Eticheta + control. control_html = HTML-ul inputului (de regula field WTForms);
+   daca lipseste, se randeaza un <input> simplu cu name/value/type. #}
+{% macro form_field(label='', nume=None, valoare='', tip='text', obligatoriu=false, hint=None, eroare=None, control_html=None, placeholder='') %}
+<div class="ed-field">
+  {% if label %}<label class="ed-field__label"{% if nume %} for="{{ nume }}"{% endif %}>{{ label }}{% if obligatoriu %}<span class="ed-field__req">*</span>{% endif %}</label>{% endif %}
+  {% if control_html %}
+    {{ control_html | safe }}
+  {% else %}
+    <input class="ed-field__control" type="{{ tip }}"{% if nume %} id="{{ nume }}" name="{{ nume }}"{% endif %} value="{{ valoare }}" placeholder="{{ placeholder }}"{% if obligatoriu %} required{% endif %}>
+  {% endif %}
+  {% if hint %}<p class="ed-field__hint">{{ hint }}</p>{% endif %}
+  {% if eroare %}<p class="ed-field__error">{{ eroare }}</p>{% endif %}
+</div>
+{% endmacro %}
+
+
+{# ---------- FORM SECTION (titlu + slot) ---------- #}
+{% macro form_section(titlu='') %}
+<div class="ed-form-section">
+  {% if titlu %}<div class="ed-form-section__titlu">{{ titlu }}</div>{% endif %}
+  {{ caller() }}
+</div>
+{% endmacro %}
+
+
+{# ---------- FILTER BAR (slot) ----------
+   {% call ed.filter_bar() %} ...campuri + buton... {% endcall %} #}
+{% macro filter_bar() %}
+<form class="ed-filter-bar" method="GET">{{ caller() }}</form>
+{% endmacro %}
+
+
+{# ---------- PAGINATION ----------
+   obj = obiectul Flask-SQLAlchemy Pagination (.pages, .page, .has_prev/.has_next,
+   .iter_pages()). endpoint = numele rutei pentru url_for. args_extra = dict de
+   parametri suplimentari pastrati in link (filtre). #}
+{% macro pagination(obj, endpoint, args_extra={}) %}
+{% if obj and obj.pages and obj.pages > 1 %}
+<nav class="ed-pagination" aria-label="Paginare">
+  {% if obj.has_prev %}
+    <a class="ed-pagination__link" href="{{ url_for(endpoint, page=obj.prev_num, **args_extra) }}" aria-label="Pagina anterioara"><i class="fa-solid fa-chevron-left"></i></a>
+  {% else %}
+    <span class="ed-pagination__link ed-pagination__link--disabled"><i class="fa-solid fa-chevron-left"></i></span>
+  {% endif %}
+  {% for p in obj.iter_pages() %}
+    {% if p %}
+      {% if p == obj.page %}
+        <span class="ed-pagination__link ed-pagination__link--activ" aria-current="page">{{ p }}</span>
+      {% else %}
+        <a class="ed-pagination__link" href="{{ url_for(endpoint, page=p, **args_extra) }}">{{ p }}</a>
+      {% endif %}
+    {% else %}
+      <span class="ed-pagination__link ed-pagination__link--disabled">...</span>
+    {% endif %}
+  {% endfor %}
+  {% if obj.has_next %}
+    <a class="ed-pagination__link" href="{{ url_for(endpoint, page=obj.next_num, **args_extra) }}" aria-label="Pagina urmatoare"><i class="fa-solid fa-chevron-right"></i></a>
+  {% else %}
+    <span class="ed-pagination__link ed-pagination__link--disabled"><i class="fa-solid fa-chevron-right"></i></span>
+  {% endif %}
+</nav>
+{% endif %}
+{% endmacro %}
+
+
+{# ---------- STEPPER (parcurs ghidat) ----------
+   pasi = lista de etichete (string-uri). activ = indexul (0-based) al pasului curent.
+   Pasii sub activ = 'gata' (navy), activ = 'activ' (gold), peste = neinceput. #}
+{% macro stepper(pasi=[], activ=0) %}
+<div class="ed-stepper" role="list" aria-label="Pasi">
+  {% for label in pasi %}
+  {%- set stare = 'gata' if loop.index0 < activ else ('activ' if loop.index0 == activ else '') -%}
+  <div class="ed-stepper__pas{% if stare %} ed-stepper__pas--{{ stare }}{% endif %}" role="listitem"{% if loop.index0 == activ %} aria-current="step"{% endif %}>
+    <span class="ed-stepper__bula">{% if stare == 'gata' %}<i class="fa-solid fa-check"></i>{% else %}{{ loop.index }}{% endif %}</span>
+    <span class="ed-stepper__label">{{ label }}</span>
+  </div>
+  {% if not loop.last %}<span class="ed-stepper__linie" aria-hidden="true"></span>{% endif %}
+  {% endfor %}
+</div>
+{% endmacro %}
+
+
+{# ---------- TABS (cu aria) ----------
+   items = lista de dict {label, url?, icon?, activ?}. Daca url e dat -> <a>,
+   altfel <button> (pentru tab-uri JS). Se foloseste role=tablist + aria-selected. #}
+{% macro tabs(items=[]) %}
+<div class="ed-tabs" role="tablist">
+  {% for it in items %}
+  {%- set este_activ = it.activ | default(false) -%}
+  {%- if it.url -%}
+    <a class="ed-tabs__tab" role="tab" href="{{ it.url }}" aria-selected="{{ 'true' if este_activ else 'false' }}">{% if it.icon %}<i class="fa-solid fa-{{ it.icon }}"></i>{% endif %}{{ it.label }}</a>
+  {%- else -%}
+    <button type="button" class="ed-tabs__tab" role="tab" aria-selected="{{ 'true' if este_activ else 'false' }}">{% if it.icon %}<i class="fa-solid fa-{{ it.icon }}"></i>{% endif %}{{ it.label }}</button>
+  {%- endif -%}
+  {% endfor %}
+</div>
+{% endmacro %}
+
+
+{# ---------- NEXT HINT (bara aurie - pasul urmator) ----------
+   Centralizat aici. _macros.next_hint deleaga la asta. #}
+{% macro next_hint(text='', url=None, link_label=None) %}
+<div class="ed-hint">
+  <i class="fa-solid fa-lightbulb"></i> {{ text }}
+  {% if url %}<a href="{{ url }}">{{ link_label or 'Deschide' }} &rarr;</a>{% endif %}
+</div>
+{% endmacro %}

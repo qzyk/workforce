@@ -1,0 +1,389 @@
+/* Edifico Design System v1 - strat de COMPONENTE (faza 2, pur aditiv).
+   Construit peste tokens.css (--ed-*). Toate clasele au prefix .ed-* ca sa NU
+   intre in coliziune cu sistemul vechi (.btn, .card-panel, .data-table etc.) din
+   style.css. NICIUN template de productie nu e migrat in aceasta faza: clasele
+   .ed-* sunt folosite deocamdata doar de macro-urile din _components.html si de
+   pagina de demo /ghid/ds.
+
+   Fiecare valoare foloseste tokenul --ed-* cu fallback pe variabilele vechi
+   (--gray-*, --primary*) ca biblioteca sa randeze coerent chiar daca tokens.css
+   nu e inca incarcat (de ex. intr-un context izolat). */
+
+/* ============================================================
+   PAGE HEADER + HERO
+   ============================================================ */
+.ed-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ed-space-4, 16px);
+  flex-wrap: wrap;
+  margin-bottom: var(--ed-space-5, 20px);
+}
+.ed-page-header__main { display: flex; align-items: flex-start; gap: var(--ed-space-3, 12px); min-width: 0; }
+.ed-page-header__icon {
+  flex: 0 0 auto;
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--ed-radius, 10px);
+  background: var(--ed-color-cream, #F5F1E8);
+  color: var(--ed-color-gold-ink, #80620F);
+  font-size: 1.15rem;
+}
+.ed-page-header__titlu {
+  margin: 0;
+  font-size: var(--ed-text-2xl, 22px);
+  color: var(--ed-color-navy, #0B1426);
+  font-weight: 700;
+  line-height: 1.2;
+}
+.ed-page-header__subtitlu {
+  margin: 4px 0 0;
+  color: var(--ed-color-text-faint, #5F6975);
+  font-size: var(--ed-text-base, 14px);
+}
+.ed-page-header__actions { display: flex; align-items: center; gap: var(--ed-space-2, 8px); flex-wrap: wrap; }
+
+.ed-hero {
+  background: var(--ed-grad-navy, linear-gradient(135deg, #0B1426, #152033));
+  color: var(--ed-color-cream, #F5F1E8);
+  border-radius: var(--ed-radius-lg, 12px);
+  padding: var(--ed-space-6, 24px) var(--ed-space-8, 32px);
+  margin-bottom: var(--ed-space-5, 20px);
+  display: flex; align-items: center; gap: var(--ed-space-4, 16px);
+}
+.ed-hero__icon { font-size: 1.8rem; color: var(--ed-color-gold, #C9A961); flex: 0 0 auto; }
+.ed-hero__body { min-width: 0; }
+.ed-hero__titlu {
+  margin: 0 0 6px;
+  color: var(--ed-color-gold, #C9A961);
+  font-family: var(--ed-font-brand, 'Cinzel', serif);
+  font-size: var(--ed-text-3xl, 28px);
+  line-height: 1.15;
+}
+.ed-hero__subtitlu { margin: 0; color: rgba(245, 241, 232, .82); max-width: 760px; }
+
+/* ============================================================
+   BUTOANE
+   ============================================================ */
+.ed-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ed-space-2, 8px);
+  padding: 9px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--ed-radius-sm, 6px);
+  font-family: var(--ed-font-ui, 'Inter', sans-serif);
+  font-size: var(--ed-text-base, 14px);
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  transition: filter var(--ed-dur-fast, 150ms) var(--ed-ease, ease),
+              background var(--ed-dur-fast, 150ms) var(--ed-ease, ease),
+              box-shadow var(--ed-dur-fast, 150ms) var(--ed-ease, ease);
+  white-space: nowrap;
+}
+.ed-btn:hover { filter: brightness(.96); }
+.ed-btn:active { filter: brightness(.92); }
+
+/* primary = navy (autoritate, butonul standard) */
+.ed-btn--primary { background: var(--ed-color-navy, #0B1426); color: var(--ed-color-cream, #F5F1E8); }
+/* gold = gradient gold cu text navy (CTA unic per ecran) */
+.ed-btn--gold { background: var(--ed-grad-gold, linear-gradient(135deg, #E0BB6E, #C9A961, #A8893D)); color: var(--ed-color-navy, #0B1426); }
+/* outline = contur navy pe suprafata deschisa */
+.ed-btn--outline { background: var(--ed-color-surface, #fff); color: var(--ed-color-navy, #0B1426); border-color: var(--ed-color-sand, #E8E3D5); }
+.ed-btn--outline:hover { background: var(--ed-color-cream, #F5F1E8); filter: none; }
+/* danger = actiune distructiva */
+.ed-btn--danger { background: var(--ed-color-danger, #B71C1C); color: #fff; }
+/* ghost = fara fundal (actiuni secundare in headere) */
+.ed-btn--ghost { background: transparent; color: var(--ed-color-navy, #0B1426); }
+.ed-btn--ghost:hover { background: var(--ed-color-cream, #F5F1E8); filter: none; }
+
+.ed-btn--sm { padding: 6px 11px; font-size: var(--ed-text-sm, 12px); }
+.ed-btn--lg { padding: 12px 22px; font-size: var(--ed-text-lg, 16px); }
+.ed-btn--block { display: flex; width: 100%; }
+
+/* ============================================================
+   CARDURI + STAT CARD
+   ============================================================ */
+.ed-card {
+  background: var(--ed-color-surface, #fff);
+  border: 1px solid var(--ed-color-sand, #E8E3D5);
+  border-radius: var(--ed-radius-lg, 12px);
+  box-shadow: var(--ed-shadow-sm, 0 1px 3px rgba(11,20,38,.08));
+  margin-bottom: var(--ed-space-4, 16px);
+  overflow: hidden;
+}
+.ed-card__header {
+  display: flex; align-items: center; gap: var(--ed-space-2, 8px);
+  padding: var(--ed-space-4, 16px) var(--ed-space-5, 20px);
+  border-bottom: 1px solid var(--ed-color-sand, #E8E3D5);
+}
+.ed-card__header i { color: var(--ed-color-gold-ink, #80620F); }
+.ed-card__titlu { margin: 0; font-size: var(--ed-text-lg, 16px); font-weight: 700; color: var(--ed-color-navy, #0B1426); }
+.ed-card__body { padding: var(--ed-space-5, 20px); }
+
+.ed-stat {
+  display: block;
+  background: var(--ed-color-surface, #fff);
+  border: 1px solid var(--ed-color-sand, #E8E3D5);
+  border-left: 3px solid var(--ed-color-gold, #C9A961);
+  border-radius: var(--ed-radius, 10px);
+  padding: var(--ed-space-4, 16px) var(--ed-space-5, 20px);
+  box-shadow: var(--ed-shadow-sm, 0 1px 3px rgba(11,20,38,.08));
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow var(--ed-dur-fast, 150ms) var(--ed-ease, ease),
+              transform var(--ed-dur-fast, 150ms) var(--ed-ease, ease);
+}
+a.ed-stat:hover { box-shadow: var(--ed-shadow-md, 0 4px 12px rgba(11,20,38,.10)); transform: translateY(-1px); }
+.ed-stat--navy { border-left-color: var(--ed-color-navy, #0B1426); }
+.ed-stat--success { border-left-color: var(--ed-color-success, #2E7D32); }
+.ed-stat--warning { border-left-color: var(--ed-color-warning, #8A5A00); }
+.ed-stat--danger { border-left-color: var(--ed-color-danger, #B71C1C); }
+.ed-stat__top { display: flex; align-items: center; justify-content: space-between; gap: var(--ed-space-2, 8px); }
+.ed-stat__label {
+  font-size: var(--ed-text-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: var(--ed-tracking-label, .5px);
+  color: var(--ed-color-text-faint, #5F6975);
+  font-weight: 600;
+}
+.ed-stat__icon { color: var(--ed-color-gold-ink, #80620F); font-size: 1rem; }
+.ed-stat__valoare {
+  font-size: var(--ed-text-3xl, 28px);
+  font-weight: 700;
+  color: var(--ed-color-navy, #0B1426);
+  line-height: 1.1;
+  margin-top: 4px;
+}
+.ed-stat__trend { font-size: var(--ed-text-sm, 12px); font-weight: 600; margin-top: 4px; }
+.ed-stat__trend--up { color: var(--ed-color-success, #2E7D32); }
+.ed-stat__trend--down { color: var(--ed-color-danger, #B71C1C); }
+.ed-stat__trend--flat { color: var(--ed-color-text-faint, #5F6975); }
+
+/* ============================================================
+   BADGE-URI DE STATUS (tintate: bg pastel + text saturat AA)
+   ============================================================ */
+.ed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--ed-radius-pill, 999px);
+  font-size: var(--ed-text-xs, 11px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  line-height: 1.4;
+  background: var(--ed-color-bg, #F4F2ED);
+  color: var(--ed-color-text, #1F2733);
+}
+.ed-badge--success { background: var(--ed-color-success-bg, #E8F5E9); color: var(--ed-color-success, #2E7D32); }
+.ed-badge--warning { background: var(--ed-color-warning-bg, #FBF1D6); color: var(--ed-color-warning, #8A5A00); }
+.ed-badge--danger  { background: var(--ed-color-danger-bg, #FDECEA);  color: var(--ed-color-danger, #B71C1C); }
+.ed-badge--info    { background: var(--ed-color-info-bg, #E3F2FD);    color: var(--ed-color-info, #0D47A1); }
+.ed-badge--gold    { background: var(--ed-color-cream, #F5F1E8);      color: var(--ed-color-gold-ink, #80620F); }
+.ed-badge--neutru  { background: var(--ed-color-bg, #F4F2ED);         color: var(--ed-color-text-soft, #5B6573); }
+
+/* ============================================================
+   TABEL RESPONSIVE + CARD-VIEW MOBIL
+   ============================================================ */
+.ed-table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ed-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--ed-color-surface, #fff);
+  font-size: var(--ed-text-base, 14px);
+}
+.ed-table th, .ed-table td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--ed-color-border, #E0E0E0);
+}
+.ed-table thead th {
+  background: var(--ed-color-navy, #0B1426);
+  color: var(--ed-color-cream, #F5F1E8);
+  font-size: var(--ed-text-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: var(--ed-tracking-label, .5px);
+  font-weight: 600;
+}
+.ed-table tbody tr:nth-child(even) { background: var(--ed-color-bg, #F4F2ED); }
+.ed-table tbody tr:hover { background: var(--ed-color-cream, #F5F1E8); }
+
+/* Sub 768px tabelul .ed-table--cards devine lista de carduri: fiecare rand e un
+   card, fiecare celula are eticheta din data-label. */
+@media (max-width: 768px) {
+  .ed-table--cards thead { position: absolute; left: -9999px; }
+  .ed-table--cards, .ed-table--cards tbody, .ed-table--cards tr, .ed-table--cards td { display: block; width: 100%; }
+  .ed-table--cards tr {
+    margin-bottom: var(--ed-space-3, 12px);
+    border: 1px solid var(--ed-color-sand, #E8E3D5);
+    border-radius: var(--ed-radius, 10px);
+    background: var(--ed-color-surface, #fff);
+    overflow: hidden;
+  }
+  .ed-table--cards tbody tr:nth-child(even) { background: var(--ed-color-surface, #fff); }
+  .ed-table--cards td {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--ed-space-4, 16px);
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--ed-color-border, #E0E0E0);
+    text-align: right;
+  }
+  .ed-table--cards td:last-child { border-bottom: 0; }
+  .ed-table--cards td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: var(--ed-color-text-faint, #5F6975);
+    text-transform: uppercase;
+    font-size: var(--ed-text-xs, 11px);
+    letter-spacing: .4px;
+    text-align: left;
+  }
+}
+
+/* ============================================================
+   EMPTY STATE
+   ============================================================ */
+.ed-empty { padding: var(--ed-space-10, 40px) var(--ed-space-5, 20px); text-align: center; }
+.ed-empty__icon { font-size: 2.8rem; color: var(--ed-color-sand, #E8E3D5); }
+.ed-empty__titlu { margin: 14px 0 6px; color: var(--ed-color-navy, #0B1426); font-size: var(--ed-text-xl, 18px); }
+.ed-empty__mesaj { color: var(--ed-color-text-faint, #5F6975); max-width: 440px; margin: 0 auto 18px; }
+.ed-empty__actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+/* ============================================================
+   FORMULARE
+   ============================================================ */
+.ed-form-section { margin-bottom: var(--ed-space-6, 24px); }
+.ed-form-section__titlu {
+  margin: 0 0 var(--ed-space-3, 12px);
+  font-size: var(--ed-text-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: var(--ed-tracking-label, .5px);
+  color: var(--ed-color-text-faint, #5F6975);
+  font-weight: 700;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ed-color-sand, #E8E3D5);
+}
+.ed-field { margin-bottom: var(--ed-space-4, 16px); }
+.ed-field__label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: var(--ed-text-md, 13px);
+  font-weight: 600;
+  color: var(--ed-color-text, #1F2733);
+}
+.ed-field__req { color: var(--ed-color-danger, #B71C1C); margin-left: 2px; }
+.ed-field__control {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--ed-color-border, #E0E0E0);
+  border-radius: var(--ed-radius-sm, 6px);
+  font-size: var(--ed-text-base, 14px);
+  font-family: var(--ed-font-ui, 'Inter', sans-serif);
+  color: var(--ed-color-text, #1F2733);
+  background: var(--ed-color-surface, #fff);
+}
+.ed-field__hint { margin: 4px 0 0; font-size: var(--ed-text-sm, 12px); color: var(--ed-color-text-faint, #5F6975); }
+.ed-field__error { margin: 4px 0 0; font-size: var(--ed-text-sm, 12px); color: var(--ed-color-danger, #B71C1C); }
+
+/* ============================================================
+   FILTER BAR
+   ============================================================ */
+.ed-filter-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--ed-space-3, 12px);
+  flex-wrap: wrap;
+  padding: var(--ed-space-3, 12px) var(--ed-space-4, 16px);
+  background: var(--ed-color-surface, #fff);
+  border: 1px solid var(--ed-color-sand, #E8E3D5);
+  border-radius: var(--ed-radius, 10px);
+  margin-bottom: var(--ed-space-4, 16px);
+}
+.ed-filter-bar__spacer { flex: 1 1 auto; }
+
+/* ============================================================
+   PAGINATION
+   ============================================================ */
+.ed-pagination { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; margin-top: var(--ed-space-4, 16px); }
+.ed-pagination__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--ed-color-sand, #E8E3D5);
+  border-radius: var(--ed-radius-sm, 6px);
+  color: var(--ed-color-navy, #0B1426);
+  text-decoration: none;
+  font-size: var(--ed-text-md, 13px);
+  font-weight: 600;
+  background: var(--ed-color-surface, #fff);
+}
+.ed-pagination__link:hover { background: var(--ed-color-cream, #F5F1E8); }
+.ed-pagination__link--activ { background: var(--ed-color-navy, #0B1426); color: var(--ed-color-cream, #F5F1E8); border-color: var(--ed-color-navy, #0B1426); }
+.ed-pagination__link--disabled { opacity: .45; pointer-events: none; }
+
+/* ============================================================
+   STEPPER (parcurs ghidat)
+   ============================================================ */
+.ed-stepper { display: flex; align-items: flex-start; gap: 0; flex-wrap: wrap; margin-bottom: var(--ed-space-5, 20px); }
+.ed-stepper__pas { display: flex; align-items: center; gap: var(--ed-space-2, 8px); flex: 1 1 0; min-width: 120px; }
+.ed-stepper__bula {
+  flex: 0 0 auto;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--ed-text-sm, 12px); font-weight: 800;
+  background: var(--ed-color-bg, #F4F2ED);
+  color: var(--ed-color-text-faint, #5F6975);
+  border: 1px solid var(--ed-color-sand, #E8E3D5);
+}
+.ed-stepper__label { font-size: var(--ed-text-md, 13px); color: var(--ed-color-text-faint, #5F6975); }
+.ed-stepper__linie { flex: 1 1 auto; height: 2px; background: var(--ed-color-sand, #E8E3D5); margin: 0 8px; }
+.ed-stepper__pas--activ .ed-stepper__bula { background: var(--ed-grad-gold, linear-gradient(135deg, #E0BB6E, #C9A961, #A8893D)); color: var(--ed-color-navy, #0B1426); border-color: transparent; }
+.ed-stepper__pas--activ .ed-stepper__label { color: var(--ed-color-navy, #0B1426); font-weight: 700; }
+.ed-stepper__pas--gata .ed-stepper__bula { background: var(--ed-color-navy, #0B1426); color: var(--ed-color-cream, #F5F1E8); border-color: transparent; }
+
+/* ============================================================
+   TABS (cu aria)
+   ============================================================ */
+.ed-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--ed-color-sand, #E8E3D5); margin-bottom: var(--ed-space-4, 16px); flex-wrap: wrap; }
+.ed-tabs__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ed-color-text-faint, #5F6975);
+  font-size: var(--ed-text-base, 14px);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.ed-tabs__tab:hover { color: var(--ed-color-navy, #0B1426); }
+.ed-tabs__tab[aria-selected="true"] { color: var(--ed-color-navy, #0B1426); border-bottom-color: var(--ed-color-gold, #C9A961); }
+
+/* ============================================================
+   NEXT HINT (bara aurie - pasul urmator)
+   ============================================================ */
+.ed-hint {
+  margin-bottom: var(--ed-space-3, 14px);
+  padding: 11px 15px;
+  background: var(--ed-color-paper, #FBF8F0);
+  border-left: 3px solid var(--ed-color-gold, #C9A961);
+  border-radius: var(--ed-radius-sm, 6px);
+  font-size: var(--ed-text-base, 14px);
+  color: var(--ed-color-text, #1F2733);
+}
+.ed-hint i { color: var(--ed-color-gold-ink, #80620F); }
+.ed-hint a { color: var(--ed-color-gold-ink, #80620F); font-weight: 700; text-decoration: none; margin-left: 4px; }
