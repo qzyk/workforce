@@ -65,7 +65,7 @@ def cleanup_test_data(app):
         BIMRule, RuleViolation, ClashRun, ClashResult, ClashGroup,
         BIMIDSSpec, BIMIDSViolation,
         BIMTaskSchedule, BIMCostItem,
-        Senzor, SensorReading, SensorAlert,
+        Senzor, SensorReading, SensorAlert, SensorRollup,
         BIMComment, UserPresence, RealtimeEvent,
         BIMRoleAssignment, ApiToken,
     )
@@ -73,7 +73,7 @@ def cleanup_test_data(app):
         try:
             # WIPE total tabele BIM (le recreem la nevoie in fixture-uri specifice)
             for cls in (AuditLog, FeatureFlag, BIMTransmittal, BIMModelVersion,
-                        SensorAlert, SensorReading, Senzor,
+                        SensorAlert, SensorReading, SensorRollup, Senzor,
                         ClashResult, ClashGroup, ClashRun, RuleViolation, BIMRule,
                         BIMIDSViolation, BIMIDSSpec,
                         BIMCostItem, BIMTaskSchedule,

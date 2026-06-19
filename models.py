@@ -3128,6 +3128,58 @@ class SensorAlert(db.Model):
         return f'<SensorAlert senzor={self.senzor_id} {self.tip} {self.status}>'
 
 
+class SensorRollup(db.Model):
+    """
+    Agregare pre-calculata (downsampling) a citirilor de senzor pe bucket-uri
+    de timp. IoT Faza 2: scalabilitate time-series.
+
+    Pana acum get_history pentru agg='1h'/'1d' incarca TOATE citirile in Python
+    si agrega in memorie -> risc OOM/timeout pe un senzor cu sute de mii de
+    randuri. Acest tabel materializeaza min/max/avg/count per (senzor, bucket),
+    populat incremental de CLI 'flask iot-rollup'.
+
+    Idempotenta: index UNIC pe (senzor_id, bucket, bucket_ts) - re-rularea
+    rollup-ului face UPSERT pe bucket, nu dubleaza randuri.
+
+    PK Integer (auto-increment cross-dialect; BigInteger nu auto-increment-eaza
+    pe SQLite). tenant_id nullable (multi-tenant ready, mostenit din senzor).
+    """
+    __tablename__ = 'bim_sensor_rollup'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    senzor_id = db.Column(db.Integer, db.ForeignKey('bim_senzori.id'),
+                           nullable=False, index=True)
+
+    # Granularitatea bucket-ului: '1h' (ora) sau '1d' (zi).
+    bucket = db.Column(db.String(4), nullable=False)
+    # Inceputul bucket-ului (truncat la ora/zi, UTC). Ex: 2026-05-10T12:00:00.
+    bucket_ts = db.Column(db.DateTime, nullable=False)
+
+    v_min = db.Column(db.Numeric(15, 4), nullable=True)
+    v_max = db.Column(db.Numeric(15, 4), nullable=True)
+    v_avg = db.Column(db.Numeric(15, 4), nullable=True)
+    v_count = db.Column(db.Integer, nullable=False, default=0)
+
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    data_modificare = db.Column(db.DateTime, default=datetime.utcnow,
+                                onupdate=datetime.utcnow)
+
+    senzor = db.relationship('Senzor', foreign_keys=[senzor_id],
+                             backref=db.backref('rollups', lazy='dynamic'))
+
+    __table_args__ = (
+        # Index UNIC pentru idempotenta UPSERT (un singur rand per bucket).
+        db.UniqueConstraint('senzor_id', 'bucket', 'bucket_ts',
+                            name='uix_rollup_senzor_bucket_ts'),
+    )
+
+    def __repr__(self):
+        return (f'<SensorRollup senzor={self.senzor_id} {self.bucket} '
+                f'{self.bucket_ts.isoformat() if self.bucket_ts else ""} '
+                f'n={self.v_count}>')
+
+
 # ============================================================
 # REAL-TIME COLLAB + KANBAN (Faza 7)
 # Comments pe issues, presence heartbeat, event stream pentru SSE.

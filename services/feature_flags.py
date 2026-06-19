@@ -58,6 +58,11 @@ KNOWN_FLAGS: dict[str, str] = {
                         'in-app catre manageri/admini + publica eveniment SSE '
                         '(sensor_alert) + email best-effort daca SMTP e configurat. '
                         'Cu OFF, ingestul ramane tacut (comportament istoric). Default OFF.',
+    # IoT Faza 2 - retention + rollup time-series
+    'iot-rollup': 'Agregarea istoricului (1h/1d) citeste din tabelul pre-calculat '
+                  'bim_sensor_rollup (populat de flask iot-rollup) in loc sa incarce '
+                  'toate citirile in Python. Scalabil pe serii mari. Cu OFF, agregarea '
+                  'live in Python ramane neschimbata. Default OFF.',
     # Faza 7
     'bim-realtime-collab': 'Colaborare real-time via SSE (presence + comments)',
     'bim-issue-kanban': 'Kanban board pentru issue management',

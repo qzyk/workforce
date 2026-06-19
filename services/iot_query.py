@@ -11,9 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import func
-
-from models import db, Senzor, SensorReading, SensorAlert
+from models import Senzor, SensorReading, SensorAlert
 
 
 # ====================================================
@@ -80,6 +78,12 @@ def _senzor_summary(s: Senzor) -> dict:
 # History
 # ====================================================
 
+# Sub aceasta fereastra (in ore), agregarea 1h/1d ramane in Python chiar cu
+# flag-ul 'iot-rollup' ON - acopera bucket-ul curent (inca deschis), care nu e
+# inca materializat de CLI-ul incremental.
+_PRAG_FALLBACK_ORE = 24
+
+
 def get_history(senzor_id: int, *,
                 from_ts: Optional[datetime] = None,
                 to_ts: Optional[datetime] = None,
@@ -93,21 +97,22 @@ def get_history(senzor_id: int, *,
         '1h'  - agregare pe ore (min, max, avg per ora)
         '1d'  - agregare pe zile
 
-    Pentru agregare folosim SQL group by pe truncated timestamp.
+    IoT Faza 2: pentru agg='1h'/'1d', daca flag-ul 'iot-rollup' e ON SI fereastra
+    >= 24h, citim agregarea pre-calculata din bim_sensor_rollup (scalabil, nu
+    incarca toate citirile in Python). Pe ferestre < 24h sau cu flag OFF ramane
+    agregarea live in Python (comportament istoric, neschimbat).
     """
     if from_ts is None:
         from_ts = datetime.utcnow() - timedelta(days=7)
     if to_ts is None:
         to_ts = datetime.utcnow()
 
-    base_q = SensorReading.query.filter(
-        SensorReading.senzor_id == senzor_id,
-        SensorReading.ts >= from_ts,
-        SensorReading.ts <= to_ts,
-    )
-
     if agg == 'raw':
-        readings = base_q.order_by(SensorReading.ts).limit(limit).all()
+        readings = (SensorReading.query.filter(
+            SensorReading.senzor_id == senzor_id,
+            SensorReading.ts >= from_ts,
+            SensorReading.ts <= to_ts,
+        ).order_by(SensorReading.ts).limit(limit).all())
         return {
             'senzor_id': senzor_id,
             'agg': 'raw',
@@ -121,19 +126,77 @@ def get_history(senzor_id: int, *,
             ],
         }
 
-    # Agregare: in functie de dialect, folosim DATE_TRUNC sau strftime
-    # Pentru SQLite: strftime; pentru MySQL: DATE_FORMAT.
-    # Implementare portable: incarcam toate citirile si agregam in Python.
-    # (Pentru volume mari pe MySQL, se poate inlocui cu DATE_FORMAT GROUP BY.)
-    readings = base_q.order_by(SensorReading.ts).all()
-
-    # Agregare in Python pe bucket
-    if agg == '1h':
-        bucket_fmt = '%Y-%m-%dT%H:00:00'
-    elif agg == '1d':
-        bucket_fmt = '%Y-%m-%d'
-    else:
+    if agg not in ('1h', '1d'):
         raise ValueError(f'agg invalid: {agg} (folositi raw, 1h sau 1d)')
+
+    # Decizie sursa: rollup (scalabil) vs. agregare Python (live).
+    fereastra_ore = (to_ts - from_ts).total_seconds() / 3600.0
+    if fereastra_ore >= _PRAG_FALLBACK_ORE and _rollup_activ(senzor_id):
+        data = _history_din_rollup(senzor_id, from_ts, to_ts, agg)
+    else:
+        data = _history_din_readings(senzor_id, from_ts, to_ts, agg)
+
+    return {
+        'senzor_id': senzor_id,
+        'agg': agg,
+        'from': from_ts.isoformat(),
+        'to': to_ts.isoformat(),
+        'count': len(data),
+        'data': data,
+    }
+
+
+def _rollup_activ(senzor_id: int) -> bool:
+    """True daca flag-ul 'iot-rollup' e ON pentru tenant-ul senzorului."""
+    try:
+        from services import feature_flags as ff_svc
+        senzor = Senzor.query.get(senzor_id)
+        tenant_id = senzor.tenant_id if senzor is not None else None
+        return ff_svc.is_enabled('iot-rollup', tenant_id=tenant_id)
+    except Exception:
+        return False
+
+
+def _history_din_rollup(senzor_id: int, from_ts: datetime, to_ts: datetime,
+                        agg: str) -> list[dict]:
+    """Citeste agregarea pre-calculata din bim_sensor_rollup.
+
+    Formatul cheii 'ts' e identic cu cel din agregarea Python (strftime), ca
+    rezultatul sa fie echivalent (vezi teste).
+    """
+    from models import SensorRollup
+    bucket_fmt = '%Y-%m-%dT%H:00:00' if agg == '1h' else '%Y-%m-%d'
+    randuri = (SensorRollup.query.filter(
+        SensorRollup.senzor_id == senzor_id,
+        SensorRollup.bucket == agg,
+        SensorRollup.bucket_ts >= from_ts,
+        SensorRollup.bucket_ts <= to_ts,
+    ).order_by(SensorRollup.bucket_ts).all())
+    return [
+        {'ts': r.bucket_ts.strftime(bucket_fmt),
+         'min': float(r.v_min) if r.v_min is not None else None,
+         'max': float(r.v_max) if r.v_max is not None else None,
+         'avg': float(r.v_avg) if r.v_avg is not None else None,
+         'count': r.v_count}
+        for r in randuri
+    ]
+
+
+def _history_din_readings(senzor_id: int, from_ts: datetime, to_ts: datetime,
+                          agg: str) -> list[dict]:
+    """Agregare live in Python pe citirile raw (comportament istoric).
+
+    Implementare portable cross-dialect (SQLite/MySQL). Pentru volume mari pe
+    ferestre lungi se foloseste rollup-ul (vezi get_history). Bucketizarea e
+    identica cu cea din services/iot_rollup ca sursele sa fie echivalente.
+    """
+    readings = SensorReading.query.filter(
+        SensorReading.senzor_id == senzor_id,
+        SensorReading.ts >= from_ts,
+        SensorReading.ts <= to_ts,
+    ).order_by(SensorReading.ts).all()
+
+    bucket_fmt = '%Y-%m-%dT%H:00:00' if agg == '1h' else '%Y-%m-%d'
 
     buckets: dict = {}
     for r in readings:
@@ -146,7 +209,7 @@ def get_history(senzor_id: int, *,
         b['sum'] += v
         b['count'] += 1
 
-    data = [
+    return [
         {'ts': key,
          'min': round(b['min'], 4),
          'max': round(b['max'], 4),
@@ -154,14 +217,6 @@ def get_history(senzor_id: int, *,
          'count': b['count']}
         for key, b in sorted(buckets.items())
     ]
-    return {
-        'senzor_id': senzor_id,
-        'agg': agg,
-        'from': from_ts.isoformat(),
-        'to': to_ts.isoformat(),
-        'count': len(data),
-        'data': data,
-    }
 
 
 def get_active_alerts(*, senzor_id: Optional[int] = None,

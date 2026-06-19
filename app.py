@@ -445,6 +445,8 @@ def create_app(config_name='default'):
             ('pontaje', 'spor_noapte', 'NUMERIC(5, 2)'),
             # IoT Faza 1: idempotenta dispatch notificare pe alertele de senzor.
             ('bim_sensor_alerts', 'notificat_la', 'DATETIME'),
+            # IoT Faza 2: tabela noua bim_sensor_rollup (downsampling time-series)
+            # e creata de db.create_all() de mai sus - tabela noua, fara ALTER.
             # Gantt Faza 2 (tracking): coloane aditive nullable pe tabele existente.
             # Tabelele noi gantt_baseline / gantt_progres sunt create de db.create_all().
             ('gantt_plan', 'baseline_activ_id', 'INTEGER REFERENCES gantt_baseline(id)'),
@@ -810,6 +812,46 @@ def create_app(config_name='default'):
         from services.notificari_job import ruleaza_job_notificari
         stats = ruleaza_job_notificari()
         click.echo(f'[OK] Job notificari rulat: {stats}')
+
+    # --------------------------------------------------------
+    # COMANDA CLI: flask iot-rollup (IoT Faza 2 - downsampling time-series)
+    # --------------------------------------------------------
+    @app.cli.command('iot-rollup')
+    @click.option('--lookback', default=1,
+                  help='Cate bucket-uri reprocesam in plus (suprapunere pt citiri '
+                       'in dezordine). Default 1.')
+    def iot_rollup_command(lookback):
+        """Materializeaza incremental rollup-ul 1h/1d in bim_sensor_rollup.
+
+        Citeste doar citirile noi (watermark + suprapunere) si face UPSERT pe
+        bucket (idempotent prin indexul unic). Util ca Scheduled Task pe PA:
+            cd ~/workforce && flask iot-rollup
+        """
+        from services import iot_rollup
+        stats = iot_rollup.rollup_all(lookback_buckets=lookback)
+        click.echo(f'[OK] Rollup IoT: {stats}')
+
+    # --------------------------------------------------------
+    # COMANDA CLI: flask iot-cleanup (IoT Faza 2 - retention)
+    # --------------------------------------------------------
+    @app.cli.command('iot-cleanup')
+    @click.option('--readings-days', default=365,
+                  help='Sterge citirile raw mai vechi de X zile (rollup-ul ramane). '
+                       '0 = nu sterge. Default 365.')
+    @click.option('--events-days', default=7,
+                  help='Sterge evenimentele realtime mai vechi de X zile. Default 7.')
+    def iot_cleanup_command(readings_days, events_days):
+        """Retention time-series: purjeaza citiri raw vechi + evenimente realtime.
+
+        Rollup-ul pre-calculat NU e atins (istoricul agregat ramane). Util ca
+        Scheduled Task pe PA, dupa iot-rollup:
+            cd ~/workforce && flask iot-cleanup --readings-days 365
+        """
+        from services import iot_rollup
+        sterse_readings = iot_rollup.cleanup_readings(older_than_days=readings_days)
+        sterse_events = iot_rollup.cleanup_events(older_than_days=events_days)
+        click.echo(f'[OK] Cleanup IoT: {sterse_readings} citiri raw + '
+                   f'{sterse_events} evenimente sterse.')
 
     # --------------------------------------------------------
     # COMANDA CLI: flask backup (Tema E - Ops)
