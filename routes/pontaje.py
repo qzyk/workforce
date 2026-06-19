@@ -10,6 +10,11 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from models import db, Pontaj, Angajat, Proiect, AngajatProiect, SarbatoareLegala
 from forms.pontaje_forms import PontajForm
+# Alias explicit: in acest modul exista si o ruta AJAX 'calcul_ore' (/calcul-ore),
+# deci importam functia de serviciu sub un nume diferit ca sa evitam shadowing-ul.
+from services.sporuri import calcul_ore as calcul_ore_serviciu
+from services.sporuri import detecteaza_tip_zi
+from services.feature_flags import is_enabled
 
 pontaje_bp = Blueprint('pontaje', __name__)
 
@@ -17,92 +22,43 @@ pontaje_bp = Blueprint('pontaje', __name__)
 # ============================================================
 # LOGICA CALCUL ORE
 # ============================================================
+# Logica de calcul a orelor (detectie tip_zi + ore normale / suplimentare
+# 50% / 100% + spor de noapte) a fost extrasa in services/sporuri.py pentru a
+# fi reutilizabila si testabila independent. Functiile de mai jos raman ca
+# wrappere subtiri (compatibilitate cu apelantii existenti, ex. routes/teren.py)
+# si decid, pe baza flag-ului 'pontaj-spor-noapte', daca se calculeaza sporul de
+# noapte. Cu flag OFF, comportamentul e identic cu cel istoric.
+
+def _spor_noapte_activ():
+    """
+    True daca flag-ul 'pontaj-spor-noapte' e activ. Degradeaza la False (OFF)
+    daca evaluarea esueaza in afara unui context de request (ex. apel din afara
+    unei rute) - comportament istoric, fail-safe.
+    """
+    try:
+        return is_enabled('pontaj-spor-noapte')
+    except Exception:
+        return False
+
 
 def calculate_hours(ora_start, ora_sfarsit, tip_zi, data_pontaj=None):
     """
     Calculeaza orele lucrate conform legislatiei constructiilor.
-    Returneaza dict cu ore_lucrate, ore_normale, ore_supl_50, ore_supl_100.
+    Returneaza dict cu ore_lucrate, ore_normale, ore_supl_50, ore_supl_100,
+    tip_zi si (cand flag-ul 'pontaj-spor-noapte' e activ) spor_noapte.
+
+    Wrapper peste services.sporuri.calcul_ore; sporul de noapte e inclus doar
+    cand flag-ul e ON (altfel spor_noapte=None, comportament istoric).
     """
-    try:
-        h1, m1 = map(int, ora_start.split(':'))
-        h2, m2 = map(int, ora_sfarsit.split(':'))
-    except (ValueError, AttributeError):
-        return {'ore_lucrate': 0, 'ore_normale': 0, 'ore_supl_50': 0, 'ore_supl_100': 0}
-
-    total_min = (h2 * 60 + m2) - (h1 * 60 + m1)
-    if total_min <= 0:
-        total_min += 24 * 60  # tura de noapte
-
-    # Limita 12h/zi
-    if total_min > 12 * 60:
-        total_min = 12 * 60
-
-    # Pauza masa 30 min dedusa daca > 6h
-    if total_min > 6 * 60:
-        total_min -= 30
-
-    ore_lucrate = round(total_min / 60, 2)
-
-    # Detectie sarbatoare legala
-    is_sarbatoare = False
-    if data_pontaj:
-        is_sarbatoare = SarbatoareLegala.query.filter_by(data=data_pontaj).first() is not None
-
-    # Detectie tip zi automat din data
-    if data_pontaj and tip_zi == 'lucratoare':
-        dow = data_pontaj.weekday()  # 0=Lu, 5=Sa, 6=Du
-        if is_sarbatoare:
-            tip_zi = 'sarbatoare_legala'
-        elif dow == 5:
-            tip_zi = 'sambata'
-        elif dow == 6:
-            tip_zi = 'duminica'
-
-    # Calcul ore
-    ore_normale = 0
-    ore_supl_50 = 0
-    ore_supl_100 = 0
-
-    if tip_zi in ('duminica', 'sarbatoare_legala'):
-        # Toate orele sunt 100%
-        ore_supl_100 = ore_lucrate
-    elif tip_zi == 'sambata':
-        # Toate orele sambata sunt 50%
-        ore_supl_50 = ore_lucrate
-    elif tip_zi in ('co', 'cm', 'invoiere'):
-        # Tipuri speciale - nu se calculeaza ore suplimentare
-        ore_normale = ore_lucrate
-    else:
-        # Zi lucratoare normala
-        ore_normale = min(8, ore_lucrate)
-        extra = max(0, ore_lucrate - 8)
-        if extra > 0:
-            # Ore 8-10 = 50%, ore > 10 = 100%
-            ore_supl_50 = min(2, extra)
-            ore_supl_100 = max(0, extra - 2)
-
-    return {
-        'ore_lucrate': ore_lucrate,
-        'ore_normale': round(ore_normale, 2),
-        'ore_supl_50': round(ore_supl_50, 2),
-        'ore_supl_100': round(ore_supl_100, 2),
-        'tip_zi': tip_zi
-    }
+    return calcul_ore_serviciu(
+        ora_start, ora_sfarsit, tip_zi, data_pontaj,
+        include_spor_noapte=_spor_noapte_activ(),
+    )
 
 
 def _detect_tip_zi(data_pontaj):
-    """Detecteaza automat tipul zilei."""
-    if not data_pontaj:
-        return 'lucratoare'
-    is_sarb = SarbatoareLegala.query.filter_by(data=data_pontaj).first()
-    if is_sarb:
-        return 'sarbatoare_legala'
-    dow = data_pontaj.weekday()
-    if dow == 5:
-        return 'sambata'
-    elif dow == 6:
-        return 'duminica'
-    return 'lucratoare'
+    """Detecteaza automat tipul zilei (wrapper peste services.sporuri)."""
+    return detecteaza_tip_zi(data_pontaj)
 
 
 # ============================================================
@@ -235,6 +191,7 @@ def adauga():
             ore_normale=result['ore_normale'],
             ore_suplimentare_50=result['ore_supl_50'],
             ore_suplimentare_100=result['ore_supl_100'],
+            spor_noapte=result.get('spor_noapte'),
             tip_zi=result['tip_zi'],
             status=status,
             observatii=form.observatii.data or '',
@@ -294,6 +251,7 @@ def adauga_multiplu():
                 ore_normale=result['ore_normale'],
                 ore_suplimentare_50=result['ore_supl_50'],
                 ore_suplimentare_100=result['ore_supl_100'],
+                spor_noapte=result.get('spor_noapte'),
                 tip_zi=result['tip_zi'],
                 status=status,
                 observatii=obs,
@@ -691,6 +649,7 @@ def editeaza(id):
         pontaj.ore_normale = result['ore_normale']
         pontaj.ore_suplimentare_50 = result['ore_supl_50']
         pontaj.ore_suplimentare_100 = result['ore_supl_100']
+        pontaj.spor_noapte = result.get('spor_noapte')
         pontaj.tip_zi = result['tip_zi']
         pontaj.observatii = form.observatii.data or ''
 
@@ -1133,6 +1092,7 @@ def import_excel():
                 ore_normale=result['ore_normale'],
                 ore_suplimentare_50=result['ore_supl_50'],
                 ore_suplimentare_100=result['ore_supl_100'],
+                spor_noapte=result.get('spor_noapte'),
                 tip_zi=result['tip_zi'],
                 status='draft',
                 observatii=obs,

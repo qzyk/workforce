@@ -440,6 +440,9 @@ def create_app(config_name='default'):
             ('concedii', 'data_aprobare', 'DATETIME'),
             ('concedii', 'motiv_respingere', 'TEXT'),
             ('concedii', 'introdus_de', 'INTEGER REFERENCES utilizatori(id)'),
+            # Workforce Faza 2: spor de noapte (ore in fereastra 22:00-06:00).
+            # Coloana aditiva nullable; populata doar cu flag 'pontaj-spor-noapte' ON.
+            ('pontaje', 'spor_noapte', 'NUMERIC(5, 2)'),
             # IoT Faza 1: idempotenta dispatch notificare pe alertele de senzor.
             ('bim_sensor_alerts', 'notificat_la', 'DATETIME'),
             # Gantt Faza 2 (tracking): coloane aditive nullable pe tabele existente.

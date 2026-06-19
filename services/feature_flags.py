@@ -86,6 +86,11 @@ KNOWN_FLAGS: dict[str, str] = {
     # Workforce Faza 1 - gestiune concedii / absente
     'concedii': 'Modul Concedii (gestiune absente): lista + creare cereri, workflow '
                 'aprobare/respingere, calendar vizual de absente. Default OFF.',
+    # Workforce Faza 2 - spor de noapte
+    'pontaj-spor-noapte': 'Calculeaza sporul de noapte la pontaj: orele lucrate in '
+                          'fereastra legala 22:00-06:00 (min 25% conform Codului Muncii) '
+                          'sunt salvate in pontaje.spor_noapte. Cu OFF, calculul de ore '
+                          'ramane identic cu cel istoric (spor_noapte NULL). Default OFF.',
     # Deviz Faza 1 - indicatori prognoza EVM
     'evm-prognoza': 'Afiseaza indicatorii de prognoza EVM (forecast la finalizare): '
                     'EAC (cost estimat final), ETC (cost ramas), VAC (abatere buget), '

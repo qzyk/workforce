@@ -276,6 +276,11 @@ class Pontaj(db.Model):
     ore_normale = db.Column(db.Numeric(5, 2), default=0)         # max 8
     ore_suplimentare_50 = db.Column(db.Numeric(5, 2), default=0)  # ore suplim. 50%
     ore_suplimentare_100 = db.Column(db.Numeric(5, 2), default=0) # ore suplim. 100%
+    # Spor de noapte: ore lucrate in fereastra legala 22:00-06:00 (min 25%
+    # conform Codului Muncii). Nullable, aditiv. Se populeaza doar cand flag-ul
+    # 'pontaj-spor-noapte' e activ (vezi services/sporuri.py); altfel ramane NULL
+    # (comportament istoric).
+    spor_noapte = db.Column(db.Numeric(5, 2), nullable=True)
 
     tip_zi = db.Column(db.String(30), default='lucratoare')
     # lucratoare, sambata, duminica, sarbatoare_legala, co, cm, invoiere
