@@ -34,6 +34,30 @@ table.ev td { padding:7px 10px; border-top:1px solid #ECE7DA; text-align:right; 
     <div style="color:rgba(245,241,232,.78); font-size:.9rem;">Planificat (curba S Gantt) vs Realizat (situatii lunare)</div>
 </div>
 
+{% if feature_enabled('evm-baseline') and evm %}
+<div class="ev-card" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
+    <div>
+        <div style="font-weight:700; color:#0B1426;">
+            <i class="fa-solid fa-flag-checkered" style="color:#C9A961;"></i> Baseline EVM (referinta de masurare)
+        </div>
+        <small style="color:var(--gray-500); display:block; margin-top:4px;">
+            {% if evm.pv_sursa == 'baseline' %}
+            PV/BAC sunt masurate fata de un baseline inghetat (referinta stabila).
+            {% else %}
+            PV/BAC se recalculeaza live din planul Gantt. Ingheata un baseline ca sa fixezi referinta contractuala.
+            {% endif %}
+        </small>
+    </div>
+    <form method="POST" action="{{ url_for('proiecte.evm_baseline', id=proiect.id) }}" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-flag-checkered"></i>
+            {% if evm.pv_sursa == 'baseline' %}Re-ingheata baseline{% else %}Ingheata baseline EVM{% endif %}
+        </button>
+    </form>
+</div>
+{% endif %}
+
 {% if not evm %}
 <div class="ev-card ev-empty">
     <i class="fa-solid fa-diagram-project" style="font-size:2rem; color:#C9A961;"></i>

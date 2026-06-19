@@ -370,6 +370,42 @@ def evm(id):
     return render_template('proiecte/evm.html', proiect=proiect, evm=data)
 
 
+@proiecte_bp.route('/<int:id>/evm/baseline', methods=['POST'])
+@login_required
+def evm_baseline(id):
+    """Ingheata baseline-ul EVM curent (snapshot PV + BAC din planul Gantt).
+
+    DOAR cu flag 'evm-baseline' ON (altfel 404). Dupa inghetare, evm_proiect
+    masoara PV/BAC fata de acest snapshot in loc sa recalculeze live."""
+    tenant_id = getattr(current_user, 'tenant_id', None)
+    try:
+        from services.feature_flags import is_enabled
+        on = is_enabled('evm-baseline', tenant_id)
+    except Exception:
+        on = False
+    if not on:
+        abort(404)
+    Proiect.query.get_or_404(id)
+    from services.evm_baseline import snapshot_baseline
+    nume = (request.form.get('nume') or '').strip() or None
+    bl = snapshot_baseline(id, nume=nume, tenant_id=tenant_id,
+                           creat_de_id=getattr(current_user, 'id', None))
+    if bl is None:
+        flash('Nu exista un plan Gantt din care sa inghet baseline-ul EVM. '
+              'Incarca mai intai un plan pe proiect.', 'warning')
+        return redirect(url_for('proiecte.evm', id=id))
+    try:
+        from services import audit
+        audit.log('create', 'evm_baseline', bl.id,
+                  new_values={'proiect_id': id, 'nume': bl.nume,
+                              'bac': float(bl.bac or 0)}, commit=True)
+    except Exception:
+        pass
+    flash(f'Baseline EVM "{bl.nume}" inghetat. PV/BAC sunt acum masurate fata de '
+          'aceasta referinta.', 'success')
+    return redirect(url_for('proiecte.evm', id=id))
+
+
 @proiecte_bp.route('/<int:id>/utilaje')
 @login_required
 def utilaje(id):

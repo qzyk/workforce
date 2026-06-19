@@ -208,6 +208,15 @@ class Proiect(db.Model):
     # planificat, activ, suspendat, finalizat, anulat
     manager_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'))
 
+    # Deviz Faza 2 (EVM baseline): baseline-ul EVM activ (snapshot PV+BAC inghetat)
+    # folosit ca referinta de masurare. Nullable -> backward compat; populat doar
+    # dupa POST /proiecte/<id>/evm/baseline si DOAR cu flag 'evm-baseline' ON.
+    baseline_evm_activ_id = db.Column(
+        db.Integer,
+        db.ForeignKey('evm_baseline.id', use_alter=True,
+                      name='fk_proiect_baseline_evm_activ'),
+        nullable=True)
+
     data_creare = db.Column(db.DateTime, default=datetime.utcnow)
     data_actualizare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -5038,6 +5047,50 @@ class GanttProgres(db.Model):
     def __repr__(self):
         return (f'<GanttProgres plan={self.plan_id} {self.cheie_activitate} '
                 f'{self.data} {self.procent_fizic}%>')
+
+
+class EvmBaseline(db.Model):
+    """Baseline EVM materializat (PMB - Performance Measurement Baseline).
+
+    Inghetam curba PLANIFICATA (PV) si BAC-ul la aprobarea programului, ca sa nu
+    le mai recalculam live (re-rularea pipeline-ului Gantt) la fiecare cerere EVM
+    (fragil + lent). PV/SPI se masoara fata de aceasta referinta congelata.
+    Folosit DOAR cand flag-ul 'evm-baseline' e ON; cu OFF, evm_proiect recalculeaza
+    live ca inainte (zero regresie).
+
+    `continut_json` = snapshot complet:
+      {'pv_curba': [{'data': iso, 'procent': float}, ...],   # curba S inghetata
+       'meta': {'bac': float, 'plan_id': int, 'plan_nume': str,
+                'utilaj_planificat': float, 'data_start': iso|None,
+                'durata_zile': int}}
+    Coloanele bac/data_creare dubleaza meta pentru afisare rapida (fara JSON parse).
+    """
+    __tablename__ = 'evm_baseline'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    proiect_id = db.Column(db.Integer, db.ForeignKey('proiecte.id'),
+                           nullable=False, index=True)
+    nume = db.Column(db.String(120), nullable=False)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
+    bac = db.Column(db.Numeric(16, 2), default=0, nullable=False)   # Budget At Completion
+    continut_json = db.Column(db.Text, nullable=False)
+    # marcaj baseline curent activ al proiectului (in plus de proiecte.baseline_evm_activ_id,
+    # ca sa putem cauta direct dupa proiect_id + activ fara a citi Proiect)
+    activ = db.Column(db.Boolean, default=True, nullable=False)
+
+    proiect = db.relationship('Proiect', foreign_keys=[proiect_id],
+                              backref=db.backref('baselines_evm', lazy='dynamic',
+                                                 cascade='all, delete-orphan'))
+    creat_de = db.relationship('Utilizator', foreign_keys=[creat_de_id])
+
+    __table_args__ = (
+        db.Index('ix_evm_baseline_proiect_activ', 'proiect_id', 'activ'),
+    )
+
+    def __repr__(self):
+        return f'<EvmBaseline {self.id} {self.nume!r} proiect={self.proiect_id}>'
 
 
 class ProiectSantier(db.Model):

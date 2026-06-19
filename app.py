@@ -450,6 +450,9 @@ def create_app(config_name='default'):
             ('gantt_plan', 'baseline_activ_id', 'INTEGER REFERENCES gantt_baseline(id)'),
             ('gantt_wbs_nod', 'cheie_activitate', 'VARCHAR(64)'),
             ('bim_task_schedules', 'cheie_activitate', 'VARCHAR(64)'),
+            # Deviz Faza 2 (EVM baseline): coloana aditiva nullable pe 'proiecte'.
+            # Tabela noua evm_baseline e creata de db.create_all() de mai sus.
+            ('proiecte', 'baseline_evm_activ_id', 'INTEGER REFERENCES evm_baseline(id)'),
         ]
 
         adaugate = 0

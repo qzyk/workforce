@@ -196,17 +196,49 @@ def risc_proiect(proiect_id: int) -> dict:
     return {'spi': spi, 'cpi': cpi, 'status': status, 'ev_pct': round(ev_pct, 1)}
 
 
+def _pv_din_baseline(snap: dict):
+    """([(date, procent)], BAC, utilaj_planificat) din snapshot-ul de baseline EVM.
+    Reconstruieste forma identica cu cea intoarsa de `_pv_calendar` (tupluri date)."""
+    pts = []
+    for p in (snap.get('pv_curba') or []):
+        try:
+            pts.append((date.fromisoformat(str(p['data'])[:10]), float(p['procent'])))
+        except (ValueError, TypeError, KeyError):
+            continue
+    meta = snap.get('meta') or {}
+    bac = float(meta.get('bac') or 0)
+    utilaj_plan = float(meta.get('utilaj_planificat') or 0)
+    return pts, bac, utilaj_plan
+
+
 def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
-    """EVM pentru un proiect (None daca nu exista plan Gantt). Robust la date lipsa."""
+    """EVM pentru un proiect (None daca nu exista plan Gantt). Robust la date lipsa.
+
+    PV/BAC vin din baseline-ul EVM materializat daca exista (flag 'evm-baseline' ON
+    + snapshot inghetat), altfel se recalculeaza LIVE din planul Gantt (comportament
+    istoric, zero regresie cand flag-ul e OFF sau nu exista baseline)."""
     from models import GanttPlan, SituatieLunara
     plan = (GanttPlan.query.filter_by(proiect_id=proiect_id)
             .order_by(GanttPlan.data_creare.desc()).first())
     if not plan:
         return None
+    # 1) baseline materializat (rapid, referinta stabila) daca flag ON + snapshot exista
+    baseline_sursa = 'live'
+    pv_pts = bac = utilaj_plan = None
     try:
-        pv_pts, bac, utilaj_plan = _pv_calendar(plan)
+        from services.evm_baseline import get_baseline_activ
+        snap = get_baseline_activ(proiect_id, tenant_id)
+        if snap:
+            pv_pts, bac, utilaj_plan = _pv_din_baseline(snap)
+            baseline_sursa = 'baseline'
     except Exception:
-        pv_pts, bac, utilaj_plan = [], float(plan.cost_total or 0), 0.0
+        pv_pts = None
+    # 2) fallback la recalcul live (cand flag OFF, fara baseline, sau snapshot gol)
+    if pv_pts is None:
+        try:
+            pv_pts, bac, utilaj_plan = _pv_calendar(plan)
+        except Exception:
+            pv_pts, bac, utilaj_plan = [], float(plan.cost_total or 0), 0.0
 
     pont_serie, pont_ore = _pontaje_cumulativ(proiect_id)   # manopera reala (pontaje)
     man_total = pont_serie[-1][1] if pont_serie else 0.0
@@ -257,5 +289,7 @@ def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
                    'sursa': util_sursa},
         'serie': serie, 'ultim': (serie[-1] if serie else None),
         'prognoza': prognoza,
+        # sursa PV: 'baseline' (snapshot inghetat) sau 'live' (recalcul din plan)
+        'pv_sursa': baseline_sursa,
         'pv_curba': [{'data': dt.isoformat(), 'procent': round(p, 1)} for dt, p in pv_pts],
     }

@@ -95,6 +95,12 @@ KNOWN_FLAGS: dict[str, str] = {
     'evm-prognoza': 'Afiseaza indicatorii de prognoza EVM (forecast la finalizare): '
                     'EAC (cost estimat final), ETC (cost ramas), VAC (abatere buget), '
                     'TCPI (eficienta necesara). Calcul derivat, fara schema noua. Default OFF.',
+    # Deviz Faza 2 - baseline EVM materializat (PMB)
+    'evm-baseline': 'Materializeaza o baseline EVM (snapshot PV + BAC inghetat la '
+                    'aprobarea programului). Cu ON, evm_proiect citeste PV/BAC din '
+                    'baseline-ul activ (rapid, referinta stabila) in loc sa recalculeze '
+                    'live curba S din planul Gantt. Cu OFF, recalcul live ca inainte '
+                    '(zero regresie). Default OFF.',
     # Rapoarte Faza 1 - email cu atasament
     'rapoarte-email': 'Permite trimiterea/schedularea rapoartelor (Excel/PDF) pe email '
                       'cu atasament, best-effort daca SMTP e configurat. Brandingul '
