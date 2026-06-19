@@ -12,7 +12,7 @@ import time
 from typing import Optional
 
 from .modele import Activitate, RezultatPlanificare
-from .normalizare import cheie_stabila
+from .normalizare import cheie_stabila, normalizeaza, normalizeaza_cheie
 from .clasificare import Clasificator
 from .wbs import genereaza_wbs
 from .dependinte import genereaza_dependinte
@@ -56,7 +56,20 @@ class MotorPlanificare:
                            (coloana 'categorie' din F3), altfel ramane neclasificat.
         """
         activitati = []
+        # Numara aparitiile fiecarui tuple (cod+denumire+obiect+tronson) normalizat,
+        # ca duplicatele din ACELASI obiect/tronson sa primeasca chei stabile distincte
+        # (ordinal 1, 2, 3... pe ordinea de aparitie). Prima aparitie -> ordinal 1 ->
+        # cheie identica cu cea istorica (backward compat). Vezi normalizare.cheie_stabila.
+        aparitii: dict = {}
         for i, art in enumerate(articole, start=1):
+            tuple_norm = (
+                normalizeaza_cheie(art.cod_articol),
+                normalizeaza(art.denumire),
+                normalizeaza(art.obiect),
+                normalizeaza(art.tronson),
+            )
+            ordinal = aparitii.get(tuple_norm, 0) + 1
+            aparitii[tuple_norm] = ordinal
             if clasifica:
                 cat, scor = self.clasificator.clasifica(art.denumire, art.cod_articol)
             else:
@@ -83,10 +96,11 @@ class MotorPlanificare:
                 valoare_manopera=vman,
                 valoare_utilaj=vuti,
                 cost_estimat=estimat,
-                # cheie stabila (Faza 2 tracking): hash din cod+denumire+obiect+tronson,
-                # independent de ordinea randurilor -> stabil la re-import.
+                # cheie stabila (Faza 2 tracking): hash din cod+denumire+obiect+tronson
+                # (+ ordinal de dezambiguizare la duplicate), independent de ordinea
+                # randurilor -> stabil la re-import.
                 cheie=cheie_stabila(art.cod_articol, art.denumire,
-                                    art.obiect, art.tronson),
+                                    art.obiect, art.tronson, ordinal=ordinal),
             ))
         return activitati
 

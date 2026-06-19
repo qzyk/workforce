@@ -62,6 +62,61 @@ def test_cheie_stabila_la_reimport_cu_ordine_schimbata():
     assert id1 != id2
 
 
+# ------------------------------------------------------------- duplicate (coliziune cheie)
+def _articole_duplicate():
+    """Trei articole, dintre care DOUA identice pe (cod+denumire+obiect+tronson).
+    Caz real: acelasi cod de resursa repetat in acelasi capitol/obiect."""
+    return [
+        ArticolF3(cod_articol='ART001', denumire='Sapatura mecanizata', um='mc',
+                  cantitate=100, obiect='Retea', tronson='Strada A', categorie='Terasamente'),
+        ArticolF3(cod_articol='ART001', denumire='Sapatura mecanizata', um='mc',
+                  cantitate=80, obiect='Retea', tronson='Strada A', categorie='Terasamente'),
+        ArticolF3(cod_articol='ART002', denumire='Pozare conducta PEHD', um='m',
+                  cantitate=200, obiect='Retea', tronson='Strada A', categorie='Conducte'),
+    ]
+
+
+def test_duplicate_primesc_chei_distincte():
+    """Articole identice pe cele 4 componente -> chei stabile DIFERITE (ordinal),
+    deci nu se suprascriu tacit in baseline / progres / form."""
+    m = MotorPlanificare()
+    acts = list(m.proceseaza(_articole_duplicate(), clasifica=False).activitati)
+    chei = [a.cheie for a in acts]
+    assert len(set(chei)) == len(chei) == 3   # toate distincte
+    # prima aparitie pastreaza cheia istorica (backward compat) = hash fara ordinal
+    assert acts[0].cheie == cheie_stabila('ART001', 'Sapatura mecanizata', 'Retea', 'Strada A')
+    assert acts[1].cheie != acts[0].cheie
+
+
+def test_snapshot_nu_pierde_duplicate():
+    """Coliziunea de cheie corupea baseline-ul: snapshot pastra tacit doar ultima
+    activitate, dar meta.nr_activitati le numara pe toate. Cu chei distincte cele
+    doua cifre coincid si nicio activitate nu e raportata fals ca disparuta."""
+    m = MotorPlanificare()
+    rez = m.proceseaza(_articole_duplicate(), clasifica=False)
+    snap = tracking.snapshot_baseline(rez)
+    # nr activitati in snapshot == meta.nr_activitati (nu se mai pierde nimic)
+    assert len(snap['activitati']) == snap['meta']['nr_activitati'] == 3
+
+    cmp = tracking.compara_baseline(rez, snap)
+    assert cmp['nr_disparute'] == 0 and cmp['nr_noi'] == 0   # nicio cheie pierduta
+    assert len(cmp['randuri']) == 3
+
+
+def test_progres_aplicat_independent_pe_duplicate():
+    """Progresul tastat pe al doilea duplicat NU mai afecteaza primul (chei distincte)
+    si name-urile de input din form (pct_<cheie>) sunt distincte."""
+    m = MotorPlanificare()
+    acts = list(m.proceseaza(_articole_duplicate(), clasifica=False).activitati)
+    c0, c1 = acts[0].cheie, acts[1].cheie
+    # name-urile de form sunt distincte -> Werkzeug nu mai colapseaza valorile
+    assert ('pct_%s' % c0) != ('pct_%s' % c1)
+
+    tracking.aplica_progres(acts, {c1: {'procent': 100}}, data_stare=date(2026, 6, 1))
+    assert acts[0].progres_pct == 0.0      # primul duplicat ramane neatins
+    assert acts[1].progres_pct == 100.0    # progresul merge doar pe al doilea
+
+
 # ------------------------------------------------------------- baseline
 def test_snapshot_si_compara_identic():
     m = MotorPlanificare()
