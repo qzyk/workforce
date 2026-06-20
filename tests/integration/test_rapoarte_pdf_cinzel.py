@@ -320,3 +320,31 @@ def test_fallback_fara_cinzel_nu_crapa(app, pv_minim):
         path = genereaza_pv_pdf(pv_minim)
     with open(path, 'rb') as fh:
         assert fh.read(4) == b'%PDF'
+
+
+# === PROBE TEMPORAR (reviewer) - NU se commit-eaza ===
+def test_zzz_probe_off_parity(app, pv_minim, situatie_minim):
+    import json, hashlib
+    def _csha(path):
+        r = pypdf.PdfReader(path); h = hashlib.sha256()
+        for page in r.pages:
+            try: d = page.get_contents().get_data()
+            except Exception: d = b''
+            h.update(d)
+        return h.hexdigest()
+    from services.pv_generator import genereaza_pv_pdf
+    from services.situatii import export_situatie_pdf
+    with app.app_context():
+        pvp = genereaza_pv_pdf(pv_minim)
+        sp = export_situatie_pdf(situatie_minim)
+        out = {
+            'pv_fonts': sorted(_basefonts_din_pdf(pvp)),
+            'pv_text_len': len(_text_din_pdf(pvp)),
+            'pv_wordmark': 'EDIFICO WORKFORCE SRL' in _text_din_pdf(pvp),
+            'pv_content_sha': _csha(pvp),
+            'sit_fonts': sorted(_basefonts_din_pdf(sp)),
+            'sit_text_len': len(_text_din_pdf(sp)),
+            'sit_wordmark': 'EDIFICO WORKFORCE SRL' in _text_din_pdf(sp),
+            'sit_content_sha': _csha(sp),
+        }
+    print('@@OFFPARITY@@' + json.dumps(out, sort_keys=True) + '@@END@@')
