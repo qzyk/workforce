@@ -2974,6 +2974,13 @@ class Senzor(db.Model):
     ultima_valoare = db.Column(db.Numeric(15, 4), nullable=True)
     ultima_citire_at = db.Column(db.DateTime, nullable=True, index=True)
 
+    # IoT Faza 2: high-watermark al ultimei rulari de rollup (wall-clock UTC).
+    # La urmatoarea rulare reprocesam DOAR bucket-urile atinse de citiri cu
+    # created_at > last_rollup_at (prinde insertiile late in bucket-uri vechi,
+    # indiferent de varsta lor). NULL = senzor nerollup-at inca (prima rulare
+    # proceseaza tot istoricul).
+    last_rollup_at = db.Column(db.DateTime, nullable=True)
+
     data_creare = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     data_modificare = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     creat_de_id = db.Column(db.Integer, db.ForeignKey('utilizatori.id'), nullable=True)
@@ -3065,12 +3072,24 @@ class SensorReading(db.Model):
     calitate = db.Column(db.String(20), default='ok', nullable=False)
     # Metadata raw (json) - util pentru debugging
     meta_json = db.Column(db.Text, nullable=True)
+    # IoT Faza 2: momentul INSERARII (wall-clock UTC), distinct de `ts`
+    # (timpul MASURARII, care poate fi backdatat la ingest pentru citiri sosite
+    # in dezordine). Watermark-ul incremental al rollup-ului se bazeaza pe
+    # created_at (nu pe ts), ca o citire late ingestata intr-un bucket vechi sa
+    # fie reprocesata indiferent de varsta bucket-ului ei. NULL = randuri vechi
+    # de dinainte de Faza 2 (tratate ca deja-rollup-ate la prima rulare watermark,
+    # dar recuperabile cu `flask iot-rollup --full`).
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True,
+                           index=True)
 
     senzor = db.relationship('Senzor', foreign_keys=[senzor_id],
                              backref=db.backref('readings', lazy='dynamic'))
 
     __table_args__ = (
         db.Index('ix_reading_senzor_ts', 'senzor_id', 'ts'),
+        # IoT Faza 2: watermark incremental al rollup-ului filtreaza pe
+        # (senzor_id, created_at > last_rollup_at) -> index dedicat.
+        db.Index('ix_reading_senzor_created', 'senzor_id', 'created_at'),
     )
 
     def __repr__(self):

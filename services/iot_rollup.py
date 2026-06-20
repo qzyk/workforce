@@ -16,12 +16,21 @@ ca rollup-ul sa dea aceleasi valori (echivalenta testata):
   - '1d' -> truncat la zi      (strftime '%Y-%m-%d')
   - rotunjire la 4 zecimale pentru min/max/avg.
 
-Incremental + idempotent (watermark cu suprapunere):
-  - Reprocesam doar bucket-urile incepand cu ultimul bucket_ts deja materializat
-    (per senzor+bucket) minus o fereastra de suprapunere (lookback) pentru
-    citiri sosite usor in dezordine. Bucket-urile vechi inchise sunt sarite.
+Incremental + idempotent (watermark pe INSERARE, nu pe timpul masurarii):
+  - Watermark-ul per senzor e `Senzor.last_rollup_at` (wall-clock UTC al ultimei
+    rulari). La urmatoarea rulare reprocesam DOAR bucket-urile atinse de citiri
+    nou-inserate (`SensorReading.created_at > last_rollup_at`) si recalculam
+    fiecare astfel de bucket din TOATE citirile lui (recompute complet -> valori
+    corecte). Astfel o citire late ingestata (iot_ingest accepta ts explicit,
+    backdatat) intr-un bucket vechi DEJA inchis e prinsa: created_at-ul ei e
+    recent chiar daca ts-ul e vechi, deci re-rularea o recupereaza. Asta repara
+    echivalenta rollup==Python pentru citiri in dezordine de ORICE varsta (nu doar
+    in fereastra de lookback, care nu mai exista).
   - UPSERT pe (senzor_id, bucket, bucket_ts) via indexul UNIC -> a 2-a rulare
     nu dubleaza randuri si recalculeaza aceleasi valori.
+  - Rebuild complet: rollup_senzor(full=True) / 'flask iot-rollup --full' ignora
+    watermark-ul si reproceseaza tot istoricul. Util pentru randuri vechi fara
+    created_at (pre-Faza 2) sau dupa un backfill masiv.
 
 Retention:
   - cleanup_readings(older_than_days) sterge citirile raw mai vechi de X zile
@@ -61,24 +70,25 @@ def _bucket_ts(ts: datetime, bucket: str) -> datetime:
     raise ValueError(f'bucket invalid: {bucket} (folositi 1h sau 1d)')
 
 
-def _watermark_de_la(senzor_id: int, bucket: str, lookback_buckets: int) -> Optional[datetime]:
-    """Returneaza bucket_ts de la care reprocesam (sau None = de la inceput).
+def _ts_uri_atinse_de_inserari(senzor_id: int,
+                               de_la_created: Optional[datetime]) -> Optional[list[datetime]]:
+    """ts-urile citirilor INSERATE dupa watermark (created_at > de_la_created).
 
-    = ultimul bucket_ts materializat pentru (senzor, bucket), dat inapoi cu
-    `lookback_buckets` ferestre (suprapunere pentru citiri usor in dezordine).
-    Prima rulare (fara rollup) -> None -> procesam tot istoricul.
+    Returneaza None daca de_la_created e None (= rebuild complet: tot istoricul).
+    Altfel lista de timestamp-uri (ts, timpul masurarii) ale citirilor noi -
+    folosita ca sa aflam exact ce bucket-uri trebuie recalculate. O citire late
+    (ts vechi, created_at recent) apare aici pentru ca filtram pe created_at.
+    Citirile cu created_at NULL (randuri pre-Faza 2) NU apar -> nu reproceseaza
+    spurios la fiecare rulare; pentru ele se foloseste --full.
     """
-    ultim = (db.session.query(db.func.max(SensorRollup.bucket_ts))
-             .filter(SensorRollup.senzor_id == senzor_id,
-                     SensorRollup.bucket == bucket)
-             .scalar())
-    if ultim is None:
+    if de_la_created is None:
         return None
-    if lookback_buckets <= 0:
-        return ultim
-    delta = timedelta(hours=lookback_buckets) if bucket == '1h' \
-        else timedelta(days=lookback_buckets)
-    return ultim - delta
+    randuri = (db.session.query(SensorReading.ts)
+               .filter(SensorReading.senzor_id == senzor_id,
+                       SensorReading.created_at.isnot(None),
+                       SensorReading.created_at > de_la_created)
+               .all())
+    return [r[0] for r in randuri]
 
 
 def _upsert_bucket(senzor: Senzor, bucket: str, bucket_ts: datetime,
@@ -104,19 +114,54 @@ def _upsert_bucket(senzor: Senzor, bucket: str, bucket_ts: datetime,
     return creat
 
 
+def _recalc_bucket_din_raw(senzor_id: int, bucket: str, bucket_ts: datetime) -> Optional[dict]:
+    """Recalculeaza min/max/avg/count ale UNUI bucket din TOATE citirile lui.
+
+    Citire marginita la [bucket_ts, bucket_ts + 1 bucket) -> un singur bucket, nu
+    tot istoricul (nu reintroduce OOM-ul). Returneaza None daca bucket-ul nu mai
+    are nicio citire (ex. toate purjate de retention dupa ce a fost atins).
+    """
+    pas = timedelta(hours=1) if bucket == '1h' else timedelta(days=1)
+    citiri = (db.session.query(SensorReading.valoare)
+              .filter(SensorReading.senzor_id == senzor_id,
+                      SensorReading.ts >= bucket_ts,
+                      SensorReading.ts < bucket_ts + pas)
+              .all())
+    if not citiri:
+        return None
+    v_min = float('inf'); v_max = float('-inf'); v_sum = 0.0; v_count = 0
+    for (val,) in citiri:
+        v = float(val)
+        if v < v_min:
+            v_min = v
+        if v > v_max:
+            v_max = v
+        v_sum += v
+        v_count += 1
+    return {'min': v_min, 'max': v_max, 'avg': v_sum / v_count, 'count': v_count}
+
+
 def rollup_senzor(senzor: Senzor, *,
                   buckets: tuple[str, ...] = ('1h', '1d'),
-                  lookback_buckets: int = 1,
-                  commit: bool = True) -> dict:
+                  full: bool = False,
+                  commit: bool = True,
+                  **_kw) -> dict:
     """
     Materializeaza (incremental) rollup-ul unui senzor pentru bucket-urile date.
 
-    Pentru fiecare bucket ('1h'/'1d'):
-      1. Aflam watermark-ul (ultimul bucket_ts deja materializat - lookback).
-      2. Recalculam min/max/avg/count din citirile cu ts >= watermark, grupate
-         pe bucket (recalcul complet al bucket-ului -> valori corecte chiar daca
-         au sosit citiri noi in interior).
-      3. UPSERT pe (senzor, bucket, bucket_ts) via indexul UNIC (idempotent).
+    Watermark pe INSERARE (Senzor.last_rollup_at), nu pe timpul masurarii:
+      1. de_la = None daca full=True sau senzorul nu a fost rollup-at inca
+         (last_rollup_at NULL) -> reprocesam tot istoricul. Altfel de_la =
+         last_rollup_at.
+      2. Aflam bucket-urile atinse de citiri INSERATE dupa de_la (created_at >
+         de_la). O citire late (ts vechi, created_at recent) intra aici, deci
+         bucket-ul ei vechi e reprocesat -> echivalenta rollup==Python pastrata.
+      3. Pentru fiecare bucket atins recalculam din TOATE citirile lui (recompute
+         complet) si facem UPSERT pe (senzor, bucket, bucket_ts) (idempotent).
+      4. Salvam last_rollup_at = momentul de start al rularii.
+
+    `lookback_buckets` (kwarg vechi) e acceptat dar IGNORAT (compatibilitate
+    inapoi) - watermark-ul pe created_at nu mai are nevoie de suprapunere.
 
     Returneaza {'buckets_create': N, 'buckets_update': M, 'citiri_procesate': K}.
     """
@@ -126,43 +171,45 @@ def rollup_senzor(senzor: Senzor, *,
         if bucket not in _BUCKET_FMT:
             raise ValueError(f'bucket invalid: {bucket} (folositi 1h sau 1d)')
 
-        de_la = _watermark_de_la(senzor.id, bucket, lookback_buckets)
+    # Momentul de start = noul watermark. Il citim INAINTE de a procesa, ca orice
+    # citire inserata in timpul rularii (created_at >= run_at) sa fie prinsa la
+    # rularea urmatoare (nu pierduta intre citire si salvarea watermark-ului).
+    run_at = datetime.utcnow()
+    de_la = None if full else senzor.last_rollup_at
 
-        q = SensorReading.query.filter(SensorReading.senzor_id == senzor.id)
-        if de_la is not None:
-            q = q.filter(SensorReading.ts >= de_la)
-        # Ordonam ca sa procesam determinist (nu strict necesar pentru agregare).
-        citiri = q.order_by(SensorReading.ts).all()
+    # ts-urile citirilor noi (sau toate, daca de_la None) -> bucket-urile de
+    # recalculat. Le aflam o singura data (acelasi set pentru toate bucket-urile).
+    ts_uri = _ts_uri_atinse_de_inserari(senzor.id, de_la)
+    if ts_uri is None:
+        # Rebuild complet: toate bucket-urile cu cel putin o citire.
+        ts_uri = [r[0] for r in
+                  db.session.query(SensorReading.ts)
+                  .filter(SensorReading.senzor_id == senzor.id).all()]
 
-        if not citiri:
+    for bucket in buckets:
+        # Set de chei bucket_ts (deduplicat) pentru granularitatea curenta.
+        chei = {_bucket_ts(t, bucket) for t in ts_uri}
+        if not chei:
             continue
 
-        # Agregam in Python DOAR citirile din fereastra (marginita de watermark),
-        # nu tot istoricul - exact ce evita OOM-ul global.
-        acc: dict[datetime, dict] = {}
-        for r in citiri:
-            key = _bucket_ts(r.ts, bucket)
-            b = acc.setdefault(key, {'min': float('inf'), 'max': float('-inf'),
-                                     'sum': 0.0, 'count': 0})
-            v = float(r.valoare)
-            if v < b['min']:
-                b['min'] = v
-            if v > b['max']:
-                b['max'] = v
-            b['sum'] += v
-            b['count'] += 1
-            rezultat['citiri_procesate'] += 1
-
-        for key, b in acc.items():
+        for key in chei:
+            agg = _recalc_bucket_din_raw(senzor.id, bucket, key)
+            if agg is None:
+                continue
             creat = _upsert_bucket(
                 senzor, bucket, key,
-                v_min=b['min'], v_max=b['max'],
-                v_avg=b['sum'] / b['count'], v_count=b['count'],
+                v_min=agg['min'], v_max=agg['max'],
+                v_avg=agg['avg'], v_count=agg['count'],
             )
             if creat:
                 rezultat['buckets_create'] += 1
             else:
                 rezultat['buckets_update'] += 1
+            rezultat['citiri_procesate'] += agg['count']
+
+    # Avansam watermark-ul indiferent daca am avut bucket-uri noi (idempotent:
+    # urmatoarea rulare fara citiri noi nu mai gaseste nimic de reprocesat).
+    senzor.last_rollup_at = run_at
 
     if commit:
         db.session.commit()
@@ -170,14 +217,17 @@ def rollup_senzor(senzor: Senzor, *,
 
 
 def rollup_all(*, buckets: tuple[str, ...] = ('1h', '1d'),
-               lookback_buckets: int = 1,
+               full: bool = False,
                doar_activi: bool = True,
-               commit: bool = True) -> dict:
+               commit: bool = True,
+               **_kw) -> dict:
     """
     Ruleaza rollup-ul incremental pentru toti senzorii (activi).
 
     Apelat de CLI 'flask iot-rollup'. Commit o singura data la final (un write
     pe SQLite). Idempotent: a 2-a rulare fara citiri noi nu schimba nimic.
+    full=True -> rebuild complet (ignora watermark-ul per senzor).
+    `lookback_buckets` acceptat dar ignorat (compatibilitate inapoi).
     """
     q = Senzor.query
     if doar_activi:
@@ -187,8 +237,7 @@ def rollup_all(*, buckets: tuple[str, ...] = ('1h', '1d'),
     total = {'senzori': 0, 'buckets_create': 0, 'buckets_update': 0,
              'citiri_procesate': 0}
     for s in senzori:
-        r = rollup_senzor(s, buckets=buckets, lookback_buckets=lookback_buckets,
-                          commit=False)
+        r = rollup_senzor(s, buckets=buckets, full=full, commit=False)
         total['senzori'] += 1
         total['buckets_create'] += r['buckets_create']
         total['buckets_update'] += r['buckets_update']

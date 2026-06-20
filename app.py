@@ -447,6 +447,13 @@ def create_app(config_name='default'):
             ('bim_sensor_alerts', 'notificat_la', 'DATETIME'),
             # IoT Faza 2: tabela noua bim_sensor_rollup (downsampling time-series)
             # e creata de db.create_all() de mai sus - tabela noua, fara ALTER.
+            # IoT Faza 2: watermark incremental al rollup-ului pe INSERARE.
+            # created_at = momentul inserarii citirii (distinct de ts, timpul
+            # masurarii, care poate fi backdatat) -> prinde citirile late.
+            # last_rollup_at = high-watermark al ultimei rulari per senzor.
+            # Coloane aditive nullable pe tabele existente (ALTER idempotent).
+            ('bim_sensor_readings', 'created_at', 'DATETIME'),
+            ('bim_senzori', 'last_rollup_at', 'DATETIME'),
             # Gantt Faza 2 (tracking): coloane aditive nullable pe tabele existente.
             # Tabelele noi gantt_baseline / gantt_progres sunt create de db.create_all().
             ('gantt_plan', 'baseline_activ_id', 'INTEGER REFERENCES gantt_baseline(id)'),
@@ -818,18 +825,26 @@ def create_app(config_name='default'):
     # --------------------------------------------------------
     @app.cli.command('iot-rollup')
     @click.option('--lookback', default=1,
-                  help='Cate bucket-uri reprocesam in plus (suprapunere pt citiri '
-                       'in dezordine). Default 1.')
-    def iot_rollup_command(lookback):
+                  help='IGNORAT (compatibilitate inapoi). Watermark-ul pe '
+                       'created_at nu mai are nevoie de suprapunere.')
+    @click.option('--full', is_flag=True, default=False,
+                  help='Rebuild complet: ignora watermark-ul per senzor si '
+                       'reproceseaza tot istoricul. Util pentru randuri vechi fara '
+                       'created_at (pre-Faza 2) sau dupa un backfill masiv.')
+    def iot_rollup_command(lookback, full):
         """Materializeaza incremental rollup-ul 1h/1d in bim_sensor_rollup.
 
-        Citeste doar citirile noi (watermark + suprapunere) si face UPSERT pe
-        bucket (idempotent prin indexul unic). Util ca Scheduled Task pe PA:
+        Watermark pe INSERARE (Senzor.last_rollup_at): reproceseaza bucket-urile
+        atinse de citiri nou-inserate (inclusiv citiri late, backdatate, in
+        bucket-uri vechi) si face UPSERT pe bucket (idempotent prin indexul unic).
+        Util ca Scheduled Task pe PA:
             cd ~/workforce && flask iot-rollup
+        Rebuild complet (rar, dupa backfill masiv sau pentru date pre-Faza 2):
+            cd ~/workforce && flask iot-rollup --full
         """
         from services import iot_rollup
-        stats = iot_rollup.rollup_all(lookback_buckets=lookback)
-        click.echo(f'[OK] Rollup IoT: {stats}')
+        stats = iot_rollup.rollup_all(full=full)
+        click.echo(f'[OK] Rollup IoT{" (full)" if full else ""}: {stats}')
 
     # --------------------------------------------------------
     # COMANDA CLI: flask iot-cleanup (IoT Faza 2 - retention)
