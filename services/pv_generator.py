@@ -231,12 +231,30 @@ def genereaza_pv_pdf(pv_id: int) -> str:
     filename = f'pv_{pv.tip}_{pv.id}_{datetime.utcnow():%Y%m%d%H%M%S}.pdf'
     path = os.path.join(upload_dir, filename)
 
+    # Rapoarte Faza 2: branding Cinzel/header gated pe flag. Cu OFF, PDF-ul
+    # ramane identic cu cel istoric (Helvetica, fara header brandat).
+    try:
+        from services.feature_flags import is_enabled
+        branding_on = is_enabled('rapoarte-pdf-cinzel')
+    except Exception:
+        branding_on = False
+
+    # Fontul titlului + header tabel participanti: serif brandat cu ON.
+    serif_bold = 'Helvetica-Bold'
+    if branding_on:
+        try:
+            from rapoarte import brand
+            _serif, serif_bold = brand.get_pdf_fonts()
+        except Exception:
+            serif_bold = 'Helvetica-Bold'
+
     doc = SimpleDocTemplate(path, pagesize=A4,
                             leftMargin=18 * mm, rightMargin=18 * mm,
                             topMargin=18 * mm, bottomMargin=18 * mm)
     styles = getSampleStyleSheet()
 
     title_st = ParagraphStyle('PVTitle', parent=styles['Title'], fontSize=14,
+                              fontName=serif_bold if branding_on else 'Helvetica-Bold',
                               textColor=colors.HexColor('#0B1426'),
                               alignment=TA_CENTER, spaceAfter=6)
     sub_st = ParagraphStyle('PVSub', parent=styles['Normal'], fontSize=10,
@@ -252,6 +270,11 @@ def genereaza_pv_pdf(pv_id: int) -> str:
                              spaceBefore=20)
 
     elems = []
+    if branding_on:
+        # Header brandat Edifico (logo daca exista + wordmark Cinzel) inaintea
+        # titlului de PV. Wordmark + spacer; titlul de PV ramane dedesubt.
+        from rapoarte import brand
+        elems += brand.pdf_header_elements(None, cu_logo=True)
     elems.append(Paragraph(_titlu_pv(pv.tip), title_st))
     elems.append(Paragraph(
         f'Nr. {pv.numar or "____"} din data de {pv.data_emitere}', sub_st))
@@ -285,8 +308,9 @@ def genereaza_pv_pdf(pv_id: int) -> str:
         tbl = Table(rows, colWidths=[60 * mm, 50 * mm, 60 * mm])
         tbl.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#C9A961')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('TEXTCOLOR', (0, 0), (-1, 0),
+             colors.HexColor('#0B1426') if branding_on else colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), serif_bold),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('GRID', (0, 0), (-1, -1), 0.25, colors.grey),
         ]))

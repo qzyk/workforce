@@ -372,6 +372,23 @@ def export_situatie_pdf(situatie_id: int) -> str:
     filename = f'situatie_{situatie.proiect_id}_{situatie.an}_{situatie.luna:02d}_{datetime.utcnow():%Y%m%d%H%M%S}.pdf'
     path = os.path.join(upload_dir, filename)
 
+    # Rapoarte Faza 2: branding Cinzel/header gated pe flag. Cu OFF, PDF-ul
+    # ramane identic cu cel istoric (Helvetica, fara header brandat).
+    try:
+        from services.feature_flags import is_enabled
+        branding_on = is_enabled('rapoarte-pdf-cinzel')
+    except Exception:
+        branding_on = False
+
+    # Fontul header-ului tabelului: serif brandat cu ON, Helvetica-Bold cu OFF.
+    header_font = 'Helvetica-Bold'
+    if branding_on:
+        try:
+            from rapoarte import brand
+            _serif, header_font = brand.get_pdf_fonts()
+        except Exception:
+            header_font = 'Helvetica-Bold'
+
     doc = SimpleDocTemplate(
         path, pagesize=landscape(A4),
         leftMargin=10 * mm, rightMargin=10 * mm,
@@ -379,13 +396,18 @@ def export_situatie_pdf(situatie_id: int) -> str:
     )
     elems = []
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'title', parent=styles['Title'],
-        fontSize=14, textColor=colors.HexColor('#0B1426'),
-        alignment=1,
-    )
-    elems.append(Paragraph('SITUATIE DE LUCRARI', title_style))
-    elems.append(Spacer(1, 4 * mm))
+    if branding_on:
+        # Header brandat Edifico (logo daca exista + wordmark Cinzel + titlu).
+        from rapoarte import brand
+        elems += brand.pdf_header_elements('SITUATIE DE LUCRARI', cu_logo=True)
+    else:
+        title_style = ParagraphStyle(
+            'title', parent=styles['Title'],
+            fontSize=14, textColor=colors.HexColor('#0B1426'),
+            alignment=1,
+        )
+        elems.append(Paragraph('SITUATIE DE LUCRARI', title_style))
+        elems.append(Spacer(1, 4 * mm))
     elems.append(Paragraph(
         f'<b>Luna:</b> {data["luna_text"]} {situatie.an} &nbsp;&nbsp; '
         f'<b>Nr. situatie:</b> {situatie.numar_situatie or "-"}',
@@ -432,15 +454,16 @@ def export_situatie_pdf(situatie_id: int) -> str:
     tbl = Table(table_data, repeatRows=1)
     tbl.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#C9A961')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (0, 0), (-1, 0),
+         colors.HexColor('#0B1426') if branding_on else colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), header_font),
         ('FONTSIZE', (0, 0), (-1, 0), 8),
         ('FONTSIZE', (0, 1), (-1, -1), 7),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('ALIGN', (4, 1), (-1, -1), 'RIGHT'),
         ('GRID', (0, 0), (-1, -1), 0.25, colors.HexColor('#888888')),
         ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#F5F1E8')),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (0, -1), (-1, -1), header_font),
     ]))
     elems.append(tbl)
     elems.append(Spacer(1, 6 * mm))

@@ -240,10 +240,67 @@ def pdf_table_style():
     ])
 
 
-def pdf_header_elements(titlu, subtitlu=None, detaliu=None):
+# Locatii candidate pentru un logo PNG (reportlab embed-uie PNG nativ prin
+# Pillow, deja disponibil - fara dependinta noua). SVG-ul de brand NU poate fi
+# embed-uit fara svglib, deci preferam un PNG. Daca niciunul nu exista,
+# pdf_logo_flowable() returneaza None (header doar text, fara crash).
+_LOGO_CANDIDATE_PATHS = [
+    'static/img/edifico-logo.png',
+    'static/img/edifico-mark.png',
+    'static/img/pwa/icon-192.png',
+    'static/img/pwa/icon-144.png',
+]
+
+
+def pdf_logo_flowable(max_mm: float = 16.0):
+    """
+    Returneaza un flowable Image cu logoul Edifico (PNG) la o inaltime de ~max_mm,
+    sau None daca nu exista PNG / reportlab indisponibil.
+
+    Defensiv: orice eroare la deschiderea/scalarea imaginii -> None (header
+    cade pe wordmark text, fara crash). Nu introduce dependinte noi (PNG e
+    suportat nativ de reportlab via Pillow).
+    """
+    try:
+        from reportlab.platypus import Image
+        from reportlab.lib.units import mm
+    except Exception:
+        return None
+
+    base = _basedir()
+    path = None
+    for rel in _LOGO_CANDIDATE_PATHS:
+        cand = rel if os.path.isabs(rel) else os.path.join(base, rel)
+        if os.path.exists(cand):
+            path = cand
+            break
+    if not path:
+        return None
+
+    try:
+        img = Image(path)
+        # Scaleaza proportional la inaltimea ceruta.
+        iw, ih = img.imageWidth, img.imageHeight
+        if ih <= 0:
+            return None
+        target_h = max_mm * mm
+        ratio = target_h / float(ih)
+        img.drawHeight = target_h
+        img.drawWidth = iw * ratio
+        img.hAlign = 'CENTER'
+        return img
+    except Exception as e:
+        _logger.warning('Logo PDF a esuat (%s); header doar text.', e)
+        return None
+
+
+def pdf_header_elements(titlu, subtitlu=None, detaliu=None, cu_logo=False):
     """
     Construieste lista de elemente flowable pentru un header PDF brandat Edifico
-    (wordmark + titlu raport + linie de detaliu optionala).
+    (logo optional + wordmark + titlu raport + linie de detaliu optionala).
+
+    `cu_logo=True` adauga logoul PNG inaintea wordmark-ului daca un fisier exista
+    (altfel e sarit gratios, fara crash).
 
     Returneaza o lista de Paragraph/Spacer gata de extins in `elements`.
     Generatoarele fac: elements += pdf_header_elements(...).
@@ -252,7 +309,13 @@ def pdf_header_elements(titlu, subtitlu=None, detaliu=None):
     from reportlab.lib.units import mm
 
     styles = pdf_paragraph_styles()
-    out = [Paragraph('EDIFICO WORKFORCE SRL', styles['TitleCustom'])]
+    out = []
+    if cu_logo:
+        logo = pdf_logo_flowable()
+        if logo is not None:
+            out.append(logo)
+            out.append(Spacer(1, 2 * mm))
+    out.append(Paragraph('EDIFICO WORKFORCE SRL', styles['TitleCustom']))
     if titlu:
         out.append(Paragraph(titlu, styles['SubtitleCustom']))
     if subtitlu:

@@ -111,6 +111,13 @@ KNOWN_FLAGS: dict[str, str] = {
                       'cu atasament, best-effort daca SMTP e configurat. Brandingul '
                       'exporturilor se aplica oricum (cosmetic); acest flag controleaza '
                       'doar trimiterea pe email. Default OFF.',
+    # Rapoarte Faza 2 - branding Cinzel pe PDF situatii + PV
+    'rapoarte-pdf-cinzel': 'Aplica brandingul Edifico (header navy/gold cu wordmark '
+                           'Cinzel + logo daca exista) pe PDF-urile de situatii lunare '
+                           'si procese verbale. Fontul serif (Cinzel) cade gratios pe '
+                           'Times daca .ttf lipseste (fara dependinta noua). Cu OFF, '
+                           'PDF-urile raman ca inainte (Helvetica, fara header brandat). '
+                           'Default OFF.',
 }
 
 
