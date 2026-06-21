@@ -108,6 +108,14 @@
                     </a>
                 </li>
                 {% endif %}
+                {% if feature_enabled('competente') %}
+                <li>
+                    <a href="{{ url_for('competente.lista') }}" class="{% if request.endpoint and 'competente' in request.endpoint %}active{% endif %}">
+                        <i class="fa-solid fa-award"></i>
+                        <span>{{ _('Competente') }}</span>
+                    </a>
+                </li>
+                {% endif %}
                 <li>
                     <a href="{{ url_for('teren.index') }}" class="{% if request.endpoint and request.endpoint.startswith('teren') %}active{% endif %}">
                         <i class="fa-solid fa-helmet-safety"></i>

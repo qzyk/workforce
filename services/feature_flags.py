@@ -103,6 +103,12 @@ KNOWN_FLAGS: dict[str, str] = {
                           'fereastra legala 22:00-06:00 (min 25% conform Codului Muncii) '
                           'sunt salvate in pontaje.spor_noapte. Cu OFF, calculul de ore '
                           'ramane identic cu cel istoric (spor_noapte NULL). Default OFF.',
+    # Workforce Faza 3 - competente / skill matrix + matching
+    'competente': 'Modul Competente (skill matrix): nomenclator de competente '
+                  'structurate (nume, categorie, certificare) + atribuire pe angajat '
+                  '(nivel 1-5, valabilitate), tab in fisa angajat si matching de '
+                  'angajati pe categorie de activitate. Inlocuieste pe termen lung '
+                  'campul text liber specializari (nedistructiv). Default OFF.',
     # Deviz Faza 1 - indicatori prognoza EVM
     'evm-prognoza': 'Afiseaza indicatorii de prognoza EVM (forecast la finalizare): '
                     'EAC (cost estimat final), ETC (cost ramas), VAC (abatere buget), '

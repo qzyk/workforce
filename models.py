@@ -504,6 +504,100 @@ class Concediu(db.Model):
 
 
 # ============================================================
+# MODEL COMPETENTA (nomenclator de competente / skills)
+# ============================================================
+
+class Competenta(db.Model):
+    """Nomenclator de competente structurate (skill matrix).
+
+    Inlocuieste pe termen lung campul text liber `Angajat.specializari` cu
+    competente atomice, reutilizabile, cu categorie si optional certificare.
+    Tot modulul e gated pe feature flag 'competente' (default OFF).
+    """
+    __tablename__ = 'competente'
+    id = db.Column(db.Integer, primary_key=True)
+    # Multi-tenant ready: nullable, ca restul tabelelor noi.
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+
+    nume = db.Column(db.String(150), nullable=False)
+    categorie = db.Column(db.String(80))  # ex: sudura, electric, dulgherie, ISCIR...
+    descriere = db.Column(db.Text)
+
+    # Optional: daca aceasta competenta presupune o certificare cu valabilitate.
+    necesita_certificare = db.Column(db.Boolean, default=False)
+    valabilitate_luni = db.Column(db.Integer)  # durata standard a certificarii (luni)
+
+    activ = db.Column(db.Boolean, default=True)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Atribuirile (M:N) cu stergere in cascada a randurilor de legatura.
+    atribuiri = db.relationship(
+        'AngajatCompetenta', backref='competenta',
+        lazy='dynamic', cascade='all, delete-orphan'
+    )
+
+    def __repr__(self):
+        return f'<Competenta {self.nume}>'
+
+
+# ============================================================
+# MODEL ANGAJAT_COMPETENTA (legatura M:N angajat <-> competenta)
+# ============================================================
+
+class AngajatCompetenta(db.Model):
+    """Legatura M:N intre un angajat si o competenta, cu nivel si valabilitate.
+
+    Index unic (angajat_id, competenta_id): un angajat are o singura inregistrare
+    pe competenta (se editeaza, nu se dubleaza).
+    """
+    __tablename__ = 'angajat_competenta'
+    id = db.Column(db.Integer, primary_key=True)
+    angajat_id = db.Column(db.Integer, db.ForeignKey('angajati.id'), nullable=False)
+    competenta_id = db.Column(db.Integer, db.ForeignKey('competente.id'), nullable=False)
+
+    # Nivel de stapanire 1-5 (1=incepator ... 5=expert).
+    nivel = db.Column(db.Integer, default=3)
+    data_obtinere = db.Column(db.Date)
+    data_expirare = db.Column(db.Date)  # nullable: fara expirare (competenta permanenta)
+    observatii = db.Column(db.Text)
+    data_creare = db.Column(db.DateTime, default=datetime.utcnow)
+
+    angajat = db.relationship('Angajat', backref=db.backref(
+        'competente_atribuite', lazy='dynamic', cascade='all, delete-orphan'
+    ))
+
+    __table_args__ = (
+        db.UniqueConstraint('angajat_id', 'competenta_id', name='uq_angajat_competenta'),
+    )
+
+    NIVELURI = [
+        (1, 'Incepator'),
+        (2, 'De baza'),
+        (3, 'Intermediar'),
+        (4, 'Avansat'),
+        (5, 'Expert'),
+    ]
+
+    @property
+    def is_expirat(self):
+        """True daca certificarea a expirat (data_expirare in trecut)."""
+        if self.data_expirare:
+            return self.data_expirare < date.today()
+        return False
+
+    @property
+    def expira_curand(self):
+        """True daca expira in urmatoarele 30 de zile (si nu a expirat deja)."""
+        if self.data_expirare:
+            today = date.today()
+            return today <= self.data_expirare <= today + timedelta(days=30)
+        return False
+
+    def __repr__(self):
+        return f'<AngajatCompetenta {self.angajat_id}/{self.competenta_id} niv={self.nivel}>'
+
+
+# ============================================================
 # MODEL SARBATOARE LEGALA
 # ============================================================
 

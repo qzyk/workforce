@@ -91,6 +91,7 @@ def create_app(config_name='default'):
     from routes.teren import teren_bp  # Captura rapida din teren (mobil-first)
     from routes.banca_preturi import banca_preturi_bp  # Banca preturi resurse (gated 'banca-preturi')
     from routes.concedii import concedii_bp  # Gestiune concedii / absente (gated 'concedii')
+    from routes.competente import competente_bp  # Competente / skill matrix (gated 'competente')
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -111,6 +112,7 @@ def create_app(config_name='default'):
     app.register_blueprint(teren_bp)  # url_prefix '/teren' definit in blueprint
     app.register_blueprint(banca_preturi_bp)  # url_prefix '/banca-preturi' definit in blueprint
     app.register_blueprint(concedii_bp)  # url_prefix '/concedii' definit in blueprint (gated 'concedii')
+    app.register_blueprint(competente_bp)  # url_prefix '/competente' definit in blueprint (gated 'competente')
 
     # Context processor pentru token Mapbox public (vizibil in template-uri).
     # Token-ul public e safe sa apara in HTML (asta e flow-ul Mapbox standard).
@@ -443,6 +445,9 @@ def create_app(config_name='default'):
             # Workforce Faza 2: spor de noapte (ore in fereastra 22:00-06:00).
             # Coloana aditiva nullable; populata doar cu flag 'pontaj-spor-noapte' ON.
             ('pontaje', 'spor_noapte', 'NUMERIC(5, 2)'),
+            # Workforce Faza 3: tabelele noi competente + angajat_competenta
+            # (skill matrix) sunt create de db.create_all() de mai sus - tabele
+            # noi, fara ALTER. Gated pe flag 'competente' (default OFF).
             # IoT Faza 1: idempotenta dispatch notificare pe alertele de senzor.
             ('bim_sensor_alerts', 'notificat_la', 'DATETIME'),
             # IoT Faza 2: tabela noua bim_sensor_rollup (downsampling time-series)

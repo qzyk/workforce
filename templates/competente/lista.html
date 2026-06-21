@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Competente - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<span class="active">Competente</span>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0;">
+        <i class="fa-solid fa-award" style="color: var(--primary);"></i> Competente
+    </h2>
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('competente.matching') }}" class="btn btn-outline"><i class="fa-solid fa-people-arrows"></i> Matching</a>
+        {% if poate_administra %}
+        <a href="{{ url_for('competente.nou') }}" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Competenta noua</a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Filtre -->
+<div class="card-panel" style="margin-bottom: 20px;">
+    <div class="card-panel-body">
+        <form method="GET" action="{{ url_for('competente.lista') }}">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; align-items: end;">
+                <div class="form-group">
+                    <label class="form-label">Categorie</label>
+                    <select name="categorie" class="form-select">
+                        <option value="">Toate</option>
+                        {% for c in categorii %}
+                        <option value="{{ c }}" {{ 'selected' if categorie_filtru == c }}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Inactive</label>
+                    <select name="inactive" class="form-select">
+                        <option value="">Doar active</option>
+                        <option value="1" {{ 'selected' if arata_inactive }}>Si inactive</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-outline" style="width:100%;"><i class="fa-solid fa-filter"></i> Filtreaza</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card-panel">
+    <div class="card-panel-body" style="padding: 0;">
+        {% if competente %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Denumire</th>
+                        <th>Categorie</th>
+                        <th>Certificare</th>
+                        <th>Valabilitate</th>
+                        <th>Status</th>
+                        {% if poate_administra %}<th>Actiuni</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in competente %}
+                    <tr>
+                        <td>
+                            <strong>{{ c.nume }}</strong>
+                            {% if c.descriere %}<br><small style="color: var(--gray-500);">{{ c.descriere }}</small>{% endif %}
+                        </td>
+                        <td>{% if c.categorie %}<span class="tag-item">{{ c.categorie }}</span>{% else %}-{% endif %}</td>
+                        <td>{{ 'Da' if c.necesita_certificare else 'Nu' }}</td>
+                        <td>{{ c.valabilitate_luni ~ ' luni' if c.valabilitate_luni else '-' }}</td>
+                        <td>
+                            {% if c.activ %}
+                            <span class="badge-status badge-activ">Activa</span>
+                            {% else %}
+                            <span class="badge-status badge-inactiv">Inactiva</span>
+                            {% endif %}
+                        </td>
+                        {% if poate_administra %}
+                        <td>
+                            <a href="{{ url_for('competente.editeaza', id=c.id) }}" class="btn btn-sm btn-outline"><i class="fa-solid fa-pen"></i></a>
+                            {% if c.activ %}
+                            <form method="POST" action="{{ url_for('competente.sterge', id=c.id) }}" style="display:inline;"
+                                  onsubmit="return confirm('Dezactivati competenta {{ c.nume }}?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline" style="color: var(--danger);"><i class="fa-solid fa-ban"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="padding: 40px; text-align: center; color: var(--gray-500);">
+            <i class="fa-solid fa-award" style="font-size: 2rem; opacity: .4;"></i>
+            <p style="margin-top: 10px;">Nicio competenta inregistrata.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

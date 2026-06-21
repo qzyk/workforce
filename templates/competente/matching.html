@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Matching competente - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('competente.lista') }}">Competente</a>
+<span>/</span>
+<span class="active">Matching</span>
+{% endblock %}
+
+{% block content %}
+<h2 style="margin:0 0 18px;"><i class="fa-solid fa-people-arrows" style="color:var(--primary);"></i>
+    Matching angajati pe categorie de activitate</h2>
+
+<div class="card-panel" style="margin-bottom: 20px;">
+    <div class="card-panel-body">
+        <form method="GET" action="{{ url_for('competente.matching') }}">
+            <div style="display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: end;">
+                <div class="form-group">
+                    <label class="form-label">Categorie de activitate</label>
+                    <select name="categorie_activitate_id" class="form-select">
+                        <option value="">-- Selectati categoria --</option>
+                        {% for c in categorii %}
+                        <option value="{{ c.id }}" {{ 'selected' if categorie_id == c.id }}>{{ c.denumire }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Cauta</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if categorie %}
+<div class="card-panel">
+    <div class="card-panel-header">
+        <h3><i class="fa-solid fa-list-check"></i> Potriviri pentru: {{ categorie.denumire }}</h3>
+    </div>
+    <div class="card-panel-body" style="padding: 0;">
+        {% if rezultate %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Angajat</th>
+                        <th>Functie</th>
+                        <th>Scor</th>
+                        <th>Competente potrivite</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rezultate %}
+                    <tr>
+                        <td><a href="{{ url_for('angajati.detalii', id=r.angajat.id) }}">{{ r.angajat.nume_complet }}</a></td>
+                        <td>{{ r.angajat.functie }}</td>
+                        <td><strong style="color: var(--primary);">{{ r.scor }}</strong></td>
+                        <td>
+                            {% for ac in r.competente %}
+                            <span class="tag-item">{{ ac.competenta.nume }} (niv {{ ac.nivel }})</span>
+                            {% endfor %}
+                            {% for ac in r.expirate %}
+                            <span class="tag-item" style="color: var(--danger); border-color: var(--danger);"
+                                  title="Competenta a expirat">{{ ac.competenta.nume }} (expirat)</span>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="padding: 40px; text-align: center; color: var(--gray-500);">
+            <i class="fa-solid fa-user-slash" style="font-size: 2rem; opacity: .4;"></i>
+            <p style="margin-top: 10px;">Niciun angajat cu competente potrivite pentru aceasta categorie.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

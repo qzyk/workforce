@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editare' if competenta else 'Competenta noua' }} - EDIFICO WORKFORCE{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+<span>/</span>
+<a href="{{ url_for('competente.lista') }}">Competente</a>
+<span>/</span>
+<span class="active">{{ 'Editare' if competenta else 'Competenta noua' }}</span>
+{% endblock %}
+
+{% block content %}
+<h2 style="margin:0 0 18px;"><i class="fa-solid fa-award" style="color:var(--primary);"></i>
+    {{ 'Editare competenta' if competenta else 'Competenta noua' }}</h2>
+
+<div class="card-panel" style="max-width:720px; padding:22px;">
+    <form method="POST">
+        {{ form.hidden_tag() }}
+        {% macro camp(f, span=1) %}
+        <div style="grid-column: span {{ span }};">
+            <label style="display:block; font-size:.82rem; font-weight:600; margin-bottom:4px;">{{ f.label.text }}</label>
+            {{ f(style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid var(--gray-300);") }}
+            {% for e in f.errors %}<small style="color:var(--danger); display:block;">{{ e }}</small>{% endfor %}
+        </div>
+        {% endmacro %}
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            {{ camp(form.nume, span=2) }}
+            {{ camp(form.categorie) }}
+            {{ camp(form.valabilitate_luni) }}
+            {{ camp(form.descriere, span=2) }}
+            <div style="grid-column: span 1; display:flex; align-items:center; gap:8px; margin-top:6px;">
+                {{ form.necesita_certificare() }}
+                <label style="font-size:.85rem; margin:0;">{{ form.necesita_certificare.label.text }}</label>
+            </div>
+            <div style="grid-column: span 1; display:flex; align-items:center; gap:8px; margin-top:6px;">
+                {{ form.activ() }}
+                <label style="font-size:.85rem; margin:0;">{{ form.activ.label.text }}</label>
+            </div>
+        </div>
+        <p style="margin-top:12px; font-size:.82rem; color:var(--gray-500);">
+            <i class="fa-solid fa-circle-info"></i>
+            Categoria ajuta la matching-ul angajatilor pe categoriile de activitate.
+            Valabilitatea (luni) e relevanta doar pentru competentele cu certificare.
+        </p>
+        <div style="margin-top:18px; display:flex; gap:10px;">
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Salveaza</button>
+            <a href="{{ url_for('competente.lista') }}" class="btn">Renunta</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

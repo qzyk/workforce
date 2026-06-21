@@ -32,6 +32,7 @@ TRANSLATIONS = {
     'Proiecte': {'en': 'Projects'},
     'Pontaje': {'en': 'Timesheets'},
     'Teren': {'en': 'Field'},
+    'Competente': {'en': 'Skills'},
     'Activitati': {'en': 'Activities'},
     'Operational': {'en': 'Operations'},
     'Planificare & cost': {'en': 'Planning & cost'},

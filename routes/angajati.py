@@ -16,8 +16,12 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from sqlalchemy import extract, func
 
-from models import db, Angajat, AngajatProiect, Pontaj, Document, Concediu, Proiect
+from models import (
+    db, Angajat, AngajatProiect, Pontaj, Document, Concediu, Proiect,
+    Competenta, AngajatCompetenta,
+)
 from forms.angajati_forms import AngajatForm
+from services.feature_flags import is_enabled
 
 angajati_bp = Blueprint('angajati', __name__)
 
@@ -189,6 +193,16 @@ def detalii(id):
         Document.data_expirare <= date.today() + timedelta(days=30)
     ).count()
 
+    # Competente atribuite (Workforce Faza 3) - doar cand flag-ul 'competente' e ON.
+    competente_atribuite = []
+    if is_enabled('competente'):
+        competente_atribuite = (
+            AngajatCompetenta.query.filter_by(angajat_id=id)
+            .join(Competenta, AngajatCompetenta.competenta_id == Competenta.id)
+            .order_by(Competenta.nume)
+            .all()
+        )
+
     return render_template('angajati/fisa.html',
                            angajat=angajat,
                            proiecte_asoc=proiecte_asoc,
@@ -197,7 +211,8 @@ def detalii(id):
                            concedii=concedii,
                            ore_luna=ore_luna,
                            doc_expirate=doc_expirate,
-                           doc_expira_curand=doc_expira_curand)
+                           doc_expira_curand=doc_expira_curand,
+                           competente_atribuite=competente_atribuite)
 
 
 # ============================================================

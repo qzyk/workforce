@@ -64,6 +64,12 @@
         <i class="fa-solid fa-file-alt"></i> Documente
         {% if doc_expirate %}<span class="badge-tab">{{ doc_expirate }}</span>{% endif %}
     </button>
+    {% if feature_enabled('competente') %}
+    <button class="tab-btn" data-tab="competente">
+        <i class="fa-solid fa-award"></i> Competente
+        {% if competente_atribuite %}<span class="badge-tab">{{ competente_atribuite|length }}</span>{% endif %}
+    </button>
+    {% endif %}
     <button class="tab-btn" data-tab="istoric">
         <i class="fa-solid fa-history"></i> Istoric
     </button>
@@ -363,6 +369,81 @@
             </div>
         </div>
     </div>
+
+    {% if feature_enabled('competente') %}
+    <!-- TAB: COMPETENTE (skill matrix, gated 'competente') -->
+    <div class="tab-pane" id="tab-competente">
+        <div class="card-panel">
+            <div class="card-panel-header">
+                <h3><i class="fa-solid fa-award"></i> Competente ({{ competente_atribuite|length }})</h3>
+                {% if current_user.is_manager %}
+                <a href="{{ url_for('competente.atribuie', angajat_id=angajat.id) }}" class="btn btn-sm btn-primary"><i class="fa-solid fa-plus"></i> Atribuie competenta</a>
+                {% endif %}
+            </div>
+            <div class="card-panel-body" style="padding: 0;">
+                {% if competente_atribuite %}
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Competenta</th>
+                                <th>Categorie</th>
+                                <th>Nivel</th>
+                                <th>Obtinuta</th>
+                                <th>Expira</th>
+                                {% if current_user.is_manager %}<th>Actiuni</th>{% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ac in competente_atribuite %}
+                            <tr>
+                                <td><strong>{{ ac.competenta.nume }}</strong></td>
+                                <td>{% if ac.competenta.categorie %}<span class="tag-item">{{ ac.competenta.categorie }}</span>{% else %}-{% endif %}</td>
+                                <td>{{ ac.nivel }}/5</td>
+                                <td>{{ ac.data_obtinere.strftime('%d.%m.%Y') if ac.data_obtinere else '-' }}</td>
+                                <td>
+                                    {% if ac.data_expirare %}
+                                        {% if ac.is_expirat %}
+                                        <span class="badge-status badge-inactiv">{{ ac.data_expirare.strftime('%d.%m.%Y') }} (expirat)</span>
+                                        {% elif ac.expira_curand %}
+                                        <span class="badge-status" style="background: var(--warning); color: #fff;">{{ ac.data_expirare.strftime('%d.%m.%Y') }}</span>
+                                        {% else %}
+                                        {{ ac.data_expirare.strftime('%d.%m.%Y') }}
+                                        {% endif %}
+                                    {% else %}
+                                        <span style="color: var(--gray-400);">permanenta</span>
+                                    {% endif %}
+                                </td>
+                                {% if current_user.is_manager %}
+                                <td>
+                                    <a href="{{ url_for('competente.editeaza_atribuire', id=ac.id) }}" class="btn btn-sm btn-outline"><i class="fa-solid fa-pen"></i></a>
+                                    <form method="POST" action="{{ url_for('competente.sterge_atribuire', id=ac.id) }}" style="display:inline;"
+                                          onsubmit="return confirm('Retrageti competenta {{ ac.competenta.nume }}?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm btn-outline" style="color: var(--danger);"><i class="fa-solid fa-trash"></i></button>
+                                    </form>
+                                </td>
+                                {% endif %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <i class="fa-solid fa-award" style="font-size: 2rem; color: var(--gray-300); margin-bottom: 12px;"></i>
+                    <p>Nicio competenta atribuita.</p>
+                    {% if current_user.is_manager %}
+                    <a href="{{ url_for('competente.atribuie', angajat_id=angajat.id) }}" class="btn btn-outline" style="margin-top: 8px;">
+                        <i class="fa-solid fa-plus"></i> Atribuie competenta
+                    </a>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- TAB 5: ISTORIC -->
     <div class="tab-pane" id="tab-istoric">
