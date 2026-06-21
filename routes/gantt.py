@@ -220,6 +220,27 @@ def _tracking_on() -> bool:
         return False
 
 
+def _evm_pro_on() -> bool:
+    """True cand flag-ul 'gantt-evm-pro' e activ pentru tenantul curent."""
+    try:
+        from services.feature_flags import is_enabled
+        return bool(is_enabled('gantt-evm-pro', _tenant_curent()))
+    except Exception:
+        return False
+
+
+def _evm_pe_plan(p):
+    """EVM pe plan din tracking (Faza 3), DOAR cu flag ON + baseline/progres; None altfel."""
+    if p is None:
+        return None
+    try:
+        from services.gantt import evm_pro
+        return evm_pro.evm_pe_plan(p, _tenant_curent(), data_stare=date.today(),
+                                   calendar=_calendar_activ(p))
+    except Exception:
+        return None
+
+
 def _progrese_active(plan_id):
     """{cheie: procent} pentru bare, DOAR cu flag ON; None altfel (progres 0 istoric)."""
     if not plan_id:
@@ -639,10 +660,14 @@ def plan_tracking(id_):
     from models import GanttBaseline
     baselines = (GanttBaseline.query.filter_by(plan_id=p.id)
                  .order_by(GanttBaseline.data_creare.desc()).all())
+    # Faza 3: EVM pe plan (PV din baseline, EV din progres, forecast). None cu flag
+    # OFF sau fara baseline/progres -> sectiunea EVM nu se afiseaza.
+    evm = _evm_pe_plan(p)
     return render_template('gantt/plan_tracking.html', p=p, rezultat=rezultat,
                            activitati=(rezultat.activitati or []),
                            progrese=progrese_simplu, progrese_det=progrese_det,
-                           sumar=sumar, baselines=baselines)
+                           sumar=sumar, baselines=baselines,
+                           evm=evm, evm_pro_on=_evm_pro_on())
 
 
 @gantt_bp.route('/plan/<int:id_>/progres', methods=['POST'])
@@ -682,6 +707,29 @@ def plan_progres(id_):
         return jsonify({'ok': True, 'adaugate': nr})
     flash(f'{nr} inregistrari de progres salvate.', 'success')
     return redirect(url_for('gantt.plan_tracking', id_=p.id))
+
+
+@gantt_bp.route('/plan/<int:id_>/evm')
+@login_required
+def plan_evm(id_):
+    """EVM pe plan din tracking (Faza 3): PV din baseline, EV din progres, forecast.
+
+    JSON. Optional ?data_stare=YYYY-MM-DD (implicit azi). Cu flag 'gantt-evm-pro' OFF
+    sau plan fara baseline/progres -> 404 (fara EVM pe plan, comportament neschimbat)."""
+    if not _evm_pro_on():
+        abort(404)
+    p = _plan_sau_404(id_)
+    try:
+        data_stare = (date.fromisoformat(request.args['data_stare'][:10])
+                      if request.args.get('data_stare') else date.today())
+    except (ValueError, TypeError):
+        data_stare = date.today()
+    from services.gantt import evm_pro
+    rez = evm_pro.evm_pe_plan(p, _tenant_curent(), data_stare=data_stare,
+                              calendar=_calendar_activ(p))
+    if rez is None:
+        abort(404)
+    return jsonify(rez)
 
 
 # ===================== EDITOR WBS (pe plan salvat) =====================

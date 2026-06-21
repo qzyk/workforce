@@ -85,6 +85,13 @@ KNOWN_FLAGS: dict[str, str] = {
     'gantt-tracking': 'Urmarire executie Gantt: baseline (plan de referinta inghetat) + progres '
                       'fizic pe activitate (bare cu % real + overlay baseline + pagina de tracking). '
                       'Cu OFF: comportament istoric (progres 0, fara baseline). Default OFF.',
+    # Gantt Faza 3 - EVM pe plan din tracking
+    'gantt-evm-pro': 'EVM la nivel de plan Gantt din datele de tracking (Faza 2): PV din '
+                     'baseline-ul activ, EV din progresul fizic ponderat pe valoare (agregat '
+                     'la data de stare), AC din manopera pontata + utilaj real (fallback '
+                     'situatie lunara), plus forecast EAC/ETC/VAC/TCPI. Sectiune in pagina de '
+                     'urmarire + endpoint /gantt/plan/<id>/evm. Cu OFF sau plan fara '
+                     'baseline/progres: fara EVM pe plan (comportament neschimbat). Default OFF.',
     # Extragere proprietati BIM la import IFC
     'bim-pset-extraction': 'Extrage Property Sets (IfcPropertySet) + bounding box geometric la importul IFC '
                            '(populeaza proprietati_json + bbox_json). Mareste efortul de import; default OFF.',

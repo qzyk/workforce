@@ -73,6 +73,41 @@ table.tk input[type=number] { width:78px; border:1px solid #E8E3D5; border-radiu
     </div>
 </div>
 
+<!-- EVM pe plan (Faza 3): PV din baseline, EV din progres, forecast -->
+{% if evm_pro_on %}
+<div class="tk-sec">
+    <div class="tk-sec-h"><i class="fa-solid fa-chart-line"></i> EVM (Earned Value) la data de stare {{ evm.data_stare if evm else '' }}</div>
+    <div style="padding:12px 16px;">
+        {% if evm %}
+        <div class="tk-stats" style="margin-bottom:12px;">
+            <div class="tk-stat"><div class="v">{{ '{:,.0f}'.format(evm.pv_val) }}</div><div class="l">PV — planificat ({{ evm.pv_pct }}%)</div></div>
+            <div class="tk-stat"><div class="v gold">{{ '{:,.0f}'.format(evm.ev_val) }}</div><div class="l">EV — realizat ({{ evm.ev_pct }}%)</div></div>
+            <div class="tk-stat"><div class="v">{{ '{:,.0f}'.format(evm.ac) }}</div><div class="l">AC — cost real ({{ evm.ac_sursa }})</div></div>
+            <div class="tk-stat"><div class="v {{ 'gold' if evm.spi and evm.spi < 1 }}">{{ evm.spi if evm.spi is not none else '—' }}</div><div class="l">SPI (grafic)</div></div>
+            <div class="tk-stat"><div class="v {{ 'gold' if evm.cpi and evm.cpi < 1 }}">{{ evm.cpi if evm.cpi is not none else '—' }}</div><div class="l">CPI (buget)</div></div>
+        </div>
+        <table class="tk" style="max-width:680px;">
+            <thead><tr><th>Forecast (prognoza la finalizare)</th><th style="text-align:right;">lei</th></tr></thead>
+            <tbody>
+                <tr><td>BAC — buget la finalizare</td><td style="text-align:right;">{{ '{:,.0f}'.format(evm.bac) }}</td></tr>
+                <tr><td>EAC — cost estimat final <span class="tk-pill">{{ evm.prognoza.eac_varianta }}</span></td><td style="text-align:right;">{{ '{:,.0f}'.format(evm.prognoza.eac) }}</td></tr>
+                <tr><td>ETC — cost ramas estimat</td><td style="text-align:right;">{{ '{:,.0f}'.format(evm.prognoza.etc) }}</td></tr>
+                <tr><td>VAC — abatere buget la final</td><td style="text-align:right; {{ 'color:#b71c1c;' if evm.prognoza.vac < 0 }}">{{ '{:,.0f}'.format(evm.prognoza.vac) }}</td></tr>
+                <tr><td>TCPI — eficienta necesara pe rest</td><td style="text-align:right;">{{ evm.prognoza.tcpi if evm.prognoza.tcpi is not none else '—' }}</td></tr>
+            </tbody>
+        </table>
+        <p style="font-size:.78rem; color:#8a8273; margin:10px 0 0;"><i class="fa-solid fa-circle-info"></i>
+            PV vine din baseline-ul activ (referinta inghetata), EV din progresul fizic ponderat pe valoare,
+            AC din costul real cumulat ({{ evm.ac_sursa }}). {{ evm.nr_activitati_cu_progres }} activitati cu progres.</p>
+        {% else %}
+        <p style="color:#8a8273; margin:0;"><i class="fa-solid fa-circle-info"></i>
+            EVM pe plan apare dupa ce ai un <strong>baseline activ</strong> si cel putin o masuratoare de progres.
+            Ingheata un baseline mai sus, apoi introdu progresul fizic.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 <!-- Introducere progres bulk -->
 <div class="tk-sec">
     <div class="tk-sec-h"><i class="fa-solid fa-list-check"></i> Progres fizic pe activitate</div>
