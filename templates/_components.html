@@ -273,3 +273,53 @@ ed-btn ed-btn--{{ varianta }}{% if size %} ed-btn--{{ size }}{% endif %}{% if bl
   {% if url %}<a href="{{ url }}">{{ link_label or 'Deschide' }} &rarr;</a>{% endif %}
 </div>
 {% endmacro %}
+
+
+{# ---------- SIDEBAR NAV ITEM (faza 3 chrome) ----------
+   Item de navigatie din sidebar. Elimina stilurile inline repetate ale
+   submeniurilor (base.html vechi :114-171). Pastreaza clasele existente
+   (.sidebar-nav li a, .active, .sidebar-badge) — strict aditiv vizual.
+
+   url    = destinatia link-ului principal
+   label  = textul itemului
+   icon   = nume FontAwesome (fara prefixul fa-)
+   activ  = true daca itemul (sau o sub-pagina a lui) e curent
+   badge  = dict optional {numar, varianta:'warning'|'danger'|'info'}
+   children = lista de dict {url, label, icon, activ} pentru submeniu;
+              randat doar cand itemul e activ (la fel ca markup-ul vechi),
+              folosind clasa .sidebar-submenu (CSS in style.css) in loc de inline.
+   Accesibilitate: cand are children -> aria-expanded reflecta starea activa;
+   sub-itemul curent primeste aria-current="page". #}
+{% macro nav_item(url, label, icon=None, activ=false, badge=None, children=None) %}
+<li>
+  <a href="{{ url }}"{% if activ %} class="active" aria-current="page"{% endif %}{% if children %} aria-expanded="{{ 'true' if activ else 'false' }}"{% endif %}>
+    {% if icon %}<i class="fa-solid fa-{{ icon }}"></i>{% endif %}
+    <span>{{ label }}</span>
+    {% if badge and badge.numar %}<span class="sidebar-badge badge-{{ badge.varianta | default('info') }}">{{ badge.numar }}</span>{% endif %}
+  </a>
+  {% if children and activ %}
+  <ul class="sidebar-submenu">
+    {% for c in children %}
+    <li>
+      <a href="{{ c.url }}" class="sidebar-subitem{% if c.activ %} active{% endif %}"{% if c.activ %} aria-current="page"{% endif %}>
+        {% if c.icon %}<i class="fa-solid fa-{{ c.icon }}"></i>{% endif %}<span>{{ c.label }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</li>
+{% endmacro %}
+
+
+{# ---------- BREADCRUMB ITEM (faza 3 chrome) ----------
+   Element unic de breadcrumb cu markup valid (li.breadcrumb-item in <ol>).
+   url dat -> link; altfel item curent (aria-current="page"). Markup-ul vechi
+   (<a>/<span> direct in <ol>) ramane tolerat in paginile nemigrate. #}
+{% macro breadcrumb_item(label, url=None, activ=false) %}
+{%- if url and not activ -%}
+<li class="breadcrumb-item"><a href="{{ url }}">{{ label }}</a></li>
+{%- else -%}
+<li class="breadcrumb-item active" aria-current="page">{{ label }}</li>
+{%- endif -%}
+{% endmacro %}

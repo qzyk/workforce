@@ -1,3 +1,4 @@
+{% import "_components.html" as ed %}
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -35,8 +36,10 @@
     <!-- Font Awesome 6 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    {# Chart.js NU se mai incarca global aici (DS faza 3): ~205KB pe TOATE paginile
+       desi il folosesc ~6 sabloane. Fiecare sablon cu grafice il incarca local in
+       blocul extra_js (dashboard.html, proiecte/detalii.html, proiecte/evm.html,
+       gantt/rezultat.html, bim/sensor_detaliu.html). #}
 
     <!-- Custom CSS -->
     <link href="{{ url_for('static', filename='css/tokens.css') }}" rel="stylesheet">
@@ -47,10 +50,11 @@
 </head>
 <body>
     {% if current_user.is_authenticated %}
+    <a href="#mainContent" class="skip-link">{{ _('Sari la continut') }}</a>
     <!-- ============================================ -->
     <!-- SIDEBAR FIX -->
     <!-- ============================================ -->
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar" id="sidebar" aria-label="{{ _('Navigare principala') }}">
         <div class="sidebar-header">
             <div class="sidebar-brand">
                 <img src="{{ url_for('static', filename='img/edifico-mark.svg') }}"
@@ -110,36 +114,19 @@
                         <span>{{ _('Teren') }}</span>
                     </a>
                 </li>
-                <li>
-                    <a href="{{ url_for('activitati.panou') }}" class="{% if request.endpoint and 'activitati' in request.endpoint %}active{% endif %}">
-                        <i class="fa-solid fa-clipboard-list"></i>
-                        <span>{{ _('Activitati') }}</span>
-                        {% if badge_counts.activitati_pending is defined and badge_counts.activitati_pending > 0 %}
-                        <span class="sidebar-badge badge-warning">{{ badge_counts.activitati_pending }}</span>
-                        {% elif badge_counts.activitati_azi is defined and badge_counts.activitati_azi > 0 %}
-                        <span class="sidebar-badge badge-info">{{ badge_counts.activitati_azi }}</span>
-                        {% endif %}
-                    </a>
-                    {% if request.endpoint and 'activitati' in request.endpoint %}
-                    <ul class="sidebar-submenu" style="list-style:none; padding:4px 0 4px 36px; margin:0;">
-                        <li>
-                            <a href="{{ url_for('activitati.panou') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;">
-                                <i class="fa-solid fa-list" style="margin-right:6px; font-size:0.75rem;"></i> {{ _('Toate') }}
-                            </a>
-                        </li>
-                        <li>
-                            <a href="{{ url_for('activitati.panou', tip='saptamanala') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;">
-                                <i class="fa-solid fa-calendar-week" style="margin-right:6px; font-size:0.75rem;"></i> {{ _('Saptamanale') }}
-                            </a>
-                        </li>
-                        <li>
-                            <a href="{{ url_for('activitati.panou', tip='lunara') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;">
-                                <i class="fa-solid fa-calendar" style="margin-right:6px; font-size:0.75rem;"></i> {{ _('Lunare') }}
-                            </a>
-                        </li>
-                    </ul>
-                    {% endif %}
-                </li>
+                {%- set act_activ = request.endpoint and 'activitati' in request.endpoint -%}
+                {%- if badge_counts.activitati_pending is defined and badge_counts.activitati_pending > 0 -%}
+                  {%- set act_badge = {'numar': badge_counts.activitati_pending, 'varianta': 'warning'} -%}
+                {%- elif badge_counts.activitati_azi is defined and badge_counts.activitati_azi > 0 -%}
+                  {%- set act_badge = {'numar': badge_counts.activitati_azi, 'varianta': 'info'} -%}
+                {%- else -%}
+                  {%- set act_badge = None -%}
+                {%- endif -%}
+                {{ ed.nav_item(url_for('activitati.panou'), _('Activitati'), icon='clipboard-list', activ=act_activ, badge=act_badge, children=[
+                    {'url': url_for('activitati.panou'), 'label': _('Toate'), 'icon': 'list'},
+                    {'url': url_for('activitati.panou', tip='saptamanala'), 'label': _('Saptamanale'), 'icon': 'calendar-week'},
+                    {'url': url_for('activitati.panou', tip='lunara'), 'label': _('Lunare'), 'icon': 'calendar'}
+                ]) }}
                 <li class="sidebar-section">{{ _('Planificare & cost') }}</li>
                 {% if feature_enabled('planificare-gantt') %}
                 <li>
@@ -149,37 +136,24 @@
                     </a>
                 </li>
                 {% endif %}
-                <li>
-                    <a href="{{ url_for('bim.dashboard') }}" class="{% if request.endpoint and request.endpoint.startswith('bim') %}active{% endif %}">
-                        <i class="fa-solid fa-cubes"></i>
-                        <span>{{ _('BIM') }}</span>
-                    </a>
-                    {% if request.endpoint and request.endpoint.startswith('bim') %}
-                    <ul class="sidebar-submenu" style="list-style:none; padding:4px 0 4px 36px; margin:0;">
-                        <li><a href="{{ url_for('bim.dashboard') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-sitemap" style="margin-right:6px; font-size:0.75rem;"></i> {{ _('Tree') }}</a></li>
-                        <li><a href="{{ url_for('bim.santiere_lista') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-map-location-dot" style="margin-right:6px; font-size:0.75rem;"></i> {{ _('Santiere') }}</a></li>
-                        <li><a href="{{ url_for('bim.elemente_lista') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-cubes" style="margin-right:6px; font-size:0.75rem;"></i> {{ _('Elemente') }}</a></li>
-                        <li><a href="{{ url_for('bim.modele_lista') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-cubes-stacked" style="margin-right:6px; font-size:0.75rem;"></i> {{ _('Modele 3D') }}</a></li>
-                        <li><a href="{{ url_for('bim.issues_lista') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:6px; font-size:0.75rem;"></i> {{ _('Issues') }}</a></li>
-                        {% if current_user.rol in ['admin', 'manager'] %}
-                        <li><a href="{{ url_for('bim.quality_report') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-shield-halved" style="margin-right:6px; font-size:0.75rem;"></i> {{ _('Data Quality') }}</a></li>
-                        {% endif %}
-                    </ul>
-                    {% endif %}
-                </li>
+                {%- set bim_activ = request.endpoint and request.endpoint.startswith('bim') -%}
+                {%- set bim_children = [
+                    {'url': url_for('bim.dashboard'), 'label': _('Tree'), 'icon': 'sitemap'},
+                    {'url': url_for('bim.santiere_lista'), 'label': _('Santiere'), 'icon': 'map-location-dot'},
+                    {'url': url_for('bim.elemente_lista'), 'label': _('Elemente'), 'icon': 'cubes'},
+                    {'url': url_for('bim.modele_lista'), 'label': _('Modele 3D'), 'icon': 'cubes-stacked'},
+                    {'url': url_for('bim.issues_lista'), 'label': _('Issues'), 'icon': 'triangle-exclamation'}
+                ] -%}
+                {%- if current_user.rol in ['admin', 'manager'] -%}
+                  {%- set _ignore = bim_children.append({'url': url_for('bim.quality_report'), 'label': _('Data Quality'), 'icon': 'shield-halved'}) -%}
+                {%- endif -%}
+                {{ ed.nav_item(url_for('bim.dashboard'), _('BIM'), icon='cubes', activ=bim_activ, children=bim_children) }}
                 {% if feature_enabled('controale-contract') %}
-                <li>
-                    <a href="{{ url_for('contracte.lista') }}" class="{% if request.endpoint and request.endpoint.startswith('contracte') %}active{% endif %}">
-                        <i class="fa-solid fa-file-contract"></i>
-                        <span>{{ _('Contracte') }}</span>
-                    </a>
-                    {% if request.endpoint and request.endpoint.startswith('contracte') %}
-                    <ul class="sidebar-submenu" style="list-style:none; padding:4px 0 4px 36px; margin:0;">
-                        <li><a href="{{ url_for('contracte.lista') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-list" style="margin-right:6px; font-size:0.75rem;"></i> {{ _('Toate contractele') }}</a></li>
-                        <li><a href="{{ url_for('contracte.pv_lista') }}" style="display:block; padding:6px 10px; color:rgba(255,255,255,0.75); font-size:0.82rem; text-decoration:none; border-radius:6px;"><i class="fa-solid fa-file-signature" style="margin-right:6px; font-size:0.75rem;"></i> {{ _('Procese verbale') }}</a></li>
-                    </ul>
-                    {% endif %}
-                </li>
+                {%- set contr_activ = request.endpoint and request.endpoint.startswith('contracte') -%}
+                {{ ed.nav_item(url_for('contracte.lista'), _('Contracte'), icon='file-contract', activ=contr_activ, children=[
+                    {'url': url_for('contracte.lista'), 'label': _('Toate contractele'), 'icon': 'list'},
+                    {'url': url_for('contracte.pv_lista'), 'label': _('Procese verbale'), 'icon': 'file-signature'}
+                ]) }}
                 {% endif %}
                 <li class="sidebar-section">{{ _('Resurse') }}</li>
                 <li>
@@ -274,9 +248,9 @@
                 <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">
                     <i class="fa-solid fa-bars"></i>
                 </button>
-                <nav class="breadcrumb-nav">
+                <nav class="breadcrumb-nav" aria-label="{{ _('Firul Ariadnei') }}">
                     <ol class="breadcrumb">
-                        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}"><i class="fa-solid fa-house"></i></a></li>
+                        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}" aria-label="{{ _('Dashboard') }}"><i class="fa-solid fa-house"></i></a></li>
                         {% block breadcrumb %}{% endblock %}
                     </ol>
                 </nav>
@@ -308,13 +282,14 @@
                 </div>
 
                 <div class="header-notifications">
-                    <button class="notification-btn" id="notifBtn" title="{{ _('Notificari') }}">
+                    <button class="notification-btn" id="notifBtn" title="{{ _('Notificari') }}"
+                            aria-haspopup="true" aria-expanded="false" aria-controls="notifDropdown">
                         <i class="fa-solid fa-bell"></i>
                         {% if alerte_count > 0 %}
                         <span class="notification-badge">{{ alerte_count }}</span>
                         {% endif %}
                     </button>
-                    <div class="notification-dropdown" id="notifDropdown">
+                    <div class="notification-dropdown" id="notifDropdown" role="menu" aria-label="{{ _('Notificari') }}">
                         <div class="notif-header">
                             <strong>{{ _('Notificari') }}</strong>
                         </div>
@@ -346,14 +321,15 @@
                 </div>
 
                 <div class="header-user-menu">
-                    <button class="user-menu-btn" id="userMenuBtn">
+                    <button class="user-menu-btn" id="userMenuBtn"
+                            aria-haspopup="true" aria-expanded="false" aria-controls="userDropdown">
                         <div class="user-avatar-small">
                             <i class="fa-solid fa-user"></i>
                         </div>
                         <span class="user-name-header">{{ current_user.prenume }}</span>
                         <i class="fa-solid fa-chevron-down fa-xs"></i>
                     </button>
-                    <div class="user-dropdown" id="userDropdown">
+                    <div class="user-dropdown" id="userDropdown" role="menu" aria-label="{{ _('Meniu utilizator') }}">
                         <div class="user-dropdown-header">
                             <strong>{{ current_user.get_full_name() }}</strong>
                             <small>{{ current_user.email }}</small>
@@ -369,19 +345,19 @@
 
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-        <div class="flash-container">
+        <div class="flash-container" role="status" aria-live="polite">
             {% for category, message in messages %}
-            <div class="flash-message flash-{{ category }}">
-                <i class="fa-solid {% if category == 'success' %}fa-circle-check{% elif category == 'danger' %}fa-circle-xmark{% elif category == 'warning' %}fa-triangle-exclamation{% else %}fa-circle-info{% endif %}"></i>
+            <div class="flash-message flash-{{ category }}"{% if category == 'danger' %} role="alert"{% endif %}>
+                <i class="fa-solid {% if category == 'success' %}fa-circle-check{% elif category == 'danger' %}fa-circle-xmark{% elif category == 'warning' %}fa-triangle-exclamation{% else %}fa-circle-info{% endif %}" aria-hidden="true"></i>
                 <span>{{ message }}</span>
-                <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
+                <button class="flash-close" onclick="this.parentElement.remove()" aria-label="{{ _('Inchide') }}">&times;</button>
             </div>
             {% endfor %}
         </div>
         {% endif %}
         {% endwith %}
 
-        <main class="page-content">
+        <main class="page-content" id="mainContent" tabindex="-1">
             {% block content %}{% endblock %}
         </main>
 
@@ -398,18 +374,18 @@
 
     <!-- Modal Confirmare Stergere -->
     <div class="modal-overlay" id="deleteModal">
-        <div class="modal-box">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle" aria-describedby="deleteModalMessage">
             <div class="modal-header-custom">
-                <i class="fa-solid fa-triangle-exclamation text-danger"></i>
-                <h3>{{ _('Confirmare stergere') }}</h3>
+                <i class="fa-solid fa-triangle-exclamation text-danger" aria-hidden="true"></i>
+                <h3 id="deleteModalTitle">{{ _('Confirmare stergere') }}</h3>
             </div>
             <p class="modal-message" id="deleteModalMessage">{{ _('Sunteti sigur ca doriti sa stergeti acest element?') }}</p>
             <div class="modal-actions">
-                <button class="btn-cancel" onclick="closeDeleteModal()">Anuleaza</button>
+                <button class="btn-cancel" onclick="closeDeleteModal()">{{ _('Anuleaza') }}</button>
                 <form id="deleteModalForm" method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
                     <button type="submit" class="btn-delete-confirm">
-                        <i class="fa-solid fa-trash"></i> Sterge
+                        <i class="fa-solid fa-trash" aria-hidden="true"></i> {{ _('Sterge') }}
                     </button>
                 </form>
             </div>

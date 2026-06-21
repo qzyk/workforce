@@ -299,6 +299,8 @@
 {% endblock %}
 
 {% block extra_js %}
+{# Chart.js incarcat local (DS faza 3: nu mai e global in base.html) #}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // ============================================

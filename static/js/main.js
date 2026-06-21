@@ -50,13 +50,21 @@
     const notifBtn = document.getElementById('notifBtn');
     const notifDropdown = document.getElementById('notifDropdown');
 
+    // Sincronizeaza aria-expanded pe butonul care controleaza un dropdown.
+    function syncExpanded(btn, dropdown) {
+        if (btn) btn.setAttribute('aria-expanded', dropdown.classList.contains('show') ? 'true' : 'false');
+    }
+
     if (notifBtn && notifDropdown) {
         notifBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             notifDropdown.classList.toggle('show');
+            syncExpanded(notifBtn, notifDropdown);
             // Close user dropdown
             const ud = document.getElementById('userDropdown');
             if (ud) ud.classList.remove('show');
+            const umb = document.getElementById('userMenuBtn');
+            if (umb && ud) syncExpanded(umb, ud);
         });
     }
 
@@ -70,8 +78,10 @@
         userMenuBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             userDropdown.classList.toggle('show');
+            syncExpanded(userMenuBtn, userDropdown);
             // Close notif dropdown
             if (notifDropdown) notifDropdown.classList.remove('show');
+            if (notifBtn && notifDropdown) syncExpanded(notifBtn, notifDropdown);
         });
     }
 
@@ -79,6 +89,8 @@
     document.addEventListener('click', function() {
         if (notifDropdown) notifDropdown.classList.remove('show');
         if (userDropdown) userDropdown.classList.remove('show');
+        if (notifBtn && notifDropdown) syncExpanded(notifBtn, notifDropdown);
+        if (userMenuBtn && userDropdown) syncExpanded(userMenuBtn, userDropdown);
     });
 
     // ============================================================
@@ -148,6 +160,9 @@
     // ============================================================
     // CONFIRM DELETE MODAL
     // ============================================================
+    // Elementul care avea focus inainte de deschiderea modalului (pentru restaurare).
+    var _modalTrigger = null;
+
     window.confirmDelete = function(url, message) {
         message = message || 'Sunteti sigur ca doriti sa stergeti acest element? Aceasta actiune este ireversibila.';
         const modal = document.getElementById('deleteModal');
@@ -158,13 +173,42 @@
             msgEl.textContent = message;
             form.action = url;
             modal.classList.add('show');
+            // Accesibilitate: retin trigger-ul, mut focusul pe Anuleaza (actiune sigura).
+            _modalTrigger = document.activeElement;
+            var cancelBtn = modal.querySelector('.btn-cancel');
+            if (cancelBtn) cancelBtn.focus();
         }
     };
 
     window.closeDeleteModal = function() {
         const modal = document.getElementById('deleteModal');
-        if (modal) modal.classList.remove('show');
+        if (modal && modal.classList.contains('show')) {
+            modal.classList.remove('show');
+            // Restaurez focusul pe elementul care a deschis modalul.
+            if (_modalTrigger && typeof _modalTrigger.focus === 'function') {
+                _modalTrigger.focus();
+            }
+            _modalTrigger = null;
+        }
     };
+
+    // Focus-trap pentru modalul de stergere: Tab/Shift-Tab raman in interior.
+    (function() {
+        const modal = document.getElementById('deleteModal');
+        if (!modal) return;
+        modal.addEventListener('keydown', function(e) {
+            if (e.key !== 'Tab' || !modal.classList.contains('show')) return;
+            var focusabile = modal.querySelectorAll('button, [href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])');
+            if (!focusabile.length) return;
+            var primul = focusabile[0];
+            var ultimul = focusabile[focusabile.length - 1];
+            if (e.shiftKey && document.activeElement === primul) {
+                e.preventDefault(); ultimul.focus();
+            } else if (!e.shiftKey && document.activeElement === ultimul) {
+                e.preventDefault(); primul.focus();
+            }
+        });
+    })();
 
     // Listener delegat pentru butoanele DS (macro confirm_form): url + mesaj vin
     // prin data-confirm-url / data-confirm-mesaj, deci nu mai e nevoie de onclick
@@ -194,6 +238,8 @@
             closeSidebar();
             if (notifDropdown) notifDropdown.classList.remove('show');
             if (userDropdown) userDropdown.classList.remove('show');
+            if (notifBtn && notifDropdown) syncExpanded(notifBtn, notifDropdown);
+            if (userMenuBtn && userDropdown) syncExpanded(userMenuBtn, userDropdown);
         }
     });
 

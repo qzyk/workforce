@@ -49,6 +49,13 @@ TRANSLATIONS = {
     'Autentificare': {'en': 'Sign in'},
     'Tenants': {'en': 'Tenants'},
 
+    # === Chrome / accesibilitate (DS faza 3) ===
+    'Sari la continut': {'en': 'Skip to content'},
+    'Navigare principala': {'en': 'Main navigation'},
+    'Firul Ariadnei': {'en': 'Breadcrumb'},
+    'Meniu utilizator': {'en': 'User menu'},
+    'Inchide': {'en': 'Close'},
+
     # === BIM Navigation ===
     'Santiere': {'en': 'Sites'},
     'Santier': {'en': 'Site'},

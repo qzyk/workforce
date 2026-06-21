@@ -250,6 +250,53 @@ a:hover { color: var(--primary-light); }
 .sidebar-install { color: var(--edifico-gold) !important; font-weight: 500; }
 .sidebar-install:hover { color: var(--edifico-gold-light) !important; background: rgba(201, 169, 97, 0.12) !important; }
 
+/* Submeniu sidebar (DS faza 3): clasa in loc de stilurile inline repetate din
+   base.html. Valorile reproduc exact markup-ul vechi (padding 36px, font 0.82rem,
+   text rgba alb 0.75) ca migrarea sa fie pur vizual-neutra. */
+.sidebar-submenu { list-style: none; padding: 4px 0 4px 36px; margin: 0; }
+.sidebar-submenu li a,
+.sidebar-nav .sidebar-subitem {
+    display: block;
+    padding: 6px 10px;
+    color: rgba(255,255,255,0.75);
+    font-size: 0.82rem;
+    text-decoration: none;
+    border-radius: 6px;
+    border-left: none;
+}
+.sidebar-submenu li a:hover,
+.sidebar-nav .sidebar-subitem:hover {
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    border-left: none;
+}
+.sidebar-nav .sidebar-subitem.active {
+    background: rgba(201,169,97,0.15);
+    color: #fff;
+    border-left: none;
+    font-weight: 600;
+}
+.sidebar-submenu li a i,
+.sidebar-nav .sidebar-subitem i { margin-right: 6px; font-size: 0.75rem; width: auto; }
+
+/* Skip-link (DS faza 3, accesibilitate): ascuns pana primeste focus la Tab.
+   Permite sariturea peste sidebar direct la continut. */
+.skip-link {
+    position: absolute;
+    left: 8px;
+    top: -48px;
+    z-index: 10001;
+    padding: 10px 16px;
+    background: var(--ed-color-navy, #0B1426);
+    color: #fff;
+    border-radius: var(--ed-radius-sm, 6px);
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: top 0.15s ease;
+}
+.skip-link:focus { top: 8px; }
+
 /* Ascund elemente de UI duplicate cand app-ul e instalat ca PWA (display-mode: standalone) */
 .pwa-installed .pwa-hide-when-installed { display: none !important; }
 
@@ -1066,12 +1113,14 @@ a:hover { color: var(--primary-light); }
 .login-btn {
     width: 100%;
     padding: 12px;
-    background: linear-gradient(135deg, var(--primary), var(--primary-light));
-    color: #fff;
+    /* DS faza 3: CTA gold/navy in loc de indigo (brand clash pe usa de intrare).
+       Gradient gold + text navy = 8.17:1 (AA). */
+    background: var(--ed-grad-gold, linear-gradient(135deg, #E0BB6E, #C9A961, #A8893D));
+    color: var(--ed-color-navy, #0B1426);
     border: none;
     border-radius: var(--radius-sm);
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
     transition: var(--transition);
     font-family: 'Inter', sans-serif;
@@ -1081,7 +1130,7 @@ a:hover { color: var(--primary-light); }
     gap: 8px;
 }
 
-.login-btn:hover { box-shadow: 0 4px 15px rgba(26,35,126,0.4); transform: translateY(-1px); }
+.login-btn:hover { box-shadow: 0 4px 15px rgba(201,169,97,0.45); transform: translateY(-1px); }
 .login-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: none; }
 
 .login-demo {
