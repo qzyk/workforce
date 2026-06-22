@@ -81,6 +81,7 @@ PUBLIC_ENDPOINTS = [
                         'properties': {
                             'reading_id': {'type': 'integer'},
                             'alert_created': {'type': 'boolean'},
+                            'alert_new': {'type': 'boolean'},
                             'threshold_violated': {'type': 'string', 'nullable': True},
                         }
                     }},

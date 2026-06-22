@@ -124,10 +124,16 @@ def ingest_reading(senzor: Senzor, valoare: float, *,
     Returneaza:
         {
             'reading_id': X,
-            'alert_created': True/False,
+            'alert_created': True/False,   # citirea a atins o alerta (noua SAU existenta)
+            'alert_new': True/False,       # alerta NOUA creata (NU refolosire/escaladare)
             'alert_id': Y or None,
             'threshold_violated': 'sub_min' | 'peste_max' | None,
         }
+
+    NOTA: 'alert_created' e True ori de cate ori citirea atinge o alerta (inclusiv
+    cand refoloseste sau escaladeaza una existenta), deci NU e un contor de alerte
+    noi. Pentru a numara alerte cu adevarat noi (ex. in ingest_batch) folositi
+    'alert_new', care e True doar pe ramura care face db.session.add(alert).
     """
     if ts is None:
         ts = datetime.utcnow()
@@ -153,6 +159,7 @@ def ingest_reading(senzor: Senzor, valoare: float, *,
     # Threshold check
     alert_id = None
     violation = None
+    alert_nou = False      # True doar daca s-a creat o alerta NOUA (db.session.add)
     alert_obj = None       # SensorAlert generat/escaladat (pentru dispatch notificare)
     alert_escaladat = False  # True daca o alerta existenta a crescut in severitate
     if calitate == 'ok' and senzor.threshold_min is not None and valoare < float(senzor.threshold_min):
@@ -211,6 +218,7 @@ def ingest_reading(senzor: Senzor, valoare: float, *,
             db.session.flush()
             alert_id = alert.id
             alert_obj = alert
+            alert_nou = True
 
             # Audit pe alerta noua (NU pe fiecare reading - too verbose)
             audit_svc.log('sensor_alert_created', 'bim_sensor_alert', alert.id,
@@ -240,6 +248,7 @@ def ingest_reading(senzor: Senzor, valoare: float, *,
         'reading_id': reading.id,
         'ts': ts.isoformat(),
         'alert_created': alert_id is not None,
+        'alert_new': alert_nou,
         'alert_id': alert_id,
         'threshold_violated': violation,
     }
@@ -266,10 +275,14 @@ def ingest_batch(senzor: Senzor, readings: list, *,
     Returneaza:
         {
             'ingested': N,           # citiri inserate cu succes
-            'alerts_created': M,     # alerte noi generate in lot
+            'alerts_created': M,     # alerte NOI generate in lot (nu refolosiri/escaladari)
             'errors': [ {idx, error}, ... ],   # elemente respinse (validare)
             'results': [ <result ingest_reading>, ... ],  # per element OK
         }
+
+    'alerts_created' numara doar alertele cu adevarat noi (flag 'alert_new' din
+    ingest_reading). Mai multe citiri peste prag in acelasi lot refolosesc /
+    escaladeaza aceeasi alerta deschisa, deci contribuie cu o singura alerta noua.
 
     Elementele invalide (lipsa 'valoare', valoare ne-numerica, ts invalid) sunt
     raportate in 'errors' fara a rupe restul lotului. Daca un singur element
@@ -308,7 +321,9 @@ def ingest_batch(senzor: Senzor, readings: list, *,
         )
         rezultat['results'].append(res)
         rezultat['ingested'] += 1
-        if res.get('alert_created'):
+        # Numaram doar alertele NOI (alert_new), nu fiecare citire care 'atinge'
+        # o alerta deja deschisa (refolosire/escaladare) -> sumar corect pe lot.
+        if res.get('alert_new'):
             rezultat['alerts_created'] += 1
 
     if commit:

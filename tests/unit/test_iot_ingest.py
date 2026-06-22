@@ -159,6 +159,12 @@ def test_consecutive_alerts_reuse_open_alert(app, element, admin):
         r2 = iot_ingest.ingest_reading(s, 35.0)
         # Acelasi alert_id (refolosit), nu unul nou
         assert r1['alert_id'] == r2['alert_id']
+        # Prima citire creeaza alerta noua; a doua o refoloseste/escaladeaza.
+        assert r1['alert_new'] is True
+        assert r2['alert_new'] is False
+        # Ambele 'ating' o alerta, deci alert_created ramane True pe ambele.
+        assert r1['alert_created'] is True
+        assert r2['alert_created'] is True
         # Total: 1 alert in DB
         assert SensorAlert.query.filter_by(senzor_id=s.id, status='noua').count() == 1
 
@@ -270,6 +276,32 @@ def test_ingest_batch_genereaza_alerta(app, element, admin):
         assert SensorAlert.query.filter_by(senzor_id=sid, tip='peste_max').count() == 1
 
 
+def test_ingest_batch_multi_alerta_acelasi_lot_nu_umfla_sumarul(app, element, admin):
+    """Mai multe citiri peste prag in ACELASI lot -> O singura alerta noua.
+
+    Reproduce gaura din review: [30, 40, 35] cu threshold_max=25 ating toate
+    pragul, dar refolosesc / escaladeaza aceeasi alerta deschisa. 'alerts_created'
+    trebuie sa numere DOAR alerta noua (1), nu fiecare citire peste prag (3).
+    """
+    with app.app_context():
+        s = iot_ingest.create_senzor('BATCH-MULTI', 'X', 'temperatura',
+                                       element_bim_id=element,
+                                       threshold_max=25, user=admin)
+        sid = s.id
+        readings = [{'valoare': 30.0}, {'valoare': 40.0}, {'valoare': 35.0}]
+        res = iot_ingest.ingest_batch(s, readings)
+        assert res['ingested'] == 3
+        # O singura alerta in DB (de-dup pe tip + status noua)...
+        assert SensorAlert.query.filter_by(senzor_id=sid, tip='peste_max').count() == 1
+        # ...si sumarul reflecta exact o alerta noua, nu trei.
+        assert res['alerts_created'] == 1
+        # Doar prima citire e alerta noua; celelalte refolosesc/escaladeaza.
+        assert [r['alert_new'] for r in res['results']] == [True, False, False]
+        # Escaladare la critica (40 e mult peste 25), alert_id stabil pe tot lotul.
+        ids = {r['alert_id'] for r in res['results']}
+        assert len(ids) == 1
+
+
 def test_ingest_batch_elemente_invalide_raportate(app, element, admin):
     """Elementele invalide nu rup lotul; sunt raportate in 'errors'."""
     with app.app_context():
@@ -297,8 +329,9 @@ def test_ingest_single_neschimbat_regresie(app, element, admin):
                                        threshold_max=25, user=admin)
         sid = s.id
         r = iot_ingest.ingest_reading(s, 30.0)
-        assert set(r.keys()) == {'reading_id', 'ts', 'alert_created',
+        assert set(r.keys()) == {'reading_id', 'ts', 'alert_created', 'alert_new',
                                  'alert_id', 'threshold_violated'}
         assert r['alert_created'] is True
+        assert r['alert_new'] is True
         assert r['threshold_violated'] == 'peste_max'
         assert SensorReading.query.filter_by(senzor_id=sid).count() == 1
