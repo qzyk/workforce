@@ -169,12 +169,14 @@ def create_app(config_name='default'):
     from services import feature_flags as _ff
     _ff.init_app(app)
 
-    # Exempt CSRF pentru endpoint-ul IoT ingest (token-auth, fara cookie session)
+    # Exempt CSRF pentru endpoint-urile IoT ingest (token-auth, fara cookie session)
     # Faza 6: gateway-uri IoT trimit POST cu X-Sensor-Token, nu pot semna CSRF.
-    try:
-        csrf.exempt(app.view_functions['bim.api_sensors_ingest'])
-    except KeyError:
-        pass  # Ruta inca neinregistrata (test setup vechi)
+    # Faza 3 IoT: la fel pentru ingestul in lot (bim.api_sensors_ingest_batch).
+    for _ep in ('bim.api_sensors_ingest', 'bim.api_sensors_ingest_batch'):
+        try:
+            csrf.exempt(app.view_functions[_ep])
+        except KeyError:
+            pass  # Ruta inca neinregistrata (test setup vechi)
 
     # Exempt CSRF pentru API-ul Gantt (JSON/multipart, consum programatic)
     for _ep in ('gantt.api_import', 'gantt.api_classify', 'gantt.api_wbs',
@@ -459,6 +461,10 @@ def create_app(config_name='default'):
             # Coloane aditive nullable pe tabele existente (ALTER idempotent).
             ('bim_sensor_readings', 'created_at', 'DATETIME'),
             ('bim_senzori', 'last_rollup_at', 'DATETIME'),
+            # IoT Faza 3: detectie senzor offline. Interval nullable dupa care un
+            # senzor fara citiri e marcat offline (alerta tip='offline' din
+            # flask iot-offline). NULL = detectie dezactivata. ALTER idempotent.
+            ('bim_senzori', 'offline_timeout_sec', 'INTEGER'),
             # Gantt Faza 2 (tracking): coloane aditive nullable pe tabele existente.
             # Tabelele noi gantt_baseline / gantt_progres sunt create de db.create_all().
             ('gantt_plan', 'baseline_activ_id', 'INTEGER REFERENCES gantt_baseline(id)'),
@@ -883,6 +889,24 @@ def create_app(config_name='default'):
         sterse_events = iot_rollup.cleanup_events(older_than_days=events_days)
         click.echo(f'[OK] Cleanup IoT: {sterse_readings} citiri raw + '
                    f'{sterse_events} evenimente sterse.')
+
+    # --------------------------------------------------------
+    # COMANDA CLI: flask iot-offline (IoT Faza 3 - detectie senzor offline)
+    # --------------------------------------------------------
+    @app.cli.command('iot-offline')
+    def iot_offline_command():
+        """Genereaza alerte 'offline' pentru senzorii fara citiri recente.
+
+        Scaneaza senzorii activi cu offline_timeout_sec setat; daca ultima
+        citire e mai veche decat pragul, creeaza o SensorAlert(tip='offline')
+        si o trimite pe canalele de notificare (gated de flag 'iot-alert-notify',
+        ca restul alertelor). Idempotent: de-dup pe alerta offline deschisa per
+        senzor (nu spam). Util ca Scheduled Task pe PA:
+            cd ~/workforce && flask iot-offline
+        """
+        from services import iot_offline
+        stats = iot_offline.check_offline()
+        click.echo(f'[OK] Detectie offline IoT: {stats}')
 
     # --------------------------------------------------------
     # COMANDA CLI: flask backup (Tema E - Ops)

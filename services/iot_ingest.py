@@ -245,6 +245,78 @@ def ingest_reading(senzor: Senzor, valoare: float, *,
     }
 
 
+def ingest_batch(senzor: Senzor, readings: list, *,
+                 commit: bool = True) -> dict:
+    """
+    Insereaza un LOT de citiri pentru un senzor cu un SINGUR commit (IoT Faza 3).
+
+    Rezolva MINOR-ul din audit (commit per-request serializeaza scrierile pe
+    SQLite -> 'database is locked' la volum). Fiecare element din `readings`
+    e procesat prin ingest_reading(commit=False); commit-ul se face o singura
+    data la final. Threshold check + de-dup alerte + dispatch notificare se
+    pastreaza identic (un singur write pe lot).
+
+    Parametri:
+        senzor   - senzorul autentificat (acelasi pentru tot lotul).
+        readings - lista de dict-uri: {'valoare': float (obligatoriu),
+                   'ts': ISO str / datetime (opt), 'calitate': str (opt),
+                   'meta': dict (opt)}.
+        commit   - daca True (implicit), un singur db.session.commit() la final.
+
+    Returneaza:
+        {
+            'ingested': N,           # citiri inserate cu succes
+            'alerts_created': M,     # alerte noi generate in lot
+            'errors': [ {idx, error}, ... ],   # elemente respinse (validare)
+            'results': [ <result ingest_reading>, ... ],  # per element OK
+        }
+
+    Elementele invalide (lipsa 'valoare', valoare ne-numerica, ts invalid) sunt
+    raportate in 'errors' fara a rupe restul lotului. Daca un singur element
+    valid e procesat, citirile lui intra in acelasi commit cu celelalte.
+    """
+    rezultat = {'ingested': 0, 'alerts_created': 0, 'errors': [], 'results': []}
+
+    if not isinstance(readings, list):
+        raise ValueError('readings trebuie sa fie o lista')
+
+    for idx, item in enumerate(readings):
+        if not isinstance(item, dict) or 'valoare' not in item:
+            rezultat['errors'].append({'idx': idx, 'error': 'campul valoare e obligatoriu'})
+            continue
+        try:
+            valoare = float(item['valoare'])
+        except (ValueError, TypeError):
+            rezultat['errors'].append({'idx': idx, 'error': 'valoare trebuie sa fie numerica'})
+            continue
+
+        ts = item.get('ts')
+        if ts is not None and not isinstance(ts, datetime):
+            try:
+                ts = datetime.fromisoformat(str(ts).rstrip('Z'))
+            except (ValueError, TypeError):
+                rezultat['errors'].append({'idx': idx, 'error': 'ts invalid; folositi ISO 8601'})
+                continue
+
+        # commit=False: toate citirile lotului intra intr-un singur write.
+        res = ingest_reading(
+            senzor, valoare,
+            ts=ts,
+            calitate=item.get('calitate', 'ok'),
+            meta=item.get('meta'),
+            commit=False,
+        )
+        rezultat['results'].append(res)
+        rezultat['ingested'] += 1
+        if res.get('alert_created'):
+            rezultat['alerts_created'] += 1
+
+    if commit:
+        db.session.commit()
+
+    return rezultat
+
+
 # ====================================================
 # Alert workflow
 # ====================================================

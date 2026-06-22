@@ -180,3 +180,87 @@ def test_api_sensor_history(authenticated_client, app, element, admin_user):
     data = resp.get_json()
     assert data['enabled'] is True
     assert data['count'] == 3
+
+
+# ====================================================
+# Ingest batch (IoT Faza 3)
+# ====================================================
+
+def test_ingest_batch_requires_flag(client, app, element):
+    with app.app_context():
+        ff.set_flag('bim-iot-sensors', False)
+    resp = client.post('/bim/api/sensors/ingest/batch',
+                       json={'readings': [{'valoare': 1}]})
+    assert resp.status_code == 403
+
+
+def test_ingest_batch_requires_token(client, app, element):
+    with app.app_context():
+        ff.set_flag('bim-iot-sensors', True)
+    resp = client.post('/bim/api/sensors/ingest/batch',
+                       json={'readings': [{'valoare': 1}]})
+    assert resp.status_code == 401
+
+
+def test_ingest_batch_success_object_form(client, app, element, admin_user):
+    """Forma { 'readings': [...] } -> N citiri intr-un lot."""
+    with app.app_context():
+        ff.set_flag('bim-iot-sensors', True)
+        s = iot_ingest.create_senzor('BATCH-API-1', 'X', 'temperatura',
+                                       element_bim_id=element,
+                                       threshold_max=26, user=admin_user)
+        token = s.api_key
+        sid = s.id
+
+    resp = client.post('/bim/api/sensors/ingest/batch',
+                       json={'readings': [{'valoare': 21.0}, {'valoare': 22.0},
+                                          {'valoare': 23.0}]},
+                       headers={'X-Sensor-Token': token})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['ingested'] == 3
+    assert data['alerts_created'] == 0
+    with app.app_context():
+        assert SensorReading.query.filter_by(senzor_id=sid).count() == 3
+
+
+def test_ingest_batch_success_array_form(client, app, element, admin_user):
+    """Forma array direct [ ... ] -> acceptata la fel."""
+    with app.app_context():
+        ff.set_flag('bim-iot-sensors', True)
+        s = iot_ingest.create_senzor('BATCH-API-2', 'X', 'temperatura',
+                                       element_bim_id=element, user=admin_user)
+        token = s.api_key
+        sid = s.id
+
+    resp = client.post('/bim/api/sensors/ingest/batch',
+                       json=[{'valoare': 10.0}, {'valoare': 11.0}],
+                       headers={'X-Sensor-Token': token})
+    assert resp.status_code == 200
+    assert resp.get_json()['ingested'] == 2
+    with app.app_context():
+        assert SensorReading.query.filter_by(senzor_id=sid).count() == 2
+
+
+def test_ingest_batch_empty_rejected(client, app, element, admin_user):
+    with app.app_context():
+        ff.set_flag('bim-iot-sensors', True)
+        s = iot_ingest.create_senzor('BATCH-API-3', 'X', 'temperatura',
+                                       element_bim_id=element, user=admin_user)
+        token = s.api_key
+    resp = client.post('/bim/api/sensors/ingest/batch',
+                       json={'readings': []},
+                       headers={'X-Sensor-Token': token})
+    assert resp.status_code == 400
+
+
+def test_ingest_batch_missing_readings_rejected(client, app, element, admin_user):
+    with app.app_context():
+        ff.set_flag('bim-iot-sensors', True)
+        s = iot_ingest.create_senzor('BATCH-API-4', 'X', 'temperatura',
+                                       element_bim_id=element, user=admin_user)
+        token = s.api_key
+    resp = client.post('/bim/api/sensors/ingest/batch',
+                       json={'altceva': 1},
+                       headers={'X-Sensor-Token': token})
+    assert resp.status_code == 400

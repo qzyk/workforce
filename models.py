@@ -3068,6 +3068,13 @@ class Senzor(db.Model):
     ultima_valoare = db.Column(db.Numeric(15, 4), nullable=True)
     ultima_citire_at = db.Column(db.DateTime, nullable=True, index=True)
 
+    # IoT Faza 3: interval (secunde) dupa care senzorul e considerat offline daca
+    # nu mai trimite citiri. NULL = detectie offline dezactivata pentru acest
+    # senzor (comportament istoric, niciun job nu il marcheaza). Folosit de
+    # iot_offline.check_offline (CLI 'flask iot-offline'). Coloana aditiva
+    # nullable, populata explicit la creare/editare senzor.
+    offline_timeout_sec = db.Column(db.Integer, nullable=True)
+
     # IoT Faza 2: high-watermark al ultimei rulari de rollup (wall-clock UTC).
     # La urmatoarea rulare reprocesam DOAR bucket-urile atinse de citiri cu
     # created_at > last_rollup_at (prinde insertiile late in bucket-uri vechi,

@@ -1925,8 +1925,55 @@ def api_sensors_ingest():
         return jsonify({'error': f'ingest failed: {e}'}), 500
 
 
-# NOTA: CSRF exemption pentru ruta de ingest e inregistrata in app.py
-# (csrf.exempt(app.view_functions['bim.api_sensors_ingest'])) dupa register_blueprint.
+@bim_bp.route('/api/sensors/ingest/batch', methods=['POST'])
+def api_sensors_ingest_batch():
+    """
+    Ingest in LOT pentru gateway-uri IoT (IoT Faza 3). Token auth, CSRF exempt.
+
+    Body JSON, una dintre formele:
+      { "readings": [ {"valoare": 23.5, "ts": "...", "calitate": "ok", "meta": {}}, ... ] }
+      sau direct array: [ {"valoare": 23.5}, ... ]
+
+    Header: X-Sensor-Token: <api_key 64 hex chars> (acelasi senzor pentru tot lotul).
+
+    Un singur commit pe lot (rezolva 'database is locked' la volum). Elementele
+    invalide sunt raportate in 'errors' fara a rupe lotul. Nu necesita login/CSRF.
+    """
+    if not ff_svc.is_enabled('bim-iot-sensors'):
+        return jsonify({'error': 'feature disabled'}), 403
+
+    token = request.headers.get('X-Sensor-Token', '').strip()
+    if not token:
+        return jsonify({'error': 'X-Sensor-Token header lipseste'}), 401
+
+    senzor = iot_ingest_svc.authenticate_token(token)
+    if not senzor:
+        return jsonify({'error': 'token invalid sau senzor inactiv'}), 401
+
+    data = request.get_json(silent=True)
+    if isinstance(data, list):
+        readings = data
+    elif isinstance(data, dict):
+        readings = data.get('readings')
+    else:
+        readings = None
+
+    if not isinstance(readings, list):
+        return jsonify({'error': "campul readings (lista) e obligatoriu"}), 400
+    if not readings:
+        return jsonify({'error': 'readings nu poate fi gol'}), 400
+
+    try:
+        result = iot_ingest_svc.ingest_batch(senzor, readings)
+        return jsonify(result), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'ingest batch failed: {e}'}), 500
+
+
+# NOTA: CSRF exemption pentru rutele de ingest (single + batch) e inregistrata in
+# app.py (csrf.exempt(app.view_functions['bim.api_sensors_ingest...'])) dupa
+# register_blueprint.
 
 
 # ---------- SENZOR CRUD (sesiune) ----------
