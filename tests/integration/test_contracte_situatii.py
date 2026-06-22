@@ -292,3 +292,42 @@ class TestSituatiiRetentii:
         r = authenticated_client.get(f'/contracte/situatie/{sid}')
         assert r.status_code == 200
         assert b'Retentii si garantii' in r.data or b'Plata neta' in r.data
+
+    def test_editare_manuala_via_ruta_pastrata_la_regenerare(
+        self, app, authenticated_client, setup_pentru_situatii
+    ):
+        """
+        Editarea via POST /retentii marcheaza retentii_editate_manual=True;
+        o regenerare ulterioara a situatiei NU suprascrie sumele manuale (doar
+        recalculeaza plata neta). Fara marcaj, regenerarea ar recalcula din procent.
+        """
+        from models import db, SituatieLunara
+        from services.feature_flags import set_flag
+        from services.situatii import genereaza_situatie
+        cid = setup_pentru_situatii['contract_id']
+        with app.app_context():
+            set_flag('situatii-retentii', True, commit=True)
+            # Generam situatia pe luna 3/2026 (valoare 8000 din fixture).
+            s = genereaza_situatie(cid, 2026, 3)
+            sid = s.id
+        # Editare manuala via ruta: retentie 10%, garantie 0, avans 0.
+        r = authenticated_client.post(
+            f'/contracte/situatie/{sid}/retentii',
+            data={'retentie_procent': '10', 'garantie_bex_procent': '0',
+                  'avans_recuperat': '0'},
+            follow_redirects=False,
+        )
+        assert r.status_code in (302, 303)
+        with app.app_context():
+            s = SituatieLunara.query.get(sid)
+            assert s.retentii_editate_manual is True
+            assert s.retentie_suma == Decimal('800.00')  # 8000 * 10%
+            # Suprascriem manual o suma "non-procentuala" si regeneram.
+            s.retentie_suma = Decimal('1234.00')
+            db.session.commit()
+            genereaza_situatie(cid, 2026, 3)
+            s = SituatieLunara.query.get(sid)
+            # Suma manuala pastrata, nu recalculata din 10% * 8000.
+            assert s.retentie_suma == Decimal('1234.00')
+            # plata neta reconciliata din suma pastrata: 8000 - 1234 - 0 - 0.
+            assert s.plata_neta == Decimal('6766.00')

@@ -1176,7 +1176,7 @@ def situatie_retentii(situatie_id):
     situatie = SituatieLunara.query.get_or_404(situatie_id)
     before = audit_svc.snapshot(
         situatie, ['retentie_procent', 'retentie_suma', 'garantie_bex_suma',
-                   'avans_recuperat', 'plata_neta'])
+                   'avans_recuperat', 'plata_neta', 'retentii_editate_manual'])
 
     def _dec(name):
         raw = (request.form.get(name) or '').strip().replace(',', '.')
@@ -1202,11 +1202,15 @@ def situatie_retentii(situatie_id):
     situatie.garantie_bex_suma = garantie_suma
     situatie.avans_recuperat = avans_recuperat
     situatie.plata_neta = plata_neta
+    # Marcaj explicit: aceste sume au fost editate manual de utilizator. La o
+    # regenerare ulterioara, auto-generarea pastreaza sumele si recalculeaza doar
+    # plata neta (nu le suprascrie din procent * valoare_luna).
+    situatie.retentii_editate_manual = True
     audit_svc.log_update(
         'situatie_lunara', situatie.id, before,
         audit_svc.snapshot(
             situatie, ['retentie_procent', 'retentie_suma', 'garantie_bex_suma',
-                       'avans_recuperat', 'plata_neta']))
+                       'avans_recuperat', 'plata_neta', 'retentii_editate_manual']))
     db.session.commit()
     flash(f'Retentii actualizate. Plata neta: {plata_neta:.2f} RON.', 'success')
     return redirect(url_for('contracte.situatie_detalii', situatie_id=situatie.id))

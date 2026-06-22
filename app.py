@@ -475,6 +475,7 @@ def create_app(config_name='default'):
             ('situatii_lunare', 'garantie_bex_suma', 'NUMERIC(14, 2)'),
             ('situatii_lunare', 'avans_recuperat', 'NUMERIC(14, 2)'),
             ('situatii_lunare', 'plata_neta', 'NUMERIC(14, 2)'),
+            ('situatii_lunare', 'retentii_editate_manual', 'BOOLEAN'),
             ('contracte', 'retentie_procent_default', 'NUMERIC(5, 2)'),
             ('contracte', 'garantie_bex_procent', 'NUMERIC(5, 2)'),
         ]

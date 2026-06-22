@@ -4145,6 +4145,13 @@ class SituatieLunara(db.Model):
     garantie_bex_suma = db.Column(db.Numeric(14, 2), nullable=True)
     avans_recuperat = db.Column(db.Numeric(14, 2), nullable=True)
     plata_neta = db.Column(db.Numeric(14, 2), nullable=True)
+    # Marcaj explicit de editare manuala a retentiei/garantiei. Setat DOAR de
+    # ruta situatie_retentii (editare reala de utilizator). Cand e False/NULL,
+    # auto-generarea recalculeaza mereu sumele din valoare_luna * procent (asa
+    # urmaresc valoarea lunii). Cand e True, sumele introduse manual se pastreaza
+    # si la regenerare se recalculeaza doar plata neta. Necesar ca discriminator:
+    # simplul fapt ca sumele sunt non-NULL nu distinge auto-populate de editare.
+    retentii_editate_manual = db.Column(db.Boolean, nullable=True, default=False)
 
     status = db.Column(db.String(25), nullable=False, default='draft', index=True)
 
