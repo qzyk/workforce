@@ -439,15 +439,29 @@ class Raport(db.Model):
     generat_de = db.Column(db.Integer, db.ForeignKey('utilizatori.id'))
     dimensiune_fisier = db.Column(db.Integer)
 
+    # Rapoarte Faza 3 (istoric robust): coloane aditive nullable.
+    # tenant_id      -> izolare multi-tenant (NULL = global = comportament actual).
+    # continut_blob  -> copia binara a fisierului salvata in DB; serveste
+    #                   descarcarea cand fisier_path lipseste de pe disc
+    #                   (orfan dupa redeploy PA). NULL = rapoarte vechi (path-only).
+    # checksum       -> sha256 hex al continutului (integritate, optional).
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True, index=True)
+    continut_blob = db.Column(db.LargeBinary)
+    checksum = db.Column(db.String(64))
+
     generator = db.relationship('Utilizator', backref='rapoarte_generate')
 
+    # Sincronizat cu TIPURI_RAPOARTE din routes/rapoarte.py (cheile salvate in
+    # tip_raport la generare). Pastram tuple (cheie, label) pentru drop-down-uri.
     TIPURI = [
-        ('pontaj_lunar', 'Pontaj lunar'),
-        ('situatie_angajati', 'Situatie angajati'),
-        ('situatie_proiect', 'Situatie proiect'),
-        ('documente_expirate', 'Documente expirate'),
-        ('ore_suplimentare', 'Ore suplimentare'),
-        ('concedii', 'Situatie concedii'),
+        ('foaie_prezenta', 'Foaie Colectiva de Prezenta'),
+        ('stat_plata', 'Stat de Plata'),
+        ('situatie_proiect', 'Situatie Proiect'),
+        ('centralizator_ore', 'Centralizator Ore Lunare'),
+        ('documente_expirate', 'Raport Documente'),
+        ('pontaj_individual', 'Pontaj Individual'),
+        ('prezenta_zilnica', 'Prezenta Zilnica'),
+        ('raport_ssm', 'Raport SSM'),
     ]
 
     def __repr__(self):

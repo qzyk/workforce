@@ -484,6 +484,16 @@ def create_app(config_name='default'):
             ('situatii_lunare', 'retentii_editate_manual', 'BOOLEAN'),
             ('contracte', 'retentie_procent_default', 'NUMERIC(5, 2)'),
             ('contracte', 'garantie_bex_procent', 'NUMERIC(5, 2)'),
+            # Rapoarte Faza 3 (istoric robust): coloane aditive nullable pe
+            # tabela existenta 'rapoarte'. tenant_id izoleaza istoricul pe tenant
+            # (NULL = global = comportament actual); continut_blob pastreaza copia
+            # binara a fisierului ca descarcarea sa mearga si dupa ce path-ul de pe
+            # disc devine orfan (redeploy PA); checksum = sha256 hex (integritate).
+            # ALTER idempotent (verificare 'col in cols' de mai jos). BLOB pe SQLite,
+            # mapat pe LargeBinary in model.
+            ('rapoarte', 'tenant_id', 'INTEGER REFERENCES tenants(id)'),
+            ('rapoarte', 'continut_blob', 'BLOB'),
+            ('rapoarte', 'checksum', 'VARCHAR(64)'),
         ]
 
         adaugate = 0

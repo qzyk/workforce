@@ -5,7 +5,9 @@ documente, pontaj individual, prezenta zilnica, SSM.
 """
 
 import os
+import io
 import json
+import hashlib
 from datetime import datetime, date, timedelta
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request,
@@ -33,8 +35,34 @@ TIPURI_RAPOARTE = {
 }
 
 
+def _tenant_curent():
+    """Tenant-ul utilizatorului curent (None = global). Coloana nullable pe
+    Utilizator (multi-tenant ready); cu un singur tenant ramane None peste tot."""
+    return getattr(current_user, 'tenant_id', None)
+
+
 def _save_raport(tip, titlu, filepath, format_raport, parametri=None):
-    """Salveaza raportul in istoric."""
+    """Salveaza raportul in istoric.
+
+    Faza 3: pe langa fisier_path (backward compat) salveaza si continut_blob +
+    checksum (sha256) ca descarcarea sa mearga si dupa ce path-ul de pe disc
+    devine orfan (redeploy PA), plus tenant_id pentru izolare (NULL = global).
+    Blob-ul e best-effort: daca citirea fisierului esueaza, raportul tot se
+    salveaza (doar path-based, ca inainte).
+    """
+    continut_blob = None
+    checksum = None
+    dimensiune = 0
+    try:
+        if filepath and os.path.exists(filepath):
+            with open(filepath, 'rb') as fh:
+                continut_blob = fh.read()
+            dimensiune = len(continut_blob)
+            checksum = hashlib.sha256(continut_blob).hexdigest()
+    except OSError:
+        continut_blob = None
+        checksum = None
+
     raport = Raport(
         tip_raport=tip,
         titlu=titlu,
@@ -42,7 +70,10 @@ def _save_raport(tip, titlu, filepath, format_raport, parametri=None):
         fisier_path=filepath,
         format=format_raport,
         generat_de=current_user.id,
-        dimensiune_fisier=os.path.getsize(filepath) if os.path.exists(filepath) else 0,
+        dimensiune_fisier=dimensiune,
+        tenant_id=_tenant_curent(),
+        continut_blob=continut_blob,
+        checksum=checksum,
     )
     db.session.add(raport)
     db.session.commit()
@@ -62,6 +93,70 @@ def _month_name(luna):
     return names[luna] if 1 <= luna <= 12 else str(luna)
 
 
+def _mimetype_pentru(ext):
+    """MIME pentru descarcarea din blob/regenerare (send_file din BytesIO nu il
+    deduce singur)."""
+    return {
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'pdf': 'application/pdf',
+    }.get((ext or 'xlsx').lower(), 'application/octet-stream')
+
+
+def _regenereaza_xlsx(tip, parametri):
+    """Regenereaza un raport XLSX din parametrii salvati (fallback descarcare
+    cand path-ul de pe disc lipseste SI nu exista blob in DB).
+
+    Returneaza bytes sau None daca tipul nu suporta regenerare deterministica
+    sau parametrii sunt insuficienti. Doar tipurile derivate pur din DB se pot
+    regenera; PDF-urile NU se regenereaza aici (cad pe mesajul de 404 clasic).
+    """
+    if not parametri:
+        return None
+    try:
+        from rapoarte import excel_generator as eg
+    except ImportError:
+        return None
+
+    try:
+        if tip == 'foaie_prezenta':
+            wb = eg.generate_foaie_prezenta(
+                parametri['proiect_id'], parametri['luna'], parametri['an'])
+        elif tip == 'stat_plata':
+            wb = eg.generate_stat_plata(
+                parametri.get('proiect_id'), parametri['luna'], parametri['an'])
+        elif tip == 'centralizator_ore':
+            wb = eg.generate_centralizator_ore(
+                parametri['luna'], parametri['an'],
+                parametri.get('grupare', 'angajat'))
+        elif tip == 'situatie_proiect':
+            ds = datetime.strptime(parametri['data_start'], '%Y-%m-%d').date() \
+                if parametri.get('data_start') else None
+            dsf = datetime.strptime(parametri['data_sfarsit'], '%Y-%m-%d').date() \
+                if parametri.get('data_sfarsit') else None
+            wb = eg.generate_situatie_proiect(parametri['proiect_id'], ds, dsf)
+        elif tip == 'documente_expirate':
+            wb = eg.generate_raport_documente(
+                parametri.get('tip_raport', 'toate'), parametri.get('functie'))
+        elif tip == 'pontaj_individual':
+            ds = datetime.strptime(parametri['data_start'], '%Y-%m-%d').date()
+            dsf = datetime.strptime(parametri['data_sfarsit'], '%Y-%m-%d').date()
+            wb = eg.generate_pontaj_individual(parametri['angajat_id'], ds, dsf)
+        elif tip == 'prezenta_zilnica':
+            dz = datetime.strptime(parametri['data'], '%Y-%m-%d').date()
+            wb = eg.generate_prezenta_zilnica(dz, parametri.get('proiect_id'))
+        elif tip == 'raport_ssm':
+            wb = eg.generate_raport_ssm(
+                parametri.get('tip_document'), parametri.get('status'))
+        else:
+            return None
+    except (KeyError, ValueError, TypeError):
+        return None
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 # ============================================================
 # 1. PANOU RAPOARTE (Dashboard)
 # ============================================================
@@ -75,8 +170,12 @@ def panou():
 
     angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
 
-    # Ultimele 5 rapoarte
-    recente = Raport.query.order_by(Raport.data_generare.desc()).limit(5).all()
+    # Ultimele 5 rapoarte (izolate pe tenant; NULL = global = comportament actual)
+    tid = _tenant_curent()
+    recente = (Raport.query
+               .filter(db.or_(Raport.tenant_id == tid, Raport.tenant_id.is_(None)))
+               .order_by(Raport.data_generare.desc())
+               .limit(5).all())
 
     return render_template('rapoarte/panou.html',
                            proiecte=proiecte,
@@ -403,6 +502,10 @@ def istoric():
     query = Raport.query
     if tip_filtru:
         query = query.filter_by(tip_raport=tip_filtru)
+    # Izolare tenant: rapoartele tenant-ului curent + cele globale (tenant_id NULL,
+    # comportament actual / rapoarte vechi). Cu un singur tenant, tid=None -> doar NULL.
+    tid = _tenant_curent()
+    query = query.filter(db.or_(Raport.tenant_id == tid, Raport.tenant_id.is_(None)))
 
     pagination = query.order_by(Raport.data_generare.desc()).paginate(
         page=page, per_page=20, error_out=False
@@ -423,10 +526,39 @@ def istoric():
 @login_required
 def descarca(id):
     raport = Raport.query.get_or_404(id)
+
+    # Izolare tenant: un raport al altui tenant nu e accesibil. NULL = global
+    # = vizibil pentru toti (comportament actual, rapoarte vechi fara tenant).
+    tid = _tenant_curent()
+    if raport.tenant_id is not None and raport.tenant_id != tid:
+        flash('Raportul nu a fost gasit.', 'danger')
+        return redirect(url_for('rapoarte.istoric'))
+
+    ext = raport.format or 'xlsx'
+    download_name = f'{raport.titlu}.{ext}'.replace(' ', '_')
+
+    # 1. Fisier pe disc (cale rapida, backward compat).
     if raport.fisier_path and os.path.exists(raport.fisier_path):
-        ext = raport.format or 'xlsx'
-        download_name = f'{raport.titlu}.{ext}'.replace(' ', '_')
-        return send_file(raport.fisier_path, as_attachment=True, download_name=download_name)
+        return send_file(raport.fisier_path, as_attachment=True,
+                         download_name=download_name)
+
+    # 2. Path lipsa de pe disc (orfan dupa redeploy PA) dar avem copia in DB.
+    if raport.continut_blob:
+        return send_file(
+            io.BytesIO(raport.continut_blob),
+            as_attachment=True, download_name=download_name,
+            mimetype=_mimetype_pentru(ext))
+
+    # 3. Nici path, nici blob -> incearca regenerarea din parametri (doar XLSX).
+    parametri = json.loads(raport.parametri) if raport.parametri else None
+    if (raport.format or 'xlsx') != 'pdf':
+        continut = _regenereaza_xlsx(raport.tip_raport, parametri)
+        if continut:
+            return send_file(
+                io.BytesIO(continut),
+                as_attachment=True, download_name=download_name,
+                mimetype=_mimetype_pentru('xlsx'))
+
     flash('Fisierul raportului nu a fost gasit pe server!', 'danger')
     return redirect(url_for('rapoarte.istoric'))
 
@@ -443,6 +575,11 @@ def sterge(id):
         return redirect(url_for('rapoarte.istoric'))
 
     raport = Raport.query.get_or_404(id)
+    # Izolare tenant: nu permite stergerea unui raport al altui tenant.
+    tid = _tenant_curent()
+    if raport.tenant_id is not None and raport.tenant_id != tid:
+        flash('Raportul nu a fost gasit.', 'danger')
+        return redirect(url_for('rapoarte.istoric'))
     if raport.fisier_path and os.path.exists(raport.fisier_path):
         os.remove(raport.fisier_path)
     db.session.delete(raport)
