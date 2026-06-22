@@ -467,6 +467,16 @@ def create_app(config_name='default'):
             # Deviz Faza 2 (EVM baseline): coloana aditiva nullable pe 'proiecte'.
             # Tabela noua evm_baseline e creata de db.create_all() de mai sus.
             ('proiecte', 'baseline_evm_activ_id', 'INTEGER REFERENCES evm_baseline(id)'),
+            # Deviz Faza 3 (retentii + garantii pe situatii): coloane aditive
+            # nullable pe tabelele existente 'situatii_lunare' si 'contracte'.
+            # Populate doar cu flag 'situatii-retentii' ON; cu OFF raman NULL.
+            ('situatii_lunare', 'retentie_procent', 'NUMERIC(5, 2)'),
+            ('situatii_lunare', 'retentie_suma', 'NUMERIC(14, 2)'),
+            ('situatii_lunare', 'garantie_bex_suma', 'NUMERIC(14, 2)'),
+            ('situatii_lunare', 'avans_recuperat', 'NUMERIC(14, 2)'),
+            ('situatii_lunare', 'plata_neta', 'NUMERIC(14, 2)'),
+            ('contracte', 'retentie_procent_default', 'NUMERIC(5, 2)'),
+            ('contracte', 'garantie_bex_procent', 'NUMERIC(5, 2)'),
         ]
 
         adaugate = 0

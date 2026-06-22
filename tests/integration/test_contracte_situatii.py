@@ -227,3 +227,68 @@ class TestSituatiiCRUD:
             s = SituatieLunara.query.filter_by(an=2026, luna=4).first()
             assert s is not None
             assert s.valoare_totala_luna == Decimal('0')  # nimic validat in luna 4
+
+
+class TestSituatiiRetentii:
+    """Deviz Faza 3 - retentii + garantii pe situatie (route + flag gate)."""
+
+    def _creeaza_situatie(self, app, setup, valoare=Decimal('100000')):
+        from models import db, SituatieLunara
+        with app.app_context():
+            s = SituatieLunara(
+                proiect_id=setup['proiect_id'],
+                contract_id=setup['contract_id'],
+                an=2026, luna=6, status='draft',
+                valoare_totala_luna=valoare,
+            )
+            db.session.add(s); db.session.commit()
+            return s.id
+
+    def test_retentii_flag_off_404(self, app, authenticated_client, setup_pentru_situatii):
+        """Cu flag 'situatii-retentii' OFF, POST retentii -> 404 (sectiune invizibila)."""
+        sid = self._creeaza_situatie(app, setup_pentru_situatii)
+        r = authenticated_client.post(
+            f'/contracte/situatie/{sid}/retentii',
+            data={'retentie_procent': '5', 'garantie_bex_procent': '5',
+                  'avans_recuperat': '10000'},
+            follow_redirects=False,
+        )
+        assert r.status_code == 404
+
+    def test_retentii_post_calculeaza_plata_neta(
+        self, app, authenticated_client, setup_pentru_situatii
+    ):
+        """
+        Cu flag ON, POST retentii calculeaza plata neta:
+        100k - 5% retentie (5000) - 5% garantie (5000) - 10k avans = 80000.
+        """
+        from models import db, SituatieLunara
+        from services.feature_flags import set_flag
+        sid = self._creeaza_situatie(app, setup_pentru_situatii)
+        with app.app_context():
+            set_flag('situatii-retentii', True, commit=True)
+        r = authenticated_client.post(
+            f'/contracte/situatie/{sid}/retentii',
+            data={'retentie_procent': '5', 'garantie_bex_procent': '5',
+                  'avans_recuperat': '10000'},
+            follow_redirects=False,
+        )
+        assert r.status_code in (302, 303)
+        with app.app_context():
+            s = SituatieLunara.query.get(sid)
+            assert s.retentie_suma == Decimal('5000.00')
+            assert s.garantie_bex_suma == Decimal('5000.00')
+            assert s.avans_recuperat == Decimal('10000.00')
+            assert s.plata_neta == Decimal('80000.00')
+
+    def test_detalii_afiseaza_sectiune_retentii_cu_flag(
+        self, app, authenticated_client, setup_pentru_situatii
+    ):
+        """Cu flag ON, pagina de detalii contine sectiunea de retentii."""
+        from services.feature_flags import set_flag
+        sid = self._creeaza_situatie(app, setup_pentru_situatii)
+        with app.app_context():
+            set_flag('situatii-retentii', True, commit=True)
+        r = authenticated_client.get(f'/contracte/situatie/{sid}')
+        assert r.status_code == 200
+        assert b'Retentii si garantii' in r.data or b'Plata neta' in r.data

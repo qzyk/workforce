@@ -150,8 +150,69 @@ def genereaza_situatie(contract_id: int, an: int, luna: int,
     situatie.valoare_totala_luna = valoare_luna
     situatie.valoare_cumulat_la_zi = cumul
     situatie.procent_avans_total = procent
+
+    # Deviz Faza 3 - retentii + garantii pe situatie (gated pe flag).
+    # Cu OFF: nu atingem coloanele noi (raman NULL), situatia ramane ca azi.
+    _aplica_retentii_garantii(situatie, contract, valoare_luna)
+
     db.session.commit()
     return situatie
+
+
+def _aplica_retentii_garantii(situatie: SituatieLunara, contract: Contract,
+                              valoare_luna: Decimal) -> None:
+    """
+    Calculeaza retentia, garantia de buna executie si plata neta a lunii.
+
+    Gated pe flag 'situatii-retentii' (default OFF). Cu OFF, coloanele noi raman
+    NULL si situatia ramane identica cu cea istorica (zero regresie).
+
+    Formula RO (situatie de lucrari):
+        retentie_suma    = valoare_totala_luna * retentie_procent / 100
+        garantie_bex_suma= valoare_totala_luna * garantie_bex_procent / 100
+        plata_neta       = valoare_totala_luna - retentie_suma
+                                               - garantie_bex_suma
+                                               - avans_recuperat
+
+    Procentele implicite vin de pe contract (retentie_procent_default,
+    garantie_bex_procent). Daca o situatie are deja un retentie_procent setat
+    manual, acela are prioritate (re-folosit la regenerare). avans_recuperat se
+    pastreaza ca atare daca a fost introdus manual (altfel 0) - recuperarea
+    avansului e o decizie comerciala, nu o derivam automat.
+    """
+    try:
+        from services.feature_flags import is_enabled
+        activ = is_enabled('situatii-retentii')
+    except Exception:
+        activ = False
+    if not activ:
+        return
+
+    # Procent retentie: pastram valoarea setata manual pe situatie daca exista,
+    # altfel mostenim din contract; fallback 0.
+    if situatie.retentie_procent is not None:
+        retentie_procent = Decimal(situatie.retentie_procent)
+    else:
+        retentie_procent = Decimal(contract.retentie_procent_default or 0)
+
+    if situatie.garantie_bex_suma is not None and situatie.retentie_procent is not None:
+        # Daca utilizatorul a editat manual sumele, nu le strivim la regenerare:
+        # recalculam doar plata neta din sumele existente.
+        garantie_bex = Decimal(situatie.garantie_bex_suma or 0)
+        retentie_suma = Decimal(situatie.retentie_suma or 0)
+    else:
+        garantie_bex_procent = Decimal(contract.garantie_bex_procent or 0)
+        retentie_suma = (valoare_luna * retentie_procent / 100).quantize(Decimal('0.01'))
+        garantie_bex = (valoare_luna * garantie_bex_procent / 100).quantize(Decimal('0.01'))
+
+    avans_recuperat = Decimal(situatie.avans_recuperat or 0)
+    plata_neta = (valoare_luna - retentie_suma - garantie_bex - avans_recuperat)
+
+    situatie.retentie_procent = retentie_procent
+    situatie.retentie_suma = retentie_suma
+    situatie.garantie_bex_suma = garantie_bex
+    situatie.avans_recuperat = avans_recuperat
+    situatie.plata_neta = plata_neta.quantize(Decimal('0.01'))
 
 
 def _get_upload_dir(subdir: str) -> str:

@@ -96,6 +96,67 @@
 </div>
 {% endif %}
 
+<!-- Retentii + garantii (Deviz Faza 3, gated pe flag 'situatii-retentii') -->
+{% if feature_enabled('situatii-retentii') %}
+<div class="card-panel" style="margin-bottom: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border);">
+        <h3 style="margin: 0; font-size: 1rem;">
+            <i class="fa-solid fa-shield-halved" style="color: var(--primary);"></i>
+            {{ _('Retentii si garantii') }}
+        </h3>
+        <span style="color: var(--text-muted); font-size: 0.8rem;">
+            {{ _('Plata neta') }} = {{ _('Valoare luna') }} - {{ _('retentie') }} - {{ _('garantie') }} - {{ _('avans recuperat') }}
+        </span>
+    </div>
+    <div style="padding: 14px;">
+        <!-- Sumar retentii -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px;">
+            <div style="text-align: center;">
+                <div style="font-size: 0.75rem; color: var(--text-muted);">{{ _('Retentie') }} ({{ '%.2f'|format(situatie.retentie_procent or 0) }}%)</div>
+                <div style="font-size: 1.1rem; font-weight: 600; font-variant-numeric: tabular-nums;">{{ '%.2f'|format(situatie.retentie_suma or 0) }}</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 0.75rem; color: var(--text-muted);">{{ _('Garantie buna executie') }}</div>
+                <div style="font-size: 1.1rem; font-weight: 600; font-variant-numeric: tabular-nums;">{{ '%.2f'|format(situatie.garantie_bex_suma or 0) }}</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 0.75rem; color: var(--text-muted);">{{ _('Avans recuperat') }}</div>
+                <div style="font-size: 1.1rem; font-weight: 600; font-variant-numeric: tabular-nums;">{{ '%.2f'|format(situatie.avans_recuperat or 0) }}</div>
+            </div>
+            <div style="text-align: center; background: rgba(201,169,97,0.10); border-radius: 6px; padding: 4px;">
+                <div style="font-size: 0.75rem; color: var(--text-muted);">{{ _('Plata neta') }}</div>
+                <div style="font-size: 1.25rem; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums;">{{ '%.2f'|format(situatie.plata_neta or 0) }} RON</div>
+            </div>
+        </div>
+        <!-- Edit inline -->
+        <form method="POST" action="{{ url_for('contracte.situatie_retentii', situatie_id=situatie.id) }}"
+              style="display: flex; flex-wrap: wrap; gap: 12px; align-items: end; border-top: 1px solid var(--border); padding-top: 12px;">
+            <div>
+                <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">{{ _('Retentie') }} %</label>
+                <input type="number" step="0.01" min="0" max="100" name="retentie_procent"
+                       value="{{ '%.2f'|format(situatie.retentie_procent or 0) }}"
+                       style="width: 110px; padding: 6px;" />
+            </div>
+            <div>
+                <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">{{ _('Garantie buna executie') }} %</label>
+                <input type="number" step="0.01" min="0" max="100" name="garantie_bex_procent"
+                       value="{{ '%.2f'|format((situatie.garantie_bex_suma / situatie.valoare_totala_luna * 100) if situatie.valoare_totala_luna and situatie.garantie_bex_suma else 0) }}"
+                       style="width: 110px; padding: 6px;" />
+            </div>
+            <div>
+                <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">{{ _('Avans recuperat') }} RON</label>
+                <input type="number" step="0.01" min="0" name="avans_recuperat"
+                       value="{{ '%.2f'|format(situatie.avans_recuperat or 0) }}"
+                       style="width: 130px; padding: 6px;" />
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary">
+                <i class="fa-solid fa-calculator"></i> {{ _('Recalculeaza') }}
+            </button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <!-- Tabel pozitii -->
 {% if data.rows %}
 <div class="card-panel">

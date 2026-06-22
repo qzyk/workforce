@@ -1160,6 +1160,58 @@ def situatie_schimba_status(situatie_id):
     return redirect(url_for('contracte.situatie_detalii', situatie_id=situatie.id))
 
 
+@contracte_bp.route('/situatie/<int:situatie_id>/retentii', methods=['POST'])
+@login_required
+def situatie_retentii(situatie_id):
+    """
+    Editeaza retentia + garantia + avansul recuperat ale unei situatii.
+
+    Deviz Faza 3, gated pe flag 'situatii-retentii'. Cu flag OFF, 404 (sectiunea
+    nu apare in UI). Recalculeaza plata neta din valoarea lunii cu procentele /
+    avansul introdus si persista coloanele aditive.
+    """
+    from services.feature_flags import is_enabled
+    if not is_enabled('situatii-retentii'):
+        abort(404)
+    situatie = SituatieLunara.query.get_or_404(situatie_id)
+    before = audit_svc.snapshot(
+        situatie, ['retentie_procent', 'retentie_suma', 'garantie_bex_suma',
+                   'avans_recuperat', 'plata_neta'])
+
+    def _dec(name):
+        raw = (request.form.get(name) or '').strip().replace(',', '.')
+        if raw == '':
+            return Decimal('0')
+        try:
+            return Decimal(raw)
+        except Exception:
+            return Decimal('0')
+
+    valoare_luna = Decimal(situatie.valoare_totala_luna or 0)
+    retentie_procent = _dec('retentie_procent')
+    garantie_procent = _dec('garantie_bex_procent')
+    avans_recuperat = _dec('avans_recuperat')
+
+    retentie_suma = (valoare_luna * retentie_procent / 100).quantize(Decimal('0.01'))
+    garantie_suma = (valoare_luna * garantie_procent / 100).quantize(Decimal('0.01'))
+    plata_neta = (valoare_luna - retentie_suma - garantie_suma
+                  - avans_recuperat).quantize(Decimal('0.01'))
+
+    situatie.retentie_procent = retentie_procent
+    situatie.retentie_suma = retentie_suma
+    situatie.garantie_bex_suma = garantie_suma
+    situatie.avans_recuperat = avans_recuperat
+    situatie.plata_neta = plata_neta
+    audit_svc.log_update(
+        'situatie_lunara', situatie.id, before,
+        audit_svc.snapshot(
+            situatie, ['retentie_procent', 'retentie_suma', 'garantie_bex_suma',
+                       'avans_recuperat', 'plata_neta']))
+    db.session.commit()
+    flash(f'Retentii actualizate. Plata neta: {plata_neta:.2f} RON.', 'success')
+    return redirect(url_for('contracte.situatie_detalii', situatie_id=situatie.id))
+
+
 @contracte_bp.route('/situatie/<int:situatie_id>/export/xlsx')
 @login_required
 def situatie_export_xlsx(situatie_id):

@@ -3619,6 +3619,12 @@ class Contract(db.Model):
     valoare_totala = db.Column(db.Numeric(14, 2), nullable=True)
     moneda = db.Column(db.String(3), nullable=False, default='RON')
 
+    # Deviz Faza 3 - valori implicite contractuale pentru retentie + garantie de
+    # buna executie, mostenite de situatiile lunare la generare (nullable, aditiv).
+    # Folosite doar cu flag 'situatii-retentii' ON.
+    retentie_procent_default = db.Column(db.Numeric(5, 2), nullable=True)
+    garantie_bex_procent = db.Column(db.Numeric(5, 2), nullable=True)
+
     beneficiar = db.Column(db.String(255), nullable=True)
     antreprenor = db.Column(db.String(255), nullable=True)
     obiect_contract = db.Column(db.Text, nullable=True)
@@ -4129,6 +4135,16 @@ class SituatieLunara(db.Model):
     valoare_totala_luna = db.Column(db.Numeric(14, 2), nullable=True)
     valoare_cumulat_la_zi = db.Column(db.Numeric(14, 2), nullable=True)
     procent_avans_total = db.Column(db.Numeric(5, 2), nullable=True)
+
+    # Deviz Faza 3 - retentii + garantii pe situatii (toate nullable, aditiv).
+    # Populate doar cu flag 'situatii-retentii' ON; cu OFF raman NULL si situatia
+    # ramane identica cu cea istorica. Formula RO documentata in services/situatii.py:
+    #   plata_neta = valoare_totala_luna - retentie_suma - garantie_bex_suma - avans_recuperat
+    retentie_procent = db.Column(db.Numeric(5, 2), nullable=True)
+    retentie_suma = db.Column(db.Numeric(14, 2), nullable=True)
+    garantie_bex_suma = db.Column(db.Numeric(14, 2), nullable=True)
+    avans_recuperat = db.Column(db.Numeric(14, 2), nullable=True)
+    plata_neta = db.Column(db.Numeric(14, 2), nullable=True)
 
     status = db.Column(db.String(25), nullable=False, default='draft', index=True)
 
