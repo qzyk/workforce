@@ -709,6 +709,32 @@ def lista_capacitati(tenant_id: Optional[int] = None) -> list:
     return [{'categorie': c, 'capacitate': cap[c]} for c in sorted(cap)]
 
 
+def categorii_canonice_capacitate(tenant_id: Optional[int] = None) -> list:
+    """Cheile CANONICE (categorie_lucrare F2, UPPER) pe care nivelarea le grupeaza.
+
+    Nivelarea grupeaza pe nivelare._cheie_categorie(a) = categorie_lucrare (UPPER),
+    iar pipeline-ul seteaza categorie_lucrare = la_categorie_lucrare(categorie_tehnologica)
+    (valoarea mapata din mapare_categorii, ex SAPATURA -> terasamente). Dropdown-ul de
+    capacitati TREBUIE sa ofere exact aceste chei canonice, NU categoriile tehnologice din
+    tarife.json - altfel capacitatea setata din UI (ex SAPATURA) nu se potriveste cu cheia
+    pe care o produce nivelarea (TERASAMENTE) si nivelarea ramane un no-op silentios.
+
+    Setul = valorile distincte din mapare_categorii (UPPER) + categoriile din tarife FARA
+    mapare (fallback identic cu la_categorie_lucrare: lowercase apoi UPPER => acelasi UPPER).
+    Ordonat alfabetic. Acelasi set de chei pe care le afiseaza histograma de incarcare."""
+    mapare = mapare_categorii(tenant_id) or {}
+    canonice = set()
+    for v in mapare.values():
+        if v:
+            canonice.add(str(v).strip().upper())
+    # Categoriile tehnologice fara mapare cad pe propriul nume (la_categorie_lucrare):
+    # str(cat).lower() -> _cheie_categorie -> UPPER => cheia canonica e numele UPPER.
+    for cat in tarife_gantt(tenant_id):
+        if cat and str(cat) not in mapare:
+            canonice.add(str(cat).strip().upper())
+    return sorted(c for c in canonice if c)
+
+
 def seteaza_capacitate(categorie: str, capacitate, tenant_id=None, user_id=None):
     """Upsert capacitate (TarifCategorie disciplina='gantt-capacitate'). (row, eroare).
 

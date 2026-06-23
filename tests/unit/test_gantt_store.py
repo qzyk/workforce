@@ -173,3 +173,44 @@ def test_capacitate_invalida(app):
             assert 'TERASAMENTE' not in store.capacitati_gantt()
         finally:
             _sterge_capacitati(db)
+
+
+def test_categorii_canonice_capacitate_ofera_cheia_nivelarii(app):
+    """REGRESIE (review gantt-4): dropdown-ul de capacitati TREBUIE sa ofere cheile
+    canonice (categorie_lucrare) pe care le grupeaza nivelarea, NU categoriile
+    tehnologice din tarife.json.
+
+    mapare_categorii.json mapeaza SAPATURA -> terasamente. _cheie_categorie produce
+    TERASAMENTE (UPPER) pe activitatile rezultate. Daca dropdown-ul ar fi oferit
+    SAPATURA (vechiul bug, din lista_tarife), capacitatea setata din UI nu s-ar fi
+    potrivit niciodata cu cheia consumata -> nivelarea = no-op silentios."""
+    with app.app_context():
+        canonice = store.categorii_canonice_capacitate()
+    # cheia canonica (mapata) trebuie sa fie oferita
+    assert 'TERASAMENTE' in canonice, 'lipseste cheia canonica pe care o grupeaza nivelarea'
+    # categoria tehnologica mapata NU trebuie oferita (era bug-ul: nu se potrivea nimic)
+    assert 'SAPATURA' not in canonice
+    assert 'POZARE_CONDUCTA' not in canonice
+    # alte valori mapate distincte din mapare_categorii
+    for canon in ('ARMATURA', 'CANALIZARE', 'BETON'):
+        assert canon in canonice, f'{canon} (valoare mapata) ar trebui oferit'
+    # categorie tehnologica FARA mapare -> cade pe propriul nume UPPER (fallback)
+    assert 'DEMONTARI' in canonice
+    # toate UPPER, fara duplicate, sortate
+    assert canonice == sorted(set(canonice))
+    assert all(c == c.upper() for c in canonice)
+
+
+def test_categorii_canonice_acopera_cheile_din_nivelare(app):
+    """Verificare incrucisata: cheia oferita de dropdown == _cheie_categorie pe
+    activitatile reale produse de pipeline (acelasi set, fara discrepanta UI<->motor)."""
+    from services.gantt.nivelare import _cheie_categorie
+    articole, _ = import_engine.importa(SAMPLE_CSV, '.csv')
+    with app.app_context():
+        motor = MotorPlanificare()
+        plan = motor.proceseaza(articole, clasifica=True)
+        oferite = set(store.categorii_canonice_capacitate())
+    chei_reale = {_cheie_categorie(a) for a in plan.activitati}
+    # fiecare cheie pe care nivelarea o grupeaza efectiv e oferita in dropdown
+    assert chei_reale <= oferite, (
+        f'chei consumate de nivelare dar neoferite in UI: {chei_reale - oferite}')

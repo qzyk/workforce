@@ -131,3 +131,49 @@ def test_config_capacitate_404_cu_flag_off(authenticated_client, app):
     r = authenticated_client.post('/gantt/config/capacitate',
                                   data={'categorie': 'BETON', 'capacitate': '2'})
     assert r.status_code == 404
+
+
+# -------------------------------------------------- REGRESIE review gantt-4
+def test_dropdown_capacitate_ofera_cheia_canonica_nu_tehnologica(authenticated_client, app):
+    """Dropdown-ul de capacitati din /gantt/config trebuie sa ofere cheia CANONICA
+    (TERASAMENTE) pe care o grupeaza nivelarea, NU categoria tehnologica (SAPATURA)
+    din tarife.json. Inainte de fix, dropdown-ul ofera SAPATURA -> capacitatea setata
+    nu se potrivea cu nicio activitate (toate au _cheie_categorie==TERASAMENTE)."""
+    _activeaza(app)
+    body = authenticated_client.get('/gantt/config').get_data(as_text=True)
+    # optiunea canonica (mapata) trebuie sa fie in dropdown
+    assert '<option value="TERASAMENTE">' in body
+    # categoria tehnologica mapata NU mai trebuie oferita (era no-op silentios)
+    assert '<option value="SAPATURA">' not in body
+    assert '<option value="POZARE_CONDUCTA">' not in body
+
+
+def test_capacitate_din_categoria_oferita_de_dropdown_misca_activitati(authenticated_client, app):
+    """Flux real UI: alegem din dropdown EXACT categoria oferita, o setam prin endpoint-ul
+    de config (ca formularul), apoi nivelam -> nr_mutate > 0.
+
+    Acesta e testul care PRINDE bug-ul: in loc sa setam direct 'TERASAMENTE' (cheia
+    canonica), luam prima categorie din dropdown-ul real si o folosim ca atare. Cu
+    bug-ul (dropdown oferea SAPATURA), seteaza_capacitate('SAPATURA') nu se potrivea
+    cu nicio activitate -> nr_mutate == 0."""
+    _activeaza(app)
+    # ia categoria pe care o ofera dropdown-ul (sursa de adevar a UI-ului)
+    from services.gantt import store
+    with app.app_context():
+        oferite = store.categorii_canonice_capacitate()
+    assert 'TERASAMENTE' in oferite
+    cat_aleasa = 'TERASAMENTE'   # categoria activitatilor din SAMPLE, asa cum o ofera dropdown-ul
+
+    # seteaza capacitatea exact cum o face formularul (endpoint config/capacitate)
+    r_set = authenticated_client.post('/gantt/config/capacitate',
+                                      data={'categorie': cat_aleasa, 'capacitate': '1'})
+    assert r_set.status_code in (302, 200)
+
+    _html, token = _upload_si_token(authenticated_client)
+    r = authenticated_client.post(f'/gantt/niveleaza/{token}')
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j['ok'] is True
+    # capacitatea aleasa din dropdown chiar misca activitati (nu mai e no-op)
+    assert j['nr_mutate'] > 0, 'capacitatea din dropdown nu a miscat nimic (bug taxonomie)'
+    assert j['durata_nivelata'] > j['durata_cpm']

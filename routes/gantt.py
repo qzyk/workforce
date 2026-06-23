@@ -996,15 +996,19 @@ def config():
     mapare = dict(sorted(store.mapare_categorii(tid).items()))
 
     # Faza 4 nivelare: capacitati pe categorie (doar cu flag ON; altfel sectiunea
-    # nici nu se afiseaza). lista_tarife da categoriile disponibile pentru dropdown.
+    # nici nu se afiseaza). Dropdown-ul ofera cheile CANONICE (categorie_lucrare)
+    # pe care nivelarea le grupeaza, NU categoriile tehnologice din tarife - altfel
+    # capacitatea setata nu se potriveste cu cheia produsa de nivelare (no-op silentios).
     leveling = _leveling_on()
     capacitati = store.lista_capacitati(tid) if leveling else []
+    categorii_capacitate = store.categorii_canonice_capacitate(tid) if leveling else []
 
     return render_template('gantt/config.html', sin_grup=sin_grup, reg_grup=reg_grup,
                            profiluri=profiluri, campuri=campuri,
                            mapare=mapare, mapare_reguli=mapare_reguli,
                            tarife=store.lista_tarife(tid),
-                           leveling_on=leveling, capacitati=capacitati)
+                           leveling_on=leveling, capacitati=capacitati,
+                           categorii_capacitate=categorii_capacitate)
 
 
 @gantt_bp.route('/config/sinonim', methods=['POST'])

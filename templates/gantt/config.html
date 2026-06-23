@@ -248,7 +248,9 @@ table.cf-tab-prof th { background:#F5F1E8; }
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <select name="categorie" style="min-width:175px;" title="categorie">
       <option value="">— alege categorie —</option>
-      {% for t in tarife %}<option value="{{ t.categorie }}">{{ t.categorie }}</option>{% endfor %}
+      {# Categorii CANONICE (categorie_lucrare) pe care nivelarea le grupeaza,
+         nu categoriile tehnologice din tarife - vezi store.categorii_canonice_capacitate. #}
+      {% for cat in categorii_capacitate %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
     </select>
     <input type="number" step="1" min="1" name="capacitate" placeholder="nr" style="width:84px;" title="capacitate">
     <span style="color:var(--gray-500);">echipe/zi</span>
