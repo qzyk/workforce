@@ -37,6 +37,20 @@
         <a href="{{ url_for('contracte.situatie_export_pdf', situatie_id=situatie.id) }}" class="btn btn-outline">
             <i class="fa-solid fa-file-pdf"></i> PDF
         </a>
+        {% if feature_enabled('situatii-f-forms') %}
+        <a href="{{ url_for('contracte.situatie_export_f3', situatie_id=situatie.id) }}" class="btn btn-outline"
+           title="{{ _('Lista cu cantitati de lucrari (HG 907/2016)') }}">
+            <i class="fa-solid fa-list-ol"></i> F3
+        </a>
+        <a href="{{ url_for('contracte.situatie_export_f2', situatie_id=situatie.id) }}" class="btn btn-outline"
+           title="{{ _('Centralizator categorii de lucrari (HG 907/2016)') }}">
+            <i class="fa-solid fa-layer-group"></i> F2
+        </a>
+        <a href="{{ url_for('contracte.situatie_export_f1', situatie_id=situatie.id) }}" class="btn btn-outline"
+           title="{{ _('Centralizator pe obiectiv (HG 907/2016)') }}">
+            <i class="fa-solid fa-building-columns"></i> F1
+        </a>
+        {% endif %}
     </div>
 </div>
 

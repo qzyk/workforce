@@ -296,6 +296,7 @@ def _get_situatie_data(situatie: SituatieLunara) -> dict:
             'cant_cumul': cant_cumul,
             'val_cumul': val_cumul,
             'categorie': p.categorie,
+            'categorie_lucrare': p.categorie_lucrare,
         })
 
     return {
@@ -551,4 +552,343 @@ def export_situatie_pdf(situatie_id: int) -> str:
 
     situatie.fisier_export_pdf_path = path
     db.session.commit()
+    return path
+
+
+# ============================================================
+# FORMULARE F1 / F2 / F3 (HG 907/2016) pe situatie de lucrari (dz-4)
+#
+# Recapitulatii ierarhice obiect (disciplina) -> categorie de lucrare ->
+# articol, peste cantitatile EXECUTATE in luna situatiei. Reutilizeaza
+# services.centralizator.recapitulatie_ierarhica. Toate valorile sunt FARA
+# TVA (pozitiile); TVA (21%) se adauga o singura data la final pe F1
+# (playbook deviz §2.6). Verificare matematica: Sigma articole == val luna.
+#
+# Semantica formularelor (situatie de lucrari):
+#   F3 - Lista cu cantitati de lucrari: articolele detaliate, grupate pe
+#        obiect -> categorie de lucrare (cant. luna, pret unitar, valoare).
+#   F2 - Centralizatorul cheltuielilor pe categorii de lucrari: recapitulatie
+#        obiect -> categorie (subtotaluri pe obiect), fara articole.
+#   F1 - Centralizatorul cheltuielilor pe obiectiv: un rand per obiect +
+#        TOTAL fara TVA + TVA + TOTAL cu TVA.
+#
+# Gating: rutele de export sunt gated pe flag 'situatii-f-forms'; serviciul in
+# sine e pur (nu citeste flagul), ca sa fie testabil direct.
+# ============================================================
+
+COTA_TVA_F = Decimal('21')  # % standard RO (formularele F)
+_Q2_F = Decimal('0.01')
+
+
+def _f_linii_situatie(situatie_id: int) -> dict:
+    """
+    Construieste liniile (articolele) lunii situatiei pentru formularele F.
+
+    Returneaza:
+        {situatie, contract, proiect, luna_text,
+         linii: [{disciplina, categorie, cod_articol, denumire, um,
+                  cant_luna, pret_unitar, valoare}],
+         total_luna: Decimal}
+
+    Filtreaza pozitiile FARA activitate in luna (cant_luna == 0): formularele F
+    reflecta strict lucrarea executata si valorificata in luna respectiva.
+    Valoarea articolului = cant_luna * pret_unitar (FARA TVA).
+    """
+    situatie = SituatieLunara.query.get(situatie_id)
+    if situatie is None:
+        raise ValueError(f'Situatie id={situatie_id} nu exista.')
+
+    from services.deviz_pricing import deduce_disciplina
+
+    data = _get_situatie_data(situatie)
+    linii = []
+    total_luna = Decimal('0')
+    for row in data['rows']:
+        cant_luna = row['cant_luna'] or Decimal('0')
+        if cant_luna <= 0:
+            continue  # doar lucrarea executata in luna
+        val = row['val_luna'] or Decimal('0')
+        linii.append({
+            'disciplina': deduce_disciplina(row['cod_capitol']),
+            'categorie': row['categorie_lucrare'] or 'neclasificat',
+            'cod_articol': row['cod_articol'],
+            'cod_capitol': row['cod_capitol'],
+            'denumire': row['denumire'],
+            'um': row['um'],
+            'cant_luna': cant_luna,
+            'pret_unitar': row['pret_unitar'] or Decimal('0'),
+            'valoare': val,
+        })
+        total_luna += val
+
+    return {
+        'situatie': situatie,
+        'contract': data['contract'],
+        'proiect': data['proiect'],
+        'luna_text': data['luna_text'],
+        'linii': linii,
+        'total_luna': total_luna.quantize(_Q2_F),
+    }
+
+
+def _antet_f(ws, titlu: str, ctx: dict, ultima_col: str):
+    """Scrie antetul comun al formularelor F (titlu + identificare situatie)."""
+    from openpyxl.styles import Font, Alignment
+    situatie = ctx['situatie']
+    contract = ctx['contract']
+    proiect = ctx['proiect']
+    center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    ws['A1'] = titlu
+    ws['A1'].font = Font(bold=True, size=14, name='Arial', color='0B1426')
+    ws.merge_cells(f'A1:{ultima_col}1')
+    ws['A1'].alignment = center
+    ws.row_dimensions[1].height = 26
+
+    ws['A2'] = f'Proiect: {proiect.cod_proiect} - {proiect.nume}'
+    ws.merge_cells(f'A2:{ultima_col}2')
+    ws['A3'] = (f'Contract: {contract.nr_contract}  |  '
+                f'Situatie: {situatie.numar_situatie or "-"}  |  '
+                f'Luna: {ctx["luna_text"]} {situatie.an}')
+    ws.merge_cells(f'A3:{ultima_col}3')
+
+
+def genereaza_f3(situatie_id: int) -> dict:
+    """
+    F3 - Lista cu cantitati de lucrari (articole detaliate, grupate pe obiect ->
+    categorie de lucrare). Reutilizeaza recapitulatie_ierarhica pentru subtotaluri.
+
+    Returneaza:
+        {grupe: [{disciplina, subtotal,
+                  categorii: [{categorie, valoare, nr, articole: [...]}]}],
+         total_general, nr_pozitii, ctx}
+    """
+    from services.centralizator import recapitulatie_ierarhica
+
+    ctx = _f_linii_situatie(situatie_id)
+    linii = ctx['linii']
+    recap = recapitulatie_ierarhica(linii)
+
+    # Atasez articolele detaliate la fiecare (disciplina, categorie).
+    art_idx: dict[tuple, list] = {}
+    for ln in linii:
+        art_idx.setdefault((ln['disciplina'], ln['categorie'] or 'neclasificat'), []).append(ln)
+
+    for grup in recap['grupe']:
+        for cat in grup['categorii']:
+            arts = art_idx.get((grup['disciplina'], cat['categorie']), [])
+            cat['articole'] = [
+                {'cod_articol': a['cod_articol'],
+                 'denumire': a['denumire'],
+                 'um': a['um'],
+                 'cant_luna': a['cant_luna'],
+                 'pret_unitar': a['pret_unitar'],
+                 'valoare': a['valoare'].quantize(_Q2_F)}
+                for a in sorted(arts, key=lambda x: x['cod_articol'] or '')
+            ]
+    recap['ctx'] = ctx
+    return recap
+
+
+def genereaza_f2(situatie_id: int) -> dict:
+    """
+    F2 - Centralizatorul cheltuielilor pe categorii de lucrari (recapitulatie
+    obiect -> categorie, subtotaluri pe obiect, fara articole).
+    """
+    from services.centralizator import recapitulatie_ierarhica
+    ctx = _f_linii_situatie(situatie_id)
+    recap = recapitulatie_ierarhica(ctx['linii'])
+    recap['ctx'] = ctx
+    return recap
+
+
+def genereaza_f1(situatie_id: int, cota_tva: Decimal = COTA_TVA_F) -> dict:
+    """
+    F1 - Centralizatorul cheltuielilor pe obiectiv (un rand per obiect/disciplina
+    + TOTAL fara TVA + TVA + TOTAL cu TVA). TVA aplicat o singura data la final.
+    """
+    from decimal import ROUND_HALF_UP
+    cota_tva = Decimal(str(cota_tva))
+    ctx = _f_linii_situatie(situatie_id)
+
+    obiecte: dict[str, Decimal] = {}
+    for ln in ctx['linii']:
+        obiecte[ln['disciplina']] = obiecte.get(ln['disciplina'], Decimal('0')) + (ln['valoare'] or Decimal('0'))
+
+    randuri = [
+        {'obiect': disc, 'valoare': val.quantize(_Q2_F)}
+        for disc, val in sorted(obiecte.items())
+    ]
+    total_fara_tva = sum((r['valoare'] for r in randuri), Decimal('0'))
+    tva = (total_fara_tva * cota_tva / 100).quantize(_Q2_F, rounding=ROUND_HALF_UP)
+    total_cu_tva = total_fara_tva + tva
+    return {
+        'randuri': randuri,
+        'total_fara_tva': total_fara_tva.quantize(_Q2_F),
+        'cota_tva': cota_tva,
+        'tva': tva,
+        'total_cu_tva': total_cu_tva.quantize(_Q2_F),
+        'ctx': ctx,
+    }
+
+
+def export_f3(situatie_id: int) -> str:
+    """Export Excel F3 (Lista cu cantitati de lucrari). Returneaza path absolut."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    data = genereaza_f3(situatie_id)
+    ctx = data['ctx']
+    situatie = ctx['situatie']
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'F3'
+    _antet_f(ws, 'FORMULAR F3 - LISTA CU CANTITATI DE LUCRARI', ctx, 'F')
+
+    r = 5
+    _styled_header_f(ws, r, ['Cod articol', 'Denumire', 'UM', 'Cant. luna',
+                             'Pret unitar', 'Valoare (fara TVA)'])
+    r += 1
+    money = '#,##0.00'
+    bold = Font(bold=True, name='Arial')
+    for grup in data['grupe']:
+        ws.cell(row=r, column=1, value='OBIECT: ' + grup['disciplina'].upper()).font = bold
+        vc = ws.cell(row=r, column=6, value=float(grup['subtotal']))
+        vc.font = bold; vc.number_format = money
+        r += 1
+        for cat in grup['categorii']:
+            ws.cell(row=r, column=2, value='  ' + cat['categorie']).font = Font(italic=True, name='Arial')
+            cc = ws.cell(row=r, column=6, value=float(cat['valoare']))
+            cc.number_format = money
+            r += 1
+            for a in cat['articole']:
+                ws.cell(row=r, column=1, value=a['cod_articol'])
+                ws.cell(row=r, column=2, value=a['denumire'])
+                ws.cell(row=r, column=3, value=a['um'])
+                ws.cell(row=r, column=4, value=float(a['cant_luna'])).number_format = money
+                ws.cell(row=r, column=5, value=float(a['pret_unitar'])).number_format = money
+                ws.cell(row=r, column=6, value=float(a['valoare'])).number_format = money
+                r += 1
+
+    r += 1
+    ws.cell(row=r, column=1, value='TOTAL F3 (fara TVA)').font = Font(bold=True, size=12, name='Arial')
+    tc = ws.cell(row=r, column=6, value=float(data['total_general']))
+    tc.font = Font(bold=True, size=12, name='Arial'); tc.number_format = money
+
+    for col, w in zip('ABCDEF', [18, 46, 8, 14, 14, 18]):
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = 'A6'  # sub randul de antet real al tabelului
+    wb.calculation.fullCalcOnLoad = True
+    return _salveaza_f(wb, situatie, 'f3')
+
+
+def export_f2(situatie_id: int) -> str:
+    """Export Excel F2 (Centralizator categorii de lucrari). Returneaza path absolut."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    data = genereaza_f2(situatie_id)
+    ctx = data['ctx']
+    situatie = ctx['situatie']
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'F2'
+    _antet_f(ws, 'FORMULAR F2 - CENTRALIZATOR CATEGORII DE LUCRARI', ctx, 'D')
+
+    r = 5
+    _styled_header_f(ws, r, ['Obiect', 'Categorie de lucrare', 'Nr. articole',
+                             'Valoare (fara TVA)'])
+    r += 1
+    money = '#,##0.00'
+    bold = Font(bold=True, name='Arial')
+    for grup in data['grupe']:
+        ws.cell(row=r, column=1, value=grup['disciplina'].upper()).font = bold
+        vc = ws.cell(row=r, column=4, value=float(grup['subtotal']))
+        vc.font = bold; vc.number_format = money
+        r += 1
+        for cat in grup['categorii']:
+            ws.cell(row=r, column=2, value=cat['categorie'])
+            ws.cell(row=r, column=3, value=cat['nr'])
+            cc = ws.cell(row=r, column=4, value=float(cat['valoare']))
+            cc.number_format = money
+            r += 1
+
+    r += 1
+    ws.cell(row=r, column=1, value='TOTAL F2 (fara TVA)').font = Font(bold=True, size=12, name='Arial')
+    tc = ws.cell(row=r, column=4, value=float(data['total_general']))
+    tc.font = Font(bold=True, size=12, name='Arial'); tc.number_format = money
+
+    for col, w in zip('ABCD', [22, 32, 12, 18]):
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = 'A6'
+    wb.calculation.fullCalcOnLoad = True
+    return _salveaza_f(wb, situatie, 'f2')
+
+
+def export_f1(situatie_id: int, cota_tva: Decimal = COTA_TVA_F) -> str:
+    """Export Excel F1 (Centralizator pe obiectiv + TVA). Returneaza path absolut."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    data = genereaza_f1(situatie_id, cota_tva)
+    ctx = data['ctx']
+    situatie = ctx['situatie']
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'F1'
+    _antet_f(ws, 'FORMULAR F1 - CENTRALIZATOR PE OBIECTIV', ctx, 'B')
+
+    r = 5
+    _styled_header_f(ws, r, ['Obiect', 'Valoare (fara TVA)'])
+    r += 1
+    money = '#,##0.00'
+    for rand in data['randuri']:
+        ws.cell(row=r, column=1, value=rand['obiect'].upper())
+        ws.cell(row=r, column=2, value=float(rand['valoare'])).number_format = money
+        r += 1
+
+    bold = Font(bold=True, name='Arial')
+    ws.cell(row=r, column=1, value='TOTAL (fara TVA)').font = bold
+    c = ws.cell(row=r, column=2, value=float(data['total_fara_tva']))
+    c.number_format = money; c.font = bold
+    r += 1
+    ws.cell(row=r, column=1, value=f'TVA ({data["cota_tva"]}%)').font = bold
+    c = ws.cell(row=r, column=2, value=float(data['tva']))
+    c.number_format = money; c.font = bold
+    r += 1
+    ws.cell(row=r, column=1, value='TOTAL (cu TVA)').font = Font(bold=True, size=12, name='Arial')
+    tc = ws.cell(row=r, column=2, value=float(data['total_cu_tva']))
+    tc.font = Font(bold=True, size=12, name='Arial'); tc.number_format = money
+
+    for col, w in zip('AB', [34, 20]):
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = 'A6'
+    wb.calculation.fullCalcOnLoad = True
+    return _salveaza_f(wb, situatie, 'f1')
+
+
+def _styled_header_f(ws, row, headers, gold='C9A961'):
+    """Antet de tabel brandat (gold) pentru formularele F."""
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    bold = Font(bold=True, color='0B1426', name='Arial')
+    fill = PatternFill('solid', fgColor=gold)
+    center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    thin = Side(border_style='thin', color='888888')
+    bord = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for i, h in enumerate(headers, start=1):
+        c = ws.cell(row=row, column=i, value=h)
+        c.font = bold; c.fill = fill; c.alignment = center; c.border = bord
+    ws.row_dimensions[row].height = 28
+
+
+def _salveaza_f(wb, situatie, eticheta: str) -> str:
+    """Salveaza workbook-ul F intr-un fisier in uploads/situatii_f/ si intoarce path-ul."""
+    upload_dir = _get_upload_dir('situatii_f')
+    filename = (f'{eticheta}_situatie_{situatie.id}_{situatie.an}_'
+                f'{situatie.luna:02d}_{datetime.utcnow():%Y%m%d%H%M%S}.xlsx')
+    path = os.path.join(upload_dir, filename)
+    wb.save(path)
     return path

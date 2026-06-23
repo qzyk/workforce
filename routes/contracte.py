@@ -1246,6 +1246,54 @@ def situatie_export_pdf(situatie_id):
                      mimetype='application/pdf')
 
 
+# ------------------------------------------------------------
+# Formulare F1/F2/F3 (HG 907/2016) - export Excel, gated pe flag
+# 'situatii-f-forms'. Cu flag OFF: 404 (butoanele nu apar in UI).
+# ------------------------------------------------------------
+
+_XLSX_MIME = ('application/vnd.openxmlformats-officedocument'
+              '.spreadsheetml.sheet')
+
+
+def _export_situatie_f(situatie_id, forma):
+    """Helper comun pentru exportul formularelor F (f1/f2/f3)."""
+    from flask import send_file
+    from services.feature_flags import is_enabled
+    if not is_enabled('situatii-f-forms'):
+        abort(404)
+    from services.situatii import export_f1, export_f2, export_f3
+    fns = {'f1': export_f1, 'f2': export_f2, 'f3': export_f3}
+    try:
+        path = fns[forma](situatie_id)
+    except Exception as e:
+        flash(f'Eroare export {forma.upper()}: {e}', 'danger')
+        return redirect(url_for('contracte.situatie_detalii', situatie_id=situatie_id))
+    return send_file(path, as_attachment=True,
+                     download_name=os.path.basename(path),
+                     mimetype=_XLSX_MIME)
+
+
+@contracte_bp.route('/situatie/<int:situatie_id>/export/f3')
+@login_required
+def situatie_export_f3(situatie_id):
+    """Export F3 (Lista cu cantitati de lucrari) - flag situatii-f-forms."""
+    return _export_situatie_f(situatie_id, 'f3')
+
+
+@contracte_bp.route('/situatie/<int:situatie_id>/export/f2')
+@login_required
+def situatie_export_f2(situatie_id):
+    """Export F2 (Centralizator categorii de lucrari) - flag situatii-f-forms."""
+    return _export_situatie_f(situatie_id, 'f2')
+
+
+@contracte_bp.route('/situatie/<int:situatie_id>/export/f1')
+@login_required
+def situatie_export_f1(situatie_id):
+    """Export F1 (Centralizator pe obiectiv) - flag situatii-f-forms."""
+    return _export_situatie_f(situatie_id, 'f1')
+
+
 # ============================================================
 # FAZA 12 - RAPOARTE LUCRARI PROIECT (aggregator)
 # ============================================================

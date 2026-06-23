@@ -147,6 +147,14 @@ KNOWN_FLAGS: dict[str, str] = {
                            'Times daca .ttf lipseste (fara dependinta noua). Cu OFF, '
                            'PDF-urile raman ca inainte (Helvetica, fara header brandat). '
                            'Default OFF.',
+    # Deviz dz-4 - formulare F1/F2/F3 (HG 907/2016) pe situatie de lucrari
+    'situatii-f-forms': 'Export formulare F1/F2/F3 (HG 907/2016) pentru situatiile '
+                        'de lucrari: recapitulatii ierarhice obiect -> categorie de '
+                        'lucrare -> articol peste cantitatile executate in luna. F3 = '
+                        'lista detaliata de cantitati; F2 = centralizator pe categorii; '
+                        'F1 = centralizator pe obiectiv (un rand per obiect + TVA la '
+                        'final). Export Excel (openpyxl), valori fara TVA. Cu OFF, '
+                        'rutele/butoanele de export F nu apar (404). Default OFF.',
     # Workforce wf-4 - pontaj de echipa pe teren + GPS optional
     'teren-pontaj-bulk': 'Pontaj de echipa din modulul Teren: multi-select angajati '
                          'pe un proiect + data, salvat in bloc (reutilizeaza logica '
