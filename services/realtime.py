@@ -64,15 +64,22 @@ def publish_event(event_type: str, *,
 def get_events_since(event_id: int, *,
                      santier_id: Optional[int] = None,
                      proiect_id: Optional[int] = None,
+                     event_types: Optional[list[str]] = None,
                      limit: int = 100) -> list[RealtimeEvent]:
     """
     Returneaza evenimentele cu id > event_id, filtrate pe scope.
+
+    event_types (optional): daca e dat, intoarce DOAR evenimentele cu unul din
+    tipurile listate (ex ['sensor_alert'] pentru Digital Twin overlay). Cu None
+    (default) comportamentul e neschimbat (toate tipurile) - backward compatible.
     """
     q = RealtimeEvent.query.filter(RealtimeEvent.id > event_id)
     if santier_id is not None:
         q = q.filter(RealtimeEvent.santier_id == santier_id)
     if proiect_id is not None:
         q = q.filter(RealtimeEvent.proiect_id == proiect_id)
+    if event_types:
+        q = q.filter(RealtimeEvent.event_type.in_(event_types))
     return q.order_by(RealtimeEvent.id).limit(limit).all()
 
 
@@ -110,10 +117,14 @@ def cleanup_old_events(older_than_days: int = 7) -> int:
 def sse_stream(santier_id: Optional[int], proiect_id: Optional[int],
                start_after_id: int = 0,
                max_duration_seconds: int = 30,
-               poll_interval_seconds: float = 2.0):
+               poll_interval_seconds: float = 2.0,
+               event_types: Optional[list[str]] = None):
     """
     Generator pentru SSE stream. Yield evenimente noi pe parcursul
     max_duration_seconds. Format SSE: 'data: <json>\\n\\n'.
+
+    event_types (optional): filtreaza tipurile de eveniment livrate (ex
+    ['sensor_alert'] pentru Digital Twin overlay). None = toate (istoric).
 
     NOTA: foloseste un app context curent (apelat din route Flask).
     """
@@ -131,7 +142,8 @@ def sse_stream(santier_id: Optional[int], proiect_id: Optional[int],
 
         try:
             events = get_events_since(cursor, santier_id=santier_id,
-                                       proiect_id=proiect_id, limit=50)
+                                       proiect_id=proiect_id,
+                                       event_types=event_types, limit=50)
         except Exception as e:
             _logger.warning('sse_stream get_events error: %s', e)
             yield f'event: error\ndata: {{"error": "{e}"}}\n\n'

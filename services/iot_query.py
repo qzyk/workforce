@@ -387,6 +387,89 @@ def _history_din_readings(senzor_id: int, from_ts: datetime, to_ts: datetime,
     ]
 
 
+# ====================================================
+# Digital Twin overlay (iot-4)
+# ====================================================
+
+def _senzor_overlay(s: Senzor) -> dict:
+    """Rezumat minimal al unui senzor pentru overlay-ul din viewer (panou lateral)."""
+    return {
+        'id': s.id,
+        'cod': s.cod,
+        'nume': s.nume,
+        'tip': s.tip,
+        'label_tip': s.label_tip,
+        'unitate': s.unitate,
+        'ultima_valoare': float(s.ultima_valoare) if s.ultima_valoare is not None else None,
+        'ultima_citire_at': s.ultima_citire_at.isoformat() if s.ultima_citire_at else None,
+        'threshold_min': float(s.threshold_min) if s.threshold_min is not None else None,
+        'threshold_max': float(s.threshold_max) if s.threshold_max is not None else None,
+        'is_alarming': s.is_alarming,
+    }
+
+
+def overlay_state_elemente(element_ids: list[int]) -> dict:
+    """
+    Stare agregata a senzorilor pe o multime de elemente BIM, indexata pe
+    ifc_global_id (GUID-ul folosit de viewer ca originalSystemId).
+
+    Pentru fiecare element cu senzori activi raportam:
+      - lista de senzori (cod, valoare, unitate, threshold, is_alarming)
+      - is_alarming = True daca CEL PUTIN un senzor al elementului e in alarma
+        (asta declanseaza colorarea rosie in viewer)
+
+    Elementele fara senzori activi NU apar in rezultat (degradare gratioasa:
+    viewer-ul nu coloreaza nimic). Elementele fara ifc_global_id (neimportate din
+    IFC, deci ne-mapabile pe entitati 3D) sunt sarite - nu pot fi colorate oricum.
+
+    Returneaza:
+      {
+        'by_guid': { '<ifc_global_id>': {element_id, cod, sensors[], is_alarming, ...} },
+        'count_elemente': N,        # elemente cu senzori (mapabile pe GUID)
+        'count_alarming': M,        # din care in alarma
+      }
+    """
+    if not element_ids:
+        return {'by_guid': {}, 'count_elemente': 0, 'count_alarming': 0}
+
+    senzori = (Senzor.query
+               .filter(Senzor.element_bim_id.in_(element_ids), Senzor.activ.is_(True))
+               .all())
+
+    # Mapam element_bim_id -> ifc_global_id ca sa indexam pe GUID (cheia viewer-ului).
+    from models import ElementBIM
+    elemente = (ElementBIM.query
+                .filter(ElementBIM.id.in_({s.element_bim_id for s in senzori}))
+                .all()) if senzori else []
+    guid_dupa_element = {e.id: e.ifc_global_id for e in elemente}
+    cod_dupa_element = {e.id: e.cod for e in elemente}
+
+    by_guid: dict[str, dict] = {}
+    for s in senzori:
+        guid = guid_dupa_element.get(s.element_bim_id)
+        if not guid:
+            # Element fara GUID IFC -> ne-mapabil pe entitate 3D, il sarim.
+            continue
+        bucket = by_guid.setdefault(guid, {
+            'element_bim_id': s.element_bim_id,
+            'cod': cod_dupa_element.get(s.element_bim_id),
+            'guid': guid,
+            'sensors': [],
+            'is_alarming': False,
+        })
+        rezumat = _senzor_overlay(s)
+        bucket['sensors'].append(rezumat)
+        if rezumat['is_alarming']:
+            bucket['is_alarming'] = True
+
+    count_alarming = sum(1 for b in by_guid.values() if b['is_alarming'])
+    return {
+        'by_guid': by_guid,
+        'count_elemente': len(by_guid),
+        'count_alarming': count_alarming,
+    }
+
+
 def get_active_alerts(*, senzor_id: Optional[int] = None,
                       tenant_id: Optional[int] = None,
                       limit: int = 200) -> list[SensorAlert]:

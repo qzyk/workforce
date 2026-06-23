@@ -2111,6 +2111,46 @@ def api_element_state(element_id):
                     **iot_query_svc.get_current_state_element(element_id)})
 
 
+@bim_bp.route('/api/model/<int:model_id>/twin-overlay')
+@login_required
+def api_model_twin_overlay(model_id):
+    """
+    JSON pentru Digital Twin overlay (iot-4): elementele modelului cu senzori,
+    indexate pe ifc_global_id (GUID), cu ultima valoare + flag is_alarming.
+
+    Gate dublu: bim-iot-sensors (datele exista) + iot-twin-overlay (feature UI).
+    Cu oricare OFF intoarce {enabled: False} -> viewer-ul nu coloreaza nimic
+    (identic cu azi). Degradare gratioasa cand nu exista senzori.
+    """
+    if not (ff_svc.is_enabled('bim-iot-sensors')
+            and ff_svc.is_enabled('iot-twin-overlay')):
+        return jsonify({'enabled': False, 'by_guid': {}}), 200
+    model = ModelBIM.query.get_or_404(model_id)
+    element_ids = [e.id for e in _elemente_model(model)]
+    return jsonify({'enabled': True,
+                    **iot_query_svc.overlay_state_elemente(element_ids)})
+
+
+@bim_bp.route('/api/santier/<int:santier_id>/twin-overlay')
+@login_required
+def api_santier_twin_overlay(santier_id):
+    """
+    JSON pentru Digital Twin overlay pe viewer-ul federat (per santier):
+    toate elementele cu senzori din cladirile santierului, indexate pe GUID.
+
+    Gate dublu (la fel ca overlay-ul pe model). Cu OFF -> {enabled: False}.
+    """
+    if not (ff_svc.is_enabled('bim-iot-sensors')
+            and ff_svc.is_enabled('iot-twin-overlay')):
+        return jsonify({'enabled': False, 'by_guid': {}}), 200
+    Santier.query.get_or_404(santier_id)
+    element_ids = [e.id for e in
+                   (ElementBIM.query.join(Cladire, ElementBIM.cladire_id == Cladire.id)
+                    .filter(Cladire.santier_id == santier_id).all())]
+    return jsonify({'enabled': True,
+                    **iot_query_svc.overlay_state_elemente(element_ids)})
+
+
 @bim_bp.route('/api/sensor/<int:sensor_id>/history')
 @login_required
 def api_sensor_history(sensor_id):
@@ -2435,6 +2475,40 @@ def events_stream():
                                          proiect_id=proiect_id,
                                          start_after_id=since,
                                          max_duration_seconds=30):
+            yield chunk
+
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache',
+                             'X-Accel-Buffering': 'no'})
+
+
+@bim_bp.route('/api/sensors/alerts/stream')
+@login_required
+def sensor_alerts_stream():
+    """
+    SSE dedicat Digital Twin overlay (iot-4): livreaza DOAR evenimentele de tip
+    'sensor_alert'. Independent de bim-realtime-collab - gate pe bim-iot-sensors
+    + iot-twin-overlay. Filtre prin query string: ?santier_id=X, ?since=<event_id>.
+
+    Stream se inchide dupa max 30s (limita PA); clientul reconnecteaza cu
+    since=<last_id>. Cu oricare flag OFF -> 403 (clientul nu deschide overlay-ul).
+    """
+    if not (ff_svc.is_enabled('bim-iot-sensors')
+            and ff_svc.is_enabled('iot-twin-overlay')):
+        return jsonify({'enabled': False}), 403
+
+    santier_id = request.args.get('santier_id', type=int)
+    proiect_id = request.args.get('proiect_id', type=int)
+    since = request.args.get('since', default=0, type=int)
+
+    from flask import Response
+
+    def generate():
+        for chunk in rt_svc.sse_stream(santier_id=santier_id,
+                                         proiect_id=proiect_id,
+                                         start_after_id=since,
+                                         max_duration_seconds=30,
+                                         event_types=['sensor_alert']):
             yield chunk
 
     return Response(generate(), mimetype='text/event-stream',

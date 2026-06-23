@@ -155,6 +155,14 @@ KNOWN_FLAGS: dict[str, str] = {
                         'F1 = centralizator pe obiectiv (un rand per obiect + TVA la '
                         'final). Export Excel (openpyxl), valori fara TVA. Cu OFF, '
                         'rutele/butoanele de export F nu apar (404). Default OFF.',
+    # IoT iot-4 - Digital Twin overlay live in viewer 3D
+    'iot-twin-overlay': 'Digital Twin: overlay live al starii senzorilor in viewer-ul '
+                        '3D (xeokit + federat). Elementele cu senzor in alarma '
+                        '(is_alarming) sunt colorate rosu via setColorize (NU se modifica '
+                        'geometria) + panou lateral cu ultima valoare per element + flux '
+                        'live SSE (event sensor_alert, reconnect since=id, max 30s PA). '
+                        'Necesita si bim-iot-sensors ON. Cu OFF, viewer-ul ramane identic '
+                        'cu azi (degradare gratioasa daca nu exista senzori). Default OFF.',
     # Workforce wf-4 - pontaj de echipa pe teren + GPS optional
     'teren-pontaj-bulk': 'Pontaj de echipa din modulul Teren: multi-select angajati '
                          'pe un proiect + data, salvat in bloc (reutilizeaza logica '
