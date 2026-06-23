@@ -111,3 +111,65 @@ def test_motor_db_vs_json_acelasi_rezultat(app):
             assert rez_db.statistici['procent_clasificat'] == rez_json.statistici['procent_clasificat']
         finally:
             db.session.rollback()
+
+
+# ------------------------------------------- capacitati nivelare (Gantt Faza 4)
+def _sterge_capacitati(db):
+    """seteaza_capacitate face commit intern, deci rollback nu ajunge -> stergem
+    explicit randurile de capacitate (curatenie intre teste)."""
+    from models import TarifCategorie
+    for r in TarifCategorie.query.filter_by(disciplina='gantt-capacitate').all():
+        db.session.delete(r)
+    db.session.commit()
+
+
+def test_capacitati_fara_context_gol():
+    """Fara context aplicatie -> dict gol (nivelarea nu va misca nimic)."""
+    assert store.capacitati_gantt() == {}
+
+
+def test_seteaza_si_citeste_capacitate(app):
+    """Roundtrip: seteaza_capacitate -> capacitati_gantt intoarce valoarea (UPPER)."""
+    from models import db
+    with app.app_context():
+        try:
+            row, err = store.seteaza_capacitate('beton', 3)
+            assert err is None and row is not None
+            cap = store.capacitati_gantt()
+            assert cap.get('BETON') == 3          # normalizat UPPER
+            # upsert (update) pe aceeasi categorie
+            store.seteaza_capacitate('BETON', 5)
+            assert store.capacitati_gantt().get('BETON') == 5
+            # lista admin
+            lst = store.lista_capacitati()
+            assert {'categorie': 'BETON', 'capacitate': 5} in lst
+        finally:
+            _sterge_capacitati(db)
+
+
+def test_capacitate_zero_sterge(app):
+    """capacitate=0 sterge randul -> categoria devine nelimitata (absenta din dict)."""
+    from models import db
+    with app.app_context():
+        try:
+            store.seteaza_capacitate('zid', 2)
+            assert store.capacitati_gantt().get('ZID') == 2
+            _row, err = store.seteaza_capacitate('zid', 0)
+            assert err is None
+            assert 'ZID' not in store.capacitati_gantt()
+        finally:
+            _sterge_capacitati(db)
+
+
+def test_capacitate_invalida(app):
+    """Capacitate ne-numerica / negativa -> eroare, nimic salvat."""
+    from models import db
+    with app.app_context():
+        try:
+            _row, err = store.seteaza_capacitate('terasamente', 'abc')
+            assert err is not None
+            _row2, err2 = store.seteaza_capacitate('terasamente', -1)
+            assert err2 is not None
+            assert 'TERASAMENTE' not in store.capacitati_gantt()
+        finally:
+            _sterge_capacitati(db)
