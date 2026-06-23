@@ -53,6 +53,7 @@ table.cf-tab-prof th { background:#F5F1E8; }
   <a class="cf-tab" href="#reguli"><i class="fa-solid fa-tags"></i> Reguli clasificare</a>
   <a class="cf-tab" href="#mapare"><i class="fa-solid fa-diagram-project"></i> Mapare categorii (F2)</a>
   <a class="cf-tab" href="#tarife"><i class="fa-solid fa-coins"></i> Tarife (cost 5D)</a>
+  {% if leveling_on %}<a class="cf-tab" href="#capacitati"><i class="fa-solid fa-people-group"></i> Capacitati (nivelare)</a>{% endif %}
   <a class="cf-tab" href="#profiluri"><i class="fa-solid fa-wand-magic-sparkles"></i> Profiluri mapare</a>
   <a class="cf-tab" href="{{ url_for('gantt.index') }}"><i class="fa-solid fa-arrow-left"></i> Inapoi la upload</a>
 </div>
@@ -219,6 +220,42 @@ table.cf-tab-prof th { background:#F5F1E8; }
     </form>
   {% endfor %}
 </div>
+
+{% if leveling_on %}
+<!-- ============ CAPACITATI (NIVELARE) ============ -->
+<div class="cf-card" id="capacitati">
+  <h3>Capacitati pe categorie <span style="color:var(--gray-400); font-weight:400;">(nivelare resurse)</span></h3>
+  <div class="cf-sub">Numarul de echipe/resurse disponibile pe zi pentru fiecare categorie de lucrare.
+     Folosit la nivelare: cand cererea/zi depaseste capacitatea, activitatile se amana (vedere derivata, nu modifica planul).
+     Categoriile fara capacitate setata sunt tratate ca nelimitate. Pune 0 ca sa stergi o capacitate.</div>
+
+  {% if capacitati %}
+    {% for c in capacitati %}
+    <form class="cf-add" method="POST" action="{{ url_for('gantt.config_capacitate_set') }}"
+          style="border-top:1px solid #F0ECE0; align-items:center;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="categorie" value="{{ c.categorie }}">
+      <b style="min-width:175px; display:inline-block;">{{ c.categorie }}</b>
+      <input type="number" step="1" min="0" name="capacitate" value="{{ c.capacitate }}"
+             style="width:84px;" title="capacitate"> <span style="color:var(--gray-500);">echipe/zi</span>
+      <button class="cf-btn-mic"><i class="fa-solid fa-check"></i> Salveaza</button>
+    </form>
+    {% endfor %}
+  {% endif %}
+
+  <form class="cf-add" method="POST" action="{{ url_for('gantt.config_capacitate_set') }}"
+        style="border-top:1px solid #F0ECE0; align-items:center; margin-top:6px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <select name="categorie" style="min-width:175px;" title="categorie">
+      <option value="">— alege categorie —</option>
+      {% for t in tarife %}<option value="{{ t.categorie }}">{{ t.categorie }}</option>{% endfor %}
+    </select>
+    <input type="number" step="1" min="1" name="capacitate" placeholder="nr" style="width:84px;" title="capacitate">
+    <span style="color:var(--gray-500);">echipe/zi</span>
+    <button class="cf-btn-mic"><i class="fa-solid fa-plus"></i> Adauga</button>
+  </form>
+</div>
+{% endif %}
 
 <!-- ============ PROFILURI MAPARE ============ -->
 <div class="cf-card" id="profiluri">

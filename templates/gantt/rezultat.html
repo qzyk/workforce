@@ -206,6 +206,29 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
 </div>
 {% endif %}
 
+{% if leveling_on and incarcare and incarcare.categorii %}
+<div class="gz-sec">
+    <div class="gz-sec-h" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span><i class="fa-solid fa-people-group"></i> Nivelare resurse — incarcare vs capacitate</span>
+        <button id="btnNiveleaza" data-token="{{ token }}" style="background:linear-gradient(135deg,#E0BB6E,#C9A961,#A8893D); color:#0B1426; border:none; padding:6px 14px; border-radius:7px; font-weight:700; cursor:pointer; font-size:.82rem;"><i class="fa-solid fa-wand-magic-sparkles"></i> Niveleaza</button>
+    </div>
+    <div style="padding:14px 16px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+            {% for c in incarcare.categorii %}
+            <button class="gz-cat" data-cat="{{ loop.index0 }}" style="background:{% if loop.first %}rgba(201,169,97,.55){% else %}rgba(245,241,232,.14){% endif %}; color:#F5F1E8; border:1px solid rgba(201,169,97,.5); padding:3px 12px; border-radius:6px; font-size:.78rem; cursor:pointer;">
+                {{ c.categorie }}{% if c.capacitate %} <small>(cap {{ c.capacitate }}, varf {{ c.varf }}{% if c.varf > c.capacitate %} <span style="color:#ffb3b3;">depasit!</span>{% endif %})</small>{% else %} <small>(nelimitat)</small>{% endif %}
+            </button>
+            {% endfor %}
+        </div>
+        <canvas id="chartIncarcare" height="150"></canvas>
+        <small style="color:var(--gray-500); display:block; margin-top:8px;">
+            Bare = nr. echipe necesare/zi pe categorie (cerere). Linia rosie = capacitatea disponibila/zi. Unde barele depasesc linia, ai suprasolicitare. Apasa „Niveleaza" ca sa vezi cum s-ar muta datele (vedere derivata — nu modifica planul salvat).
+        </small>
+        <div id="rezultatNivelare" style="margin-top:14px; display:none;"></div>
+    </div>
+</div>
+{% endif %}
+
 {% if diagrama and diagrama.sarcini %}
 <div class="gz-sec">
     <div class="gz-sec-h" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -335,6 +358,93 @@ table.gz td { padding:5px 9px; border:1px solid #E3DAC4; vertical-align:top; }
                 document.querySelectorAll('.gz-rp').forEach(function(x) { x.style.background = 'rgba(245,241,232,.14)'; });
                 b.style.background = 'rgba(201,169,97,.55)';
                 render(b.getAttribute('data-pas'));
+            });
+        });
+    }
+})();
+</script>
+{% endif %}
+
+{% if leveling_on and incarcare and incarcare.categorii %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    if (!window.Chart) return;
+    var INC = {{ incarcare.categorii | tojson }};
+    var elI = document.getElementById('chartIncarcare');
+    var chartI = null;
+
+    function deseneaza(cats, idx) {
+        if (!elI || !cats.length) return;
+        var c = cats[Math.max(0, Math.min(idx, cats.length - 1))];
+        var serie = c.serie || [];
+        var etich = serie.map(function(_, i){ return 'Z' + (i + 1); });
+        var cap = c.capacitate;
+        var culori = serie.map(function(v){ return (cap && v > cap) ? '#B71C1C' : '#C9A961'; });
+        var ds = [{ label: 'Cerere (echipe/zi)', data: serie, backgroundColor: culori }];
+        if (cap) {
+            ds.push({ type: 'line', label: 'Capacitate (' + cap + ')',
+                      data: serie.map(function(){ return cap; }),
+                      borderColor: '#B71C1C', borderWidth: 2, pointRadius: 0,
+                      borderDash: [6, 4], fill: false });
+        }
+        if (chartI) chartI.destroy();
+        chartI = new Chart(elI, {
+            type: 'bar',
+            data: { labels: etich, datasets: ds },
+            options: { responsive: true, animation: false,
+                plugins: { title: { display: true, text: 'Incarcare ' + c.categorie + ' (zile lucratoare)' } },
+                scales: { x: { ticks: { maxTicksLimit: 20 } },
+                          y: { beginAtZero: true, title: { display: true, text: 'echipe / zi' },
+                               ticks: { precision: 0 } } } }
+        });
+    }
+    deseneaza(INC, 0);
+    document.querySelectorAll('.gz-cat').forEach(function(b) {
+        b.addEventListener('click', function() {
+            document.querySelectorAll('.gz-cat').forEach(function(x){ x.style.background = 'rgba(245,241,232,.14)'; });
+            b.style.background = 'rgba(201,169,97,.55)';
+            deseneaza(INC, parseInt(b.getAttribute('data-cat'), 10) || 0);
+        });
+    });
+
+    // --- buton Niveleaza: cere DELTA de la server (vedere derivata) ---
+    var btn = document.getElementById('btnNiveleaza');
+    var box = document.getElementById('rezultatNivelare');
+    if (btn && box) {
+        btn.addEventListener('click', function() {
+            btn.disabled = true;
+            var orig = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Calculez...';
+            fetch('{{ url_for("gantt.niveleaza_token", token=token) }}', {
+                method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            }).then(function(r){ return r.json(); }).then(function(d) {
+                btn.disabled = false; btn.innerHTML = orig;
+                box.style.display = 'block';
+                if (!d.ok) { box.innerHTML = '<div style="color:#B71C1C;">' + (d.motiv || 'Eroare la nivelare.') + '</div>'; return; }
+                var h = '<div style="background:#F5F1E8; border:1px solid #E8E3D5; border-radius:8px; padding:12px 14px;">';
+                h += '<b>Durata CPM:</b> ' + d.durata_cpm + ' zile &nbsp;&rarr;&nbsp; <b>nivelat:</b> ' + d.durata_nivelata + ' zile';
+                if (d.intarziere > 0) h += ' &nbsp;(<span style="color:#B71C1C;">+' + d.intarziere + ' zile</span> pt. a respecta capacitatea)';
+                else h += ' &nbsp;(<span style="color:#2e7d32;">fara intarziere</span>)';
+                h += '<br><b>Activitati mutate:</b> ' + d.nr_mutate;
+                if (d.deltas && d.deltas.length) {
+                    h += '<table class="gz" style="margin-top:10px;"><thead><tr><th>Activitate</th><th>Categorie</th><th>Start (zi)</th><th>Decalaj</th></tr></thead><tbody>';
+                    d.deltas.slice(0, 100).forEach(function(x) {
+                        h += '<tr><td>' + (x.nume || x.id) + '</td><td>' + x.categorie + '</td><td>' +
+                             (x.start_cpm + 1) + ' &rarr; ' + (x.start_nivelat + 1) + '</td>' +
+                             '<td style="color:#B71C1C; white-space:nowrap;">+' + x.delta + ' zile</td></tr>';
+                    });
+                    h += '</tbody></table>';
+                    if (d.deltas.length > 100) h += '<small>afisez primele 100 din ' + d.deltas.length + '</small>';
+                } else {
+                    h += '<br><small style="color:#2e7d32;">Planul respecta deja capacitatile — nimic de mutat.</small>';
+                }
+                h += '</div>';
+                box.innerHTML = h;
+            }).catch(function() {
+                btn.disabled = false; btn.innerHTML = orig;
+                box.style.display = 'block';
+                box.innerHTML = '<div style="color:#B71C1C;">Eroare de retea la nivelare.</div>';
             });
         });
     }
