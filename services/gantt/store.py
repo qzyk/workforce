@@ -498,6 +498,7 @@ def sync_din_json(tenant_id: Optional[int] = None, user_id: Optional[int] = None
 # ---------------------------------------------------------------------------
 _DISC_GANTT = 'gantt'          # tarif lei/UM
 _DISC_RAND = 'gantt-randament'  # randament UM/zi (reutilizam tabelul de tarife)
+_DISC_CAPAC = 'gantt-capacitate'  # capacitate resurse (nr unitati/zi pe categorie)
 
 
 def randamente_gantt(tenant_id: Optional[int] = None) -> dict:
@@ -656,6 +657,98 @@ def seteaza_randament(categorie: str, randament, um: Optional[str] = None,
         db.session.flush()
         _audit('create' if nou else 'update', 'tarife_categorie', row.id,
                {'categorie': categorie, 'randament': randament, 'disciplina': _DISC_RAND})
+        db.session.commit()
+        return row, None
+    except Exception:
+        try:
+            from models import db
+            db.session.rollback()
+        except Exception:
+            pass
+        return None, 'Eroare la salvare.'
+
+
+# ---------------------------------------------------------------------------
+# Capacitate resurse (nivelare, Gantt Faza 4) - stocata in tarife_categorie cu
+# disciplina='gantt-capacitate'. tarif_baza = nr. unitati (echipe) disponibile/zi
+# pe categorie. NICIUN tabel nou (reutilizam TarifCategorie ca la randamente).
+# ---------------------------------------------------------------------------
+def capacitati_gantt(tenant_id: Optional[int] = None) -> dict:
+    """{CATEGORIE_UPPER: nr_unitati_pe_zi (int)} din DB (disciplina gantt-capacitate).
+
+    Doar din DB - nu exista default JSON (capacitatea e specifica santierului). Tabel
+    gol / fara context / orice eroare => dict gol => nivelarea nu muta nimic."""
+    out: dict = {}
+    try:
+        from flask import has_app_context
+        if not has_app_context():
+            return out
+        from sqlalchemy import or_
+        from models import TarifCategorie
+        q = TarifCategorie.query.filter_by(disciplina=_DISC_CAPAC, proiect_id=None)
+        if tenant_id is not None:
+            q = q.filter(or_(TarifCategorie.tenant_id == tenant_id,
+                             TarifCategorie.tenant_id.is_(None)))
+        else:
+            q = q.filter(TarifCategorie.tenant_id.is_(None))
+        for r in q.all():
+            try:
+                nr = int(round(float(r.tarif_baza or 0)))
+            except (TypeError, ValueError):
+                nr = 0
+            if nr > 0:
+                out[(r.categorie_lucrare or '').strip().upper()] = nr
+    except Exception:
+        pass
+    return out
+
+
+def lista_capacitati(tenant_id: Optional[int] = None) -> list:
+    """Lista pentru admin: [{categorie, capacitate}] ordonata pe categorie."""
+    cap = capacitati_gantt(tenant_id)
+    return [{'categorie': c, 'capacitate': cap[c]} for c in sorted(cap)]
+
+
+def seteaza_capacitate(categorie: str, capacitate, tenant_id=None, user_id=None):
+    """Upsert capacitate (TarifCategorie disciplina='gantt-capacitate'). (row, eroare).
+
+    capacitate=0 => sterge randul (categorie nelimitata din nou)."""
+    categorie = (categorie or '').strip().upper()
+    if not categorie:
+        return None, 'Categorie obligatorie.'
+    try:
+        capacitate = int(round(float(str(capacitate).replace(',', '.'))))
+    except (TypeError, ValueError):
+        return None, 'Capacitate invalida.'
+    if capacitate < 0:
+        return None, 'Capacitate invalida.'
+    try:
+        from flask import has_app_context
+        if not has_app_context():
+            return None, 'Fara context aplicatie.'
+        from models import db, TarifCategorie
+        row = TarifCategorie.query.filter_by(
+            disciplina=_DISC_CAPAC, categorie_lucrare=categorie,
+            proiect_id=None, tenant_id=tenant_id).first()
+        if capacitate == 0:
+            if row is not None:
+                _audit('delete', 'tarife_categorie', row.id,
+                       {'categorie': categorie, 'disciplina': _DISC_CAPAC})
+                db.session.delete(row)
+                db.session.commit()
+            return None, None
+        nou = row is None
+        if nou:
+            row = TarifCategorie(disciplina=_DISC_CAPAC, categorie_lucrare=categorie,
+                                 tarif_baza=capacitate, proiect_id=None,
+                                 tenant_id=tenant_id, creat_de_id=user_id)
+            db.session.add(row)
+        else:
+            row.tarif_baza = capacitate
+        db.session.flush()
+        _audit('create' if nou else 'update', 'tarife_categorie', row.id,
+               {'categorie': categorie, 'capacitate': capacitate,
+                'disciplina': _DISC_CAPAC})
         db.session.commit()
         return row, None
     except Exception:

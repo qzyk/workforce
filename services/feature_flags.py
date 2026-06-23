@@ -85,6 +85,15 @@ KNOWN_FLAGS: dict[str, str] = {
     'gantt-tracking': 'Urmarire executie Gantt: baseline (plan de referinta inghetat) + progres '
                       'fizic pe activitate (bare cu % real + overlay baseline + pagina de tracking). '
                       'Cu OFF: comportament istoric (progres 0, fara baseline). Default OFF.',
+    # Gantt Faza 4 - nivelare resurse (resource leveling)
+    'gantt-leveling': 'Nivelare resurse Gantt (resource leveling): histograma incarcare '
+                      'vs capacitate pe categorie de lucrare + buton "Niveleaza" care '
+                      'arata DELTA (cum se muta datele cand cererea/zi depaseste '
+                      'capacitatea), folosind un algoritm serial SGS care respecta '
+                      'dependentele. Capacitatile se seteaza pe categorie in config '
+                      '(TarifCategorie disciplina gantt-capacitate). Vedere DERIVATA: NU '
+                      'modifica planul salvat. Cu OFF sau fara capacitati setate, nimic '
+                      'nou nu se afiseaza si motorul ramane identic. Default OFF.',
     # Gantt Faza 3 - EVM pe plan din tracking
     'gantt-evm-pro': 'EVM la nivel de plan Gantt din datele de tracking (Faza 2): PV din '
                      'baseline-ul activ, EV din progresul fizic ponderat pe valoare (agregat '
