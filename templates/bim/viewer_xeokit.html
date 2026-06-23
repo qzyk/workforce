@@ -510,7 +510,9 @@ function showError(msg, detail) {
     {% endif %}
 })();
 
+{% if feature_enabled('iot-twin-overlay') and feature_enabled('bim-iot-sensors') %}
 // initTwinOverlay e definit la nivel de modul ca sa fie usor de testat/citit.
+// Emis DOAR cu flag-ul ON (cu OFF, viewer-ul e byte-identic cu azi).
 // Primeste viewer-ul xeokit gata incarcat, URL-ul de overlay (JSON) si URL-ul SSE.
 async function initTwinOverlay(viewer, overlayUrl, streamUrl) {
     const panel = document.getElementById('xvTwinPanel');
@@ -625,5 +627,6 @@ async function initTwinOverlay(viewer, overlayUrl, streamUrl) {
     connect();
     window.addEventListener('beforeunload', () => { inchis = true; if (es) try { es.close(); } catch (e) {} });
 }
+{% endif %}
 </script>
 {% endblock %}

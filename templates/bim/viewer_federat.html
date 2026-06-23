@@ -219,8 +219,10 @@ try {
     console.error(err);
 }
 
-// Digital Twin overlay pentru viewer-ul federat. Acelasi comportament ca pe
-// viewer_xeokit, dar guidMap-ul acopera entitatile din TOATE modelele federate.
+{% if feature_enabled('iot-twin-overlay') and feature_enabled('bim-iot-sensors') %}
+// Digital Twin overlay pentru viewer-ul federat. Emis DOAR cu flag-ul ON (cu OFF,
+// viewer-ul e identic cu azi). guidMap-ul acopera entitatile din TOATE modelele
+// federate.
 async function initFedTwinOverlay(viewer, overlayUrl, streamUrl) {
     const panel = document.getElementById('fedTwinPanel');
     const list  = document.getElementById('fedTwinList');
@@ -310,5 +312,6 @@ async function initFedTwinOverlay(viewer, overlayUrl, streamUrl) {
     connect();
     window.addEventListener('beforeunload', () => { inchis = true; if (es) try { es.close(); } catch (e) {} });
 }
+{% endif %}
 </script>
 {% endblock %}
