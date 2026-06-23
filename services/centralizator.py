@@ -136,27 +136,37 @@ def dry_run_proiect(proiect_id: int) -> dict:
 # Centralizator (disciplina -> categorie)
 # ============================================================
 
-def genereaza_centralizator(proiect_id: int) -> dict:
+def recapitulatie_ierarhica(linii: list[dict]) -> dict:
     """
-    Agregare pe disciplina -> categorie_lucrare cu Sigma valoare + nr pozitii.
-    Returneaza structura ierarhica + total general.
+    Agregare ierarhica obiect (disciplina) -> categorie_lucrare cu Sigma
+    valoare + nr articole. Helper reutilizabil (centralizator proiect +
+    formulare F1/F2/F3 ale situatiilor de lucrari).
+
+    `linii` = lista de dict-uri cu cheile:
+        - 'disciplina': str (obiectul / capitolul HG907)
+        - 'categorie':  str (categoria de lucrare, ex beton/armatura)
+        - 'valoare':    Decimal (valoare FARA TVA a articolului)
+
+    Returneaza:
+        {grupe: [{disciplina, subtotal, categorii: [{categorie, valoare, nr}]}],
+         total_general: Decimal, nr_pozitii: int}
+
+    Toate valorile cuantizate la 2 zecimale. Pozitiile sunt FARA TVA; TVA se
+    aplica la final de catre apelant (playbook deviz §2.6).
     """
-    pozitii = _pozitii_proiect(proiect_id)
-    # disc -> cat -> {valoare, nr, cantitate-less aggregated}
     grupe: dict[str, dict[str, dict]] = {}
     total_general = Decimal('0')
 
-    for p in pozitii:
-        disc = deduce_disciplina(p.cod_capitol)
-        cat = p.categorie_lucrare or 'neclasificat'
-        val = (p.cantitate_oferta or Decimal('0')) * (p.pret_unitar or Decimal('0'))
+    for ln in linii:
+        disc = ln['disciplina']
+        cat = ln['categorie'] or 'neclasificat'
+        val = ln['valoare'] or Decimal('0')
         g = grupe.setdefault(disc, {})
         c = g.setdefault(cat, {'valoare': Decimal('0'), 'nr': 0})
         c['valoare'] += val
         c['nr'] += 1
         total_general += val
 
-    # Construiesc lista ordonata + subtotaluri pe disciplina
     rezultat = []
     for disc in sorted(grupe.keys()):
         cats = grupe[disc]
@@ -175,8 +185,24 @@ def genereaza_centralizator(proiect_id: int) -> dict:
     return {
         'grupe': rezultat,
         'total_general': total_general.quantize(_Q2),
-        'nr_pozitii': len(pozitii),
+        'nr_pozitii': len(linii),
     }
+
+
+def genereaza_centralizator(proiect_id: int) -> dict:
+    """
+    Agregare pe disciplina -> categorie_lucrare cu Sigma valoare + nr pozitii.
+    Returneaza structura ierarhica + total general. Reutilizeaza
+    recapitulatie_ierarhica peste pozitiile de oferta ale proiectului.
+    """
+    pozitii = _pozitii_proiect(proiect_id)
+    linii = [
+        {'disciplina': deduce_disciplina(p.cod_capitol),
+         'categorie': p.categorie_lucrare or 'neclasificat',
+         'valoare': (p.cantitate_oferta or Decimal('0')) * (p.pret_unitar or Decimal('0'))}
+        for p in pozitii
+    ]
+    return recapitulatie_ierarhica(linii)
 
 
 # ============================================================
