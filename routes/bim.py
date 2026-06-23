@@ -2111,6 +2111,31 @@ def api_element_state(element_id):
                     **iot_query_svc.get_current_state_element(element_id)})
 
 
+@bim_bp.route('/api/sensor/<int:sensor_id>/current')
+@login_required
+def api_sensor_current(sensor_id):
+    """
+    JSON cu starea curenta a UNUI senzor (ultima valoare + is_alarming),
+    pentru dashboard-ul live din sensor_detaliu.html (poll periodic).
+
+    Gate: bim-iot-sensors. Cu OFF -> {enabled: False} (dashboard-ul nu actualizeaza).
+    """
+    if not ff_svc.is_enabled('bim-iot-sensors'):
+        return jsonify({'enabled': False}), 200
+    senzor = Senzor.query.get_or_404(sensor_id)
+    nr_alerte_noi = SensorAlert.query.filter_by(senzor_id=sensor_id, status='noua').count()
+    return jsonify({
+        'enabled': True,
+        'id': senzor.id,
+        'cod': senzor.cod,
+        'unitate': senzor.unitate,
+        'ultima_valoare': float(senzor.ultima_valoare) if senzor.ultima_valoare is not None else None,
+        'ultima_citire_at': senzor.ultima_citire_at.isoformat() if senzor.ultima_citire_at else None,
+        'is_alarming': senzor.is_alarming,
+        'alerte_noi': nr_alerte_noi,
+    })
+
+
 @bim_bp.route('/api/model/<int:model_id>/twin-overlay')
 @login_required
 def api_model_twin_overlay(model_id):

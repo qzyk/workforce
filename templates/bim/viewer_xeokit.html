@@ -22,6 +22,16 @@
 .xv-progress-bar { height:100%; background:var(--primary); width:0%; transition:width 0.2s; }
 .xv-error { background:rgba(255,90,90,0.15); border:1px solid #ff5a5a; color:#fff; padding:14px 18px; border-radius:8px; max-width:420px; }
 .xv-badge { display:inline-block; padding:2px 8px; background:rgba(76,175,80,0.25); color:#a5d6a7; border-radius:10px; font-size:0.7rem; margin-left:6px; }
+/* Digital Twin overlay (iot-4) */
+.xv-twin { position:absolute; top:10px; right:10px; width:268px; max-height:calc(100% - 20px); overflow-y:auto; background:rgba(11,20,38,0.92); color:#F5F1E8; padding:12px 14px; border-radius:8px; font-size:0.82rem; z-index:11; border:1px solid rgba(201,169,97,0.4); }
+.xv-twin h4 { margin:0 0 8px 0; font-size:0.82rem; color:#C9A961; text-transform:uppercase; letter-spacing:0.04em; }
+.xv-twin-row { display:flex; justify-content:space-between; gap:8px; padding:6px 8px; border-radius:5px; margin-bottom:4px; cursor:pointer; background:rgba(255,255,255,0.04); }
+.xv-twin-row:hover { background:rgba(255,255,255,0.10); }
+.xv-twin-row.alarm { border-left:3px solid #ff5a5a; background:rgba(255,90,90,0.14); }
+.xv-twin-row .v { font-weight:700; white-space:nowrap; }
+.xv-twin-row .v.alarm { color:#ff8a8a; }
+.xv-twin-empty { color:rgba(245,241,232,0.6); font-style:italic; }
+.xv-twin-meta { font-size:0.72rem; color:rgba(245,241,232,0.6); margin-top:8px; }
 </style>
 {% endblock %}
 
@@ -64,6 +74,13 @@
             Prima incarcare poate dura 5-30 secunde. xeokit-sdk si web-ifc se downloadeaza din CDN.
         </small>
     </div>
+    {% if feature_enabled('iot-twin-overlay') and feature_enabled('bim-iot-sensors') %}
+    <div class="xv-twin" id="xvTwinPanel" style="display:none;">
+        <h4><i class="fa-solid fa-broadcast-tower"></i> Digital Twin</h4>
+        <div id="xvTwinList"><div class="xv-twin-empty">Se incarca senzorii...</div></div>
+        <div class="xv-twin-meta" id="xvTwinMeta"></div>
+    </div>
+    {% endif %}
 </div>
 
 <!-- 4D player (vizibil doar daca exista schedule-uri) -->
@@ -482,6 +499,131 @@ function showError(msg, detail) {
             apply(0);
         }
     } catch (e) { console.warn('4D player init failed', e); }
+
+    // ---------------- Digital Twin overlay (iot-4) ----------------
+    // Coloreaza rosu elementele cu senzor in alarma (setObjectsColorized, NU
+    // modifica geometria) + panou lateral cu ultima valoare per element + flux
+    // live SSE (sensor_alert). Gate dublu in template + degradare gratioasa.
+    {% if feature_enabled('iot-twin-overlay') and feature_enabled('bim-iot-sensors') %}
+    initTwinOverlay(viewer, "{{ url_for('bim.api_model_twin_overlay', model_id=model.id) }}",
+                    "{{ url_for('bim.sensor_alerts_stream') }}");
+    {% endif %}
 })();
+
+// initTwinOverlay e definit la nivel de modul ca sa fie usor de testat/citit.
+// Primeste viewer-ul xeokit gata incarcat, URL-ul de overlay (JSON) si URL-ul SSE.
+async function initTwinOverlay(viewer, overlayUrl, streamUrl) {
+    const panel = document.getElementById('xvTwinPanel');
+    const list  = document.getElementById('xvTwinList');
+    const meta  = document.getElementById('xvTwinMeta');
+    if (!panel || !viewer || !viewer.metaScene) return;
+
+    const ROSU = [0.90, 0.13, 0.13];   // culoare alarma (setObjectsColorized)
+
+    // GUID (originalSystemId / ifc_global_id) -> [obiect xeokit ids cu geometrie]
+    const guidMap = {};
+    for (const m of Object.values(viewer.metaScene.metaObjects || {})) {
+        if (m.originalSystemId && viewer.scene.objects[m.id]) {
+            (guidMap[m.originalSystemId] = guidMap[m.originalSystemId] || []).push(m.id);
+        }
+    }
+
+    // Tine minte ce am colorat ca sa putem reseta exact (nu atingem alte culori).
+    let colorate = [];
+
+    function reset() {
+        if (colorate.length) {
+            try { viewer.scene.setObjectsColorized(colorate, null); } catch (e) { /* best-effort */ }
+        }
+        colorate = [];
+    }
+
+    function flyToGuid(guid) {
+        const ids = (guidMap[guid] || []).filter(id => viewer.scene.objects[id]);
+        if (!ids.length) return;
+        try {
+            const aabb = viewer.scene.getAABB(ids);
+            if (viewer.cameraFlight && viewer.cameraFlight.flyTo) viewer.cameraFlight.flyTo({ aabb });
+        } catch (e) { /* best-effort */ }
+    }
+
+    function render(state) {
+        reset();
+        const byGuid = (state && state.by_guid) || {};
+        const guids = Object.keys(byGuid);
+        // Elementele mapabile pe entitati 3D din acest model (pot exista senzori pe
+        // elemente din alt model / fara GUID -> sarite, degradare gratioasa).
+        const vizibile = guids.filter(g => guidMap[g]);
+        if (!vizibile.length) {
+            list.innerHTML = '<div class="xv-twin-empty">Niciun senzor pe elementele acestui model.</div>';
+            meta.textContent = '';
+            return;
+        }
+        let html = '';
+        let nrAlarma = 0;
+        // Alarmele sus, apoi restul; in interior sortare pe cod.
+        vizibile.sort((a, b) => {
+            const A = byGuid[a].is_alarming ? 0 : 1, B = byGuid[b].is_alarming ? 0 : 1;
+            if (A !== B) return A - B;
+            return (byGuid[a].cod || '').localeCompare(byGuid[b].cod || '');
+        });
+        for (const g of vizibile) {
+            const e = byGuid[g];
+            const ids = guidMap[g].filter(id => viewer.scene.objects[id]);
+            if (e.is_alarming && ids.length) {
+                try { viewer.scene.setObjectsColorized(ids, ROSU); colorate.push(...ids); } catch (ex) { /* */ }
+                nrAlarma++;
+            }
+            // Ultima valoare reprezentativa: primul senzor in alarma, altfel primul.
+            const sAlarm = (e.sensors || []).find(s => s.is_alarming);
+            const s = sAlarm || (e.sensors || [])[0] || {};
+            const val = (s.ultima_valoare != null)
+                ? (s.ultima_valoare + ' ' + (s.unitate || '')) : '—';
+            html += `<div class="xv-twin-row ${e.is_alarming ? 'alarm' : ''}" data-guid="${g}" title="${(e.sensors||[]).length} senzor(i)">
+                <span>${e.cod || e.element_bim_id}<br><small style="opacity:.65;">${s.label_tip || s.tip || ''}</small></span>
+                <span class="v ${e.is_alarming ? 'alarm' : ''}">${val}</span>
+            </div>`;
+        }
+        list.innerHTML = html;
+        meta.textContent = vizibile.length + ' element(e) cu senzori · ' + nrAlarma + ' in alarma';
+        list.querySelectorAll('.xv-twin-row').forEach(r => {
+            r.addEventListener('click', () => flyToGuid(r.dataset.guid));
+        });
+    }
+
+    async function refresh() {
+        try {
+            const r = await fetch(overlayUrl);
+            if (!r.ok) return;
+            const state = await r.json();
+            if (state.enabled === false) { panel.style.display = 'none'; return; }
+            render(state);
+        } catch (e) { console.warn('twin overlay refresh', e); }
+    }
+
+    panel.style.display = '';
+    await refresh();
+
+    // ---- Flux live SSE (sensor_alert). Reconnect cu since=<last_id>, max 30s PA.
+    let lastId = 0;
+    let es = null;
+    let inchis = false;
+    function connect() {
+        if (inchis) return;
+        const sep = streamUrl.includes('?') ? '&' : '?';
+        const url = streamUrl + sep + 'since=' + lastId;
+        try { es = new EventSource(url); } catch (e) { return; }
+        es.addEventListener('sensor_alert', (ev) => {
+            if (ev.lastEventId) lastId = parseInt(ev.lastEventId, 10) || lastId;
+            // O alerta noua -> re-citim starea agregata (cea mai simpla si corecta).
+            refresh();
+        });
+        // Serverul inchide la 30s (event 'close') -> reconnectam cu since=lastId.
+        es.addEventListener('close', () => { try { es.close(); } catch (e) {} setTimeout(connect, 500); });
+        es.onerror = () => { try { es.close(); } catch (e) {} if (!inchis) setTimeout(connect, 3000); };
+    }
+    connect();
+    window.addEventListener('beforeunload', () => { inchis = true; if (es) try { es.close(); } catch (e) {} });
+}
 </script>
 {% endblock %}
