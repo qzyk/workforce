@@ -147,6 +147,15 @@ KNOWN_FLAGS: dict[str, str] = {
                            'Times daca .ttf lipseste (fara dependinta noua). Cu OFF, '
                            'PDF-urile raman ca inainte (Helvetica, fara header brandat). '
                            'Default OFF.',
+    # Workforce wf-4 - pontaj de echipa pe teren + GPS optional
+    'teren-pontaj-bulk': 'Pontaj de echipa din modulul Teren: multi-select angajati '
+                         'pe un proiect + data, salvat in bloc (reutilizeaza logica '
+                         'din pontaje.adauga_multiplu - calcul ore, anti-duplicat, '
+                         'anti-suprapunere). Captura GPS optionala client-side '
+                         '(navigator.geolocation) salvata in pontaje.latitudine/'
+                         'longitudine/sursa_gps; lipsa GPS NU blocheaza pontajul. '
+                         'Cu OFF, modulul Teren ramane neschimbat (doar pontaj '
+                         'individual) si coordonatele raman NULL. Default OFF.',
 }
 
 

@@ -291,6 +291,14 @@ class Pontaj(db.Model):
     # (comportament istoric).
     spor_noapte = db.Column(db.Numeric(5, 2), nullable=True)
 
+    # Geolocatie optionala la pontajul de teren (wf-4). Coloane aditive nullable,
+    # populate doar pe calea bulk de teren cand clientul a permis navigator.geolocation.
+    # Lipsa GPS NU blocheaza pontajul: raman NULL (comportament istoric). Se salveaza
+    # doar cand flag-ul 'teren-pontaj-bulk' e activ; cu flag OFF raman NULL.
+    latitudine = db.Column(db.Float, nullable=True)
+    longitudine = db.Column(db.Float, nullable=True)
+    sursa_gps = db.Column(db.String(10), nullable=True)  # 'gps' / 'manual' / NULL
+
     tip_zi = db.Column(db.String(30), default='lucratoare')
     # lucratoare, sambata, duminica, sarbatoare_legala, co, cm, invoiere
     status = db.Column(db.String(20), default='draft')

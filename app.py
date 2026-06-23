@@ -494,6 +494,13 @@ def create_app(config_name='default'):
             ('rapoarte', 'tenant_id', 'INTEGER REFERENCES tenants(id)'),
             ('rapoarte', 'continut_blob', 'BLOB'),
             ('rapoarte', 'checksum', 'VARCHAR(64)'),
+            # Workforce wf-4 (pontaj teren bulk + GPS optional): coloane aditive
+            # nullable pe tabela existenta 'pontaje'. Captura GPS e optionala -
+            # lipsa GPS NU blocheaza pontajul (raman NULL). Populate doar pe calea
+            # bulk de teren cu flag 'teren-pontaj-bulk' ON; cu OFF raman NULL.
+            ('pontaje', 'latitudine', 'FLOAT'),
+            ('pontaje', 'longitudine', 'FLOAT'),
+            ('pontaje', 'sursa_gps', 'VARCHAR(10)'),
         ]
 
         adaugate = 0
