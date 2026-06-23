@@ -93,6 +93,10 @@ def test_proiecte_detalii_se_randeaza(authenticated_client, app):
         pid = p.id
     resp = authenticated_client.get(f'/proiecte/{pid}')
     assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'ed-page-header' in html   # header migrat
+    assert 'ed-stat-grid' in html     # KPI pe componente
+    assert 'ed-badge' in html         # status badge centralizat
 
 
 def test_pontaje_aprobare_card_view_mobil(authenticated_client):

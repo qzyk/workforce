@@ -10,94 +10,44 @@
 {% endblock %}
 
 {% block content %}
-<!-- Header -->
-<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
-    <div>
-        <h2 style="margin: 0 0 8px 0;">
-            <i class="fa-solid fa-building" style="color: var(--primary);"></i> {{ proiect.nume }}
-        </h2>
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <span class="badge-project">{{ proiect.cod_proiect }}</span>
-            <span class="badge-status badge-{{ proiect.status }}" id="statusBadge">{{ proiect.status|capitalize }}</span>
-            {% if proiect.manager %}
-            <span style="font-size: 0.85rem; color: var(--gray-600);">
-                <i class="fa-solid fa-user-tie"></i> {{ proiect.manager.get_full_name() }}
-            </span>
-            {% endif %}
-        </div>
-    </div>
-    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <!-- Status Quick Change -->
-        <select id="statusSelect" class="form-select" style="width: auto; font-size: 0.85rem;"
-                onchange="changeStatus(this.value)">
-            {% for val, label in [('planificat','Planificat'),('activ','Activ'),('suspendat','Suspendat'),('finalizat','Finalizat'),('anulat','Anulat')] %}
-            <option value="{{ val }}" {{ 'selected' if proiect.status == val }}>{{ label }}</option>
-            {% endfor %}
-        </select>
-        <a href="{{ url_for('proiecte.hub', id=proiect.id) }}" class="btn btn-primary">
-            <i class="fa-solid fa-diagram-project"></i> Hub 360
-        </a>
-        <a href="{{ url_for('doc_proiecte.index', proiect_id=proiect.id) }}" class="btn btn-primary">
-            <i class="fa-solid fa-folder-open"></i> Documente Proiect
-        </a>
-        <a href="{{ url_for('locatii.lista', proiect_id=proiect.id) }}" class="btn btn-outline">
-            <i class="fa-solid fa-map-location-dot"></i> Locatii
-        </a>
-        <a href="{{ url_for('contracte.centralizator_proiect', proiect_id=proiect.id) }}" class="btn btn-outline">
-            <i class="fa-solid fa-layer-group"></i> Centralizator
-        </a>
-        <a href="{{ url_for('contracte.deviz_general_proiect', proiect_id=proiect.id) }}" class="btn btn-outline">
-            <i class="fa-solid fa-file-invoice"></i> Deviz general
-        </a>
-        <a href="{{ url_for('proiecte.raport', id=proiect.id) }}" class="btn btn-outline">
-            <i class="fa-solid fa-file-lines"></i> Raport
-        </a>
-        <a href="{{ url_for('proiecte.export_excel', id=proiect.id) }}" class="btn btn-success">
-            <i class="fa-solid fa-file-excel"></i> Export
-        </a>
-        <a href="{{ url_for('proiecte.editeaza', id=proiect.id) }}" class="btn btn-secondary">
-            <i class="fa-solid fa-pen"></i> Editeaza
-        </a>
-    </div>
+{# DS faza 4: header pe ed.page_header (cu status badge centralizat) + KPI pe
+   ed.stat_card. Tab-urile si JS-ul de quick-change status raman neschimbate. #}
+{% call ed.page_header(icon='building', titlu=proiect.nume) %}
+    <!-- Status Quick Change (JS) -->
+    <select id="statusSelect" class="form-select" style="width: auto; font-size: 0.85rem;"
+            onchange="changeStatus(this.value)">
+        {% for val, label in [('planificat','Planificat'),('activ','Activ'),('suspendat','Suspendat'),('finalizat','Finalizat'),('anulat','Anulat')] %}
+        <option value="{{ val }}" {{ 'selected' if proiect.status == val }}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    {{ ed.btn('Hub 360', url=url_for('proiecte.hub', id=proiect.id), varianta='primary', icon='diagram-project') }}
+    {{ ed.btn('Documente Proiect', url=url_for('doc_proiecte.index', proiect_id=proiect.id), varianta='primary', icon='folder-open') }}
+    {{ ed.btn('Locatii', url=url_for('locatii.lista', proiect_id=proiect.id), varianta='outline', icon='map-location-dot') }}
+    {{ ed.btn('Centralizator', url=url_for('contracte.centralizator_proiect', proiect_id=proiect.id), varianta='outline', icon='layer-group') }}
+    {{ ed.btn('Deviz general', url=url_for('contracte.deviz_general_proiect', proiect_id=proiect.id), varianta='outline', icon='file-invoice') }}
+    {{ ed.btn('Raport', url=url_for('proiecte.raport', id=proiect.id), varianta='outline', icon='file-lines') }}
+    {{ ed.btn('Export', url=url_for('proiecte.export_excel', id=proiect.id), varianta='outline', icon='file-excel') }}
+    {{ ed.btn('Editeaza', url=url_for('proiecte.editeaza', id=proiect.id), varianta='outline', icon='pen') }}
+{% endcall %}
+
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -8px 0 20px;">
+    {{ ed.badge(text=proiect.cod_proiect, status='info') }}
+    <span id="statusBadge">{{ ed.badge(text=proiect.status|capitalize, status=proiect.status) }}</span>
+    {% if proiect.manager %}
+    <span style="font-size: 0.85rem; color: var(--ed-color-text-faint, #5F6975);">
+        <i class="fa-solid fa-user-tie"></i> {{ proiect.manager.get_full_name() }}
+    </span>
+    {% endif %}
 </div>
 
-<!-- Stats Summary -->
-<div class="stats-bar">
-    <div class="stat-mini">
-        <div class="stat-icon bg-primary"><i class="fa-solid fa-chart-line"></i></div>
-        <div>
-            <div class="stat-number">{{ proiect.progres or 0 }}%</div>
-            <div class="stat-label">Progres</div>
-        </div>
-    </div>
-    <div class="stat-mini">
-        <div class="stat-icon bg-success"><i class="fa-solid fa-users"></i></div>
-        <div>
-            <div class="stat-number">{{ angajati_activi|length }}</div>
-            <div class="stat-label">Angajati Activi</div>
-        </div>
-    </div>
-    <div class="stat-mini">
-        <div class="stat-icon" style="background: var(--info);"><i class="fa-solid fa-clock"></i></div>
-        <div>
-            <div class="stat-number">{{ '{:,.0f}'.format(total_ore) }}</div>
-            <div class="stat-label">Total Ore</div>
-        </div>
-    </div>
-    <div class="stat-mini">
-        <div class="stat-icon bg-warning"><i class="fa-solid fa-hourglass-half"></i></div>
-        <div>
-            <div class="stat-number">{{ proiect.zile_ramase if proiect.zile_ramase is not none else '-' }}</div>
-            <div class="stat-label">Zile Ramase</div>
-        </div>
-    </div>
-    <div class="stat-mini">
-        <div class="stat-icon" style="background: var(--danger);"><i class="fa-solid fa-coins"></i></div>
-        <div>
-            <div class="stat-number">{{ '{:,.0f}'.format(cost_manopera) }}</div>
-            <div class="stat-label">Cost Manopera (RON)</div>
-        </div>
-    </div>
+<!-- KPI Summary -->
+<div class="ed-stat-grid">
+    {{ ed.stat_card(label='Progres', valoare=(proiect.progres or 0) ~ '%', icon='chart-line', accent='navy') }}
+    {{ ed.stat_card(label='Angajati Activi', valoare=angajati_activi|length, icon='users', accent='success') }}
+    {{ ed.stat_card(label='Total Ore', valoare='{:,.0f}'.format(total_ore), icon='clock', accent='navy') }}
+    {{ ed.stat_card(label='Zile Ramase', valoare=(proiect.zile_ramase if proiect.zile_ramase is not none else '-'),
+       icon='hourglass-half', accent='warning') }}
+    {{ ed.stat_card(label='Cost Manopera (RON)', valoare='{:,.0f}'.format(cost_manopera), icon='coins', accent='gold') }}
 </div>
 
 <!-- Tab Navigation -->
@@ -717,9 +667,16 @@ function changeStatus(newStatus) {
         body: JSON.stringify({status: newStatus})
     }).then(r => r.json()).then(data => {
         if (data.success) {
-            const badge = document.getElementById('statusBadge');
-            badge.className = 'badge-status badge-' + data.status;
-            badge.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+            // DS faza 4: badge-ul de status e o componenta .ed-badge (in wrapper #statusBadge).
+            // Mapam status -> varianta de culoare (oglindeste _STATUS_MAP din _components.html).
+            const map = {
+                activ:'success', deschis:'success', aprobat:'success', finalizat:'success',
+                planificat:'info', suspendat:'warning', anulat:'neutru', respins:'danger'
+            };
+            const varianta = map[data.status] || 'neutru';
+            const wrap = document.getElementById('statusBadge');
+            const txt = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+            wrap.innerHTML = '<span class="ed-badge ed-badge--' + varianta + '">' + txt + '</span>';
         }
     });
 }
