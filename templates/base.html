@@ -372,6 +372,27 @@
         <footer class="main-footer">
             <span>&copy; {{ today.year }} EDIFICO WORKFORCE v{{ app_version|default('2.0.0') }}</span>
         </footer>
+
+        {# DS faza 4: bara de navigare jos, vizibila doar pe mobil (sub 768px).
+           CTA central duce direct la modulul de teren (pontaj rapid). #}
+        <nav class="ed-bottombar" aria-label="{{ _('Navigare mobil') }}">
+            {%- set ep = request.endpoint or '' -%}
+            <a href="{{ url_for('dashboard.index') }}" class="ed-bottombar__item{% if ep == 'dashboard.index' %} ed-bottombar__item--activ{% endif %}">
+                <i class="fa-solid fa-gauge"></i><span>{{ _('Acasa') }}</span>
+            </a>
+            <a href="{{ url_for('proiecte.lista') }}" class="ed-bottombar__item{% if ep.startswith('proiecte') %} ed-bottombar__item--activ{% endif %}">
+                <i class="fa-solid fa-building"></i><span>{{ _('Proiecte') }}</span>
+            </a>
+            <a href="{{ url_for('teren.index') }}" class="ed-bottombar__item ed-bottombar__item--cta{% if ep.startswith('teren') %} ed-bottombar__item--activ{% endif %}" aria-label="{{ _('Teren') }}">
+                <i class="fa-solid fa-helmet-safety"></i><span>{{ _('Teren') }}</span>
+            </a>
+            <a href="{{ url_for('pontaje.lista') }}" class="ed-bottombar__item{% if ep.startswith('pontaje') %} ed-bottombar__item--activ{% endif %}">
+                <i class="fa-solid fa-clock"></i><span>{{ _('Pontaje') }}</span>
+            </a>
+            <a href="{{ url_for('angajati.lista') }}" class="ed-bottombar__item{% if ep.startswith('angajati') %} ed-bottombar__item--activ{% endif %}">
+                <i class="fa-solid fa-hard-hat"></i><span>{{ _('Echipa') }}</span>
+            </a>
+        </nav>
     </div>
     {% else %}
     {% block public_content %}{% endblock %}

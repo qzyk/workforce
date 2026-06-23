@@ -387,3 +387,63 @@ a.ed-stat:hover { box-shadow: var(--ed-shadow-md, 0 4px 12px rgba(11,20,38,.10))
 }
 .ed-hint i { color: var(--ed-color-gold-ink, #80620F); }
 .ed-hint a { color: var(--ed-color-gold-ink, #80620F); font-weight: 700; text-decoration: none; margin-left: 4px; }
+
+/* ============================================================
+   STAT GRID (faza 4) - grila responsiva pentru KPI (ed-stat)
+   ============================================================ */
+.ed-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--ed-space-4, 16px);
+  margin-bottom: var(--ed-space-5, 20px);
+}
+
+/* ============================================================
+   BOTTOM BAR MOBIL (faza 4) - bara de navigare fixa pe telefon.
+   Ascunsa pe desktop; vizibila doar sub 768px ca PWA-ul instalat sa
+   aiba navigare cu degetul. Strict aditiv: nu afecteaza layout-ul
+   desktop existent. .ed-bottombar e injectata in base.html (autentificat).
+   ============================================================ */
+.ed-bottombar { display: none; }
+
+@media (max-width: 768px) {
+  .ed-bottombar {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 1200;
+    background: var(--ed-color-navy, #0B1426);
+    border-top: 1px solid rgba(201, 169, 97, .35);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    box-shadow: 0 -2px 12px rgba(11, 20, 38, .25);
+  }
+  .ed-bottombar__item {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 9px 4px 7px;
+    color: rgba(245, 241, 232, .72);
+    text-decoration: none;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    min-height: 56px;
+  }
+  .ed-bottombar__item i { font-size: 1.12rem; }
+  .ed-bottombar__item--activ { color: var(--ed-color-gold, #C9A961); }
+  .ed-bottombar__item--activ i { color: var(--ed-color-gold, #C9A961); }
+  /* CTA central evidentiat (gold) - actiune principala pe teren */
+  .ed-bottombar__item--cta i {
+    background: var(--ed-grad-gold, linear-gradient(135deg, #E0BB6E, #C9A961, #A8893D));
+    color: var(--ed-color-navy, #0B1426);
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin-top: -2px;
+  }
+  /* Spatiu sub continut ca bara fixa sa nu acopere footer-ul / butoanele */
+  .page-content { padding-bottom: 72px; }
+}

@@ -7,11 +7,11 @@
 {% endblock %}
 
 {% block content %}
-<div style="display:flex; justify-content:flex-end; margin-bottom:14px;">
-    <a href="{{ url_for('dashboard.executiv') }}" class="btn btn-primary">
-        <i class="fa-solid fa-gauge-high"></i> Dashboard executiv (proiecte · cost · BIM)
-    </a>
-</div>
+{# DS faza 4: migrat pe biblioteca de componente (ed.*). Paleta gold/navy,
+   KPI clickabile, tabele cu card-view pe mobil. Comportament identic cu varianta veche. #}
+{% call ed.page_header(icon='gauge-high', titlu='Dashboard', subtitlu='Imagine de ansamblu — angajati, proiecte, ore si alerte') %}
+    {{ ed.btn('Dashboard executiv', url=url_for('dashboard.executiv'), varianta='primary', icon='gauge-high') }}
+{% endcall %}
 {% if ghid_nr_proiecte == 0 %}
     {{ next_hint('Bun venit! Primul pas: adauga un proiect ca sa incepi.',
        url_for('proiecte.adauga'), 'Adauga primul proiect') }}
@@ -19,283 +19,150 @@
     {{ next_hint('Ai proiecte. Urmatorul pas: genereaza un plan din lista de cantitati (F3).',
        url_for('gantt.index'), 'Creeaza primul plan Gantt') }}
 {% endif %}
+
 <!-- ============================================ -->
-<!-- RAND 1: CARDURI STATISTICI PRINCIPALE -->
+<!-- RAND 1: KPI CLICKABILE (toate duc la pagina relevanta) -->
 <!-- ============================================ -->
-<div class="stats-grid">
-    <!-- Card Angajati Activi -->
-    <div class="stat-card stat-primary">
-        <div class="stat-icon">
-            <i class="fa-solid fa-hard-hat"></i>
-        </div>
-        <div class="stat-info">
-            <span class="stat-label">Angajati Activi</span>
-            <span class="stat-value">{{ total_angajati_activi }}</span>
-            <span class="stat-trend trend-{{ trend_angajati.directie }}">
-                {% if trend_angajati.directie == 'up' %}
-                <i class="fa-solid fa-arrow-up"></i> +{{ trend_angajati.procent }}%
-                {% elif trend_angajati.directie == 'down' %}
-                <i class="fa-solid fa-arrow-down"></i> -{{ trend_angajati.procent }}%
-                {% else %}
-                <i class="fa-solid fa-minus"></i> 0%
-                {% endif %}
-                <small>vs luna trecuta</small>
-            </span>
-        </div>
-    </div>
+<div class="ed-stat-grid">
+    {{ ed.stat_card(
+        label='Angajati Activi', valoare=total_angajati_activi, icon='hard-hat',
+        accent='gold', url=url_for('angajati.lista', status='activ'),
+        trend={'dir': trend_angajati.directie, 'text': (('+' if trend_angajati.directie=='up' else '-' if trend_angajati.directie=='down' else '') ~ trend_angajati.procent ~ '% vs luna trecuta')}) }}
 
-    <!-- Card Proiecte Active -->
-    <div class="stat-card stat-orange">
-        <div class="stat-icon">
-            <i class="fa-solid fa-building"></i>
-        </div>
-        <div class="stat-info">
-            <span class="stat-label">Proiecte Active</span>
-            <span class="stat-value">{{ proiecte_active }}</span>
-            <span class="stat-trend trend-{{ trend_proiecte.directie }}">
-                {% if trend_proiecte.directie == 'up' %}
-                <i class="fa-solid fa-arrow-up"></i> +{{ trend_proiecte.procent }}%
-                {% elif trend_proiecte.directie == 'down' %}
-                <i class="fa-solid fa-arrow-down"></i> -{{ trend_proiecte.procent }}%
-                {% else %}
-                <i class="fa-solid fa-minus"></i> 0%
-                {% endif %}
-                <small>vs luna trecuta</small>
-            </span>
-        </div>
-    </div>
+    {{ ed.stat_card(
+        label='Proiecte Active', valoare=proiecte_active, icon='building',
+        accent='navy', url=url_for('proiecte.lista', status='activ'),
+        trend={'dir': trend_proiecte.directie, 'text': (('+' if trend_proiecte.directie=='up' else '-' if trend_proiecte.directie=='down' else '') ~ trend_proiecte.procent ~ '% vs luna trecuta')}) }}
 
-    <!-- Card Ore Lucrate -->
-    <div class="stat-card stat-green">
-        <div class="stat-icon">
-            <i class="fa-solid fa-clock"></i>
-        </div>
-        <div class="stat-info">
-            <span class="stat-label">Ore Luna Curenta</span>
-            <span class="stat-value">{{ '%.0f'|format(ore_luna_curenta) }}</span>
-            <span class="stat-trend trend-{{ trend_ore.directie }}">
-                {% if trend_ore.directie == 'up' %}
-                <i class="fa-solid fa-arrow-up"></i> +{{ trend_ore.procent }}%
-                {% elif trend_ore.directie == 'down' %}
-                <i class="fa-solid fa-arrow-down"></i> -{{ trend_ore.procent }}%
-                {% else %}
-                <i class="fa-solid fa-minus"></i> 0%
-                {% endif %}
-                <small>vs luna trecuta</small>
-            </span>
-        </div>
-    </div>
+    {{ ed.stat_card(
+        label='Ore Luna Curenta', valoare='%.0f'|format(ore_luna_curenta), icon='clock',
+        accent='success', url=url_for('pontaje.lista', status='aprobat'),
+        trend={'dir': trend_ore.directie, 'text': (('+' if trend_ore.directie=='up' else '-' if trend_ore.directie=='down' else '') ~ trend_ore.procent ~ '% vs luna trecuta')}) }}
 
-    <!-- Card Documente Expirate -->
-    <div class="stat-card {{ 'stat-danger' if documente_expirate > 0 else 'stat-gray' }}">
-        <div class="stat-icon">
-            <i class="fa-solid fa-file-circle-exclamation"></i>
-        </div>
-        <div class="stat-info">
-            <span class="stat-label">Doc. Expirate</span>
-            <span class="stat-value">{{ documente_expirate }}</span>
-            {% if documente_expira_curand > 0 %}
-            <span class="stat-sub-info">
-                <i class="fa-solid fa-clock"></i> {{ documente_expira_curand }} expira in 30 zile
-            </span>
-            {% else %}
-            <span class="stat-sub-info text-success">
-                <i class="fa-solid fa-check"></i> Totul in regula
-            </span>
-            {% endif %}
-        </div>
-    </div>
+    {{ ed.stat_card(
+        label='Doc. Expirate', valoare=documente_expirate, icon='file-circle-exclamation',
+        accent=('danger' if documente_expirate > 0 else 'navy'),
+        url=url_for('documente.lista', status='expirat'),
+        trend={'dir': ('down' if documente_expirate > 0 else 'flat'),
+               'text': ((documente_expira_curand ~ ' expira in 30 zile') if documente_expira_curand > 0 else 'Totul in regula')}) }}
 
-    <!-- Card Activitati Planificate Azi -->
-    <a href="{{ url_for('activitati.panou', status_executie='planificata') }}" class="stat-card stat-primary" style="text-decoration:none;">
-        <div class="stat-icon">
-            <i class="fa-solid fa-clipboard-list"></i>
-        </div>
-        <div class="stat-info">
-            <span class="stat-label">Activitati Azi</span>
-            <span class="stat-value">{{ badge_counts.activitati_azi if badge_counts.activitati_azi is defined else 0 }}</span>
-            <span class="stat-sub-info">
-                <i class="fa-solid fa-calendar-day"></i> Planificate astazi
-            </span>
-        </div>
-    </a>
+    {{ ed.stat_card(
+        label='Activitati Azi', valoare=(badge_counts.activitati_azi if badge_counts.activitati_azi is defined else 0),
+        icon='clipboard-list', accent='gold',
+        url=url_for('activitati.panou', status_executie='planificata')) }}
 </div>
 
 <!-- ============================================ -->
 <!-- RAND 2: GRAFICE -->
 <!-- ============================================ -->
 <div class="charts-grid">
-    <!-- Grafic Linie: Prezenta 30 zile -->
-    <div class="card-panel">
-        <div class="card-panel-header">
-            <h3><i class="fa-solid fa-chart-line"></i> Prezenta zilnica - ultimele 30 zile</h3>
-        </div>
-        <div class="card-panel-body chart-container">
-            <canvas id="prezentaChart"></canvas>
-        </div>
-    </div>
+    {% call ed.card('Prezenta zilnica — ultimele 30 zile', icon='chart-line') %}
+        <div class="chart-container"><canvas id="prezentaChart"></canvas></div>
+    {% endcall %}
 
-    <!-- Grafic Donut: Distributie functii -->
-    <div class="card-panel">
-        <div class="card-panel-header">
-            <h3><i class="fa-solid fa-chart-pie"></i> Distributie angajati pe functii</h3>
-        </div>
-        <div class="card-panel-body chart-container-donut">
-            <canvas id="functiiChart"></canvas>
-        </div>
-    </div>
+    {% call ed.card('Distributie angajati pe functii', icon='chart-pie') %}
+        <div class="chart-container-donut"><canvas id="functiiChart"></canvas></div>
+    {% endcall %}
 </div>
 
 <!-- ============================================ -->
-<!-- RAND 3: TABEL PONTAJE PENDING + ALERTE -->
+<!-- RAND 3: PONTAJE IN ASTEPTARE + ALERTE -->
 <!-- ============================================ -->
 <div class="tables-grid">
-    <!-- Pontaje in asteptare -->
-    <div class="card-panel">
-        <div class="card-panel-header">
-            <h3><i class="fa-solid fa-hourglass-half"></i> Pontaje in asteptare</h3>
-            <a href="{{ url_for('pontaje.lista', status='trimis') }}" class="header-link">Vezi toate <i class="fa-solid fa-arrow-right"></i></a>
-        </div>
-        <div class="card-panel-body">
-            {% if pontaje_pending %}
-            <div class="table-responsive">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Data</th>
-                            <th>Angajat</th>
-                            <th>Proiect</th>
-                            <th>Ore</th>
-                            <th>Actiuni</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for pontaj, angajat, proiect in pontaje_pending %}
-                        <tr>
-                            <td>{{ pontaj.data.strftime('%d.%m.%Y') }}</td>
-                            <td><strong>{{ angajat.nume_complet }}</strong></td>
-                            <td><span class="badge-project">{{ proiect.cod_proiect }}</span></td>
-                            <td>{{ pontaj.ore_lucrate }}h</td>
-                            <td class="actions-cell">
-                                {% if current_user.is_manager %}
-                                <form method="POST" action="{{ url_for('pontaje.aproba', id=pontaj.id) }}" style="display:inline">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn-action btn-approve" title="Aproba">
-                                        <i class="fa-solid fa-check"></i>
-                                    </button>
-                                </form>
-                                <form method="POST" action="{{ url_for('pontaje.respinge', id=pontaj.id) }}" style="display:inline">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn-action btn-reject" title="Respinge">
-                                        <i class="fa-solid fa-xmark"></i>
-                                    </button>
-                                </form>
-                                {% else %}
-                                <span class="badge-status badge-pending">In asteptare</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="empty-state">
-                <i class="fa-solid fa-check-circle"></i>
-                <p>Niciun pontaj in asteptare</p>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Panel Alerte -->
-    <div class="card-panel">
-        <div class="card-panel-header">
-            <h3><i class="fa-solid fa-bell"></i> Alerte</h3>
-        </div>
-        <div class="card-panel-body">
-            {% if alerte %}
-            <div class="alerts-list">
-                {% for alerta in alerte %}
-                <a href="{{ alerta.url }}" class="alert-item alert-item-{{ alerta.tip }}">
-                    <div class="alert-icon">
-                        <i class="fa-solid {{ alerta.icon }}"></i>
+    {% call ed.card('Pontaje in asteptare', icon='hourglass-half') %}
+        {% if pontaje_pending %}
+        {% call ed.data_table(['Data', 'Angajat', 'Proiect', 'Ore', 'Actiuni']) %}
+            {% for pontaj, angajat, proiect in pontaje_pending %}
+            <tr>
+                <td data-label="Data">{{ pontaj.data.strftime('%d.%m.%Y') }}</td>
+                <td data-label="Angajat"><strong>{{ angajat.nume_complet }}</strong></td>
+                <td data-label="Proiect">{{ ed.badge(text=proiect.cod_proiect, status='info') }}</td>
+                <td data-label="Ore">{{ pontaj.ore_lucrate }}h</td>
+                <td data-label="Actiuni">
+                    {% if current_user.is_manager %}
+                    <div style="display:flex; gap:6px; justify-content:flex-end;">
+                        <form method="POST" action="{{ url_for('pontaje.aproba', id=pontaj.id) }}" style="display:inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            {{ ed.btn('', varianta='primary', icon='check', size='sm', submit=true, attrs='title="Aproba"') }}
+                        </form>
+                        <form method="POST" action="{{ url_for('pontaje.respinge', id=pontaj.id) }}" style="display:inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            {{ ed.btn('', varianta='danger', icon='xmark', size='sm', submit=true, attrs='title="Respinge"') }}
+                        </form>
                     </div>
-                    <span>{{ alerta.mesaj }}</span>
-                    <i class="fa-solid fa-chevron-right"></i>
-                </a>
-                {% endfor %}
-            </div>
-            {% else %}
-            <div class="empty-state">
-                <i class="fa-solid fa-shield-check"></i>
-                <p>Nicio alerta activa</p>
-            </div>
-            {% endif %}
+                    {% else %}
+                    {{ ed.badge(text='In asteptare', status='asteptare') }}
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        {% endcall %}
+        <div style="text-align:right; margin-top:12px;">
+            {{ ed.btn('Vezi toate', url=url_for('pontaje.lista', status='trimis'), varianta='ghost', icon='arrow-right', size='sm') }}
+        </div>
+        {% else %}
+        {{ ed.empty_state(icon='circle-check', titlu='Niciun pontaj in asteptare', mesaj='Toate pontajele au fost procesate.') }}
+        {% endif %}
+    {% endcall %}
 
-            <!-- Extra stats -->
-            <div class="mini-stats">
-                <div class="mini-stat">
-                    <span class="mini-stat-label">Cost manopera luna</span>
-                    <span class="mini-stat-value">{{ '{:,.0f}'.format(cost_manopera_luna) }} RON</span>
-                </div>
-                <div class="mini-stat">
-                    <span class="mini-stat-label">Fara pontaj azi</span>
-                    <span class="mini-stat-value">{{ angajati_fara_pontaj_azi }}</span>
-                </div>
+    {% call ed.card('Alerte', icon='bell') %}
+        {% if alerte %}
+        <div class="alerts-list">
+            {% for alerta in alerte %}
+            <a href="{{ alerta.url }}" class="alert-item alert-item-{{ alerta.tip }}">
+                <div class="alert-icon"><i class="fa-solid {{ alerta.icon }}"></i></div>
+                <span>{{ alerta.mesaj }}</span>
+                <i class="fa-solid fa-chevron-right"></i>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        {{ ed.empty_state(icon='shield-halved', titlu='Nicio alerta activa', mesaj='Totul este sub control.') }}
+        {% endif %}
+
+        <div class="mini-stats">
+            <div class="mini-stat">
+                <span class="mini-stat-label">Cost manopera luna</span>
+                <span class="mini-stat-value">{{ '{:,.0f}'.format(cost_manopera_luna) }} RON</span>
+            </div>
+            <div class="mini-stat">
+                <span class="mini-stat-label">Fara pontaj azi</span>
+                <span class="mini-stat-value">{{ angajati_fara_pontaj_azi }}</span>
             </div>
         </div>
-    </div>
+    {% endcall %}
 </div>
 
 <!-- ============================================ -->
 <!-- RAND 4: TOP PROIECTE DUPA ORE -->
 <!-- ============================================ -->
-<div class="card-panel">
-    <div class="card-panel-header">
-        <h3><i class="fa-solid fa-trophy"></i> Top 5 proiecte dupa ore lucrate</h3>
-        <a href="{{ url_for('proiecte.lista') }}" class="header-link">Toate proiectele <i class="fa-solid fa-arrow-right"></i></a>
+{% call ed.card('Top 5 proiecte dupa ore lucrate', icon='trophy') %}
+    {% if top_proiecte_ore %}
+    {% call ed.data_table(['#', 'Proiect', 'Cod', 'Ore Totale', 'Progres']) %}
+        {% for row in top_proiecte_ore %}
+        <tr>
+            <td data-label="#"><span class="rank-badge">{{ loop.index }}</span></td>
+            <td data-label="Proiect"><strong><a href="{{ url_for('proiecte.detalii', id=row.id) }}">{{ row.nume }}</a></strong></td>
+            <td data-label="Cod">{{ ed.badge(text=row.cod_proiect, status='info') }}</td>
+            <td data-label="Ore Totale"><strong>{{ '%.0f'|format(row.total_ore) }}h</strong></td>
+            <td data-label="Progres">
+                <div class="progress-bar-wrapper">
+                    <div class="progress-bar-fill" style="width: {{ (row.total_ore|float / max_ore_proiect * 100)|int }}%">
+                        {{ (row.total_ore|float / max_ore_proiect * 100)|int }}%
+                    </div>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    {% endcall %}
+    <div style="text-align:right; margin-top:12px;">
+        {{ ed.btn('Toate proiectele', url=url_for('proiecte.lista'), varianta='ghost', icon='arrow-right', size='sm') }}
     </div>
-    <div class="card-panel-body">
-        {% if top_proiecte_ore %}
-        <div class="table-responsive">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Proiect</th>
-                        <th>Cod</th>
-                        <th>Ore Totale</th>
-                        <th style="width:35%">Progres</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in top_proiecte_ore %}
-                    <tr>
-                        <td><span class="rank-badge">{{ loop.index }}</span></td>
-                        <td><strong><a href="{{ url_for('proiecte.detalii', id=row.id) }}">{{ row.nume }}</a></strong></td>
-                        <td><span class="badge-project">{{ row.cod_proiect }}</span></td>
-                        <td><strong>{{ '%.0f'|format(row.total_ore) }}h</strong></td>
-                        <td>
-                            <div class="progress-bar-wrapper">
-                                <div class="progress-bar-fill" style="width: {{ (row.total_ore|float / max_ore_proiect * 100)|int }}%">
-                                    {{ (row.total_ore|float / max_ore_proiect * 100)|int }}%
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        <div class="empty-state">
-            <i class="fa-solid fa-folder-open"></i>
-            <p>Niciun proiect cu ore inregistrate</p>
-        </div>
-        {% endif %}
-    </div>
-</div>
+    {% else %}
+    {{ ed.empty_state(icon='folder-open', titlu='Niciun proiect cu ore inregistrate',
+       mesaj='Inregistreaza pontaje aprobate ca sa apara aici.') }}
+    {% endif %}
+{% endcall %}
 {% endblock %}
 
 {% block extra_js %}
@@ -303,6 +170,10 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Paleta Edifico (gold/navy) — DS faza 4: nu mai folosim indigo hardcodat.
+    const NAVY = '#0B1426';
+    const GOLD = '#C9A961';
+
     // ============================================
     // GRAFIC PREZENTA 30 ZILE
     // ============================================
@@ -316,18 +187,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 datasets: [{
                     label: 'Angajati prezenti',
                     data: prezentaData.data,
-                    borderColor: '#1a237e',
-                    backgroundColor: 'rgba(26, 35, 126, 0.1)',
+                    borderColor: NAVY,
+                    backgroundColor: 'rgba(11, 20, 38, 0.08)',
                     fill: true,
                     tension: 0.4,
                     pointRadius: 3,
                     pointHoverRadius: 6,
-                    pointBackgroundColor: '#1a237e',
+                    pointBackgroundColor: NAVY,
                     borderWidth: 2
                 }, {
                     label: 'Total angajati',
                     data: Array(prezentaData.labels.length).fill(prezentaData.total_angajati),
-                    borderColor: '#f57c00',
+                    borderColor: GOLD,
                     borderDash: [5, 5],
                     borderWidth: 1.5,
                     pointRadius: 0,
@@ -361,7 +232,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const functiiData = {{ grafic_functii_json|safe }};
     const ctxFunctii = document.getElementById('functiiChart');
     if (ctxFunctii && functiiData.labels.length > 0) {
-        const colors = ['#1a237e','#f57c00','#2e7d32','#c62828','#6a1b9a','#00838f','#ef6c00','#1565c0','#ad1457','#4e342e'];
+        // Nuante gold/navy + accente calde, coerente cu brandul.
+        const colors = ['#0B1426','#C9A961','#A8893D','#152033','#E0BB6E','#5F6975','#80620F','#2E7D32','#8A5A00','#0D47A1'];
         new Chart(ctxFunctii, {
             type: 'doughnut',
             data: {
@@ -389,3 +261,5 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {% endblock %}
+</content>
+</invoke>

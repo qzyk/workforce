@@ -51,6 +51,13 @@
   ],
   "shortcuts": [
     {
+      "name": "Teren",
+      "short_name": "Teren",
+      "description": "Pontaj rapid si raportare de pe santier",
+      "url": "/teren",
+      "icons": [{"src": "/static/img/pwa/icon-192.png", "sizes": "192x192"}]
+    },
+    {
       "name": "BIM Dashboard",
       "short_name": "BIM",
       "description": "Acces rapid la modulul BIM",

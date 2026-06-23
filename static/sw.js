@@ -10,7 +10,7 @@
  * Versiune: bump cand schimbi assets statice ca clienti sa updateze cache-ul.
  */
 
-const CACHE_VERSION = 'edifico-v4'; /* bump: components.css (DS faza 2) + tokens.css (DS faza 1) + librarii viewer self-host (BIM faza 1) */
+const CACHE_VERSION = 'edifico-v5'; /* bump: DS faza 4 (migrare pagini nucleu pe componente + bottom-bar mobil + shortcut /teren in manifest) */
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const OFFLINE_URL = '/offline';
