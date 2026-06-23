@@ -238,8 +238,20 @@ def _get_upload_dir(subdir: str) -> str:
     return path
 
 
-def _get_situatie_data(situatie: SituatieLunara) -> dict:
-    """Construieste structura de date completa pentru exporturi."""
+def _get_situatie_data(situatie: SituatieLunara,
+                       doar_validate: bool = False) -> dict:
+    """
+    Construieste structura de date completa pentru exporturi.
+
+    doar_validate:
+      - False (default): include TOATE cantitatile lunii (validate sau nu).
+        Comportament istoric, folosit de exportul/afisarea situatiei clasice.
+      - True: filtreaza pe validat==True, IDENTIC cu genereaza_situatie
+        (default doar_validate=True). Folosit de formularele F1/F2/F3 ca
+        total_luna F sa se reconcilieze exact cu situatie.valoare_totala_luna
+        (formularele oficiale HG 907 trimise beneficiarului nu trebuie sa
+        contina cantitati neaprobate).
+    """
     contract = situatie.contract
     proiect = situatie.proiect
     # Toate pozitiile BoQ pentru contract via oferte
@@ -249,18 +261,22 @@ def _get_situatie_data(situatie: SituatieLunara) -> dict:
         PozitieBoQ.cod_capitol, PozitieBoQ.ordine
     ).all()
 
-    # Cantitati pentru luna situatiei (filtrare incluziva cu validat)
-    cantitati_luna_map = {}
-    for cant in CantitateExecutataLunara.query.filter(
+    # Cantitati pentru luna situatiei. Cu doar_validate=True aplicam acelasi
+    # filtru ca genereaza_situatie, ca formularele F sa nu publice cantitati
+    # nevalidate si sa se reconcilieze cu valoare_totala_luna.
+    q_luna = CantitateExecutataLunara.query.filter(
         CantitateExecutataLunara.pozitie_boq_id.in_([p.id for p in pozitii]),
         CantitateExecutataLunara.an == situatie.an,
         CantitateExecutataLunara.luna == situatie.luna,
-    ).all():
+    )
+    if doar_validate:
+        q_luna = q_luna.filter(CantitateExecutataLunara.validat == True)
+    cantitati_luna_map = {}
+    for cant in q_luna.all():
         cantitati_luna_map[cant.pozitie_boq_id] = cant
 
-    # Cumul la zi: sum cantitati <= (an, luna) per pozitie
-    cumul_map: dict[int, Decimal] = {}
-    for cant in CantitateExecutataLunara.query.filter(
+    # Cumul la zi: sum cantitati <= (an, luna) per pozitie (acelasi filtru validat)
+    q_cumul = CantitateExecutataLunara.query.filter(
         CantitateExecutataLunara.pozitie_boq_id.in_([p.id for p in pozitii]),
         db.or_(
             CantitateExecutataLunara.an < situatie.an,
@@ -269,7 +285,11 @@ def _get_situatie_data(situatie: SituatieLunara) -> dict:
                 CantitateExecutataLunara.luna <= situatie.luna,
             ),
         ),
-    ).all():
+    )
+    if doar_validate:
+        q_cumul = q_cumul.filter(CantitateExecutataLunara.validat == True)
+    cumul_map: dict[int, Decimal] = {}
+    for cant in q_cumul.all():
         cumul_map[cant.pozitie_boq_id] = (
             cumul_map.get(cant.pozitie_boq_id, Decimal('0'))
             + (cant.cantitate_executata or Decimal('0'))
@@ -593,6 +613,9 @@ def _f_linii_situatie(situatie_id: int) -> dict:
     Filtreaza pozitiile FARA activitate in luna (cant_luna == 0): formularele F
     reflecta strict lucrarea executata si valorificata in luna respectiva.
     Valoarea articolului = cant_luna * pret_unitar (FARA TVA).
+
+    Foloseste doar_validate=True: doar cantitatile validate (aceeasi baza ca
+    genereaza_situatie), ca Sigma articole F == situatie.valoare_totala_luna.
     """
     situatie = SituatieLunara.query.get(situatie_id)
     if situatie is None:
@@ -600,7 +623,7 @@ def _f_linii_situatie(situatie_id: int) -> dict:
 
     from services.deviz_pricing import deduce_disciplina
 
-    data = _get_situatie_data(situatie)
+    data = _get_situatie_data(situatie, doar_validate=True)
     linii = []
     total_luna = Decimal('0')
     for row in data['rows']:
@@ -677,15 +700,28 @@ def genereaza_f3(situatie_id: int) -> dict:
     for grup in recap['grupe']:
         for cat in grup['categorii']:
             arts = art_idx.get((grup['disciplina'], cat['categorie']), [])
-            cat['articole'] = [
+            arts_sortate = sorted(arts, key=lambda x: x['cod_articol'] or '')
+            articole = [
                 {'cod_articol': a['cod_articol'],
                  'denumire': a['denumire'],
                  'um': a['um'],
                  'cant_luna': a['cant_luna'],
                  'pret_unitar': a['pret_unitar'],
-                 'valoare': a['valoare'].quantize(_Q2_F)}
-                for a in sorted(arts, key=lambda x: x['cod_articol'] or '')
+                 'valoare': (a['valoare'] or Decimal('0')).quantize(_Q2_F)}
+                for a in arts_sortate
             ]
+            # Reconciliere rotunjire: suma valorilor de articol AFISATE trebuie
+            # sa fie EXACT subtotalul categoriei (cat['valoare'], rotunjit din
+            # suma RAW). Daca rotunjirea per-articol a introdus o diferenta de
+            # bani, o absorbim in ultimul articol al categoriei, ca beneficiarul
+            # care aduna articolele tiparite sa obtina fix subtotalul.
+            if articole:
+                suma_afisata = sum((a['valoare'] for a in articole), Decimal('0'))
+                rest = cat['valoare'] - suma_afisata
+                if rest != 0:
+                    articole[-1]['valoare'] = (
+                        articole[-1]['valoare'] + rest).quantize(_Q2_F)
+            cat['articole'] = articole
     recap['ctx'] = ctx
     return recap
 
@@ -706,20 +742,24 @@ def genereaza_f1(situatie_id: int, cota_tva: Decimal = COTA_TVA_F) -> dict:
     """
     F1 - Centralizatorul cheltuielilor pe obiectiv (un rand per obiect/disciplina
     + TOTAL fara TVA + TVA + TOTAL cu TVA). TVA aplicat o singura data la final.
+
+    Sursa unica de adevar pentru totaluri: recapitulatie_ierarhica (acelasi
+    quantize GLOBAL ca F2/F3). Randurile per-obiect = subtotalurile recap (deja
+    quantize din suma RAW), iar total_fara_tva = recap['total_general'].
+    Asa F1.total_fara_tva == F2.total_general == F3.total_general, fara
+    acumulare de rotunjire din subtotalurile per-obiect.
     """
     from decimal import ROUND_HALF_UP
+    from services.centralizator import recapitulatie_ierarhica
     cota_tva = Decimal(str(cota_tva))
     ctx = _f_linii_situatie(situatie_id)
 
-    obiecte: dict[str, Decimal] = {}
-    for ln in ctx['linii']:
-        obiecte[ln['disciplina']] = obiecte.get(ln['disciplina'], Decimal('0')) + (ln['valoare'] or Decimal('0'))
-
+    recap = recapitulatie_ierarhica(ctx['linii'])
     randuri = [
-        {'obiect': disc, 'valoare': val.quantize(_Q2_F)}
-        for disc, val in sorted(obiecte.items())
+        {'obiect': grup['disciplina'], 'valoare': grup['subtotal']}
+        for grup in sorted(recap['grupe'], key=lambda g: g['disciplina'])
     ]
-    total_fara_tva = sum((r['valoare'] for r in randuri), Decimal('0'))
+    total_fara_tva = recap['total_general']
     tva = (total_fara_tva * cota_tva / 100).quantize(_Q2_F, rounding=ROUND_HALF_UP)
     total_cu_tva = total_fara_tva + tva
     return {
@@ -744,22 +784,28 @@ def export_f3(situatie_id: int) -> str:
     wb = Workbook()
     ws = wb.active
     ws.title = 'F3'
-    _antet_f(ws, 'FORMULAR F3 - LISTA CU CANTITATI DE LUCRARI', ctx, 'F')
+    _antet_f(ws, 'FORMULAR F3 - LISTA CU CANTITATI DE LUCRARI', ctx, 'G')
 
+    # IMPORTANT: subtotalurile obiect/categorie merg intr-o coloana SEPARATA
+    # ('Subtotal') ca sa NU se amestece cu valorile de articol. Asa un SUM pe
+    # coloana 'Valoare (fara TVA)' (col 6, doar articole) da EXACT total_general,
+    # iar un beneficiar care selecteaza coloana nu obtine ~4x totalul (din
+    # dublarea subtotaluri + articole pe aceeasi coloana).
     r = 5
     _styled_header_f(ws, r, ['Cod articol', 'Denumire', 'UM', 'Cant. luna',
-                             'Pret unitar', 'Valoare (fara TVA)'])
+                             'Pret unitar', 'Valoare (fara TVA)',
+                             'Subtotal (fara TVA)'])
     r += 1
     money = '#,##0.00'
     bold = Font(bold=True, name='Arial')
     for grup in data['grupe']:
         ws.cell(row=r, column=1, value='OBIECT: ' + grup['disciplina'].upper()).font = bold
-        vc = ws.cell(row=r, column=6, value=float(grup['subtotal']))
+        vc = ws.cell(row=r, column=7, value=float(grup['subtotal']))
         vc.font = bold; vc.number_format = money
         r += 1
         for cat in grup['categorii']:
             ws.cell(row=r, column=2, value='  ' + cat['categorie']).font = Font(italic=True, name='Arial')
-            cc = ws.cell(row=r, column=6, value=float(cat['valoare']))
+            cc = ws.cell(row=r, column=7, value=float(cat['valoare']))
             cc.number_format = money
             r += 1
             for a in cat['articole']:
@@ -773,10 +819,10 @@ def export_f3(situatie_id: int) -> str:
 
     r += 1
     ws.cell(row=r, column=1, value='TOTAL F3 (fara TVA)').font = Font(bold=True, size=12, name='Arial')
-    tc = ws.cell(row=r, column=6, value=float(data['total_general']))
+    tc = ws.cell(row=r, column=7, value=float(data['total_general']))
     tc.font = Font(bold=True, size=12, name='Arial'); tc.number_format = money
 
-    for col, w in zip('ABCDEF', [18, 46, 8, 14, 14, 18]):
+    for col, w in zip('ABCDEFG', [18, 46, 8, 14, 14, 18, 18]):
         ws.column_dimensions[col].width = w
     ws.freeze_panes = 'A6'  # sub randul de antet real al tabelului
     wb.calculation.fullCalcOnLoad = True
