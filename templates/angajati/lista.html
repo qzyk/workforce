@@ -129,8 +129,8 @@
             <td data-label="Status">{{ ed.badge(text=angajat.status|capitalize, status=angajat.status) }}</td>
             <td data-label="Actiuni">
                 <div style="display: flex; gap: 4px; justify-content: flex-end;">
-                    {{ ed.btn('', url=url_for('angajati.detalii', id=angajat.id), varianta='outline', icon='eye', size='sm', attrs='title="Vezi fisa"') }}
-                    {{ ed.btn('', url=url_for('angajati.editeaza', id=angajat.id), varianta='outline', icon='pen', size='sm', attrs='title="Editeaza"') }}
+                    {{ ed.btn('', url=url_for('angajati.detalii', id=angajat.id), varianta='outline', icon='eye', size='sm', attrs='title="Vezi fisa"', aria_label="Vezi fisa") }}
+                    {{ ed.btn('', url=url_for('angajati.editeaza', id=angajat.id), varianta='outline', icon='pen', size='sm', attrs='title="Editeaza"', aria_label="Editeaza") }}
                     {% if angajat.status == 'activ' %}
                     {{ ed.confirm_form(url=url_for('angajati.dezactiveaza', id=angajat.id),
                        mesaj='dezactivarea angajatului ' ~ angajat.nume_complet,
@@ -138,7 +138,7 @@
                     {% else %}
                     <form method="POST" action="{{ url_for('angajati.dezactiveaza', id=angajat.id) }}" style="display:inline;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        {{ ed.btn('', varianta='primary', icon='user-check', size='sm', submit=true, attrs='title="Reactiveaza"') }}
+                        {{ ed.btn('', varianta='primary', icon='user-check', size='sm', submit=true, attrs='title="Reactiveaza"', aria_label="Reactiveaza") }}
                     </form>
                     {% endif %}
                 </div>

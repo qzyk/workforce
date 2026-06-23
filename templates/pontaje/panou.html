@@ -209,18 +209,18 @@
                         {% if p.status == 'draft' %}
                         <form method="POST" action="{{ url_for('pontaje.trimite', id=p.id) }}" style="display:inline;">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            {{ ed.btn('', varianta='outline', icon='paper-plane', size='sm', submit=true, attrs='title="Trimite"') }}
+                            {{ ed.btn('', varianta='outline', icon='paper-plane', size='sm', submit=true, attrs='title="Trimite"', aria_label="Trimite") }}
                         </form>
                         {% endif %}
                         {% if p.status in ('draft', 'respins') %}
-                        {{ ed.btn('', url=url_for('pontaje.editeaza', id=p.id), varianta='outline', icon='pen', size='sm', attrs='title="Editeaza"') }}
+                        {{ ed.btn('', url=url_for('pontaje.editeaza', id=p.id), varianta='outline', icon='pen', size='sm', attrs='title="Editeaza"', aria_label="Editeaza") }}
                         {{ ed.confirm_form(url=url_for('pontaje.sterge', id=p.id),
                            mesaj='Stergeti acest pontaj?', label='', icon='trash', varianta='danger', size='sm') }}
                         {% endif %}
                         {% if p.status == 'trimis' and current_user.is_manager %}
                         <form method="POST" action="{{ url_for('pontaje.aproba', id=p.id) }}" style="display:inline;">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            {{ ed.btn('', varianta='primary', icon='check', size='sm', submit=true, attrs='title="Aproba"') }}
+                            {{ ed.btn('', varianta='primary', icon='check', size='sm', submit=true, attrs='title="Aproba"', aria_label="Aproba") }}
                         </form>
                         {% endif %}
                     </div>

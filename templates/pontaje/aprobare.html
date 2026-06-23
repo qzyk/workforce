@@ -98,7 +98,7 @@
                         <form method="POST" action="{{ url_for('pontaje.aproba', id=p.id) }}" style="display:inline;">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="next" value="{{ url_for('pontaje.aprobare') }}">
-                            {{ ed.btn('', varianta='primary', icon='check', size='sm', submit=true, attrs='title="Aproba"') }}
+                            {{ ed.btn('', varianta='primary', icon='check', size='sm', submit=true, attrs='title="Aproba"', aria_label="Aproba") }}
                         </form>
                         {{ ed.btn('', varianta='danger', icon='xmark', size='sm',
                            attrs='title="Respinge" onclick="showRejectModal(' ~ p.id ~ ', \'' ~ (p.angajat.nume_complet if p.angajat else '') ~ '\')"') }}

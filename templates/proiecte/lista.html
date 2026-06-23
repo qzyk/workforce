@@ -130,9 +130,9 @@
             <td data-label="Status">{{ ed.badge(text=p.status|capitalize, status=p.status) }}</td>
             <td data-label="Actiuni">
                 <div style="display: flex; gap: 4px; justify-content: flex-end;">
-                    {{ ed.btn('', url=url_for('proiecte.detalii', id=p.id), varianta='outline', icon='eye', size='sm', attrs='title="Detalii"') }}
-                    {{ ed.btn('', url=url_for('proiecte.editeaza', id=p.id), varianta='outline', icon='pen', size='sm', attrs='title="Editeaza"') }}
-                    {{ ed.btn('', url=url_for('proiecte.export_excel', id=p.id), varianta='outline', icon='file-excel', size='sm', attrs='title="Export Excel"') }}
+                    {{ ed.btn('', url=url_for('proiecte.detalii', id=p.id), varianta='outline', icon='eye', size='sm', attrs='title="Detalii"', aria_label="Detalii") }}
+                    {{ ed.btn('', url=url_for('proiecte.editeaza', id=p.id), varianta='outline', icon='pen', size='sm', attrs='title="Editeaza"', aria_label="Editeaza") }}
+                    {{ ed.btn('', url=url_for('proiecte.export_excel', id=p.id), varianta='outline', icon='file-excel', size='sm', attrs='title="Export Excel"', aria_label="Export Excel") }}
                 </div>
             </td>
         </tr>
@@ -186,8 +186,8 @@
             <div style="padding: 12px 20px; border-top: 1px solid var(--ed-color-sand, #E8E3D5); display: flex; justify-content: space-between;">
                 {{ ed.btn('Detalii', url=url_for('proiecte.detalii', id=p.id), varianta='primary', icon='eye', size='sm') }}
                 <div style="display: flex; gap: 4px;">
-                    {{ ed.btn('', url=url_for('proiecte.editeaza', id=p.id), varianta='outline', icon='pen', size='sm', attrs='title="Editeaza"') }}
-                    {{ ed.btn('', url=url_for('proiecte.export_excel', id=p.id), varianta='outline', icon='file-excel', size='sm', attrs='title="Export Excel"') }}
+                    {{ ed.btn('', url=url_for('proiecte.editeaza', id=p.id), varianta='outline', icon='pen', size='sm', attrs='title="Editeaza"', aria_label="Editeaza") }}
+                    {{ ed.btn('', url=url_for('proiecte.export_excel', id=p.id), varianta='outline', icon='file-excel', size='sm', attrs='title="Export Excel"', aria_label="Export Excel") }}
                 </div>
             </div>
         </div>

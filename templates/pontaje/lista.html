@@ -80,17 +80,17 @@
                     {% if pontaj.status == 'draft' %}
                     <form method="POST" action="{{ url_for('pontaje.trimite', id=pontaj.id) }}" style="display: inline;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        {{ ed.btn('', varianta='outline', icon='paper-plane', size='sm', submit=true, attrs='title="Trimite spre aprobare"') }}
+                        {{ ed.btn('', varianta='outline', icon='paper-plane', size='sm', submit=true, attrs='title="Trimite spre aprobare"', aria_label="Trimite spre aprobare") }}
                     </form>
                     {% endif %}
                     {% if pontaj.status == 'trimis' and current_user.is_manager %}
                     <form method="POST" action="{{ url_for('pontaje.aproba', id=pontaj.id) }}" style="display: inline;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        {{ ed.btn('', varianta='primary', icon='check', size='sm', submit=true, attrs='title="Aproba"') }}
+                        {{ ed.btn('', varianta='primary', icon='check', size='sm', submit=true, attrs='title="Aproba"', aria_label="Aproba") }}
                     </form>
                     <form method="POST" action="{{ url_for('pontaje.respinge', id=pontaj.id) }}" style="display: inline;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        {{ ed.btn('', varianta='danger', icon='xmark', size='sm', submit=true, attrs='title="Respinge"') }}
+                        {{ ed.btn('', varianta='danger', icon='xmark', size='sm', submit=true, attrs='title="Respinge"', aria_label="Respinge") }}
                     </form>
                     {% endif %}
                     {% if pontaj.status in ('draft', 'respins') %}

@@ -86,3 +86,72 @@ def test_dashboard_kpi_sunt_macro_stat_card():
     assert 'ed-stat-grid' in continut
     # nu mai folosim vechea grila / card indigo
     assert 'class="stat-card' not in continut
+
+
+# ============================================================
+# Fixuri de review DS faza 4 (verificari pe sursa de fisier)
+# ============================================================
+
+# Toate template-urile migrate in DS faza 4 (cele acuzate de review).
+_TEMPLATE_MIGRATE = [
+    'dashboard.html', 'dashboard_executiv.html',
+    'angajati/lista.html', 'proiecte/lista.html', 'proiecte/detalii.html',
+    'pontaje/lista.html', 'pontaje/aprobare.html', 'pontaje/panou.html',
+]
+_TEMPLATES = RADACINA / 'templates'
+
+
+def test_fara_artefacte_tool_call_in_template_uri():
+    """
+    Finding #4: niciun template nu mai contine resturi de tool-call
+    (</content>, </invoke>, </parameter>, ...).
+    """
+    import re
+    rx = re.compile(r'</?(content|invoke|parameter|antml)\b')
+    vinovati = []
+    for f in _TEMPLATES.rglob('*.html'):
+        if rx.search(f.read_text(encoding='utf-8')):
+            vinovati.append(str(f.relative_to(RADACINA)))
+    assert not vinovati, f'artefacte de tool-call ramase in: {vinovati}'
+
+
+def test_dashboard_se_termina_la_endblock():
+    """Finding #4: dashboard-urile se termina curat la {% endblock %}."""
+    for nume in ('dashboard.html', 'dashboard_executiv.html'):
+        continut = (_TEMPLATES / nume).read_text(encoding='utf-8').rstrip()
+        assert continut.endswith('{% endblock %}'), (
+            f'{nume} nu se termina la endblock (junk dupa bloc?)')
+
+
+def test_doc_expirate_kpi_pointer_corect_in_sursa():
+    """
+    Finding #1 (sursa): cardul KPI Doc. Expirate foloseste documente.expirate,
+    nu documente.lista cu status=expirat.
+    """
+    continut = DASHBOARD.read_text(encoding='utf-8')
+    assert "url_for('documente.expirate')" in continut
+    # nu mai exista linkul gresit (lista filtrata post-paginare) pe cardul KPI
+    assert "url_for('documente.lista', status='expirat')" not in continut
+
+
+def test_butoane_icon_only_au_aria_label_in_sursa():
+    """
+    Finding #2 (sursa): orice apel ed.btn cu title= are si aria_label= (nume
+    accesibil sigur pentru screen reader), in toate template-urile migrate.
+    """
+    import re
+    rx_btn = re.compile(r'ed\.btn\([^\n]*?title=')
+    fara_aria = []
+    for nume in _TEMPLATE_MIGRATE:
+        continut = (_TEMPLATES / nume).read_text(encoding='utf-8')
+        for linie in continut.splitlines():
+            if rx_btn.search(linie) and 'aria_label=' not in linie:
+                fara_aria.append(f'{nume}: {linie.strip()}')
+    assert not fara_aria, (
+        'butoane icon-only cu title dar fara aria_label: ' + '; '.join(fara_aria))
+
+
+def test_macro_btn_suporta_aria_label():
+    """Finding #2 (macro): _components.btn accepta parametrul aria_label."""
+    comp = (_TEMPLATES / '_components.html').read_text(encoding='utf-8')
+    assert 'aria_label' in comp, 'macro-ul btn trebuie sa expuna parametrul aria_label'

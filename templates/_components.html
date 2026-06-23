@@ -46,15 +46,24 @@
 {# ---------- BUTON ----------
    varianta: primary (navy) | gold (CTA unic/ecran) | outline | danger | ghost
    size: sm | lg | None
-   url dat  -> <a>; submit=true -> <button type=submit>; altfel <button type=button>. #}
-{% macro btn(label='', url=None, varianta='primary', icon=None, size=None, submit=false, block=false, attrs='') %}
+   url dat  -> <a>; submit=true -> <button type=submit>; altfel <button type=button>.
+   aria_label = nume accesibil EXPLICIT pentru butoane icon-only (fara text vizibil).
+     Cand label e gol si nu se da aria_label, se cade pe title-ul din attrs (daca exista)
+     ca sa nu ramana butonul fara nume pentru screen reader. Iconita devine
+     aria-hidden cand exista un nume accesibil (text sau aria-label) — pur decorativa. #}
+{% macro btn(label='', url=None, varianta='primary', icon=None, size=None, submit=false, block=false, attrs='', aria_label=None) %}
 {%- set cls -%}
 ed-btn ed-btn--{{ varianta }}{% if size %} ed-btn--{{ size }}{% endif %}{% if block %} ed-btn--block{% endif %}
 {%- endset -%}
+{#- Nume accesibil pentru butoane fara text: aria_label explicit are prioritate. -#}
+{%- set are_text = (label is not none and (label | string | trim) != '') -%}
+{%- set pune_aria = (aria_label and not are_text) -%}
+{#- Iconita e decorativa cand butonul are deja un nume (text vizibil sau aria-label). -#}
+{%- set ico_hidden = (are_text or pune_aria) -%}
 {%- if url -%}
-<a href="{{ url }}" class="{{ cls }}" {{ attrs | safe }}>{% if icon %}<i class="fa-solid fa-{{ icon }}"></i>{% endif %}{{ label }}</a>
+<a href="{{ url }}" class="{{ cls }}" {{ attrs | safe }}{% if pune_aria %} aria-label="{{ aria_label }}"{% endif %}>{% if icon %}<i class="fa-solid fa-{{ icon }}"{% if ico_hidden %} aria-hidden="true"{% endif %}></i>{% endif %}{{ label }}</a>
 {%- else -%}
-<button type="{{ 'submit' if submit else 'button' }}" class="{{ cls }}" {{ attrs | safe }}>{% if icon %}<i class="fa-solid fa-{{ icon }}"></i>{% endif %}{{ label }}</button>
+<button type="{{ 'submit' if submit else 'button' }}" class="{{ cls }}" {{ attrs | safe }}{% if pune_aria %} aria-label="{{ aria_label }}"{% endif %}>{% if icon %}<i class="fa-solid fa-{{ icon }}"{% if ico_hidden %} aria-hidden="true"{% endif %}></i>{% endif %}{{ label }}</button>
 {%- endif -%}
 {% endmacro %}
 

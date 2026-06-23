@@ -42,7 +42,7 @@
     {{ ed.stat_card(
         label='Doc. Expirate', valoare=documente_expirate, icon='file-circle-exclamation',
         accent=('danger' if documente_expirate > 0 else 'navy'),
-        url=url_for('documente.lista', status='expirat'),
+        url=url_for('documente.expirate'),
         trend={'dir': ('down' if documente_expirate > 0 else 'flat'),
                'text': ((documente_expira_curand ~ ' expira in 30 zile') if documente_expira_curand > 0 else 'Totul in regula')}) }}
 
@@ -83,11 +83,11 @@
                     <div style="display:flex; gap:6px; justify-content:flex-end;">
                         <form method="POST" action="{{ url_for('pontaje.aproba', id=pontaj.id) }}" style="display:inline">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            {{ ed.btn('', varianta='primary', icon='check', size='sm', submit=true, attrs='title="Aproba"') }}
+                            {{ ed.btn('', varianta='primary', icon='check', size='sm', submit=true, attrs='title="Aproba"', aria_label="Aproba") }}
                         </form>
                         <form method="POST" action="{{ url_for('pontaje.respinge', id=pontaj.id) }}" style="display:inline">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            {{ ed.btn('', varianta='danger', icon='xmark', size='sm', submit=true, attrs='title="Respinge"') }}
+                            {{ ed.btn('', varianta='danger', icon='xmark', size='sm', submit=true, attrs='title="Respinge"', aria_label="Respinge") }}
                         </form>
                     </div>
                     {% else %}
@@ -261,5 +261,3 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {% endblock %}
-</content>
-</invoke>
