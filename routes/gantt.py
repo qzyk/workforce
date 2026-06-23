@@ -263,6 +263,38 @@ def _baseline_activ(plan):
         return None
 
 
+def _leveling_on() -> bool:
+    """True cand flag-ul 'gantt-leveling' e activ pentru tenantul curent."""
+    try:
+        from services.feature_flags import is_enabled
+        return bool(is_enabled('gantt-leveling', _tenant_curent()))
+    except Exception:
+        return False
+
+
+def _capacitati():
+    """Capacitatile pe categorie pentru tenantul curent (dict gol cu flag OFF)."""
+    if not _leveling_on():
+        return {}
+    try:
+        return store.capacitati_gantt(_tenant_curent())
+    except Exception:
+        return {}
+
+
+def _histograma_incarcare(rezultat, plan=None):
+    """Histograma incarcare vs capacitate, DOAR cu flag ON + capacitati; None altfel."""
+    cap = _capacitati()
+    if not cap:
+        return None
+    try:
+        from services.gantt import nivelare
+        return nivelare.histograma_incarcare(getattr(rezultat, 'activitati', []),
+                                             plan=plan, capacitati=cap)
+    except Exception:
+        return None
+
+
 def _render_rezultat(rezultat, raport_import, token, nume_fisier, plan_id=None):
     """Randeaza preview-ul rezultat + diagrama Gantt (4D) + optiunea de salvare."""
     session['gantt_nume_fisier'] = nume_fisier
@@ -288,12 +320,15 @@ def _render_rezultat(rezultat, raport_import, token, nume_fisier, plan_id=None):
     # Faza 2 tracking: progres real pe bare + overlay baseline, DOAR cu flag ON.
     progrese = _progrese_active(plan_id)     # None cu flag OFF -> bare cu progres 0
     baseline = _baseline_activ(plan)         # None cu flag OFF -> fara overlay
+    # Faza 4 nivelare: histograma incarcare vs capacitate, DOAR cu flag ON + capacitati.
+    incarcare = _histograma_incarcare(rezultat)   # None cu flag OFF / fara capacitati
     return render_template(
         'gantt/rezultat.html', rezultat=rezultat, raport_import=raport_import,
         token=token, nume_fisier=nume_fisier,
         diagrama=diagrama.sarcini_gantt(rezultat, date.today(), calendar=calendar,
                                         progrese=progrese, baseline=baseline),
         resurse=resurse, tracking_on=_tracking_on(),
+        incarcare=incarcare, leveling_on=_leveling_on(),
         proiecte=proiecte, plan_id=plan_id, clasifica=_clasifica_sesiune())
 
 
@@ -429,6 +464,46 @@ def export_f2(token):
     nume = session.get('gantt_nume', 'planificare')
     return send_file(io.BytesIO(out.getvalue().encode('utf-8-sig')), mimetype='text/csv',
                      as_attachment=True, download_name=f'centralizator_f2_{nume}.csv')
+
+
+@gantt_bp.route('/niveleaza/<token>', methods=['POST'])
+@login_required
+def niveleaza_token(token):
+    """Nivelare resurse (DERIVATA) pe rezultatul regenerat din token. Intoarce JSON:
+    {ok, motiv, durata_cpm, durata_nivelata, intarziere, nr_mutate, deltas[],
+     incarcare:{cpm, nivelat}}. NU modifica nimic salvat. Gata cu flag OFF -> 404."""
+    if not _leveling_on():
+        abort(404)
+    if not re.fullmatch(r'[0-9a-f]{32}', token or ''):
+        abort(404)
+    cap = _capacitati()
+    if not cap:
+        return jsonify({'ok': False, 'motiv': 'Nu sunt definite capacitati pe categorie. '
+                        'Seteaza capacitati in Configurare Gantt.'}), 200
+    continut, ext = _citeste_temp(token)
+    if not continut:
+        return jsonify({'ok': False, 'motiv': 'Sesiunea de preview a expirat. '
+                        'Reincarca fisierul F3.'}), 200
+    mapare, rand_antet = (None, None)
+    if session.get('gantt_token') == token:
+        mapare, rand_antet = _mapare_sesiune()
+    try:
+        rezultat, _ = _pipeline_din_temp(continut, ext, mapare, rand_antet)
+    except import_engine.EroareImport:
+        return jsonify({'ok': False, 'motiv': 'Nu pot regenera planificarea.'}), 200
+    from services.gantt import nivelare
+    acts = getattr(rezultat, 'activitati', [])
+    rez = nivelare.niveleaza(acts, cap)
+    if rez.get('ok'):
+        # histograma inainte (CPM) si dupa (plan nivelat) pentru graficul comparativ
+        rez['incarcare'] = {
+            'cpm': nivelare.histograma_incarcare(acts, capacitati=cap),
+            'nivelat': nivelare.histograma_incarcare(acts, plan=rez.get('plan'),
+                                                     capacitati=cap),
+        }
+        # nu trimitem planul complet la client (poate fi mare) - doar deltele
+        rez.pop('plan', None)
+    return jsonify(rez), 200
 
 
 # ============================================================ PLANURI SALVATE
@@ -920,10 +995,16 @@ def config():
     # F2: maparea categoriilor Gantt -> categorie_lucrare (taxonomie unica)
     mapare = dict(sorted(store.mapare_categorii(tid).items()))
 
+    # Faza 4 nivelare: capacitati pe categorie (doar cu flag ON; altfel sectiunea
+    # nici nu se afiseaza). lista_tarife da categoriile disponibile pentru dropdown.
+    leveling = _leveling_on()
+    capacitati = store.lista_capacitati(tid) if leveling else []
+
     return render_template('gantt/config.html', sin_grup=sin_grup, reg_grup=reg_grup,
                            profiluri=profiluri, campuri=campuri,
                            mapare=mapare, mapare_reguli=mapare_reguli,
-                           tarife=store.lista_tarife(tid))
+                           tarife=store.lista_tarife(tid),
+                           leveling_on=leveling, capacitati=capacitati)
 
 
 @gantt_bp.route('/config/sinonim', methods=['POST'])
@@ -1005,6 +1086,22 @@ def config_tarif_set():
     flash(err or err2 or 'Tarif si randament actualizate.',
           'warning' if (err or err2) else 'success')
     return redirect(url_for('gantt.config') + '#tarife')
+
+
+@gantt_bp.route('/config/capacitate', methods=['POST'])
+@login_required
+def config_capacitate_set():
+    """Seteaza capacitatea (nr unitati/zi) pe o categorie pentru nivelare. 0 = sterge.
+    DOAR cu flag-ul 'gantt-leveling' ON (altfel 404, sectiunea nici nu apare)."""
+    if not _leveling_on():
+        abort(404)
+    cat = request.form.get('categorie')
+    tid = getattr(current_user, 'tenant_id', None)
+    uid = getattr(current_user, 'id', None)
+    _row, err = store.seteaza_capacitate(cat, request.form.get('capacitate'),
+                                         tenant_id=tid, user_id=uid)
+    flash(err or 'Capacitate actualizata.', 'warning' if err else 'success')
+    return redirect(url_for('gantt.config') + '#capacitati')
 
 
 @gantt_bp.route('/config/profil/<int:id_>/redenumeste', methods=['POST'])

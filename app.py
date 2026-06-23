@@ -181,7 +181,7 @@ def create_app(config_name='default'):
     # Exempt CSRF pentru API-ul Gantt (JSON/multipart, consum programatic)
     for _ep in ('gantt.api_import', 'gantt.api_classify', 'gantt.api_wbs',
                 'gantt.api_dependencies', 'gantt.api_validate', 'gantt.api_export',
-                'gantt.api_pipeline', 'gantt.plan_progres'):
+                'gantt.api_pipeline', 'gantt.plan_progres', 'gantt.niveleaza_token'):
         try:
             csrf.exempt(app.view_functions[_ep])
         except KeyError:
