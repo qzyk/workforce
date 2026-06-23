@@ -54,16 +54,20 @@ def test_dashboard_executiv_portofoliu_pe_componente(authenticated_client):
     resp = authenticated_client.get('/dashboard/executiv')
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
+    assert 'ed-page-header' in html   # header pe componenta
     assert 'ed-stat' in html          # KPI pe stat carduri
-    assert 'ed-table' in html         # tabelul de portofoliu pe data_table
+    # portofoliul: tabel cu date SAU empty-state daca nu exista proiecte
+    assert 'ed-table' in html or 'ed-empty' in html
 
 
 def test_angajati_lista_migrata(authenticated_client):
     resp = authenticated_client.get('/angajati/')
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert 'ed-table' in html
     assert 'ed-page-header' in html
+    assert 'ed-stat-grid' in html     # KPI clickabile
+    # lista: tabel cu date SAU empty-state pe componenta
+    assert 'ed-table' in html or 'ed-empty' in html
 
 
 def test_proiecte_lista_migrata(authenticated_client):
@@ -71,7 +75,8 @@ def test_proiecte_lista_migrata(authenticated_client):
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert 'ed-page-header' in html
-    assert 'ed-table' in html or 'ed-card' in html
+    assert 'ed-stat-grid' in html
+    assert 'ed-table' in html or 'ed-card' in html or 'ed-empty' in html
 
 
 def test_proiecte_detalii_se_randeaza(authenticated_client, app):
@@ -99,8 +104,12 @@ def test_pontaje_aprobare_card_view_mobil(authenticated_client):
     assert 'ed-' in html  # cel putin un element DS prezent
 
 
-def test_pontaje_lista_migrata(authenticated_client):
+def test_pontaje_panou_migrat(authenticated_client):
+    """Panoul de pontaje (ruta /pontaje/ randeaza panou.html) e migrat pe DS."""
     resp = authenticated_client.get('/pontaje/')
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert 'ed-page-header' in html
+    assert 'ed-stat-grid' in html
+    # actiunile rapide sunt KPI clickabile (linkuri ed-stat)
+    assert '<a class="ed-stat' in html or 'class="ed-stat"' in html

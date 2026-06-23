@@ -9,52 +9,24 @@
 {% endblock %}
 
 {% block content %}
-<!-- Header -->
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
-    <h2 style="margin: 0;"><i class="fa-solid fa-hard-hat" style="color: var(--primary);"></i> {{ _('Angajati') }}</h2>
-    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <a href="{{ url_for('angajati.export_excel') }}" class="btn btn-success">
-            <i class="fa-solid fa-file-excel"></i> {{ _('Export') }} Excel
-        </a>
-        <button type="button" class="btn btn-outline" onclick="document.getElementById('importModal').classList.add('active')">
-            <i class="fa-solid fa-file-import"></i> {{ _('Import') }} Excel
-        </button>
-        <a href="{{ url_for('angajati.adauga') }}" class="btn btn-primary">
-            <i class="fa-solid fa-user-plus"></i> {{ _('Adauga Angajat') }}
-        </a>
-    </div>
-</div>
+{# DS faza 4: migrat pe componente (ed.*). Filtrele raman form-uri functionale. #}
+{% call ed.page_header(icon='hard-hat', titlu=_('Angajati')) %}
+    {{ ed.btn(_('Export') ~ ' Excel', url=url_for('angajati.export_excel'), varianta='outline', icon='file-excel') }}
+    {{ ed.btn(_('Import') ~ ' Excel', varianta='outline', icon='file-import',
+       attrs="onclick=\"document.getElementById('importModal').classList.add('active')\"") }}
+    {{ ed.btn(_('Adauga Angajat'), url=url_for('angajati.adauga'), varianta='primary', icon='user-plus') }}
+{% endcall %}
 
-<!-- Stats Bar -->
-<div class="stats-bar">
-    <div class="stat-mini">
-        <div class="stat-icon bg-success"><i class="fa-solid fa-user-check"></i></div>
-        <div>
-            <div class="stat-number">{{ total_activi }}</div>
-            <div class="stat-label">{{ _('Activ') }}</div>
-        </div>
-    </div>
-    <div class="stat-mini">
-        <div class="stat-icon bg-gray"><i class="fa-solid fa-user-xmark"></i></div>
-        <div>
-            <div class="stat-number">{{ total_inactivi }}</div>
-            <div class="stat-label">{{ _('Inactiv') }}</div>
-        </div>
-    </div>
-    <div class="stat-mini">
-        <div class="stat-icon bg-warning"><i class="fa-solid fa-user-clock"></i></div>
-        <div>
-            <div class="stat-number">{{ total_suspendati }}</div>
-            <div class="stat-label">{{ _('Suspendat') }}</div>
-        </div>
-    </div>
-    <div class="stat-mini">
-        <div class="stat-icon bg-primary"><i class="fa-solid fa-users"></i></div>
-        <div>
-            <div class="stat-number">{{ total_activi + total_inactivi + total_suspendati }}</div>
-            <div class="stat-label">{{ _('Total') }}</div>
-        </div>
-    </div>
+<!-- KPI -->
+<div class="ed-stat-grid">
+    {{ ed.stat_card(label=_('Activ'), valoare=total_activi, icon='user-check', accent='success',
+       url=url_for('angajati.lista', status='activ')) }}
+    {{ ed.stat_card(label=_('Inactiv'), valoare=total_inactivi, icon='user-xmark', accent='navy',
+       url=url_for('angajati.lista', status='inactiv')) }}
+    {{ ed.stat_card(label=_('Suspendat'), valoare=total_suspendati, icon='user-clock', accent='warning',
+       url=url_for('angajati.lista', status='suspendat')) }}
+    {{ ed.stat_card(label=_('Total'), valoare=(total_activi + total_inactivi + total_suspendati),
+       icon='users', accent='gold', url=url_for('angajati.lista')) }}
 </div>
 
 <!-- Filtre -->
@@ -121,126 +93,70 @@
 </div>
 
 <!-- Tabel Angajati -->
-<div class="card-panel">
-    <div class="card-panel-header">
-        <h3><i class="fa-solid fa-list"></i> Lista Angajati ({{ pagination.total }})</h3>
-    </div>
-    <div class="card-panel-body" style="padding: 0;">
-        {% if angajati %}
-        <div class="table-responsive">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th style="width: 50px;">Foto</th>
-                        <th>Nume Complet</th>
-                        <th>CNP</th>
-                        <th>Functie</th>
-                        <th>Proiect Curent</th>
-                        <th>Data Angajare</th>
-                        <th>Status</th>
-                        <th style="width: 140px;">Actiuni</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for angajat in angajati %}
-                    <tr>
-                        <td>
-                            {% if angajat.poza_profil %}
-                            <img src="{{ url_for('static', filename='uploads/' + angajat.poza_profil) }}" class="avatar-sm" alt="">
-                            {% else %}
-                            <div class="avatar-placeholder"><i class="fa-solid fa-user"></i></div>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <a href="{{ url_for('angajati.detalii', id=angajat.id) }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
-                                {{ angajat.nume_complet }}
-                            </a>
-                        </td>
-                        <td style="font-family: monospace; font-size: 0.85rem;">{{ angajat.cnp or '-' }}</td>
-                        <td>{{ dict(functii).get(angajat.functie, angajat.functie) }}</td>
-                        <td>
-                            {% set proiecte_act = angajat.get_proiecte_active() %}
-                            {% if proiecte_act %}
-                                {% for ap in proiecte_act[:2] %}
-                                <span class="badge-project">{{ ap.proiect.cod_proiect }}</span>
-                                {% endfor %}
-                                {% if proiecte_act|length > 2 %}
-                                <span style="font-size: 0.8rem; color: var(--gray-500);">+{{ proiecte_act|length - 2 }}</span>
-                                {% endif %}
-                            {% else %}
-                            <span style="color: var(--gray-400);">-</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ angajat.data_angajare.strftime('%d.%m.%Y') if angajat.data_angajare else '-' }}</td>
-                        <td>
-                            <span class="badge-status badge-{{ angajat.status }}">{{ angajat.status|capitalize }}</span>
-                        </td>
-                        <td>
-                            <div style="display: flex; gap: 4px;">
-                                <a href="{{ url_for('angajati.detalii', id=angajat.id) }}" class="btn-action btn-view" title="Vezi fisa">
-                                    <i class="fa-solid fa-eye"></i>
-                                </a>
-                                <a href="{{ url_for('angajati.editeaza', id=angajat.id) }}" class="btn-action btn-edit" title="Editeaza">
-                                    <i class="fa-solid fa-pen"></i>
-                                </a>
-                                <form method="POST" action="{{ url_for('angajati.dezactiveaza', id=angajat.id) }}" style="display:inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    {% if angajat.status == 'activ' %}
-                                    <button type="button" class="btn-action btn-delete" title="Dezactiveaza"
-                                        onclick="confirmDelete('{{ url_for('angajati.dezactiveaza', id=angajat.id) }}', 'dezactivarea angajatului {{ angajat.nume_complet }}')">
-                                        <i class="fa-solid fa-user-slash"></i>
-                                    </button>
-                                    {% else %}
-                                    <button type="submit" class="btn-action btn-approve" title="Reactiveaza">
-                                        <i class="fa-solid fa-user-check"></i>
-                                    </button>
-                                    {% endif %}
-                                </form>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Paginare -->
-        {% if pagination.pages > 1 %}
-        <div class="pagination" style="padding: 16px;">
-            <div class="page-item {{ 'disabled' if not pagination.has_prev }}">
-                <a class="page-link" href="{{ url_for('angajati.lista', page=pagination.prev_num, cautare=cautare, status=status_filtru, functie=functie_filtru, proiect=proiect_filtru, sort=sort) if pagination.has_prev else '#' }}">
-                    <i class="fa-solid fa-chevron-left"></i>
-                </a>
-            </div>
-            {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
-                {% if p %}
-                <div class="page-item {{ 'active' if p == pagination.page }}">
-                    <a class="page-link" href="{{ url_for('angajati.lista', page=p, cautare=cautare, status=status_filtru, functie=functie_filtru, proiect=proiect_filtru, sort=sort) }}">{{ p }}</a>
-                </div>
+{% call ed.card('Lista Angajati (' ~ pagination.total ~ ')', icon='list') %}
+    {% if angajati %}
+    {% call ed.data_table(['Foto', 'Nume Complet', 'CNP', 'Functie', 'Proiect Curent', 'Data Angajare', 'Status', 'Actiuni']) %}
+        {% for angajat in angajati %}
+        <tr>
+            <td data-label="Foto">
+                {% if angajat.poza_profil %}
+                <img src="{{ url_for('static', filename='uploads/' + angajat.poza_profil) }}" class="avatar-sm" alt="">
                 {% else %}
-                <div class="page-item disabled"><span class="page-link">...</span></div>
+                <div class="avatar-placeholder"><i class="fa-solid fa-user"></i></div>
                 {% endif %}
-            {% endfor %}
-            <div class="page-item {{ 'disabled' if not pagination.has_next }}">
-                <a class="page-link" href="{{ url_for('angajati.lista', page=pagination.next_num, cautare=cautare, status=status_filtru, functie=functie_filtru, proiect=proiect_filtru, sort=sort) if pagination.has_next else '#' }}">
-                    <i class="fa-solid fa-chevron-right"></i>
+            </td>
+            <td data-label="Nume Complet">
+                <a href="{{ url_for('angajati.detalii', id=angajat.id) }}" style="font-weight: 600; color: var(--ed-color-navy, #0B1426); text-decoration: none;">
+                    {{ angajat.nume_complet }}
                 </a>
-            </div>
-        </div>
-        {% endif %}
+            </td>
+            <td data-label="CNP" style="font-family: monospace; font-size: 0.85rem;">{{ angajat.cnp or '-' }}</td>
+            <td data-label="Functie">{{ dict(functii).get(angajat.functie, angajat.functie) }}</td>
+            <td data-label="Proiect Curent">
+                {% set proiecte_act = angajat.get_proiecte_active() %}
+                {% if proiecte_act %}
+                    {% for ap in proiecte_act[:2] %}
+                    {{ ed.badge(text=ap.proiect.cod_proiect, status='info') }}
+                    {% endfor %}
+                    {% if proiecte_act|length > 2 %}
+                    <span style="font-size: 0.8rem; color: var(--gray-500);">+{{ proiecte_act|length - 2 }}</span>
+                    {% endif %}
+                {% else %}
+                <span style="color: var(--gray-400);">-</span>
+                {% endif %}
+            </td>
+            <td data-label="Data Angajare">{{ angajat.data_angajare.strftime('%d.%m.%Y') if angajat.data_angajare else '-' }}</td>
+            <td data-label="Status">{{ ed.badge(text=angajat.status|capitalize, status=angajat.status) }}</td>
+            <td data-label="Actiuni">
+                <div style="display: flex; gap: 4px; justify-content: flex-end;">
+                    {{ ed.btn('', url=url_for('angajati.detalii', id=angajat.id), varianta='outline', icon='eye', size='sm', attrs='title="Vezi fisa"') }}
+                    {{ ed.btn('', url=url_for('angajati.editeaza', id=angajat.id), varianta='outline', icon='pen', size='sm', attrs='title="Editeaza"') }}
+                    {% if angajat.status == 'activ' %}
+                    {{ ed.confirm_form(url=url_for('angajati.dezactiveaza', id=angajat.id),
+                       mesaj='dezactivarea angajatului ' ~ angajat.nume_complet,
+                       label='', icon='user-slash', varianta='danger', size='sm') }}
+                    {% else %}
+                    <form method="POST" action="{{ url_for('angajati.dezactiveaza', id=angajat.id) }}" style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        {{ ed.btn('', varianta='primary', icon='user-check', size='sm', submit=true, attrs='title="Reactiveaza"') }}
+                    </form>
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    {% endcall %}
 
-        {% else %}
-        <div class="empty-state">
-            <i class="fa-solid fa-users" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
-            <h3>Niciun angajat gasit</h3>
-            <p>Nu exista angajati care sa corespunda criteriilor de cautare.</p>
-            <a href="{{ url_for('angajati.adauga') }}" class="btn btn-primary" style="margin-top: 12px;">
-                <i class="fa-solid fa-user-plus"></i> Adauga primul angajat
-            </a>
-        </div>
-        {% endif %}
-    </div>
-</div>
+    {{ ed.pagination(pagination, 'angajati.lista', {
+        'cautare': cautare, 'status': status_filtru, 'functie': functie_filtru,
+        'proiect': proiect_filtru, 'sort': sort}) }}
+
+    {% else %}
+    {{ ed.empty_state(icon='users', titlu='Niciun angajat gasit',
+       mesaj='Nu exista angajati care sa corespunda criteriilor de cautare.',
+       cta_url=url_for('angajati.adauga'), cta_label='Adauga primul angajat') }}
+    {% endif %}
+{% endcall %}
 
 <!-- Modal Import -->
 <div id="importModal" class="import-modal">

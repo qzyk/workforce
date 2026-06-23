@@ -10,14 +10,11 @@
 {% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
-    <h2 style="margin: 0;">
-        <i class="fa-solid fa-clipboard-check" style="color: var(--primary);"></i> Aprobare Pontaje
-        {% if pontaje %}
-        <span style="background: var(--danger); color: white; font-size: 0.8rem; padding: 2px 10px; border-radius: 12px; vertical-align: middle;">{{ pontaje|length }}</span>
-        {% endif %}
-    </h2>
-</div>
+{# DS faza 4: migrat pe componente (ed.*). Aprobarea in masa (bulk-approve)
+   ramane neschimbata functional; tabelul capata card-view pe mobil. #}
+{% call ed.page_header(icon='clipboard-check', titlu='Aprobare Pontaje',
+   subtitlu=((pontaje|length ~ ' pontaje asteapta aprobare') if pontaje else 'Toate pontajele sunt la zi')) %}
+{% endcall %}
 
 <!-- Filtre -->
 <div class="card-panel" style="margin-bottom: 20px;">
@@ -64,90 +61,58 @@
 </div>
 
 {% if pontaje %}
-<!-- Aprobare in masa -->
+<!-- Aprobare in masa (bulk-approve) -->
 <form method="POST" action="{{ url_for('pontaje.aproba_multiplu') }}" id="aprobaMultipluForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <label style="font-size: 0.85rem; cursor: pointer;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+        <label style="font-size: 0.85rem; cursor: pointer; display:inline-flex; align-items:center; gap:6px;">
             <input type="checkbox" id="selectAllAprob" onchange="toggleAllAprob(this.checked)"> Selecteaza toate
         </label>
-        <button type="submit" class="btn btn-success" id="btnAprobaSelectate" onclick="return confirm('Aprobati pontajele selectate?')">
-            <i class="fa-solid fa-check-double"></i> Aproba Selectate (<span id="countSelected">0</span>)
-        </button>
+        {{ ed.btn('Aproba Selectate (0)', varianta='primary', icon='check-double', submit=true,
+           attrs='id="btnAprobaSelectate" onclick="return confirmAprobaMultiplu()"') }}
     </div>
 
-    <div class="card-panel">
-        <div class="card-panel-body" style="padding: 0;">
-            <div class="table-responsive">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 40px;"></th>
-                            <th>Data</th>
-                            <th>Angajat</th>
-                            <th>Proiect</th>
-                            <th>Ore</th>
-                            <th>Supl.</th>
-                            <th>Tip Zi</th>
-                            <th>Introdus de</th>
-                            <th>Data Intro.</th>
-                            <th style="width: 100px;">Actiuni</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for p in pontaje %}
-                        <tr>
-                            <td>
-                                <input type="checkbox" name="pontaj_ids" value="{{ p.id }}" class="aprob-check" onchange="updateCount()">
-                            </td>
-                            <td>{{ p.data.strftime('%d.%m.%Y') if p.data else '-' }}</td>
-                            <td><strong>{{ p.angajat.nume_complet if p.angajat else '-' }}</strong></td>
-                            <td><span class="badge-project">{{ p.proiect.cod_proiect if p.proiect else '-' }}</span></td>
-                            <td><strong>{{ p.ore_lucrate or 0 }}h</strong></td>
-                            <td>
-                                {% set supl = (p.ore_suplimentare_50 or 0) + (p.ore_suplimentare_100 or 0) %}
-                                {% if supl > 0 %}
-                                <span style="color: var(--danger); font-weight: 600;">{{ supl }}h</span>
-                                {% else %}-{% endif %}
-                            </td>
-                            <td>{{ p.tip_zi|capitalize if p.tip_zi else '-' }}</td>
-                            <td style="font-size: 0.8rem;">{{ p.operator.get_full_name() if p.operator else '-' }}</td>
-                            <td style="font-size: 0.8rem;">{{ p.data_introducere.strftime('%d.%m %H:%M') if p.data_introducere else '-' }}</td>
-                            <td>
-                                <div style="display: flex; gap: 4px;">
-                                    <form method="POST" action="{{ url_for('pontaje.aproba', id=p.id) }}" style="display:inline;">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                        <input type="hidden" name="next" value="{{ url_for('pontaje.aprobare') }}">
-                                        <button type="submit" class="btn-action btn-approve" title="Aproba">
-                                            <i class="fa-solid fa-check"></i>
-                                        </button>
-                                    </form>
-                                    <button type="button" class="btn-action btn-delete" title="Respinge"
-                                            onclick="showRejectModal({{ p.id }}, '{{ p.angajat.nume_complet if p.angajat else '' }}')">
-                                        <i class="fa-solid fa-xmark"></i>
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+    {% call ed.card() %}
+        {% call ed.data_table(['', 'Data', 'Angajat', 'Proiect', 'Ore', 'Supl.', 'Tip Zi', 'Introdus de', 'Data Intro.', 'Actiuni']) %}
+            {% for p in pontaje %}
+            <tr>
+                <td data-label="Selecteaza">
+                    <input type="checkbox" name="pontaj_ids" value="{{ p.id }}" class="aprob-check" onchange="updateCount()">
+                </td>
+                <td data-label="Data">{{ p.data.strftime('%d.%m.%Y') if p.data else '-' }}</td>
+                <td data-label="Angajat"><strong>{{ p.angajat.nume_complet if p.angajat else '-' }}</strong></td>
+                <td data-label="Proiect">{{ ed.badge(text=(p.proiect.cod_proiect if p.proiect else '-'), status='info') }}</td>
+                <td data-label="Ore"><strong>{{ p.ore_lucrate or 0 }}h</strong></td>
+                <td data-label="Supl.">
+                    {% set supl = (p.ore_suplimentare_50 or 0) + (p.ore_suplimentare_100 or 0) %}
+                    {% if supl > 0 %}
+                    <span style="color: var(--ed-color-danger, #B71C1C); font-weight: 600;">{{ supl }}h</span>
+                    {% else %}-{% endif %}
+                </td>
+                <td data-label="Tip Zi">{{ p.tip_zi|capitalize if p.tip_zi else '-' }}</td>
+                <td data-label="Introdus de" style="font-size: 0.8rem;">{{ p.operator.get_full_name() if p.operator else '-' }}</td>
+                <td data-label="Data Intro." style="font-size: 0.8rem;">{{ p.data_introducere.strftime('%d.%m %H:%M') if p.data_introducere else '-' }}</td>
+                <td data-label="Actiuni">
+                    <div style="display: flex; gap: 4px; justify-content:flex-end;">
+                        <form method="POST" action="{{ url_for('pontaje.aproba', id=p.id) }}" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="next" value="{{ url_for('pontaje.aprobare') }}">
+                            {{ ed.btn('', varianta='primary', icon='check', size='sm', submit=true, attrs='title="Aproba"') }}
+                        </form>
+                        {{ ed.btn('', varianta='danger', icon='xmark', size='sm',
+                           attrs='title="Respinge" onclick="showRejectModal(' ~ p.id ~ ', \'' ~ (p.angajat.nume_complet if p.angajat else '') ~ '\')"') }}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        {% endcall %}
+    {% endcall %}
 </form>
 
 {% else %}
-<div class="card-panel">
-    <div class="card-panel-body">
-        <div class="empty-state" style="padding: 40px;">
-            <i class="fa-solid fa-check-double" style="font-size: 3rem; color: var(--success); margin-bottom: 16px;"></i>
-            <h3>Totul la zi!</h3>
-            <p>Nu exista pontaje in asteptare de aprobare.</p>
-        </div>
-    </div>
-</div>
+{{ ed.empty_state(icon='check-double', titlu='Totul la zi!',
+   mesaj='Nu exista pontaje in asteptare de aprobare.') }}
 {% endif %}
 
 <!-- Modal respingere -->
@@ -192,7 +157,22 @@ function toggleAllAprob(checked) {
 
 function updateCount() {
     const count = document.querySelectorAll('.aprob-check:checked').length;
-    document.getElementById('countSelected').textContent = count;
+    const btn = document.getElementById('btnAprobaSelectate');
+    // butonul e generat de macro-ul ed.btn; pastram iconita si actualizam doar contorul
+    if (btn) {
+        const icon = btn.querySelector('i');
+        btn.textContent = ' Aproba Selectate (' + count + ')';
+        if (icon) btn.insertBefore(icon, btn.firstChild);
+    }
+}
+
+function confirmAprobaMultiplu() {
+    const count = document.querySelectorAll('.aprob-check:checked').length;
+    if (count === 0) {
+        alert('Selecteaza cel putin un pontaj.');
+        return false;
+    }
+    return confirm('Aprobati pontajele selectate (' + count + ')?');
 }
 
 function showRejectModal(pontajId, angajatNume) {

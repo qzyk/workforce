@@ -9,53 +9,22 @@
 {% endblock %}
 
 {% block content %}
-<!-- Header -->
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
-    <h2 style="margin: 0;"><i class="fa-solid fa-building" style="color: var(--primary);"></i> Proiecte</h2>
-    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <a href="{{ url_for('proiecte.adauga') }}" class="btn btn-primary">
-            <i class="fa-solid fa-plus"></i> Proiect Nou
-        </a>
-    </div>
-</div>
+{# DS faza 4: migrat pe componente (ed.*). Filtrele si view-toggle raman functionale. #}
+{% call ed.page_header(icon='building', titlu='Proiecte') %}
+    {{ ed.btn('Proiect Nou', url=url_for('proiecte.adauga'), varianta='primary', icon='plus') }}
+{% endcall %}
 
-<!-- Stats Bar -->
-<div class="stats-bar">
-    <div class="stat-mini">
-        <div class="stat-icon bg-success"><i class="fa-solid fa-play"></i></div>
-        <div>
-            <div class="stat-number">{{ total_active }}</div>
-            <div class="stat-label">Active</div>
-        </div>
-    </div>
-    <div class="stat-mini">
-        <div class="stat-icon" style="background: var(--info);"><i class="fa-solid fa-clock"></i></div>
-        <div>
-            <div class="stat-number">{{ total_planificate }}</div>
-            <div class="stat-label">Planificate</div>
-        </div>
-    </div>
-    <div class="stat-mini">
-        <div class="stat-icon bg-gray"><i class="fa-solid fa-check-double"></i></div>
-        <div>
-            <div class="stat-number">{{ total_finalizate }}</div>
-            <div class="stat-label">Finalizate</div>
-        </div>
-    </div>
-    <div class="stat-mini">
-        <div class="stat-icon bg-warning"><i class="fa-solid fa-pause"></i></div>
-        <div>
-            <div class="stat-number">{{ total_suspendate }}</div>
-            <div class="stat-label">Suspendate</div>
-        </div>
-    </div>
-    <div class="stat-mini">
-        <div class="stat-icon bg-primary"><i class="fa-solid fa-coins"></i></div>
-        <div>
-            <div class="stat-number">{{ '{:,.0f}'.format(buget_total_all) }}</div>
-            <div class="stat-label">Buget Total (RON)</div>
-        </div>
-    </div>
+<!-- KPI -->
+<div class="ed-stat-grid">
+    {{ ed.stat_card(label='Active', valoare=total_active, icon='play', accent='success',
+       url=url_for('proiecte.lista', status='activ')) }}
+    {{ ed.stat_card(label='Planificate', valoare=total_planificate, icon='clock', accent='navy',
+       url=url_for('proiecte.lista', status='planificat')) }}
+    {{ ed.stat_card(label='Finalizate', valoare=total_finalizate, icon='check-double', accent='navy',
+       url=url_for('proiecte.lista', status='finalizat')) }}
+    {{ ed.stat_card(label='Suspendate', valoare=total_suspendate, icon='pause', accent='warning',
+       url=url_for('proiecte.lista', status='suspendat')) }}
+    {{ ed.stat_card(label='Buget Total (RON)', valoare='{:,.0f}'.format(buget_total_all), icon='coins', accent='gold') }}
 </div>
 
 <!-- Filtre -->
@@ -137,76 +106,49 @@
 
     {% if view_mode == 'table' %}
     <!-- TABLE VIEW -->
-    <div class="card-panel">
-        <div class="card-panel-body" style="padding: 0;">
-            <div class="table-responsive">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Cod</th>
-                            <th>Nume Proiect</th>
-                            <th>Beneficiar</th>
-                            <th>Locatie</th>
-                            <th>Data Start</th>
-                            <th>Progres</th>
-                            <th>Buget (RON)</th>
-                            <th>Status</th>
-                            <th style="width: 120px;">Actiuni</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for p in proiecte %}
-                        <tr>
-                            <td><span class="badge-project">{{ p.cod_proiect }}</span></td>
-                            <td>
-                                <a href="{{ url_for('proiecte.detalii', id=p.id) }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
-                                    {{ p.nume }}
-                                </a>
-                            </td>
-                            <td>{{ p.beneficiar or '-' }}</td>
-                            <td>{{ p.locatie or '-' }}</td>
-                            <td>{{ p.data_start.strftime('%d.%m.%Y') if p.data_start else '-' }}</td>
-                            <td>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <div class="progress-bar-wrapper" style="height: 6px; flex: 1; min-width: 60px;">
-                                        <div class="progress-bar-fill" style="width: {{ p.progres or 0 }}%; min-width: 0; font-size: 0;"></div>
-                                    </div>
-                                    <span style="font-size: 0.8rem; font-weight: 600; min-width: 32px;">{{ p.progres or 0 }}%</span>
-                                </div>
-                            </td>
-                            <td style="font-weight: 500;">{{ '{:,.0f}'.format(p.buget_total) if p.buget_total else '-' }}</td>
-                            <td><span class="badge-status badge-{{ p.status }}">{{ p.status|capitalize }}</span></td>
-                            <td>
-                                <div style="display: flex; gap: 4px;">
-                                    <a href="{{ url_for('proiecte.detalii', id=p.id) }}" class="btn-action btn-view" title="Detalii">
-                                        <i class="fa-solid fa-eye"></i>
-                                    </a>
-                                    <a href="{{ url_for('proiecte.editeaza', id=p.id) }}" class="btn-action btn-edit" title="Editeaza">
-                                        <i class="fa-solid fa-pen"></i>
-                                    </a>
-                                    <a href="{{ url_for('proiecte.export_excel', id=p.id) }}" class="btn-action" title="Export Excel" style="color: var(--success);">
-                                        <i class="fa-solid fa-file-excel"></i>
-                                    </a>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+    {% call ed.data_table(['Cod', 'Nume Proiect', 'Beneficiar', 'Locatie', 'Data Start', 'Progres', 'Buget (RON)', 'Status', 'Actiuni']) %}
+        {% for p in proiecte %}
+        <tr>
+            <td data-label="Cod">{{ ed.badge(text=p.cod_proiect, status='info') }}</td>
+            <td data-label="Nume Proiect">
+                <a href="{{ url_for('proiecte.detalii', id=p.id) }}" style="font-weight: 600; color: var(--ed-color-navy, #0B1426); text-decoration: none;">
+                    {{ p.nume }}
+                </a>
+            </td>
+            <td data-label="Beneficiar">{{ p.beneficiar or '-' }}</td>
+            <td data-label="Locatie">{{ p.locatie or '-' }}</td>
+            <td data-label="Data Start">{{ p.data_start.strftime('%d.%m.%Y') if p.data_start else '-' }}</td>
+            <td data-label="Progres">
+                <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
+                    <div class="progress-bar-wrapper" style="height: 6px; flex: 1; min-width: 60px;">
+                        <div class="progress-bar-fill" style="width: {{ p.progres or 0 }}%; min-width: 0; font-size: 0;"></div>
+                    </div>
+                    <span style="font-size: 0.8rem; font-weight: 600; min-width: 32px;">{{ p.progres or 0 }}%</span>
+                </div>
+            </td>
+            <td data-label="Buget (RON)" style="font-weight: 500;">{{ '{:,.0f}'.format(p.buget_total) if p.buget_total else '-' }}</td>
+            <td data-label="Status">{{ ed.badge(text=p.status|capitalize, status=p.status) }}</td>
+            <td data-label="Actiuni">
+                <div style="display: flex; gap: 4px; justify-content: flex-end;">
+                    {{ ed.btn('', url=url_for('proiecte.detalii', id=p.id), varianta='outline', icon='eye', size='sm', attrs='title="Detalii"') }}
+                    {{ ed.btn('', url=url_for('proiecte.editeaza', id=p.id), varianta='outline', icon='pen', size='sm', attrs='title="Editeaza"') }}
+                    {{ ed.btn('', url=url_for('proiecte.export_excel', id=p.id), varianta='outline', icon='file-excel', size='sm', attrs='title="Export Excel"') }}
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    {% endcall %}
 
     {% else %}
     <!-- CARDS VIEW -->
     <div class="proiecte-grid">
         {% for p in proiecte %}
-        <div class="card-panel proiect-card">
-            <div class="card-panel-header">
-                <span class="badge-project">{{ p.cod_proiect }}</span>
-                <span class="badge-status badge-{{ p.status }}">{{ p.status|capitalize }}</span>
+        <div class="ed-card proiect-card">
+            <div class="ed-card__header" style="justify-content: space-between;">
+                {{ ed.badge(text=p.cod_proiect, status='info') }}
+                {{ ed.badge(text=p.status|capitalize, status=p.status) }}
             </div>
-            <div class="card-panel-body">
+            <div class="ed-card__body">
                 <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 12px; color: var(--gray-800);">
                     <a href="{{ url_for('proiecte.detalii', id=p.id) }}" style="color: inherit; text-decoration: none;">{{ p.nume }}</a>
                 </h4>
@@ -241,17 +183,11 @@
                 </div>
                 {% endif %}
             </div>
-            <div style="padding: 12px 20px; border-top: 1px solid var(--gray-200); display: flex; justify-content: space-between;">
-                <a href="{{ url_for('proiecte.detalii', id=p.id) }}" class="btn btn-sm btn-primary">
-                    <i class="fa-solid fa-eye"></i> Detalii
-                </a>
+            <div style="padding: 12px 20px; border-top: 1px solid var(--ed-color-sand, #E8E3D5); display: flex; justify-content: space-between;">
+                {{ ed.btn('Detalii', url=url_for('proiecte.detalii', id=p.id), varianta='primary', icon='eye', size='sm') }}
                 <div style="display: flex; gap: 4px;">
-                    <a href="{{ url_for('proiecte.editeaza', id=p.id) }}" class="btn btn-sm btn-outline">
-                        <i class="fa-solid fa-pen"></i>
-                    </a>
-                    <a href="{{ url_for('proiecte.export_excel', id=p.id) }}" class="btn btn-sm btn-outline" style="color: var(--success);">
-                        <i class="fa-solid fa-file-excel"></i>
-                    </a>
+                    {{ ed.btn('', url=url_for('proiecte.editeaza', id=p.id), varianta='outline', icon='pen', size='sm', attrs='title="Editeaza"') }}
+                    {{ ed.btn('', url=url_for('proiecte.export_excel', id=p.id), varianta='outline', icon='file-excel', size='sm', attrs='title="Export Excel"') }}
                 </div>
             </div>
         </div>
@@ -259,44 +195,14 @@
     </div>
     {% endif %}
 
-    <!-- Paginare -->
-    {% if pagination.pages > 1 %}
-    <div class="pagination" style="margin-top: 20px;">
-        <div class="page-item {{ 'disabled' if not pagination.has_prev }}">
-            <a class="page-link" href="{{ url_for('proiecte.lista', page=pagination.prev_num, cautare=cautare, status=status_filtru, manager=manager_filtru, sort=sort, view=view_mode) if pagination.has_prev else '#' }}">
-                <i class="fa-solid fa-chevron-left"></i>
-            </a>
-        </div>
-        {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
-            {% if p %}
-            <div class="page-item {{ 'active' if p == pagination.page }}">
-                <a class="page-link" href="{{ url_for('proiecte.lista', page=p, cautare=cautare, status=status_filtru, manager=manager_filtru, sort=sort, view=view_mode) }}">{{ p }}</a>
-            </div>
-            {% else %}
-            <div class="page-item disabled"><span class="page-link">...</span></div>
-            {% endif %}
-        {% endfor %}
-        <div class="page-item {{ 'disabled' if not pagination.has_next }}">
-            <a class="page-link" href="{{ url_for('proiecte.lista', page=pagination.next_num, cautare=cautare, status=status_filtru, manager=manager_filtru, sort=sort, view=view_mode) if pagination.has_next else '#' }}">
-                <i class="fa-solid fa-chevron-right"></i>
-            </a>
-        </div>
-    </div>
-    {% endif %}
+    {{ ed.pagination(pagination, 'proiecte.lista', {
+        'cautare': cautare, 'status': status_filtru, 'manager': manager_filtru,
+        'sort': sort, 'view': view_mode}) }}
 
 {% else %}
-<div class="card-panel">
-    <div class="card-panel-body">
-        <div class="empty-state">
-            <i class="fa-solid fa-folder-open" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
-            <h3>Niciun proiect gasit</h3>
-            <p>Nu exista proiecte care sa corespunda criteriilor de cautare.</p>
-            <a href="{{ url_for('proiecte.adauga') }}" class="btn btn-primary" style="margin-top: 12px;">
-                <i class="fa-solid fa-plus"></i> Adauga primul proiect
-            </a>
-        </div>
-    </div>
-</div>
+{{ ed.empty_state(icon='folder-open', titlu='Niciun proiect gasit',
+   mesaj='Nu exista proiecte care sa corespunda criteriilor de cautare.',
+   cta_url=url_for('proiecte.adauga'), cta_label='Adauga primul proiect') }}
 {% endif %}
 {% endblock %}
 

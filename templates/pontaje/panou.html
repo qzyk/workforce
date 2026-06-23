@@ -9,50 +9,28 @@
 {% endblock %}
 
 {% block content %}
-<!-- Header -->
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
-    <h2 style="margin: 0;"><i class="fa-solid fa-calendar-check" style="color: var(--primary);"></i> Pontaje</h2>
-</div>
+{# DS faza 4: header + actiuni rapide pe componente (KPI clickabile gold/navy).
+   Calendarul lunar (widget custom) ramane neschimbat. #}
+{% call ed.page_header(icon='calendar-check', titlu='Pontaje',
+   subtitlu='Calendar lunar, pontaje recente si actiuni rapide') %}
+    {{ ed.btn('Pontaj rapid (teren)', url=url_for('teren.pontaj'), varianta='outline', icon='helmet-safety') }}
+    {{ ed.btn('Pontaj Nou', url=url_for('pontaje.adauga'), varianta='primary', icon='plus') }}
+{% endcall %}
 
-<!-- SECTIUNEA 1: Actiuni rapide -->
-<div class="stats-bar" style="margin-bottom: 20px;">
-    <div class="stat-mini">
-        <div class="stat-icon bg-success"><i class="fa-solid fa-user-check"></i></div>
-        <div>
-            <div class="stat-number">{{ pontaje_azi }} / {{ total_angajati_activi }}</div>
-            <div class="stat-label">Pontaje Astazi</div>
-        </div>
-    </div>
-    <div class="stat-mini" style="cursor: pointer;" onclick="window.location='{{ url_for('pontaje.adauga') }}'">
-        <div class="stat-icon bg-primary"><i class="fa-solid fa-plus"></i></div>
-        <div>
-            <div class="stat-number" style="font-size: 0.9rem;">Pontaj Individual</div>
-            <div class="stat-label">Adauga</div>
-        </div>
-    </div>
-    <div class="stat-mini" style="cursor: pointer;" onclick="window.location='{{ url_for('pontaje.adauga_multiplu') }}'">
-        <div class="stat-icon bg-warning"><i class="fa-solid fa-users"></i></div>
-        <div>
-            <div class="stat-number" style="font-size: 0.9rem;">Pontaj in Masa</div>
-            <div class="stat-label">Echipa</div>
-        </div>
-    </div>
+<!-- SECTIUNEA 1: Actiuni rapide (KPI clickabile) -->
+<div class="ed-stat-grid">
+    {{ ed.stat_card(label='Pontaje Astazi', valoare=(pontaje_azi ~ ' / ' ~ total_angajati_activi),
+       icon='user-check', accent='success', url=url_for('pontaje.adauga')) }}
+    {{ ed.stat_card(label='Pontaj Individual', valoare='Adauga', icon='plus', accent='navy',
+       url=url_for('pontaje.adauga')) }}
+    {{ ed.stat_card(label='Pontaj in Masa', valoare='Echipa', icon='users', accent='gold',
+       url=url_for('pontaje.adauga_multiplu')) }}
     {% if current_user.is_manager %}
-    <div class="stat-mini" style="cursor: pointer;" onclick="window.location='{{ url_for('pontaje.aprobare') }}'">
-        <div class="stat-icon" style="background: {{ 'var(--danger)' if pontaje_de_aprobat > 0 else 'var(--gray-400)' }};"><i class="fa-solid fa-clipboard-check"></i></div>
-        <div>
-            <div class="stat-number">{{ pontaje_de_aprobat }}</div>
-            <div class="stat-label">De Aprobat</div>
-        </div>
-    </div>
+    {{ ed.stat_card(label='De Aprobat', valoare=pontaje_de_aprobat, icon='clipboard-check',
+       accent=('danger' if pontaje_de_aprobat > 0 else 'navy'), url=url_for('pontaje.aprobare')) }}
     {% endif %}
-    <div class="stat-mini" style="cursor: pointer;" onclick="window.location='{{ url_for('pontaje.calendar_view') }}'">
-        <div class="stat-icon" style="background: var(--info);"><i class="fa-solid fa-calendar-days"></i></div>
-        <div>
-            <div class="stat-number" style="font-size: 0.9rem;">Calendar</div>
-            <div class="stat-label">Per Angajat</div>
-        </div>
-    </div>
+    {{ ed.stat_card(label='Calendar', valoare='Per Angajat', icon='calendar-days', accent='navy',
+       url=url_for('pontaje.calendar_view')) }}
 </div>
 
 <!-- SECTIUNEA 2: Calendar lunar -->
@@ -205,86 +183,54 @@
 <div class="card-panel">
     <div class="card-panel-body" style="padding: 0;">
         {% if pontaje %}
-        <div class="table-responsive">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Data</th>
-                        <th>Angajat</th>
-                        <th>Proiect</th>
-                        <th>Start</th>
-                        <th>Sfarsit</th>
-                        <th>Ore</th>
-                        <th>Supl.</th>
-                        <th>Tip Zi</th>
-                        <th>Status</th>
-                        <th style="width: 130px;">Actiuni</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for p in pontaje %}
-                    <tr>
-                        <td>{{ p.data.strftime('%d.%m.%Y') if p.data else '-' }}</td>
-                        <td>
-                            <a href="{{ url_for('pontaje.calendar_view', angajat_id=p.angajat_id, luna=luna, anul=anul) }}" style="font-weight: 600; color: var(--primary); text-decoration: none;">
-                                {{ p.angajat.nume_complet if p.angajat else '-' }}
-                            </a>
-                        </td>
-                        <td><span class="badge-project">{{ p.proiect.cod_proiect if p.proiect else '-' }}</span></td>
-                        <td>{{ p.ora_start or '-' }}</td>
-                        <td>{{ p.ora_sfarsit or '-' }}</td>
-                        <td><strong>{{ p.ore_lucrate or 0 }}h</strong></td>
-                        <td>
-                            {% set supl = (p.ore_suplimentare_50 or 0) + (p.ore_suplimentare_100 or 0) %}
-                            {% if supl > 0 %}
-                            <span style="color: var(--danger); font-weight: 600;">{{ supl }}h</span>
-                            {% else %}-{% endif %}
-                        </td>
-                        <td>{{ p.tip_zi|capitalize if p.tip_zi else '-' }}</td>
-                        <td><span class="badge-status badge-{{ p.status }}">{{ p.status|capitalize }}</span></td>
-                        <td>
-                            <div style="display: flex; gap: 4px;">
-                                {% if p.status == 'draft' %}
-                                <form method="POST" action="{{ url_for('pontaje.trimite', id=p.id) }}" style="display:inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn-action btn-edit" title="Trimite">
-                                        <i class="fa-solid fa-paper-plane"></i>
-                                    </button>
-                                </form>
-                                {% endif %}
-                                {% if p.status in ('draft', 'respins') %}
-                                <a href="{{ url_for('pontaje.editeaza', id=p.id) }}" class="btn-action btn-edit" title="Editeaza">
-                                    <i class="fa-solid fa-pen"></i>
-                                </a>
-                                <form method="POST" action="{{ url_for('pontaje.sterge', id=p.id) }}" style="display:inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn-action btn-delete" title="Sterge"
-                                            onclick="return confirm('Stergeti acest pontaj?')">
-                                        <i class="fa-solid fa-trash"></i>
-                                    </button>
-                                </form>
-                                {% endif %}
-                                {% if p.status == 'trimis' and current_user.is_manager %}
-                                <form method="POST" action="{{ url_for('pontaje.aproba', id=p.id) }}" style="display:inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn-action btn-approve" title="Aproba">
-                                        <i class="fa-solid fa-check"></i>
-                                    </button>
-                                </form>
-                                {% endif %}
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+        {% call ed.data_table(['Data', 'Angajat', 'Proiect', 'Start', 'Sfarsit', 'Ore', 'Supl.', 'Tip Zi', 'Status', 'Actiuni']) %}
+            {% for p in pontaje %}
+            <tr>
+                <td data-label="Data">{{ p.data.strftime('%d.%m.%Y') if p.data else '-' }}</td>
+                <td data-label="Angajat">
+                    <a href="{{ url_for('pontaje.calendar_view', angajat_id=p.angajat_id, luna=luna, anul=anul) }}" style="font-weight: 600; color: var(--ed-color-navy, #0B1426); text-decoration: none;">
+                        {{ p.angajat.nume_complet if p.angajat else '-' }}
+                    </a>
+                </td>
+                <td data-label="Proiect">{{ ed.badge(text=(p.proiect.cod_proiect if p.proiect else '-'), status='info') }}</td>
+                <td data-label="Start">{{ p.ora_start or '-' }}</td>
+                <td data-label="Sfarsit">{{ p.ora_sfarsit or '-' }}</td>
+                <td data-label="Ore"><strong>{{ p.ore_lucrate or 0 }}h</strong></td>
+                <td data-label="Supl.">
+                    {% set supl = (p.ore_suplimentare_50 or 0) + (p.ore_suplimentare_100 or 0) %}
+                    {% if supl > 0 %}
+                    <span style="color: var(--ed-color-danger, #B71C1C); font-weight: 600;">{{ supl }}h</span>
+                    {% else %}-{% endif %}
+                </td>
+                <td data-label="Tip Zi">{{ p.tip_zi|capitalize if p.tip_zi else '-' }}</td>
+                <td data-label="Status">{{ ed.badge(text=p.status|capitalize, status=p.status) }}</td>
+                <td data-label="Actiuni">
+                    <div style="display: flex; gap: 4px; justify-content:flex-end;">
+                        {% if p.status == 'draft' %}
+                        <form method="POST" action="{{ url_for('pontaje.trimite', id=p.id) }}" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            {{ ed.btn('', varianta='outline', icon='paper-plane', size='sm', submit=true, attrs='title="Trimite"') }}
+                        </form>
+                        {% endif %}
+                        {% if p.status in ('draft', 'respins') %}
+                        {{ ed.btn('', url=url_for('pontaje.editeaza', id=p.id), varianta='outline', icon='pen', size='sm', attrs='title="Editeaza"') }}
+                        {{ ed.confirm_form(url=url_for('pontaje.sterge', id=p.id),
+                           mesaj='Stergeti acest pontaj?', label='', icon='trash', varianta='danger', size='sm') }}
+                        {% endif %}
+                        {% if p.status == 'trimis' and current_user.is_manager %}
+                        <form method="POST" action="{{ url_for('pontaje.aproba', id=p.id) }}" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            {{ ed.btn('', varianta='primary', icon='check', size='sm', submit=true, attrs='title="Aproba"') }}
+                        </form>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        {% endcall %}
         {% else %}
-        <div class="empty-state" style="padding: 24px;">
-            <i class="fa-solid fa-clock" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 16px;"></i>
-            <h3>Niciun pontaj gasit</h3>
-            <p>Nu exista pontaje care sa corespunda criteriilor selectate.</p>
-        </div>
+        {{ ed.empty_state(icon='clock', titlu='Niciun pontaj gasit',
+           mesaj='Nu exista pontaje care sa corespunda criteriilor selectate.') }}
         {% endif %}
     </div>
 </div>
