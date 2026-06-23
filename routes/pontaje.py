@@ -62,6 +62,89 @@ def _detect_tip_zi(data_pontaj):
 
 
 # ============================================================
+# CREARE PONTAJE IN MASA (logica reutilizabila)
+# ============================================================
+
+def creeaza_pontaje_bulk(proiect_id, data_pontaj, randuri, actiune='draft',
+                         lat=None, lng=None, sursa_gps=None):
+    """
+    Creeaza in bloc pontaje pentru mai multi angajati pe acelasi proiect/zi.
+
+    Logica reutilizata de routes.pontaje.adauga_multiplu si de calea de teren
+    (routes.teren). Pastreaza:
+      - calculul de ore (calculate_hours -> services.sporuri.calcul_ore, inclusiv
+        sporul de noapte cand flag-ul 'pontaj-spor-noapte' e activ);
+      - validarea anti-duplicat / anti-suprapunere: un singur pontaj per
+        (angajat, zi) - corespunde constrangerii unice uix_pontaj_angajat_data,
+        deci un al doilea pontaj in aceeasi zi (suprapunere) e omis.
+
+    Parametri:
+      proiect_id  - int, proiectul pontajului
+      data_pontaj - date, ziua pontajului
+      randuri     - lista de dict-uri, cate unul per angajat selectat:
+                    {'angajat_id': int, 'ora_start': 'HH:MM', 'ora_sfarsit': 'HH:MM',
+                     'tip_zi': str, 'observatii': str}
+                    Cheile lipsa cad pe valori implicite (08:00-16:00, tip auto).
+      actiune     - 'trimite' -> status 'trimis'; altfel 'draft'.
+      lat, lng    - coordonate GPS optionale (Float) salvate pe fiecare pontaj nou.
+      sursa_gps   - 'gps' / 'manual' / None (provenienta coordonatelor).
+
+    GPS-ul e OPTIONAL: lat/lng/sursa_gps lipsa NU blocheaza pontajul (raman NULL).
+    NU face commit - apelantul decide cand sa commit-uiasca.
+
+    Returneaza (count_ok, count_skip, pontaje_create).
+    """
+    status = 'trimis' if actiune == 'trimite' else 'draft'
+    count_ok = 0
+    count_skip = 0
+    create = []
+
+    for rand in randuri:
+        try:
+            aid = int(rand.get('angajat_id'))
+        except (TypeError, ValueError):
+            continue
+
+        ora_start = (rand.get('ora_start') or '08:00').strip() or '08:00'
+        ora_sfarsit = (rand.get('ora_sfarsit') or '16:00').strip() or '16:00'
+        tip_zi = (rand.get('tip_zi') or 'lucratoare').strip() or 'lucratoare'
+        obs = (rand.get('observatii') or '').strip()
+
+        # Anti-duplicat / anti-suprapunere: un singur pontaj per (angajat, zi).
+        exista = Pontaj.query.filter_by(angajat_id=aid, data=data_pontaj).first()
+        if exista:
+            count_skip += 1
+            continue
+
+        result = calculate_hours(ora_start, ora_sfarsit, tip_zi, data_pontaj)
+
+        pontaj = Pontaj(
+            angajat_id=aid,
+            proiect_id=proiect_id,
+            data=data_pontaj,
+            ora_start=ora_start,
+            ora_sfarsit=ora_sfarsit,
+            ore_lucrate=result['ore_lucrate'],
+            ore_normale=result['ore_normale'],
+            ore_suplimentare_50=result['ore_supl_50'],
+            ore_suplimentare_100=result['ore_supl_100'],
+            spor_noapte=result.get('spor_noapte'),
+            tip_zi=result['tip_zi'],
+            status=status,
+            observatii=obs,
+            latitudine=lat,
+            longitudine=lng,
+            sursa_gps=sursa_gps,
+            introdus_de=getattr(current_user, 'id', None),
+        )
+        db.session.add(pontaj)
+        create.append(pontaj)
+        count_ok += 1
+
+    return count_ok, count_skip, create
+
+
+# ============================================================
 # PANOU PRINCIPAL PONTAJ
 # ============================================================
 
@@ -222,44 +305,26 @@ def adauga_multiplu():
         actiune = request.form.get('actiune', 'draft')
 
         angajat_ids = request.form.getlist('angajat_ids')
-        count_ok = 0
-        count_skip = 0
 
+        # Compune randurile per angajat din formularul de masa si deleaga la
+        # logica reutilizabila (acelasi calcul de ore + validare anti-duplicat).
+        randuri = []
         for aid_str in angajat_ids:
-            aid = int(aid_str)
-            ora_start = request.form.get(f'ora_start_{aid}', '08:00')
-            ora_sfarsit = request.form.get(f'ora_sfarsit_{aid}', '16:00')
-            tip_zi = request.form.get(f'tip_zi_{aid}', 'lucratoare')
-            obs = request.form.get(f'observatii_{aid}', '').strip()
-
-            # Verificare duplicat
-            exista = Pontaj.query.filter_by(angajat_id=aid, data=data_pontaj).first()
-            if exista:
-                count_skip += 1
+            try:
+                aid = int(aid_str)
+            except (TypeError, ValueError):
                 continue
+            randuri.append({
+                'angajat_id': aid,
+                'ora_start': request.form.get(f'ora_start_{aid}', '08:00'),
+                'ora_sfarsit': request.form.get(f'ora_sfarsit_{aid}', '16:00'),
+                'tip_zi': request.form.get(f'tip_zi_{aid}', 'lucratoare'),
+                'observatii': request.form.get(f'observatii_{aid}', ''),
+            })
 
-            result = calculate_hours(ora_start, ora_sfarsit, tip_zi, data_pontaj)
-            status = 'trimis' if actiune == 'trimite' else 'draft'
-
-            pontaj = Pontaj(
-                angajat_id=aid,
-                proiect_id=proiect_id,
-                data=data_pontaj,
-                ora_start=ora_start,
-                ora_sfarsit=ora_sfarsit,
-                ore_lucrate=result['ore_lucrate'],
-                ore_normale=result['ore_normale'],
-                ore_suplimentare_50=result['ore_supl_50'],
-                ore_suplimentare_100=result['ore_supl_100'],
-                spor_noapte=result.get('spor_noapte'),
-                tip_zi=result['tip_zi'],
-                status=status,
-                observatii=obs,
-                introdus_de=current_user.id
-            )
-            db.session.add(pontaj)
-            count_ok += 1
-
+        count_ok, count_skip, _ = creeaza_pontaje_bulk(
+            proiect_id, data_pontaj, randuri, actiune=actiune,
+        )
         db.session.commit()
         flash(f'{count_ok} pontaje inregistrate cu succes. {count_skip} duplicate omise.', 'success')
         return redirect(url_for('pontaje.lista'))
