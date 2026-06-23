@@ -13,12 +13,24 @@ from __future__ import annotations
 from datetime import date
 
 from flask import (Blueprint, render_template, request, redirect, url_for,
-                   flash)
+                   flash, abort)
 from flask_login import login_required, current_user
 
 from models import db, Proiect, Angajat, Pontaj, IssueBIM, Santier, Cladire
+from services.feature_flags import is_enabled
 
 teren_bp = Blueprint('teren', __name__, url_prefix='/teren')
+
+
+def _teren_bulk_activ():
+    """
+    True daca flag-ul 'teren-pontaj-bulk' e activ. Degradeaza la False (OFF)
+    in afara unui context de request - fail-safe, comportament istoric.
+    """
+    try:
+        return is_enabled('teren-pontaj-bulk')
+    except Exception:
+        return False
 
 
 def _proiecte_active():
@@ -54,7 +66,8 @@ def index():
         pontaje_azi = (Pontaj.query.filter_by(angajat_id=eu.id, data=azi)
                        .order_by(Pontaj.id.desc()).all())
     return render_template('teren/index.html', azi=azi, eu=eu,
-                           pontaje_azi=pontaje_azi)
+                           pontaje_azi=pontaje_azi,
+                           bulk_activ=_teren_bulk_activ())
 
 
 @teren_bp.route('/pontaj', methods=['GET', 'POST'])
@@ -148,3 +161,104 @@ def problema():
         return redirect(url_for('teren.index'))
 
     return render_template('teren/problema.html', santiere=santiere)
+
+
+@teren_bp.route('/pontaj-echipa', methods=['GET', 'POST'])
+@login_required
+def pontaj_echipa():
+    """
+    Pontaj de echipa pe teren (wf-4): multi-select angajati pe un proiect/zi,
+    salvat in bloc. Reutilizeaza logica din pontaje.creeaza_pontaje_bulk (calcul
+    ore + validare anti-duplicat/anti-suprapunere). Captura GPS optionala
+    client-side (navigator.geolocation); lipsa GPS NU blocheaza pontajul.
+
+    Gated pe flag-ul 'teren-pontaj-bulk' (default OFF). Cu OFF, ruta raspunde 404
+    (modulul Teren ramane neschimbat - doar pontaj individual).
+    """
+    if not _teren_bulk_activ():
+        abort(404)
+
+    from routes.pontaje import creeaza_pontaje_bulk
+
+    proiecte = _proiecte_active()
+    angajati = _angajati_activi()
+    azi = date.today()
+
+    if request.method == 'POST':
+        try:
+            proiect_id = int(request.form.get('proiect_id') or 0)
+        except ValueError:
+            proiect_id = 0
+
+        d = azi
+        ds = (request.form.get('data') or '').strip()
+        if ds:
+            try:
+                d = date.fromisoformat(ds)
+            except ValueError:
+                pass
+
+        angajat_ids = request.form.getlist('angajat_ids')
+        if not proiect_id or not angajat_ids:
+            flash('Alege proiectul si cel putin un angajat.', 'danger')
+            return redirect(url_for('teren.pontaj_echipa'))
+
+        # Ore comune pentru toata echipa (formular de teren simplificat).
+        ora_start = (request.form.get('ora_start') or '08:00').strip() or '08:00'
+        ora_sfarsit = (request.form.get('ora_sfarsit') or '16:00').strip() or '16:00'
+        obs = (request.form.get('observatii') or '').strip()[:500]
+
+        randuri = [{
+            'angajat_id': aid,
+            'ora_start': ora_start,
+            'ora_sfarsit': ora_sfarsit,
+            'observatii': obs,
+        } for aid in angajat_ids]
+
+        actiune = request.form.get('actiune', 'draft')
+
+        # GPS optional (client-side). Coordonate valide -> sursa 'gps', altfel NULL.
+        lat = lng = sursa = None
+        lat_raw = (request.form.get('latitudine') or '').strip()
+        lng_raw = (request.form.get('longitudine') or '').strip()
+        if lat_raw and lng_raw:
+            try:
+                lat_v = float(lat_raw)
+                lng_v = float(lng_raw)
+                # Validare domeniu coordonate; in afara -> ignora (NU blocheaza).
+                if -90.0 <= lat_v <= 90.0 and -180.0 <= lng_v <= 180.0:
+                    lat, lng, sursa = lat_v, lng_v, 'gps'
+            except ValueError:
+                pass
+
+        count_ok, count_skip, create = creeaza_pontaje_bulk(
+            proiect_id, d, randuri, actiune=actiune,
+            lat=lat, lng=lng, sursa_gps=sursa,
+        )
+        db.session.commit()
+
+        # Audit best-effort pe actiunea de echipa (sensibila: creare in masa).
+        try:
+            from services import audit
+            audit.log(
+                'pontaj_echipa_teren', 'pontaj',
+                new_values={
+                    'proiect_id': proiect_id,
+                    'data': d.isoformat(),
+                    'count_ok': count_ok,
+                    'count_skip': count_skip,
+                    'cu_gps': sursa == 'gps',
+                },
+                commit=True,
+            )
+        except Exception:
+            pass
+
+        gps_txt = ' (cu GPS)' if sursa == 'gps' else ''
+        flash(f'{count_ok} pontaje de echipa salvate{gps_txt}. '
+              f'{count_skip} omise (existau deja in ziua aleasa). '
+              'Orele suplimentare se ajusteaza la editare in Pontaje.', 'success')
+        return redirect(url_for('teren.index'))
+
+    return render_template('teren/pontaj_echipa.html', proiecte=proiecte,
+                           angajati=angajati, azi=azi)

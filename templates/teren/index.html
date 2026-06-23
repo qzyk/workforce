@@ -43,6 +43,16 @@
             </div>
             <div class="go"><i class="fa-solid fa-chevron-right"></i></div>
         </a>
+        {% if bulk_activ %}
+        <a class="tr-card" href="{{ url_for('teren.pontaj_echipa') }}">
+            <div class="tr-ic"><i class="fa-solid fa-users"></i></div>
+            <div>
+                <div class="t">Pontaj echipa</div>
+                <div class="s">Mai multi angajati deodata + GPS optional</div>
+            </div>
+            <div class="go"><i class="fa-solid fa-chevron-right"></i></div>
+        </a>
+        {% endif %}
         <a class="tr-card" href="{{ url_for('teren.problema') }}">
             <div class="tr-ic"><i class="fa-solid fa-triangle-exclamation"></i></div>
             <div>
