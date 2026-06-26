@@ -94,7 +94,7 @@ def detection_info():
     return info
 
 
-def import_ifc(file_path, santier_id=None, dry_run=False):
+def import_ifc(file_path, santier_id=None, dry_run=False, tenant_id=None):
     """
     Parcurge un fisier IFC si creeaza Cladire/Nivel/Spatiu/ElementBIM in DB.
 
@@ -102,6 +102,7 @@ def import_ifc(file_path, santier_id=None, dry_run=False):
         file_path: cale absoluta catre fisierul .ifc
         santier_id: ID-ul Santier-ului parinte. Daca None, IfcSite din IFC devine santier nou.
         dry_run: daca True, doar parseaza si returneaza statistici, fara a salva in DB.
+        tenant_id: tenant-ul care detine randurile noi, cand ruta l-a validat deja.
 
     Returns:
         dict cu chei: status, mesaj, statistici, errors
@@ -163,9 +164,13 @@ def import_ifc(file_path, santier_id=None, dry_run=False):
             }
     else:
         cod = (ifc_site.Name or f'SITE-{ifc_site.GlobalId[:8]}').strip()[:50]
-        santier = Santier.query.filter_by(extern_id=ifc_site.GlobalId).first()
+        santier_q = Santier.query.filter_by(extern_id=ifc_site.GlobalId)
+        if tenant_id is not None:
+            santier_q = santier_q.filter_by(tenant_id=tenant_id)
+        santier = santier_q.first()
         if not santier:
             santier = Santier(
+                tenant_id=tenant_id,
                 cod=cod,
                 nume=ifc_site.LongName or cod,
                 extern_id=ifc_site.GlobalId,

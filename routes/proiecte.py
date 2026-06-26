@@ -14,6 +14,10 @@ from forms.proiecte_forms import ProiectForm
 from services.security.tenant_access import (
     get_legacy_document_or_404,
     get_project_or_404,
+    get_site_or_404,
+    query_bim_elements_for_tenant,
+    query_bim_models_for_tenant,
+    query_sites_for_tenant,
     query_for_tenant,
     query_legacy_documents_for_tenant,
     query_project_documents_for_tenant,
@@ -282,13 +286,14 @@ def hub(id):
         sids = [s.id for s in santiere]
         h['bim'] = _safe(lambda: {
             'nr_santiere': len(santiere),
-            'modele': ModelBIM.query.filter(ModelBIM.santier_id.in_(sids)).count(),
-            'elemente': (ElementBIM.query.join(Cladire, ElementBIM.cladire_id == Cladire.id)
+            'modele': query_bim_models_for_tenant().filter(ModelBIM.santier_id.in_(sids)).count(),
+            'elemente': (query_bim_elements_for_tenant()
+                         .join(Cladire, ElementBIM.cladire_id == Cladire.id)
                          .filter(Cladire.santier_id.in_(sids)).count()),
         }, {'nr_santiere': len(santiere), 'modele': 0, 'elemente': 0})
     # santiere disponibile pentru legare (neasociate inca)
     legate_ids = {s.id for s in santiere}
-    disponibile = _safe(lambda: [s for s in Santier.query.order_by(Santier.cod).all()
+    disponibile = _safe(lambda: [s for s in query_sites_for_tenant().order_by(Santier.cod).all()
                                  if s.id not in legate_ids], []) or []
 
     # ---- Parcurs ghidat (U2): etapele fluxului cu stare + pasul urmator ----
@@ -329,14 +334,13 @@ def hub(id):
 @login_required
 def leaga_santier(id):
     from models import ProiectSantier, Santier
-    Proiect.query.get_or_404(id)
+    get_project_or_404(id)
     try:
         sid = int(request.form['santier_id'])
     except (KeyError, ValueError, TypeError):
         flash('Alege un santier BIM.', 'warning')
         return redirect(url_for('proiecte.hub', id=id))
-    if not Santier.query.get(sid):
-        abort(404)
+    get_site_or_404(sid)
     if not ProiectSantier.query.filter_by(proiect_id=id, santier_id=sid).first():
         ps = ProiectSantier(proiect_id=id, santier_id=sid,
                             tenant_id=getattr(current_user, 'tenant_id', None),
@@ -357,6 +361,8 @@ def leaga_santier(id):
 @login_required
 def dezleaga_santier(id, santier_id):
     from models import ProiectSantier
+    get_project_or_404(id)
+    get_site_or_404(santier_id)
     ps = ProiectSantier.query.filter_by(proiect_id=id, santier_id=santier_id).first()
     if ps:
         psid = ps.id

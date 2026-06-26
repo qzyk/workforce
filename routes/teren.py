@@ -18,7 +18,10 @@ from flask_login import login_required, current_user
 
 from models import db, Proiect, Angajat, Pontaj, IssueBIM, Santier, Cladire
 from services.security.tenant_access import (
+    get_site_or_404,
+    query_bim_buildings_for_tenant,
     query_for_tenant,
+    query_sites_for_tenant,
     query_timesheets_for_tenant,
     require_timesheet_inputs_same_tenant,
     tenant_id_for_new_record_or_403,
@@ -128,7 +131,7 @@ def pontaj():
 @teren_bp.route('/problema', methods=['GET', 'POST'])
 @login_required
 def problema():
-    santiere = Santier.query.order_by(Santier.nume.asc()).all()
+    santiere = query_sites_for_tenant().order_by(Santier.nume.asc()).all()
 
     if request.method == 'POST':
         titlu = (request.form.get('titlu') or '').strip()
@@ -144,11 +147,16 @@ def problema():
             sid = int(request.form.get('santier_id') or 0)
         except ValueError:
             sid = 0
+        tenant_id = tenant_id_for_new_record_or_403()
         if sid:
-            cl = Cladire.query.filter_by(santier_id=sid).order_by(Cladire.id).first()
+            get_site_or_404(sid)
+            cl = query_bim_buildings_for_tenant().filter_by(
+                santier_id=sid
+            ).order_by(Cladire.id).first()
             cladire_id = cl.id if cl else None
 
         iss = IssueBIM(
+            tenant_id=tenant_id,
             titlu=titlu[:200],
             descriere=(request.form.get('descriere') or '').strip()[:2000] or None,
             tip='observatie', severitate=sev, status='deschis',

@@ -200,7 +200,14 @@ def import_bcfzip(file_obj, *, user, tenant_id: Optional[int] = None,
                 bcf_priority = priority_el.text if priority_el is not None else None
                 tip_el = topic.attrib.get('TopicType', 'Issue')
 
-                existing = IssueBIM.query.filter_by(bcf_topic_guid=guid).first()
+                if tenant_id is not None:
+                    from services.security.tenant_access import query_bim_issues_for_tenant
+
+                    existing = query_bim_issues_for_tenant(
+                        tenant_id=tenant_id
+                    ).filter_by(bcf_topic_guid=guid).first()
+                else:
+                    existing = IssueBIM.query.filter_by(bcf_topic_guid=guid).first()
                 if existing:
                     existing.titlu = titlu[:300]
                     existing.descriere = descriere

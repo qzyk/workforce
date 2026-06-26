@@ -21,9 +21,10 @@ from io import BytesIO
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
-    flash, jsonify, abort, send_file, current_app
+    flash, jsonify, abort, send_file, current_app, g
 )
 from flask_login import login_required, current_user
+from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
 
 from models import (
@@ -56,6 +57,29 @@ from services import openapi as openapi_svc
 from services import feature_flags as ff_svc
 from services import feature_flags
 from services import aps_viewer
+from services.security.tenant_access import (
+    get_bim_building_or_404,
+    get_bim_element_or_404,
+    get_bim_issue_or_404,
+    get_bim_level_or_404,
+    get_bim_model_or_404,
+    get_bim_model_version_or_404,
+    get_bim_space_or_404,
+    get_or_404_for_tenant,
+    get_project_or_404,
+    get_site_or_404,
+    query_bim_buildings_for_tenant,
+    query_bim_elements_for_tenant,
+    query_bim_issues_for_tenant,
+    query_bim_levels_for_tenant,
+    query_bim_model_versions_for_tenant,
+    query_bim_models_for_tenant,
+    query_bim_spaces_for_tenant,
+    query_for_tenant,
+    query_sites_for_tenant,
+    require_bim_record_same_tenant,
+    tenant_id_for_new_record_or_403,
+)
 
 bim_bp = Blueprint('bim', __name__, url_prefix='/bim')
 
@@ -76,6 +100,19 @@ def manager_or_admin(f):
     return decorated
 
 
+def _ids_din_request(nume='ids'):
+    valori = []
+    for raw in request.args.getlist(nume):
+        for part in str(raw).replace(';', ',').split(','):
+            try:
+                value = int(part.strip())
+            except (TypeError, ValueError):
+                continue
+            if value > 0 and value not in valori:
+                valori.append(value)
+    return valori
+
+
 # ============================================================
 # DASHBOARD / TREE-VIEW
 # ============================================================
@@ -84,10 +121,10 @@ def manager_or_admin(f):
 @login_required
 def dashboard():
     """Pagina principala BIM - prezentare santiere si statistici."""
-    santiere = Santier.query.order_by(Santier.cod).all()
-    nr_cladiri = Cladire.query.count()
-    nr_elemente = ElementBIM.query.count()
-    nr_issues_deschise = IssueBIM.query.filter(
+    santiere = query_sites_for_tenant().order_by(Santier.cod).all()
+    nr_cladiri = query_bim_buildings_for_tenant().count()
+    nr_elemente = query_bim_elements_for_tenant().count()
+    nr_issues_deschise = query_bim_issues_for_tenant().filter(
         IssueBIM.status.in_(['deschis', 'in_lucru'])
     ).count()
     return render_template('bim/dashboard.html',
@@ -105,14 +142,14 @@ def dashboard():
 @bim_bp.route('/santiere')
 @login_required
 def santiere_lista():
-    santiere = Santier.query.order_by(Santier.cod).all()
+    santiere = query_sites_for_tenant().order_by(Santier.cod).all()
     return render_template('bim/santiere_lista.html', santiere=santiere)
 
 
 @bim_bp.route('/santier/<int:id>')
 @login_required
 def santier_detaliu(id):
-    s = Santier.query.get_or_404(id)
+    s = get_site_or_404(id)
     return render_template('bim/santier_detaliu.html', santier=s)
 
 
@@ -122,14 +159,19 @@ def santier_detaliu(id):
 def santier_nou():
     if request.method == 'POST':
         try:
+            tenant_id = tenant_id_for_new_record_or_403()
+            proiect_id = request.form.get('proiect_id', type=int) or None
+            if proiect_id:
+                get_project_or_404(proiect_id)
             s = Santier(
+                tenant_id=tenant_id,
                 cod=request.form.get('cod', '').strip(),
                 nume=request.form.get('nume', '').strip(),
                 descriere=request.form.get('descriere', '').strip(),
                 adresa=request.form.get('adresa', '').strip(),
                 oras=request.form.get('oras', '').strip(),
                 judet=request.form.get('judet', '').strip(),
-                proiect_id=request.form.get('proiect_id', type=int) or None,
+                proiect_id=proiect_id,
             )
             if not s.cod or not s.nume:
                 flash('Codul si numele sunt obligatorii.', 'danger')
@@ -142,11 +184,15 @@ def santier_nou():
             db.session.commit()
             flash(f'Santier "{s.nume}" creat.', 'success')
             return redirect(url_for('bim.santier_detaliu', id=s.id))
+        except HTTPException:
+            raise
         except Exception as e:
             db.session.rollback()
             flash(f'Eroare la salvare: {e}', 'danger')
 
-    proiecte = Proiect.query.filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
+    proiecte = query_for_tenant(Proiect).filter(
+        Proiect.status.in_(['activ', 'planificat'])
+    ).order_by(Proiect.cod_proiect).all()
     return render_template('bim/santier_formular.html', santier=None, proiecte=proiecte)
 
 
@@ -154,9 +200,12 @@ def santier_nou():
 @login_required
 @manager_or_admin
 def santier_editeaza(id):
-    s = Santier.query.get_or_404(id)
+    s = get_site_or_404(id)
     if request.method == 'POST':
         try:
+            proiect_id = request.form.get('proiect_id', type=int) or None
+            if proiect_id:
+                get_project_or_404(proiect_id)
             audit_fields = ['cod', 'nume', 'descriere', 'adresa', 'oras', 'judet', 'proiect_id']
             before = audit_svc.snapshot(s, audit_fields)
             s.cod = request.form.get('cod', '').strip()
@@ -165,16 +214,20 @@ def santier_editeaza(id):
             s.adresa = request.form.get('adresa', '').strip()
             s.oras = request.form.get('oras', '').strip()
             s.judet = request.form.get('judet', '').strip()
-            s.proiect_id = request.form.get('proiect_id', type=int) or None
+            s.proiect_id = proiect_id
             audit_svc.log_update('santier', s.id, before, audit_svc.snapshot(s, audit_fields))
             db.session.commit()
             flash(f'Santier "{s.nume}" actualizat.', 'success')
             return redirect(url_for('bim.santier_detaliu', id=s.id))
+        except HTTPException:
+            raise
         except Exception as e:
             db.session.rollback()
             flash(f'Eroare la salvare: {e}', 'danger')
 
-    proiecte = Proiect.query.filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
+    proiecte = query_for_tenant(Proiect).filter(
+        Proiect.status.in_(['activ', 'planificat'])
+    ).order_by(Proiect.cod_proiect).all()
     return render_template('bim/santier_formular.html', santier=s, proiecte=proiecte)
 
 
@@ -182,7 +235,7 @@ def santier_editeaza(id):
 @login_required
 @manager_or_admin
 def santier_sterge(id):
-    s = Santier.query.get_or_404(id)
+    s = get_site_or_404(id)
     try:
         audit_svc.log_delete('santier', s.id, old_values={
             'cod': s.cod, 'nume': s.nume, 'oras': s.oras, 'judet': s.judet,
@@ -208,7 +261,7 @@ def elemente_lista():
     f_status = request.args.get('status', '').strip()
     f_cladire = request.args.get('cladire_id', type=int) or None
 
-    q = ElementBIM.query
+    q = query_bim_elements_for_tenant()
     if f_tip:
         q = q.filter_by(tip_element=f_tip)
     if f_status:
@@ -219,7 +272,7 @@ def elemente_lista():
     page = request.args.get('page', 1, type=int)
     pagination = q.order_by(ElementBIM.cod).paginate(
         page=page, per_page=100, error_out=False)
-    cladiri = Cladire.query.order_by(Cladire.cod).all()
+    cladiri = query_bim_buildings_for_tenant().order_by(Cladire.cod).all()
     tipuri = ElementBIM.TIPURI
     return render_template('bim/elemente_lista.html',
         elemente=pagination.items,
@@ -233,7 +286,7 @@ def elemente_lista():
 @bim_bp.route('/element/<int:id>')
 @login_required
 def element_detaliu(id):
-    e = ElementBIM.query.get_or_404(id)
+    e = get_bim_element_or_404(id)
     # Activitati workforce asociate
     rapoarte = RaportActivitate.query.filter_by(element_bim_id=e.id).order_by(
         RaportActivitate.data.desc()
@@ -241,23 +294,23 @@ def element_detaliu(id):
     pontaje = Pontaj.query.filter_by(element_bim_id=e.id).order_by(
         Pontaj.data.desc()
     ).limit(20).all()
-    issues = IssueBIM.query.filter_by(element_bim_id=e.id).order_by(
+    issues = query_bim_issues_for_tenant().filter_by(element_bim_id=e.id).order_by(
         IssueBIM.data_creare.desc()
     ).all()
     # Quick navigation: alte elemente in aceeasi zona/nivel/cladire
     quick_jump = []
     if e.spatiu_id:
-        quick_jump = ElementBIM.query.filter(
+        quick_jump = query_bim_elements_for_tenant().filter(
             ElementBIM.spatiu_id == e.spatiu_id,
             ElementBIM.id != e.id,
         ).limit(8).all()
     elif e.nivel_id:
-        quick_jump = ElementBIM.query.filter(
+        quick_jump = query_bim_elements_for_tenant().filter(
             ElementBIM.nivel_id == e.nivel_id,
             ElementBIM.id != e.id,
         ).limit(8).all()
     elif e.cladire_id:
-        quick_jump = ElementBIM.query.filter(
+        quick_jump = query_bim_elements_for_tenant().filter(
             ElementBIM.cladire_id == e.cladire_id,
             ElementBIM.id != e.id,
         ).limit(8).all()
@@ -282,7 +335,7 @@ def issues_lista():
     f_severitate = request.args.get('severitate', '').strip()
     f_tip = request.args.get('tip', '').strip()
 
-    q = IssueBIM.query
+    q = query_bim_issues_for_tenant()
     if f_status:
         q = q.filter_by(status=f_status)
     if f_severitate:
@@ -309,7 +362,7 @@ def issues_lista():
 def api_tree():
     """Returneaza arborele BIM complet ca JSON."""
     rezultat = []
-    for s in Santier.query.order_by(Santier.cod).all():
+    for s in query_sites_for_tenant().order_by(Santier.cod).all():
         s_node = {
             'tip': 'santier',
             'id': s.id,
@@ -354,7 +407,7 @@ def api_tree():
 @login_required
 def api_element(id):
     """JSON detaliu element BIM + activitati / issues asociate."""
-    e = ElementBIM.query.get_or_404(id)
+    e = get_bim_element_or_404(id)
     return jsonify({
         'id': e.id,
         'cod': e.cod,
@@ -375,7 +428,7 @@ def api_element(id):
             'urmatoarea_mentenanta': e.asset.urmatoarea_mentenanta.isoformat() if e.asset and e.asset.urmatoarea_mentenanta else None,
         } if e.asset else None,
         'nr_activitati': RaportActivitate.query.filter_by(element_bim_id=e.id).count(),
-        'nr_issues_deschise': IssueBIM.query.filter_by(element_bim_id=e.id).filter(
+        'nr_issues_deschise': query_bim_issues_for_tenant().filter_by(element_bim_id=e.id).filter(
             IssueBIM.status.in_(['deschis', 'in_lucru'])
         ).count(),
     })
@@ -385,7 +438,10 @@ def api_element(id):
 @login_required
 def api_cladiri_santier(santier_id):
     """Cladirile dintr-un santier (pentru cascada picker)."""
-    cladiri = Cladire.query.filter_by(santier_id=santier_id).order_by(Cladire.cod).all()
+    get_site_or_404(santier_id)
+    cladiri = query_bim_buildings_for_tenant().filter_by(
+        santier_id=santier_id
+    ).order_by(Cladire.cod).all()
     return jsonify([{'id': c.id, 'cod': c.cod, 'nume': c.nume} for c in cladiri])
 
 
@@ -393,7 +449,10 @@ def api_cladiri_santier(santier_id):
 @login_required
 def api_niveluri_cladire(cladire_id):
     """Niveluri dintr-o cladire."""
-    niveluri = Nivel.query.filter_by(cladire_id=cladire_id).order_by(Nivel.ordine).all()
+    get_bim_building_or_404(cladire_id)
+    niveluri = query_bim_levels_for_tenant().filter_by(
+        cladire_id=cladire_id
+    ).order_by(Nivel.ordine).all()
     return jsonify([{'id': n.id, 'cod': n.cod, 'nume': n.nume, 'ordine': n.ordine} for n in niveluri])
 
 
@@ -401,7 +460,10 @@ def api_niveluri_cladire(cladire_id):
 @login_required
 def api_spatii_nivel(nivel_id):
     """Spatii dintr-un nivel."""
-    spatii = Spatiu.query.filter_by(nivel_id=nivel_id).order_by(Spatiu.cod).all()
+    get_bim_level_or_404(nivel_id)
+    spatii = query_bim_spaces_for_tenant().filter_by(
+        nivel_id=nivel_id
+    ).order_by(Spatiu.cod).all()
     return jsonify([{'id': sp.id, 'cod': sp.cod, 'nume': sp.nume, 'tip_spatiu': sp.tip_spatiu} for sp in spatii])
 
 
@@ -415,7 +477,7 @@ def api_search():
     like = f'%{q}%'
     rezultat = []
     # Elemente
-    for e in ElementBIM.query.filter(db.or_(
+    for e in query_bim_elements_for_tenant().filter(db.or_(
         ElementBIM.cod.ilike(like), ElementBIM.nume.ilike(like)
     )).limit(10).all():
         rezultat.append({
@@ -423,7 +485,7 @@ def api_search():
             'cale': e.cale_completa, 'url': url_for('bim.element_detaliu', id=e.id),
         })
     # Spatii
-    for sp in Spatiu.query.filter(db.or_(
+    for sp in query_bim_spaces_for_tenant().filter(db.or_(
         Spatiu.cod.ilike(like), Spatiu.nume.ilike(like)
     )).limit(5).all():
         rezultat.append({
@@ -431,7 +493,7 @@ def api_search():
             'cale': '', 'url': '#',  # TODO: spatiu_detaliu
         })
     # Santiere
-    for s in Santier.query.filter(db.or_(
+    for s in query_sites_for_tenant().filter(db.or_(
         Santier.cod.ilike(like), Santier.nume.ilike(like)
     )).limit(5).all():
         rezultat.append({
@@ -451,7 +513,7 @@ def api_elemente():
     f_tip = request.args.get('tip', '').strip()
     f_q = request.args.get('q', '').strip()
 
-    q = ElementBIM.query
+    q = query_bim_elements_for_tenant()
     if f_cladire:
         q = q.filter_by(cladire_id=f_cladire)
     if f_nivel:
@@ -489,6 +551,11 @@ def import_ifc_view():
     """Pagina de import IFC + procesare upload."""
     rezultat = None
     if request.method == 'POST':
+        tenant_id = tenant_id_for_new_record_or_403()
+        santier_id = request.form.get('santier_id', type=int) or None
+        if santier_id:
+            get_site_or_404(santier_id)
+
         file = request.files.get('ifc_file')
         if not file or not file.filename:
             flash('Selectati un fisier IFC.', 'danger')
@@ -505,15 +572,20 @@ def import_ifc_view():
         path = os.path.join(upload_dir, f'{timestamp}_{safe_name}')
         file.save(path)
 
-        santier_id = request.form.get('santier_id', type=int) or None
         dry_run = bool(request.form.get('dry_run'))
 
-        rezultat = ifc_service.import_ifc(path, santier_id=santier_id, dry_run=dry_run)
+        rezultat = ifc_service.import_ifc(
+            path,
+            santier_id=santier_id,
+            dry_run=dry_run,
+            tenant_id=tenant_id,
+        )
 
         # Inregistrez modelul in tabela bim_modele (chiar daca dry_run)
         try:
             stats = rezultat.get('statistici', {})
             m = ModelBIM(
+                tenant_id=tenant_id,
                 santier_id=rezultat.get('santier_id') or santier_id,
                 nume=safe_name,
                 tip='ifc',
@@ -533,6 +605,8 @@ def import_ifc_view():
                 'santier_id': m.santier_id,
             })
             db.session.commit()
+        except HTTPException:
+            raise
         except Exception as e:
             db.session.rollback()
             rezultat['errors'].append(f'log model: {e}')
@@ -542,7 +616,7 @@ def import_ifc_view():
         else:
             flash(rezultat['mesaj'], 'danger')
 
-    santiere = Santier.query.order_by(Santier.cod).all()
+    santiere = query_sites_for_tenant().order_by(Santier.cod).all()
     return render_template('bim/import_ifc.html',
         santiere=santiere,
         rezultat=rezultat,
@@ -555,7 +629,7 @@ def import_ifc_view():
 def export_bcf():
     """Export BCF cu toate issues (sau filtrate)."""
     f_status = request.args.get('status', '').strip()
-    q = IssueBIM.query
+    q = query_bim_issues_for_tenant()
     if f_status:
         q = q.filter_by(status=f_status)
     else:
@@ -582,7 +656,7 @@ def export_bcf():
 @bim_bp.route('/modele')
 @login_required
 def modele_lista():
-    modele = ModelBIM.query.order_by(ModelBIM.data_incarcare.desc()).all()
+    modele = query_bim_models_for_tenant().order_by(ModelBIM.data_incarcare.desc()).all()
     return render_template('bim/modele_lista.html', modele=modele)
 
 
@@ -593,19 +667,27 @@ def model_extern_nou():
     """Adauga un model BIM gazduit extern (Trimble/Autodesk/BIMx/...)"""
     if request.method == 'POST':
         try:
+            tenant_id = tenant_id_for_new_record_or_403()
+            santier_id = request.form.get('santier_id', type=int) or None
+            cladire_id = request.form.get('cladire_id', type=int) or None
+            if santier_id:
+                get_site_or_404(santier_id)
+            if cladire_id:
+                get_bim_building_or_404(cladire_id)
             extern_url = request.form.get('extern_url', '').strip()
             if not extern_url:
                 flash('URL-ul extern e obligatoriu.', 'danger')
                 return redirect(request.url)
             m = ModelBIM(
+                tenant_id=tenant_id,
                 nume=request.form.get('nume', '').strip() or 'Viewer extern',
                 descriere=request.form.get('descriere', '').strip(),
                 tip='viewer_extern',
                 versiune=request.form.get('versiune', '').strip(),
                 autor=request.form.get('autor', '').strip(),
                 extern_url=extern_url,
-                santier_id=request.form.get('santier_id', type=int) or None,
-                cladire_id=request.form.get('cladire_id', type=int) or None,
+                santier_id=santier_id,
+                cladire_id=cladire_id,
                 procesare_status='extern',
                 incarcat_de_id=current_user.id,
             )
@@ -613,12 +695,14 @@ def model_extern_nou():
             db.session.commit()
             flash(f'Viewer extern "{m.nume}" inregistrat.', 'success')
             return redirect(url_for('bim.modele_lista'))
+        except HTTPException:
+            raise
         except Exception as e:
             db.session.rollback()
             flash(f'Eroare: {e}', 'danger')
 
-    santiere = Santier.query.order_by(Santier.cod).all()
-    cladiri = Cladire.query.order_by(Cladire.cod).all()
+    santiere = query_sites_for_tenant().order_by(Santier.cod).all()
+    cladiri = query_bim_buildings_for_tenant().order_by(Cladire.cod).all()
     return render_template('bim/model_extern_formular.html',
         model=None, santiere=santiere, cladiri=cladiri,
         viewere_preset=ModelBIM.VIEWERE_EXTERNE,
@@ -629,9 +713,15 @@ def model_extern_nou():
 @login_required
 @manager_or_admin
 def model_editeaza(id):
-    m = ModelBIM.query.get_or_404(id)
+    m = get_bim_model_or_404(id)
     if request.method == 'POST':
         try:
+            santier_id = request.form.get('santier_id', type=int) or None
+            cladire_id = request.form.get('cladire_id', type=int) or None
+            if santier_id:
+                get_site_or_404(santier_id)
+            if cladire_id:
+                get_bim_building_or_404(cladire_id)
             m.nume = request.form.get('nume', '').strip() or m.nume
             m.descriere = request.form.get('descriere', '').strip()
             m.versiune = request.form.get('versiune', '').strip()
@@ -640,17 +730,19 @@ def model_editeaza(id):
                 new_url = request.form.get('extern_url', '').strip()
                 if new_url:
                     m.extern_url = new_url
-            m.santier_id = request.form.get('santier_id', type=int) or None
-            m.cladire_id = request.form.get('cladire_id', type=int) or None
+            m.santier_id = santier_id
+            m.cladire_id = cladire_id
             db.session.commit()
             flash('Model actualizat.', 'success')
             return redirect(url_for('bim.modele_lista'))
+        except HTTPException:
+            raise
         except Exception as e:
             db.session.rollback()
             flash(f'Eroare: {e}', 'danger')
 
-    santiere = Santier.query.order_by(Santier.cod).all()
-    cladiri = Cladire.query.order_by(Cladire.cod).all()
+    santiere = query_sites_for_tenant().order_by(Santier.cod).all()
+    cladiri = query_bim_buildings_for_tenant().order_by(Cladire.cod).all()
     template = 'bim/model_extern_formular.html' if m.tip == 'viewer_extern' else 'bim/model_extern_formular.html'
     return render_template(template, model=m, santiere=santiere, cladiri=cladiri,
                            viewere_preset=ModelBIM.VIEWERE_EXTERNE)
@@ -660,7 +752,7 @@ def model_editeaza(id):
 @login_required
 @manager_or_admin
 def model_sterge(id):
-    m = ModelBIM.query.get_or_404(id)
+    m = get_bim_model_or_404(id)
     nume = m.nume
     try:
         db.session.delete(m)
@@ -679,12 +771,12 @@ def api_modele_pentru_element(element_id):
     Returneaza toate modelele BIM (intern+extern) asociate cu santierul / cladirea
     elementului, plus URL-uri pre-substituite cu IFC GlobalId pentru highlight.
     """
-    e = ElementBIM.query.get_or_404(element_id)
+    e = get_bim_element_or_404(element_id)
     cladire_id = e.cladire_id
     santier_id = e.cladire.santier_id if e.cladire else None
     guid = e.ifc_global_id
 
-    q = ModelBIM.query
+    q = query_bim_models_for_tenant()
     if santier_id and cladire_id:
         q = q.filter(db.or_(
             ModelBIM.santier_id == santier_id,
@@ -730,7 +822,7 @@ def viewer(model_id):
 
     Quick override: ?legacy=1 forteaza viewer-ul vechi.
     """
-    model = ModelBIM.query.get_or_404(model_id)
+    model = get_bim_model_or_404(model_id)
     if model.tip != 'ifc' or not model.fisier_path:
         flash('Viewer-ul 3D suporta doar fisiere IFC incarcate.', 'warning')
         return redirect(url_for('bim.dashboard'))
@@ -762,7 +854,7 @@ def viewer(model_id):
 @login_required
 def viewer_file(model_id):
     """Trimite fisierul IFC pentru viewer."""
-    model = ModelBIM.query.get_or_404(model_id)
+    model = get_bim_model_or_404(model_id)
     if not model.fisier_path:
         abort(404)
     abs_path = os.path.join(current_app.root_path, model.fisier_path)
@@ -776,9 +868,10 @@ def viewer_file(model_id):
 # ============================================================
 def _elemente_model(model):
     """Elementele unui model: prin model_bim_id, altfel prin santierul modelului."""
-    els = ElementBIM.query.filter_by(model_bim_id=model.id).all()
+    els = query_bim_elements_for_tenant().filter_by(model_bim_id=model.id).all()
     if not els and getattr(model, 'santier_id', None):
-        els = (ElementBIM.query.join(Cladire, ElementBIM.cladire_id == Cladire.id)
+        els = (query_bim_elements_for_tenant()
+               .join(Cladire, ElementBIM.cladire_id == Cladire.id)
                .filter(Cladire.santier_id == model.santier_id).all())
     return els
 
@@ -787,14 +880,14 @@ def _elemente_model(model):
 @login_required
 def genereaza_4d(model_id):
     """Genereaza schedule-urile 4D pentru elementele modelului, dintr-un plan Gantt salvat."""
-    model = ModelBIM.query.get_or_404(model_id)
+    model = get_bim_model_or_404(model_id)
     from models import GanttPlan
     from services.gantt.pipeline import MotorPlanificare
     from services.gantt import import_engine, store as gstore
     from services import bim_4d_bridge
 
-    plan = db.session.get(GanttPlan, int(request.form['plan_id'])) \
-        if request.form.get('plan_id') else None
+    plan = (get_or_404_for_tenant(GanttPlan, int(request.form['plan_id']))
+            if request.form.get('plan_id') else None)
     if not plan:
         flash('Alege un plan Gantt salvat pentru a genera 4D.', 'warning')
         return redirect(url_for('bim.viewer', model_id=model_id))
@@ -830,7 +923,7 @@ def genereaza_4d(model_id):
 @login_required
 def genereaza_4d_secventa(model_id):
     """4D fara plan: auto-secventiere a elementelor pe nivel + ordine de constructie."""
-    model = ModelBIM.query.get_or_404(model_id)
+    model = get_bim_model_or_404(model_id)
     from services import bim_4d_bridge
     try:
         durata = int(request.form.get('durata') or 90)
@@ -850,14 +943,16 @@ def genereaza_4d_secventa(model_id):
 @login_required
 def viewer_4d_data(model_id):
     """JSON pentru player-ul 4D: elemente (guid) + ferestre de date + stare."""
-    model = ModelBIM.query.get_or_404(model_id)
+    model = get_bim_model_or_404(model_id)
     from models import BIMTaskSchedule
     from services import bim_4d_bridge
     elemente = _elemente_model(model)
     ids = [e.id for e in elemente]
     scheds = {}
     if ids:
-        for s in BIMTaskSchedule.query.filter(BIMTaskSchedule.element_bim_id.in_(ids)).all():
+        for s in query_for_tenant(BIMTaskSchedule).filter(
+            BIMTaskSchedule.element_bim_id.in_(ids)
+        ).all():
             scheds.setdefault(s.element_bim_id, s)
     perechi = [(e, scheds[e.id]) for e in elemente if e.id in scheds]
     return jsonify(bim_4d_bridge.date_4d(perechi))
@@ -881,7 +976,7 @@ def _qto_rows(model, geometric=False):
 @login_required
 def qto(model_id):
     """Antemasuratoare (QTO) din model: cantitati pe tip de element."""
-    model = ModelBIM.query.get_or_404(model_id)
+    model = get_bim_model_or_404(model_id)
     geometric = request.args.get('geometric') in ('1', 'true', 'on')
     rows = _qto_rows(model, geometric=geometric)
     return render_template('bim/qto.html', model=model, rows=rows,
@@ -896,7 +991,7 @@ def qto(model_id):
 def qto_csv(model_id):
     import csv as _csv
     from io import StringIO
-    model = ModelBIM.query.get_or_404(model_id)
+    model = get_bim_model_or_404(model_id)
     geometric = request.args.get('geometric') in ('1', 'true', 'on')
     rows = _qto_rows(model, geometric=geometric)
     out = StringIO()
@@ -989,7 +1084,7 @@ def api_elemente_catalog():
     Export catalog elemente pentru integrare BI/dashboard externe.
     Returneaza JSON cu toate elementele + identificatori cross-system.
     """
-    elemente = ElementBIM.query.limit(2000).all()
+    elemente = query_bim_elements_for_tenant().limit(2000).all()
     rezultat = []
     for e in elemente:
         # Lookup mapping-uri externe pentru acest element
@@ -1042,8 +1137,8 @@ def model_versiuni(model_id):
     redir = _ensure_versioning_enabled()
     if redir:
         return redir
-    model = ModelBIM.query.get_or_404(model_id)
-    versiuni = (BIMModelVersion.query
+    model = get_bim_model_or_404(model_id)
+    versiuni = (query_bim_model_versions_for_tenant()
                 .filter_by(model_id=model_id)
                 .order_by(BIMModelVersion.data_creare.desc())
                 .all())
@@ -1058,7 +1153,7 @@ def model_versiune_noua(model_id):
     redir = _ensure_versioning_enabled()
     if redir:
         return redir
-    model = ModelBIM.query.get_or_404(model_id)
+    model = get_bim_model_or_404(model_id)
 
     if request.method == 'POST':
         try:
@@ -1093,7 +1188,7 @@ def model_version_transition(version_id):
     if redir:
         return redir
 
-    v = BIMModelVersion.query.get_or_404(version_id)
+    v = get_bim_model_version_or_404(version_id)
     new_status = request.form.get('status', '').strip().lower()
     comentariu = request.form.get('comentariu', '').strip() or None
 
@@ -1116,8 +1211,9 @@ def api_model_versiuni(model_id):
     if not ff_svc.is_enabled('bim-model-versioning'):
         return jsonify({'enabled': False, 'versions': []}), 200
 
+    get_bim_model_or_404(model_id)
     status_filter = request.args.get('status')
-    q = BIMModelVersion.query.filter_by(model_id=model_id)
+    q = query_bim_model_versions_for_tenant().filter_by(model_id=model_id)
     if status_filter:
         q = q.filter_by(status=status_filter)
     versiuni = q.order_by(BIMModelVersion.data_creare.desc()).all()
@@ -1152,8 +1248,9 @@ def viewer_federat(santier_id):
         flash('Federation nu e activat pentru acest tenant.', 'info')
         return redirect(url_for('bim.santier_detaliu', id=santier_id))
 
-    santier = Santier.query.get_or_404(santier_id)
+    santier = get_site_or_404(santier_id)
     versiuni = bim_workflow.get_published_versions_for_santier(santier_id)
+    versiuni = [require_bim_record_same_tenant(v) for v in versiuni]
 
     if not versiuni:
         flash('Niciun model publicat (published) pentru acest santier inca.', 'warning')
@@ -1187,7 +1284,7 @@ def viewer_federat(santier_id):
 @login_required
 def api_model_version_file(version_id):
     """Trimite fisierul IFC al unei versiuni specifice (pentru viewer federat)."""
-    v = BIMModelVersion.query.get_or_404(version_id)
+    v = get_bim_model_version_or_404(version_id)
     # Numai versiunile partajate sau publicate sunt servite (sau de catre creator)
     if v.status not in ('shared', 'published') and v.creat_de_id != current_user.id:
         if current_user.rol not in ('admin', 'manager'):
@@ -1217,10 +1314,13 @@ def rules_lista():
     redir = _ensure_rules_enabled()
     if redir:
         return redir
-    rules = BIMRule.query.order_by(BIMRule.cod).all()
+    rules = query_for_tenant(BIMRule).order_by(BIMRule.cod).all()
     counts = {}
     for r in rules:
-        counts[r.id] = RuleViolation.query.filter_by(rule_id=r.id, status='noua').count()
+        counts[r.id] = query_for_tenant(RuleViolation).filter_by(
+            rule_id=r.id,
+            status='noua',
+        ).count()
     return render_template('bim/rules_lista.html', rules=rules, counts=counts,
                            categorii=BIMRule.CATEGORII, tipuri=BIMRule.TIPURI)
 
@@ -1269,6 +1369,8 @@ def rules_run():
     if redir:
         return redir
     santier_id = request.form.get('santier_id', type=int)
+    if santier_id:
+        get_site_or_404(santier_id)
     scope = {'santier_id': santier_id} if santier_id else None
     try:
         result = rules_svc.run_rules(scope=scope, user=current_user)
@@ -1289,7 +1391,7 @@ def violations_lista():
     if redir:
         return redir
     status = request.args.get('status', 'noua')
-    q = RuleViolation.query
+    q = query_for_tenant(RuleViolation)
     if status:
         q = q.filter_by(status=status)
     violations = q.order_by(RuleViolation.data_detectie.desc()).limit(500).all()
@@ -1301,7 +1403,7 @@ def violations_lista():
 @login_required
 @manager_or_admin
 def violation_promote(violation_id):
-    v = RuleViolation.query.get_or_404(violation_id)
+    v = get_or_404_for_tenant(RuleViolation, violation_id)
     try:
         issue_id = rules_svc.violation_to_issue(v, current_user)
         flash(f'Violare promovata in issue #{issue_id}.', 'success')
@@ -1330,8 +1432,8 @@ def clash_lista():
     redir = _ensure_clash_enabled()
     if redir:
         return redir
-    runs = ClashRun.query.order_by(ClashRun.data_rulare.desc()).limit(50).all()
-    santiere = Santier.query.order_by(Santier.cod).all()
+    runs = query_for_tenant(ClashRun).order_by(ClashRun.data_rulare.desc()).limit(50).all()
+    santiere = query_sites_for_tenant().order_by(Santier.cod).all()
     return render_template('bim/clash_lista.html', runs=runs, santiere=santiere)
 
 
@@ -1348,6 +1450,10 @@ def clash_run():
     if not santier_id and not model_id:
         flash('Trebuie ales santier sau model.', 'danger')
         return redirect(url_for('bim.clash_lista'))
+    if santier_id:
+        get_site_or_404(santier_id)
+    if model_id:
+        get_bim_model_or_404(model_id)
     try:
         result = clash_svc.run_clash_detection(
             santier_id=santier_id, model_id=model_id, tip=tip, user=current_user,
@@ -1369,9 +1475,9 @@ def clash_detaliu(run_id):
     redir = _ensure_clash_enabled()
     if redir:
         return redir
-    run = ClashRun.query.get_or_404(run_id)
+    run = get_or_404_for_tenant(ClashRun, run_id)
     severity_filter = request.args.get('severitate')
-    q = ClashResult.query.filter_by(run_id=run_id)
+    q = query_for_tenant(ClashResult).filter_by(run_id=run_id)
     if severity_filter:
         q = q.filter_by(severitate=severity_filter)
     rezultate = q.order_by(ClashResult.severitate.desc(), ClashResult.id).limit(500).all()
@@ -1384,8 +1490,8 @@ def clash_detaliu(run_id):
 def api_clash(run_id):
     if not ff_svc.is_enabled('bim-clash-detection'):
         return jsonify({'enabled': False, 'results': []}), 200
-    run = ClashRun.query.get_or_404(run_id)
-    rezultate = ClashResult.query.filter_by(run_id=run_id).all()
+    run = get_or_404_for_tenant(ClashRun, run_id)
+    rezultate = query_for_tenant(ClashResult).filter_by(run_id=run_id).all()
     return jsonify({
         'enabled': True,
         'run_id': run.id,
@@ -1428,8 +1534,8 @@ def element_schedule_form(element_id):
     redir = _ensure_4d_enabled()
     if redir:
         return redir
-    element = ElementBIM.query.get_or_404(element_id)
-    schedules = (BIMTaskSchedule.query
+    element = get_bim_element_or_404(element_id)
+    schedules = (query_for_tenant(BIMTaskSchedule)
                  .filter_by(element_bim_id=element_id)
                  .order_by(BIMTaskSchedule.data_start_plan)
                  .all())
@@ -1445,6 +1551,7 @@ def element_schedule_form(element_id):
                 element_bim_id=element_id, faza=faza,
                 data_start_plan=data_start, data_sfarsit_plan=data_sfarsit,
                 disciplina=disciplina, descriere=descriere,
+                tenant_id=getattr(current_user, 'tenant_id', None),
                 user=current_user,
             )
             flash(f'Schedule "{sched.faza}" creat pentru elementul {element.cod}.', 'success')
@@ -1469,7 +1576,7 @@ def schedule_update_progress(schedule_id):
     redir = _ensure_4d_enabled()
     if redir:
         return redir
-    sched = BIMTaskSchedule.query.get_or_404(schedule_id)
+    sched = get_or_404_for_tenant(BIMTaskSchedule, schedule_id)
     try:
         progres = int(request.form.get('progres_pct', 0))
         status = request.form.get('status', '').strip() or None
@@ -1488,7 +1595,7 @@ def santier_4d_timeline(santier_id):
     redir = _ensure_4d_enabled()
     if redir:
         return redir
-    santier = Santier.query.get_or_404(santier_id)
+    santier = get_site_or_404(santier_id)
     timeline = fourd_svc.get_timeline_for_santier(santier_id)
     progress = fourd_svc.compute_santier_progress(santier_id)
     return render_template('bim/santier_4d_timeline.html',
@@ -1502,6 +1609,7 @@ def api_visible_at(santier_id):
     """JSON: ID-urile elementelor vizibile la o anumita data (4D viewer)."""
     if not ff_svc.is_enabled('bim-4d-schedule'):
         return jsonify({'enabled': False, 'visible_element_ids': []}), 200
+    get_site_or_404(santier_id)
     data_str = request.args.get('data')
     try:
         data = datetime.strptime(data_str, '%Y-%m-%d').date() if data_str else date.today()
@@ -1536,8 +1644,8 @@ def element_cost_form(element_id):
     redir = _ensure_5d_enabled()
     if redir:
         return redir
-    element = ElementBIM.query.get_or_404(element_id)
-    items = (BIMCostItem.query
+    element = get_bim_element_or_404(element_id)
+    items = (query_for_tenant(BIMCostItem)
              .filter_by(element_bim_id=element_id)
              .order_by(BIMCostItem.categorie, BIMCostItem.id)
              .all())
@@ -1557,6 +1665,7 @@ def element_cost_form(element_id):
                 faza=request.form.get('faza', '').strip() or None,
                 tip=request.form.get('tip', 'planificat'),
                 referinta_extern=request.form.get('referinta_extern', '').strip(),
+                tenant_id=getattr(current_user, 'tenant_id', None),
                 user=current_user,
             )
             flash(f'Item cost adaugat: {item.descriere} ({item.total:.2f} {item.valuta}).', 'success')
@@ -1583,7 +1692,7 @@ def santier_5d_dashboard(santier_id):
     redir = _ensure_5d_enabled()
     if redir:
         return redir
-    santier = Santier.query.get_or_404(santier_id)
+    santier = get_site_or_404(santier_id)
     breakdown_plan = fived_svc.cost_breakdown_santier(santier_id, tip='planificat')
     breakdown_real = fived_svc.cost_breakdown_santier(santier_id, tip='real')
     delta = fived_svc.cost_planificat_vs_real(santier_id)
@@ -1600,6 +1709,7 @@ def api_element_cost(element_id):
     """JSON: breakdown cost per element pe categorii."""
     if not ff_svc.is_enabled('bim-5d-cost'):
         return jsonify({'enabled': False, 'total': 0}), 200
+    get_bim_element_or_404(element_id)
     return jsonify({
         'enabled': True,
         **fived_svc.cost_total_element(element_id),
@@ -1821,6 +1931,7 @@ def api_element_state(element_id):
     """JSON cu current state al senzorilor atasati la element."""
     if not ff_svc.is_enabled('bim-iot-sensors'):
         return jsonify({'enabled': False, 'sensors': []}), 200
+    get_bim_element_or_404(element_id)
     return jsonify({'enabled': True,
                     **iot_query_svc.get_current_state_element(element_id)})
 
@@ -1874,17 +1985,23 @@ def kanban(santier_id=None):
     if redir:
         return redir
 
-    santier = Santier.query.get(santier_id) if santier_id else None
-    q = IssueBIM.query
+    santier = get_site_or_404(santier_id) if santier_id else None
+    q = query_bim_issues_for_tenant()
     if santier_id:
         # Filtru pe santier prin cladire / nivel / spatiu / element
-        cladiri_ids = [c.id for c in Cladire.query.filter_by(santier_id=santier_id).all()]
+        cladiri_ids = [
+            c.id for c in query_bim_buildings_for_tenant().filter_by(
+                santier_id=santier_id
+            ).all()
+        ]
         if cladiri_ids:
             from sqlalchemy import or_
             q = q.filter(or_(
                 IssueBIM.cladire_id.in_(cladiri_ids),
                 IssueBIM.element_bim_id.in_(
-                    db.session.query(ElementBIM.id).filter(ElementBIM.cladire_id.in_(cladiri_ids))
+                    query_bim_elements_for_tenant()
+                    .filter(ElementBIM.cladire_id.in_(cladiri_ids))
+                    .with_entities(ElementBIM.id)
                 ),
             ))
         else:
@@ -1913,7 +2030,7 @@ def kanban(santier_id=None):
     # Latest event id (pentru SSE start)
     latest_event_id = rt_svc.get_latest_event_id() if ff_svc.is_enabled('bim-realtime-collab') else 0
 
-    santiere = Santier.query.order_by(Santier.cod).all()
+    santiere = query_sites_for_tenant().order_by(Santier.cod).all()
 
     return render_template('bim/kanban.html',
                            santier=santier, santiere=santiere,
@@ -1930,7 +2047,7 @@ def issue_change_status(issue_id):
     Schimba status-ul unui issue (drag & drop kanban).
     Body: status=<noul_status>. Publica RealtimeEvent.
     """
-    issue = IssueBIM.query.get_or_404(issue_id)
+    issue = get_bim_issue_or_404(issue_id)
     new_status = (request.form.get('status') or request.json.get('status') if request.is_json else request.form.get('status'))
     if not new_status:
         return jsonify({'error': 'status missing'}), 400
@@ -1981,7 +2098,7 @@ def issue_change_status(issue_id):
 @login_required
 def issue_comments(issue_id):
     """List/add comments pe issue."""
-    issue = IssueBIM.query.get_or_404(issue_id)
+    issue = get_bim_issue_or_404(issue_id)
 
     if request.method == 'POST':
         if not ff_svc.is_enabled('bim-realtime-collab'):
@@ -2048,6 +2165,7 @@ def issue_comments(issue_id):
 @login_required
 def api_issue_comments(issue_id):
     """JSON list comments."""
+    get_bim_issue_or_404(issue_id)
     comments = (BIMComment.query.filter_by(issue_id=issue_id, sters=False)
                 .order_by(BIMComment.data_creare).all())
     return jsonify({
@@ -2110,6 +2228,10 @@ def events_stream():
     santier_id = request.args.get('santier_id', type=int)
     proiect_id = request.args.get('proiect_id', type=int)
     since = request.args.get('since', default=0, type=int)
+    if santier_id:
+        get_site_or_404(santier_id)
+    if proiect_id:
+        get_project_or_404(proiect_id)
 
     from flask import Response
 
@@ -2142,11 +2264,11 @@ def roles_lista():
     if not ff_svc.is_enabled('bim-rbac-fine'):
         flash('RBAC fin nu e activat pentru acest tenant.', 'info')
         return redirect(url_for('bim.dashboard'))
-    asignari = (BIMRoleAssignment.query.filter_by(activ=True)
+    asignari = (query_for_tenant(BIMRoleAssignment).filter_by(activ=True)
                 .order_by(BIMRoleAssignment.user_id, BIMRoleAssignment.rol)
                 .all())
-    users = Utilizator.query.filter_by(activ=True).order_by(Utilizator.nume).all()
-    santiere = Santier.query.order_by(Santier.cod).all()
+    users = query_for_tenant(Utilizator).filter_by(activ=True).order_by(Utilizator.nume).all()
+    santiere = query_sites_for_tenant().order_by(Santier.cod).all()
     return render_template('bim/roles_lista.html',
                            asignari=asignari, users=users, santiere=santiere,
                            roluri=BIMRoleAssignment.ROLURI,
@@ -2162,6 +2284,7 @@ def role_nou():
         flash('RBAC fin nu e activat.', 'danger')
         return redirect(url_for('bim.dashboard'))
     try:
+        tenant_id = tenant_id_for_new_record_or_403()
         user_id = request.form.get('user_id', type=int)
         rol = request.form.get('rol', '').strip()
         scope_type = request.form.get('scope_type', 'global').strip()
@@ -2170,11 +2293,20 @@ def role_nou():
         if not user_id or not rol:
             flash('user si rol sunt obligatorii.', 'danger')
             return redirect(url_for('bim.roles_lista'))
+        if scope_type == 'santier' and scope_id:
+            get_site_or_404(scope_id)
+        elif scope_type == 'cladire' and scope_id:
+            get_bim_building_or_404(scope_id)
+        elif scope_type == 'proiect' and scope_id:
+            get_project_or_404(scope_id)
         rbac_svc.assign_role(user_id, rol,
                               scope_type=scope_type, scope_id=scope_id,
                               scope_disciplina=scope_disciplina,
+                              tenant_id=tenant_id,
                               created_by=current_user)
         flash(f'Asignare rol "{rol}" creata.', 'success')
+    except HTTPException:
+        raise
     except ValueError as e:
         flash(str(e), 'danger')
     except Exception as e:
@@ -2187,7 +2319,7 @@ def role_nou():
 @login_required
 @manager_or_admin
 def role_revoke(asgn_id):
-    asgn = BIMRoleAssignment.query.get_or_404(asgn_id)
+    asgn = get_or_404_for_tenant(BIMRoleAssignment, asgn_id)
     rbac_svc.revoke_role(asgn, user=current_user)
     flash(f'Asignare #{asgn_id} dezactivata.', 'info')
     return redirect(url_for('bim.roles_lista'))
@@ -2202,7 +2334,7 @@ def tokens_lista():
     if not ff_svc.is_enabled('bim-public-api'):
         flash('API publica nu e activata pentru acest tenant.', 'info')
         return redirect(url_for('bim.dashboard'))
-    q = ApiToken.query
+    q = query_for_tenant(ApiToken)
     if current_user.rol != 'admin':
         q = q.filter_by(owner_id=current_user.id)
     tokens = q.order_by(ApiToken.data_creare.desc()).all()
@@ -2218,6 +2350,7 @@ def token_nou():
         flash('API publica nu e activata.', 'danger')
         return redirect(url_for('bim.dashboard'))
     try:
+        tenant_id = tenant_id_for_new_record_or_403()
         nume = request.form.get('nume', '').strip()
         descriere = request.form.get('descriere', '').strip()
         scopes = request.form.getlist('scopes')
@@ -2225,9 +2358,12 @@ def token_nou():
         tok = tokens_svc.create_token(
             nume=nume, owner_id=current_user.id, scopes=scopes,
             descriere=descriere or None, expires_days=expires_days,
+            tenant_id=tenant_id,
         )
         flash(f'Token "{tok.nume}" creat. **API KEY (afisat o singura data)**: {tok.token}',
               'warning')
+    except HTTPException:
+        raise
     except ValueError as e:
         flash(str(e), 'danger')
     except Exception as e:
@@ -2239,7 +2375,7 @@ def token_nou():
 @bim_bp.route('/token/<int:token_id>/revoke', methods=['POST'])
 @login_required
 def token_revoke(token_id):
-    tok = ApiToken.query.get_or_404(token_id)
+    tok = get_or_404_for_tenant(ApiToken, token_id)
     if tok.owner_id != current_user.id and current_user.rol != 'admin':
         abort(403)
     tokens_svc.revoke_token(tok)
@@ -2256,7 +2392,7 @@ def cobie_export_santier(santier_id):
     if not ff_svc.is_enabled('bim-cobie-export'):
         flash('COBie export nu e activat pentru acest tenant.', 'info')
         return redirect(url_for('bim.santier_detaliu', id=santier_id))
-    santier = Santier.query.get_or_404(santier_id)
+    santier = get_site_or_404(santier_id)
     try:
         buf = cobie_svc.generate_cobie_workbook(santier_id,
                                                  generated_by=current_user.email)
@@ -2285,8 +2421,19 @@ def bcf_export_all():
     if not ff_svc.is_enabled('bim-bcf-full'):
         flash('BCF complet nu e activat pentru acest tenant.', 'info')
         return redirect(url_for('bim.issues_lista'))
+    issue_ids = _ids_din_request()
+    q = query_bim_issues_for_tenant()
+    if issue_ids:
+        issues = q.filter(IssueBIM.id.in_(issue_ids)).all()
+        if len({i.id for i in issues}) != len(issue_ids):
+            abort(404)
+    else:
+        issues = q.order_by(IssueBIM.id.desc()).all()
+    if not issues:
+        flash('Nicio issue de exportat.', 'warning')
+        return redirect(url_for('bim.issues_lista'))
     try:
-        buf = bcf_svc.export_bcfzip()
+        buf = bcf_svc.export_bcfzip([i.id for i in issues])
     except ValueError as e:
         flash(str(e), 'warning')
         return redirect(url_for('bim.issues_lista'))
@@ -2318,9 +2465,12 @@ def bcf_import_endpoint():
         flash('Fisier trebuie sa fie .bcfzip', 'danger')
         return redirect(url_for('bim.issues_lista'))
     try:
-        stats = bcf_svc.import_bcfzip(f, user=current_user)
+        tenant_id = tenant_id_for_new_record_or_403()
+        stats = bcf_svc.import_bcfzip(f, user=current_user, tenant_id=tenant_id)
         flash(f'BCF import: {stats["created"]} create, {stats["updated"]} update, '
               f'{stats["skipped"]} skip, {len(stats["errors"])} erori.', 'success')
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         flash(f'Eroare import BCF: {e}', 'danger')
@@ -2348,7 +2498,8 @@ def api_docs():
 def api_v1_issues():
     """Lista issues - protejat cu API token (scope bim:read)."""
     status = request.args.get('status')
-    q = IssueBIM.query
+    token_tenant_id = getattr(getattr(g, 'api_token', None), 'tenant_id', None)
+    q = query_bim_issues_for_tenant(tenant_id=token_tenant_id)
     if status:
         q = q.filter_by(status=status)
     issues = q.order_by(IssueBIM.id.desc()).limit(200).all()
@@ -2372,6 +2523,8 @@ def api_v1_issues():
 @tokens_svc.api_token_required('iot:read')
 def api_v1_element_state(element_id):
     """Current state senzori pentru un element - protejat cu API token."""
+    token_tenant_id = getattr(getattr(g, 'api_token', None), 'tenant_id', None)
+    get_bim_element_or_404(element_id, tenant_id=token_tenant_id)
     return jsonify(iot_query_svc.get_current_state_element(element_id))
 
 

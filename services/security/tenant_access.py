@@ -6,7 +6,7 @@ helperii existenti din `tenant.py`.
 
 from flask import abort, has_app_context, has_request_context
 from flask_login import current_user
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 
 from tenant import MODE_OFF, MODE_OPTIONAL, MODE_STRICT
 
@@ -818,6 +818,385 @@ def require_legacy_document_same_tenant(document, tenant_id=None):
         abort(404)
 
 
+def query_sites_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru Santier prin tenant_id direct sau Proiect."""
+    from models import Santier
+
+    query = Santier.query
+    mod = get_tenant_mode()
+
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    scope = _bim_site_scope_expr(tenant_curent, include_global=include_global)
+    return query.filter(scope)
+
+
+def get_site_or_404(site_id, tenant_id=None):
+    """Returneaza Santier vizibil tenantului curent sau 404."""
+    from models import Santier
+
+    santier = query_sites_for_tenant(tenant_id=tenant_id).filter(
+        Santier.id == site_id
+    ).first()
+    if santier is None:
+        abort(404)
+    return santier
+
+
+def query_bim_buildings_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru Cladire prin Santier."""
+    from models import Cladire
+
+    query = Cladire.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    return query.filter(
+        Cladire.santier.has(
+            _bim_site_scope_expr(tenant_curent, include_global=include_global)
+        )
+    )
+
+
+def get_bim_building_or_404(building_id, tenant_id=None):
+    """Returneaza Cladire vizibila tenantului curent sau 404."""
+    from models import Cladire
+
+    cladire = query_bim_buildings_for_tenant(tenant_id=tenant_id).filter(
+        Cladire.id == building_id
+    ).first()
+    if cladire is None:
+        abort(404)
+    return cladire
+
+
+def query_bim_levels_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru Nivel prin Cladire -> Santier."""
+    from models import Cladire, Nivel
+
+    query = Nivel.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    return query.filter(
+        Nivel.cladire.has(
+            Cladire.santier.has(
+                _bim_site_scope_expr(tenant_curent, include_global=include_global)
+            )
+        )
+    )
+
+
+def get_bim_level_or_404(level_id, tenant_id=None):
+    """Returneaza Nivel vizibil tenantului curent sau 404."""
+    from models import Nivel
+
+    nivel = query_bim_levels_for_tenant(tenant_id=tenant_id).filter(
+        Nivel.id == level_id
+    ).first()
+    if nivel is None:
+        abort(404)
+    return nivel
+
+
+def query_bim_spaces_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru Spatiu prin Nivel -> Cladire -> Santier."""
+    from models import Cladire, Nivel, Spatiu
+
+    query = Spatiu.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    return query.filter(
+        Spatiu.nivel.has(
+            Nivel.cladire.has(
+                Cladire.santier.has(
+                    _bim_site_scope_expr(tenant_curent, include_global=include_global)
+                )
+            )
+        )
+    )
+
+
+def get_bim_space_or_404(space_id, tenant_id=None):
+    """Returneaza Spatiu vizibil tenantului curent sau 404."""
+    from models import Spatiu
+
+    spatiu = query_bim_spaces_for_tenant(tenant_id=tenant_id).filter(
+        Spatiu.id == space_id
+    ).first()
+    if spatiu is None:
+        abort(404)
+    return spatiu
+
+
+def query_bim_models_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru ModelBIM prin tenant_id direct sau Santier."""
+    from models import Cladire, ModelBIM
+
+    query = ModelBIM.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    site_scope = _bim_site_scope_expr(tenant_curent, include_global=include_global)
+    parent_scope = and_(
+        or_(ModelBIM.santier_id.is_(None), ModelBIM.santier.has(site_scope)),
+        or_(
+            ModelBIM.cladire_id.is_(None),
+            ModelBIM.cladire.has(Cladire.santier.has(site_scope)),
+        ),
+        or_(ModelBIM.santier_id.isnot(None), ModelBIM.cladire_id.isnot(None)),
+    )
+    return query.filter(or_(
+        ModelBIM.tenant_id == tenant_curent,
+        and_(ModelBIM.tenant_id.is_(None), parent_scope),
+    ))
+
+
+def get_bim_model_or_404(model_id, tenant_id=None):
+    """Returneaza ModelBIM vizibil tenantului curent sau 404."""
+    from models import ModelBIM
+
+    model = query_bim_models_for_tenant(tenant_id=tenant_id).filter(
+        ModelBIM.id == model_id
+    ).first()
+    if model is None:
+        abort(404)
+    return model
+
+
+def query_bim_model_versions_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru BIMModelVersion prin ModelBIM."""
+    from models import BIMModelVersion, ModelBIM
+
+    query = BIMModelVersion.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    model_ids = query_bim_models_for_tenant(
+        tenant_id=tenant_curent,
+        include_global=include_global,
+    ).with_entities(ModelBIM.id)
+    return query.filter(or_(
+        BIMModelVersion.tenant_id == tenant_curent,
+        and_(
+            BIMModelVersion.tenant_id.is_(None),
+            BIMModelVersion.model_id.in_(model_ids),
+        ),
+    ))
+
+
+def get_bim_model_version_or_404(version_id, tenant_id=None):
+    """Returneaza BIMModelVersion vizibila tenantului curent sau 404."""
+    from models import BIMModelVersion
+
+    version = query_bim_model_versions_for_tenant(tenant_id=tenant_id).filter(
+        BIMModelVersion.id == version_id
+    ).first()
+    if version is None:
+        abort(404)
+    return version
+
+
+def query_bim_elements_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru ElementBIM prin ModelBIM sau ierarhia BIM."""
+    from models import Cladire, ElementBIM, ModelBIM, Nivel, Spatiu
+
+    query = ElementBIM.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    site_scope = _bim_site_scope_expr(tenant_curent, include_global=include_global)
+    model_ids = query_bim_models_for_tenant(
+        tenant_id=tenant_curent,
+        include_global=include_global,
+    ).with_entities(ModelBIM.id)
+    owner_scope = and_(
+        or_(ElementBIM.model_bim_id.is_(None), ElementBIM.model_bim_id.in_(model_ids)),
+        or_(ElementBIM.cladire_id.is_(None), ElementBIM.cladire.has(Cladire.santier.has(site_scope))),
+        or_(
+            ElementBIM.nivel_id.is_(None),
+            ElementBIM.nivel.has(Nivel.cladire.has(Cladire.santier.has(site_scope))),
+        ),
+        or_(
+            ElementBIM.spatiu_id.is_(None),
+            ElementBIM.spatiu.has(
+                Spatiu.nivel.has(Nivel.cladire.has(Cladire.santier.has(site_scope)))
+            ),
+        ),
+        or_(
+            ElementBIM.model_bim_id.isnot(None),
+            ElementBIM.cladire_id.isnot(None),
+            ElementBIM.nivel_id.isnot(None),
+            ElementBIM.spatiu_id.isnot(None),
+        ),
+    )
+    return query.filter(owner_scope)
+
+
+def get_bim_element_or_404(element_id, tenant_id=None):
+    """Returneaza ElementBIM vizibil tenantului curent sau 404."""
+    from models import ElementBIM
+
+    element = query_bim_elements_for_tenant(tenant_id=tenant_id).filter(
+        ElementBIM.id == element_id
+    ).first()
+    if element is None:
+        abort(404)
+    return element
+
+
+def query_bim_issues_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru IssueBIM prin tenant_id direct sau context BIM."""
+    from models import Cladire, ElementBIM, IssueBIM, Nivel, Spatiu
+
+    query = IssueBIM.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    site_scope = _bim_site_scope_expr(tenant_curent, include_global=include_global)
+    element_ids = query_bim_elements_for_tenant(
+        tenant_id=tenant_curent,
+        include_global=include_global,
+    ).with_entities(ElementBIM.id)
+    inherited_scope = and_(
+        or_(IssueBIM.element_bim_id.is_(None), IssueBIM.element_bim_id.in_(element_ids)),
+        or_(IssueBIM.cladire_id.is_(None), IssueBIM.cladire.has(Cladire.santier.has(site_scope))),
+        or_(
+            IssueBIM.nivel_id.is_(None),
+            IssueBIM.nivel.has(Nivel.cladire.has(Cladire.santier.has(site_scope))),
+        ),
+        or_(
+            IssueBIM.spatiu_id.is_(None),
+            IssueBIM.spatiu.has(
+                Spatiu.nivel.has(Nivel.cladire.has(Cladire.santier.has(site_scope)))
+            ),
+        ),
+        or_(
+            IssueBIM.element_bim_id.isnot(None),
+            IssueBIM.cladire_id.isnot(None),
+            IssueBIM.nivel_id.isnot(None),
+            IssueBIM.spatiu_id.isnot(None),
+        ),
+    )
+    return query.filter(or_(
+        IssueBIM.tenant_id == tenant_curent,
+        and_(IssueBIM.tenant_id.is_(None), inherited_scope),
+    ))
+
+
+def get_bim_issue_or_404(issue_id, tenant_id=None):
+    """Returneaza IssueBIM vizibil tenantului curent sau 404."""
+    from models import IssueBIM
+
+    issue = query_bim_issues_for_tenant(tenant_id=tenant_id).filter(
+        IssueBIM.id == issue_id
+    ).first()
+    if issue is None:
+        abort(404)
+    return issue
+
+
+def ensure_bim_record_same_tenant(record, tenant_id=None):
+    """Valideaza un record BIM prin tenant_id direct sau owner-ul parinte."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return record
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return record
+        if mod == MODE_OPTIONAL:
+            return record
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    if _bim_record_belongs_to_tenant(record, tenant_curent):
+        return record
+
+    raise TenantAccessDenied('Recordul BIM nu apartine tenantului curent.')
+
+
+def require_bim_record_same_tenant(record, tenant_id=None):
+    """Wrapper pentru rute: ascunde recordurile BIM inaccesibile prin 404."""
+    try:
+        return ensure_bim_record_same_tenant(record, tenant_id=tenant_id)
+    except TenantAccessDenied:
+        abort(404)
+
+
 def ensure_contract_inputs_same_tenant(proiect_id=None, contract_id=None, tenant_id=None):
     """Valideaza proiectul si contractul selectate in fluxurile contractuale."""
     mod = get_tenant_mode()
@@ -865,6 +1244,126 @@ def require_contract_inputs_same_tenant(proiect_id=None, contract_id=None, tenan
         )
     except TenantAccessDenied:
         abort(404)
+
+
+def _bim_site_scope_expr(tenant_id, include_global=False):
+    from models import Proiect, Santier
+
+    direct_scope = Santier.tenant_id == tenant_id
+    proiect_scope = and_(
+        Santier.tenant_id.is_(None),
+        Santier.proiect.has(Proiect.tenant_id == tenant_id),
+    )
+    if include_global:
+        return or_(
+            direct_scope,
+            proiect_scope,
+            and_(Santier.tenant_id.is_(None), Santier.proiect_id.is_(None)),
+        )
+    return or_(direct_scope, proiect_scope)
+
+
+def _bim_record_belongs_to_tenant(record, tenant_id):
+    from models import (
+        BIMCostItem, BIMModelVersion, BIMTaskSchedule, Cladire, ClashResult,
+        ClashRun, ElementBIM, IssueBIM, ModelBIM, Nivel, RuleViolation,
+        Santier, Spatiu, Zona,
+    )
+
+    direct_tenant = _coerce_tenant_id(getattr(record, 'tenant_id', None))
+    if direct_tenant is not None:
+        return direct_tenant == tenant_id
+
+    if isinstance(record, Santier):
+        return _bim_project_belongs_to_tenant(getattr(record, 'proiect', None), tenant_id)
+
+    if isinstance(record, Cladire):
+        return _bim_record_belongs_to_tenant(getattr(record, 'santier', None), tenant_id)
+
+    if isinstance(record, Nivel):
+        return _bim_record_belongs_to_tenant(getattr(record, 'cladire', None), tenant_id)
+
+    if isinstance(record, Zona):
+        return _all_present_bim_parents_match([
+            (getattr(record, 'cladire_id', None), getattr(record, 'cladire', None)),
+            (getattr(record, 'nivel_id', None), getattr(record, 'nivel', None)),
+        ], tenant_id)
+
+    if isinstance(record, Spatiu):
+        return _all_present_bim_parents_match([
+            (getattr(record, 'nivel_id', None), getattr(record, 'nivel', None)),
+            (getattr(record, 'zona_id', None), getattr(record, 'zona', None)),
+        ], tenant_id)
+
+    if isinstance(record, ModelBIM):
+        return _all_present_bim_parents_match([
+            (getattr(record, 'santier_id', None), getattr(record, 'santier', None)),
+            (getattr(record, 'cladire_id', None), getattr(record, 'cladire', None)),
+        ], tenant_id)
+
+    if isinstance(record, BIMModelVersion):
+        return _bim_record_belongs_to_tenant(getattr(record, 'model', None), tenant_id)
+
+    if isinstance(record, ElementBIM):
+        model = None
+        if getattr(record, 'model_bim_id', None):
+            model = ModelBIM.query.get(record.model_bim_id)
+        return _all_present_bim_parents_match([
+            (getattr(record, 'model_bim_id', None), model),
+            (getattr(record, 'cladire_id', None), getattr(record, 'cladire', None)),
+            (getattr(record, 'nivel_id', None), getattr(record, 'nivel', None)),
+            (getattr(record, 'spatiu_id', None), getattr(record, 'spatiu', None)),
+        ], tenant_id)
+
+    if isinstance(record, IssueBIM):
+        return _all_present_bim_parents_match([
+            (getattr(record, 'element_bim_id', None), getattr(record, 'element', None)),
+            (getattr(record, 'cladire_id', None), getattr(record, 'cladire', None)),
+            (getattr(record, 'nivel_id', None), getattr(record, 'nivel', None)),
+            (getattr(record, 'spatiu_id', None), getattr(record, 'spatiu', None)),
+        ], tenant_id)
+
+    if isinstance(record, (BIMTaskSchedule, BIMCostItem)):
+        return _bim_record_belongs_to_tenant(getattr(record, 'element', None), tenant_id)
+
+    if isinstance(record, RuleViolation):
+        return _all_present_bim_parents_match([
+            (getattr(record, 'element_bim_id', None), getattr(record, 'element_bim', None)),
+            (getattr(record, 'spatiu_id', None), getattr(record, 'spatiu', None)),
+        ], tenant_id)
+
+    if isinstance(record, ClashRun):
+        return _all_present_bim_parents_match([
+            (getattr(record, 'model_id', None), getattr(record, 'model', None)),
+            (getattr(record, 'santier_id', None), getattr(record, 'santier', None)),
+        ], tenant_id)
+
+    if isinstance(record, ClashResult):
+        return _all_present_bim_parents_match([
+            (getattr(record, 'run_id', None), getattr(record, 'run', None)),
+            (getattr(record, 'element_a_id', None), getattr(record, 'element_a', None)),
+            (getattr(record, 'element_b_id', None), getattr(record, 'element_b', None)),
+        ], tenant_id)
+
+    return False
+
+
+def _all_present_bim_parents_match(parent_pairs, tenant_id):
+    has_owner = False
+    for parent_id, parent in parent_pairs:
+        if parent_id is None:
+            continue
+        has_owner = True
+        if parent is None or not _bim_record_belongs_to_tenant(parent, tenant_id):
+            return False
+    return has_owner
+
+
+def _bim_project_belongs_to_tenant(project, tenant_id):
+    return (
+        project is not None
+        and _coerce_tenant_id(getattr(project, 'tenant_id', None)) == tenant_id
+    )
 
 
 def _resolve_tenant_id(tenant_id):

@@ -468,10 +468,107 @@ Nu s-a adaugat migrare deoarece T1.6 foloseste ownership-ul existent prin `Proie
 
 Urmatorul PR recomandat: `T1.7 BIM Tenant Guard`, deoarece fisierele/modelarea BIM raman urmatorul domeniu cu risc mare de file/metadata leakage. Daca prioritatea operationala devine planificarea, alternativa este `T1.7 Gantt Tenant Guard`.
 
-## Urmatoarele integrari recomandate dupa T1.6
+## T1.7 BIM Route Integration
 
-1. `ModelBIM`: acces prin `tenant_id` si `Santier`.
-2. `GanttPlan` si configurari Gantt ramase: ownership prin tenant/proiect si verificari pe import/export.
-3. Proiect detail/edit/export: extindere catre celelalte date nested din pagina, nu doar project/document lookup.
+T1.7 protejeaza accesul la datele BIM fara sa transforme BIM intr-un produs separat si fara sa extraga `bim_service.py`. BIM ramane context layer pentru Execution Spine; acest PR inchide suprafetele evidente de IDOR pe rute, API-uri, metadata si fisiere model.
+
+Helpers adaugate:
+
+- `query_sites_for_tenant()` / `get_site_or_404()`
+- `query_bim_buildings_for_tenant()` / `get_bim_building_or_404()`
+- `query_bim_levels_for_tenant()` / `get_bim_level_or_404()`
+- `query_bim_spaces_for_tenant()` / `get_bim_space_or_404()`
+- `query_bim_models_for_tenant()` / `get_bim_model_or_404()`
+- `query_bim_model_versions_for_tenant()` / `get_bim_model_version_or_404()`
+- `query_bim_elements_for_tenant()` / `get_bim_element_or_404()`
+- `query_bim_issues_for_tenant()` / `get_bim_issue_or_404()`
+- `ensure_bim_record_same_tenant()` / `require_bim_record_same_tenant()`
+
+Ownership paths:
+
+| Model | Ownership |
+|---|---|
+| `Santier` | `tenant_id` direct; daca lipseste, `Santier -> Proiect -> tenant_id`. |
+| `Cladire` | `Cladire -> Santier -> tenant_id / Proiect`. |
+| `Nivel` | `Nivel -> Cladire -> Santier`. |
+| `Zona` | `Zona -> Cladire / Nivel -> Santier`. |
+| `Spatiu` | `Spatiu -> Nivel / Zona -> Santier`. |
+| `ModelBIM` | `tenant_id` direct; daca lipseste, `ModelBIM -> Santier / Cladire -> Santier`. |
+| `BIMModelVersion` | `tenant_id` direct; daca lipseste, `BIMModelVersion -> ModelBIM`. |
+| `ElementBIM` | `ModelBIM` cand `model_bim_id` exista; altfel ierarhia `Spatiu/Nivel/Cladire -> Santier`. |
+| `IssueBIM` | `tenant_id` direct; daca lipseste, contextul `ElementBIM/Spatiu/Nivel/Cladire`. |
+
+Regula fail-closed:
+
+- un `tenant_id` direct, cand exista, este autoritativ;
+- pentru recorduri fara `tenant_id`, toti parintii expliciti disponibili trebuie sa fie vizibili tenantului curent;
+- recordurile operationale BIM fara owner sigur nu sunt tratate ca globale in `optional` cu tenant activ sau in `strict`.
+
+Rute si API-uri protejate:
+
+- dashboard BIM, liste santiere/modele/elemente/issues si metrici;
+- `api/tree`, cascade APIs pentru cladiri/niveluri/spatii, search si catalog elemente;
+- detalii Santier, ElementBIM, ModelBIM si versioning CDE;
+- viewer IFC, viewer federat si fisierele `ModelBIM` / `BIMModelVersion`;
+- import IFC si creare model extern prin validarea santierului/cladirii/proiectului inainte de salvare;
+- BCF export legacy, BCF `.bcfzip` export all si export pe `ids`;
+- COBie export prin santier validat;
+- kanban issues, schimbare status, comentarii si API comments;
+- rules/clash/4D/5D pe intrarile `santier_id`, `model_id`, `element_id`, `run_id` si `schedule_id`;
+- `routes/teren.py` pentru creare issue din teren;
+- `routes/proiecte.py` doar pentru legare/dezlegare santier si count-uri BIM in hub.
+
+File-serving rule:
+
+- `viewer_file()` foloseste `get_bim_model_or_404()` inainte de `fisier_path`;
+- `api_model_version_file()` foloseste `get_bim_model_version_or_404()` inainte de `fisier_path`;
+- QTO CSV valideaza modelul inainte de a citi fisierul;
+- exporturile COBie/BCF valideaza recordurile sursa inainte de generator.
+
+Dashboard/API scoping:
+
+- dashboard-ul numara doar santiere, cladiri, elemente si issues vizibile tenantului curent;
+- tree/search/catalog nu returneaza coduri, nume, GUID-uri sau metadata din alt tenant;
+- cascade APIs returneaza 404 cand parintele cerut nu este vizibil.
+
+BCF/COBie/export behavior:
+
+- BCF all exporta doar issues vizibile tenantului curent;
+- BCF pe `ids` respinge intreg exportul cu 404 daca lista contine un issue inaccesibil;
+- importul BCF creeaza issue-uri cu `tenant_id` cand ruta are tenant activ si nu actualizeaza un topic BCF existent din alt tenant cand tenantul este cunoscut;
+- COBie valideaza `Santier` inainte de workbook generation;
+- formatele generate nu au fost modificate.
+
+Create/import behavior:
+
+- `Santier` nou primeste `tenant_id` cand modul este `optional`/`strict` si exista tenant curent;
+- importul IFC valideaza `santier_id` inainte de `file.save()` si transmite `tenant_id` catre randurile noi cu suport direct;
+- modelul extern valideaza `santier_id` si `cladire_id` inainte de creare/editare;
+- field issue din `routes/teren.py` valideaza santierul ales si seteaza `tenant_id` pe `IssueBIM`;
+- nu s-au schimbat parserul IFC, naming-ul fisierelor, folder-ele de upload sau viewer behavior, in afara accesului.
+
+Comportament pe moduri:
+
+- in `off`, query-urile BIM raman compatibile cu single-tenant si fisierele existente pot fi servite ca inainte;
+- in `optional`, userii cu `tenant_id` sunt scopati, iar userii fara tenant pastreaza comportamentul migration-friendly;
+- in `strict`, user normal fara `tenant_id` esueaza inchis, iar ID-urile straine primesc 404;
+- super-adminul fara tenant ramane explicit si nefiltrat, conform foundation layer.
+
+Ce ramane neprotejat dupa T1.7:
+
+- `services/ifc_import.py`, `services/bim_4d.py`, `services/bim_5d.py`, `services/bcf_io.py`, `services/bim_rules.py`, `services/clash_detection.py`, `services/cobie_export.py` si serviciile IoT nu sunt inca security boundaries independente;
+- unele servicii interne inca folosesc query-uri brute si trebuie apelate numai dupa validarea rutei;
+- ierarhia importata din IFC ramane dependenta de santier/model validat la nivel de ruta;
+- IoT/Digital Twin ramane partial route-validated si trebuie tratat intr-un PR separat daca devine domeniu prioritar.
+
+Nu s-a adaugat migrare deoarece modelele BIM relevante au deja `tenant_id` direct sau ownership existent prin `Santier`, `ModelBIM`, `Proiect` si ierarhia BIM. Nu s-au creat `bim_service.py`, `bim_issue_service.py` sau `bim_import_service.py` deoarece T1.7 este strict security/access-control; extragerea serviciilor ar schimba boundary-ul de business si trebuie facuta ulterior.
+
+Urmatorul PR recomandat: `T1.8 Gantt Tenant Guard`. Daca se prioritizeaza suprafata operationala agregata, alternativa este `T1.8 Dashboard/Reporting Guard`.
+
+## Urmatoarele integrari recomandate dupa T1.7
+
+1. `GanttPlan` si configurari Gantt ramase: ownership prin tenant/proiect si verificari pe import/export.
+2. Dashboard/reporting cross-domain: agregari proiect/BIM/contract/Gantt care inca folosesc servicii route-validated.
+3. `T1.7B BIM Service Boundary Hardening` daca serviciile BIM vor fi apelate direct din afara rutelor.
 4. `T1.5B Contract Service Boundary Hardening` daca serviciile contractuale vor fi apelate direct din afara rutelor.
 5. S1.1/S1.2: extragere `activity_service.py` / `timesheet_service.py` dupa ce tenant guard-urile principale sunt stabile.
