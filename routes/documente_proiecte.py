@@ -17,6 +17,12 @@ from models import (
     db, Proiect, Utilizator, TipInstalatie, TipDocumentProiect,
     DocumentProiect, RevizieDocument
 )
+from services.security.tenant_access import (
+    get_project_document_or_404,
+    get_project_document_revision_or_404,
+    get_project_or_404,
+    query_project_documents_for_tenant,
+)
 
 doc_proiecte_bp = Blueprint('doc_proiecte', __name__,
                              url_prefix='/proiecte/<int:proiect_id>/documente')
@@ -68,6 +74,19 @@ def _secure_save(file, proiect_id, prefix=''):
     return rel_path, size, ext
 
 
+def _query_documente_proiect(proiect_id):
+    """Documente proiect vizibile tenantului curent pentru proiectul validat."""
+    return query_project_documents_for_tenant().filter_by(proiect_id=proiect_id)
+
+
+def _get_document_proiect_in_project_or_404(proiect_id, doc_id):
+    """Lookup document proiect tenant-safe si verificat pe URL parent."""
+    doc = get_project_document_or_404(doc_id)
+    if doc.proiect_id != proiect_id:
+        abort(404)
+    return doc
+
+
 def _get_completitudine(proiect_id):
     """Calculeaza completitudinea documentelor obligatorii per instalatie."""
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
@@ -87,7 +106,7 @@ def _get_completitudine(proiect_id):
         lipsa = []
 
         for tip_doc in tipuri_obligatorii:
-            doc = DocumentProiect.query.filter_by(
+            doc = _query_documente_proiect(proiect_id).filter_by(
                 proiect_id=proiect_id,
                 tip_document_id=tip_doc.id,
                 versiune_curenta=True
@@ -100,7 +119,7 @@ def _get_completitudine(proiect_id):
             else:
                 lipsa.append(tip_doc)
 
-        total_docs = DocumentProiect.query.filter_by(
+        total_docs = _query_documente_proiect(proiect_id).filter_by(
             proiect_id=proiect_id,
             tip_instalatie_id=inst.id,
             versiune_curenta=True
@@ -129,7 +148,7 @@ def _get_completitudine(proiect_id):
 @login_required
 def index(proiect_id):
     """Pagina principala documente proiect cu tab-uri per instalatie."""
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
 
     # Tab activ
@@ -142,7 +161,7 @@ def index(proiect_id):
     # Documente per instalatie
     documente_per_inst = {}
     for inst in instalatii:
-        query = DocumentProiect.query.filter_by(
+        query = _query_documente_proiect(proiect_id).filter_by(
             proiect_id=proiect_id,
             tip_instalatie_id=inst.id,
             versiune_curenta=True
@@ -178,11 +197,11 @@ def index(proiect_id):
 @login_required
 def per_instalatie(proiect_id, tip_instalatie_cod):
     """Documente filtrate pe un singur tip de instalatie."""
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     instalatie = TipInstalatie.query.filter_by(cod=tip_instalatie_cod).first_or_404()
     etapa = request.args.get('etapa', '')
 
-    query = DocumentProiect.query.filter_by(
+    query = _query_documente_proiect(proiect_id).filter_by(
         proiect_id=proiect_id,
         tip_instalatie_id=instalatie.id,
         versiune_curenta=True
@@ -216,7 +235,7 @@ def per_instalatie(proiect_id, tip_instalatie_cod):
 @login_required
 def adauga(proiect_id):
     """Formular upload document nou."""
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
 
     if request.method == 'POST':
@@ -323,11 +342,8 @@ def adauga(proiect_id):
 @login_required
 def detaliu(proiect_id, doc_id):
     """Detaliu document cu istoric revizii."""
-    proiect = Proiect.query.get_or_404(proiect_id)
-    doc = DocumentProiect.query.get_or_404(doc_id)
-
-    if doc.proiect_id != proiect_id:
-        abort(404)
+    proiect = get_project_or_404(proiect_id)
+    doc = _get_document_proiect_in_project_or_404(proiect_id, doc_id)
 
     revizii = doc.revizii.order_by(RevizieDocument.nr_revizie.desc()).all()
 
@@ -345,10 +361,8 @@ def detaliu(proiect_id, doc_id):
 @login_required
 def editeaza(proiect_id, doc_id):
     """Editare metadate document."""
-    proiect = Proiect.query.get_or_404(proiect_id)
-    doc = DocumentProiect.query.get_or_404(doc_id)
-    if doc.proiect_id != proiect_id:
-        abort(404)
+    proiect = get_project_or_404(proiect_id)
+    doc = _get_document_proiect_in_project_or_404(proiect_id, doc_id)
 
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
 
@@ -398,10 +412,8 @@ def editeaza(proiect_id, doc_id):
 @login_required
 def adauga_revizie(proiect_id, doc_id):
     """Upload revizie noua pentru un document."""
-    proiect = Proiect.query.get_or_404(proiect_id)
-    doc = DocumentProiect.query.get_or_404(doc_id)
-    if doc.proiect_id != proiect_id:
-        abort(404)
+    proiect = get_project_or_404(proiect_id)
+    doc = _get_document_proiect_in_project_or_404(proiect_id, doc_id)
 
     motiv = request.form.get('motiv_revizie', '').strip()
     fisier = request.files.get('fisier')
@@ -455,8 +467,9 @@ def adauga_revizie(proiect_id, doc_id):
 @login_required
 def descarca(proiect_id, doc_id):
     """Descarca fisierul documentului."""
-    doc = DocumentProiect.query.get_or_404(doc_id)
-    if doc.proiect_id != proiect_id or not doc.fisier_path:
+    get_project_or_404(proiect_id)
+    doc = _get_document_proiect_in_project_or_404(proiect_id, doc_id)
+    if not doc.fisier_path:
         abort(404)
 
     filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], doc.fisier_path)
@@ -477,8 +490,9 @@ def descarca(proiect_id, doc_id):
 @login_required
 def preview(proiect_id, doc_id):
     """Preview inline a fisierului (PDF, imagini)."""
-    doc = DocumentProiect.query.get_or_404(doc_id)
-    if doc.proiect_id != proiect_id or not doc.fisier_path:
+    get_project_or_404(proiect_id)
+    doc = _get_document_proiect_in_project_or_404(proiect_id, doc_id)
+    if not doc.fisier_path:
         abort(404)
 
     filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], doc.fisier_path)
@@ -504,9 +518,8 @@ def preview(proiect_id, doc_id):
 @login_required
 def sterge(proiect_id, doc_id):
     """Sterge un document proiect."""
-    doc = DocumentProiect.query.get_or_404(doc_id)
-    if doc.proiect_id != proiect_id:
-        abort(404)
+    get_project_or_404(proiect_id)
+    doc = _get_document_proiect_in_project_or_404(proiect_id, doc_id)
 
     denumire = doc.denumire_document
 
@@ -541,9 +554,8 @@ def aprobare(proiect_id, doc_id):
         flash('Nu aveti permisiunea de a aproba documente.', 'danger')
         return redirect(url_for('doc_proiecte.detaliu', proiect_id=proiect_id, doc_id=doc_id))
 
-    doc = DocumentProiect.query.get_or_404(doc_id)
-    if doc.proiect_id != proiect_id:
-        abort(404)
+    get_project_or_404(proiect_id)
+    doc = _get_document_proiect_in_project_or_404(proiect_id, doc_id)
 
     actiune = request.form.get('actiune', 'aproba')
 
@@ -571,7 +583,7 @@ def export_index(proiect_id):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
 
     wb = Workbook()
@@ -605,7 +617,7 @@ def export_index(proiect_id):
 
     nr = 0
     for inst in instalatii:
-        docs = DocumentProiect.query.filter_by(
+        docs = _query_documente_proiect(proiect_id).filter_by(
             proiect_id=proiect_id,
             tip_instalatie_id=inst.id,
             versiune_curenta=True
@@ -674,7 +686,7 @@ def export_index(proiect_id):
 
     # === Sheets per instalatie ===
     for inst in instalatii:
-        docs = DocumentProiect.query.filter_by(
+        docs = _query_documente_proiect(proiect_id).filter_by(
             proiect_id=proiect_id,
             tip_instalatie_id=inst.id,
             versiune_curenta=True
@@ -732,7 +744,7 @@ def export_index(proiect_id):
 @login_required
 def verificare_completitudine(proiect_id):
     """Raport documente obligatorii lipsa per instalatie."""
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     completitudine = _get_completitudine(proiect_id)
 
     total_obligatorii = sum(c['total_obligatorii'] for c in completitudine)
@@ -759,6 +771,7 @@ def verificare_completitudine(proiect_id):
 @login_required
 def api_tipuri_documente(proiect_id, tip_instalatie_id):
     """Returneaza tipurile de documente pentru o instalatie (AJAX)."""
+    get_project_or_404(proiect_id)
     tipuri = TipDocumentProiect.query.filter_by(
         tip_instalatie_id=tip_instalatie_id
     ).order_by(TipDocumentProiect.ordine).all()
@@ -779,8 +792,9 @@ def api_tipuri_documente(proiect_id, tip_instalatie_id):
 @login_required
 def descarca_revizie(proiect_id, rev_id):
     """Descarca fisierul unei revizii anterioare."""
-    rev = RevizieDocument.query.get_or_404(rev_id)
-    doc = DocumentProiect.query.get(rev.document_proiect_id)
+    get_project_or_404(proiect_id)
+    rev = get_project_document_revision_or_404(rev_id)
+    doc = rev.document_proiect
 
     if not doc or doc.proiect_id != proiect_id or not rev.fisier_path:
         abort(404)

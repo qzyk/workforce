@@ -621,6 +621,203 @@ def query_tarife_categorie_for_tenant(tenant_id=None, include_global_defaults=Fa
     )
 
 
+def query_project_documents_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru DocumentProiect prin Proiect -> tenant_id."""
+    from models import DocumentProiect, Proiect
+
+    query = DocumentProiect.query
+    mod = get_tenant_mode()
+
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    proiect_scope = Proiect.tenant_id == tenant_curent
+    if include_global:
+        proiect_scope = or_(proiect_scope, Proiect.tenant_id.is_(None))
+
+    return query.filter(DocumentProiect.proiect.has(proiect_scope))
+
+
+def get_project_document_or_404(document_id, tenant_id=None):
+    """Returneaza DocumentProiect vizibil tenantului curent sau 404."""
+    from models import DocumentProiect
+
+    document = query_project_documents_for_tenant(tenant_id=tenant_id).filter(
+        DocumentProiect.id == document_id
+    ).first()
+    if document is None:
+        abort(404)
+    return document
+
+
+def query_project_document_revisions_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru RevizieDocument prin documentul/proiectul parinte."""
+    from models import DocumentProiect, Proiect, RevizieDocument
+
+    query = RevizieDocument.query
+    mod = get_tenant_mode()
+
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    proiect_scope = Proiect.tenant_id == tenant_curent
+    if include_global:
+        proiect_scope = or_(proiect_scope, Proiect.tenant_id.is_(None))
+
+    return query.filter(
+        RevizieDocument.document_proiect.has(
+            DocumentProiect.proiect.has(proiect_scope)
+        )
+    )
+
+
+def get_project_document_revision_or_404(revision_id, tenant_id=None):
+    """Returneaza RevizieDocument vizibila tenantului curent sau 404."""
+    from models import RevizieDocument
+
+    revision = query_project_document_revisions_for_tenant(
+        tenant_id=tenant_id
+    ).filter(RevizieDocument.id == revision_id).first()
+    if revision is None:
+        abort(404)
+    return revision
+
+
+def ensure_project_document_same_tenant(document, tenant_id=None):
+    """Valideaza DocumentProiect -> Proiect -> tenant_id."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return document
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return document
+        if mod == MODE_OPTIONAL:
+            return document
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    proiect = getattr(document, 'proiect', None)
+    proiect_tenant_id = _coerce_tenant_id(getattr(proiect, 'tenant_id', None))
+    if proiect is None or proiect_tenant_id != tenant_curent:
+        raise TenantAccessDenied('Documentul proiect nu apartine tenantului curent.')
+
+    return document
+
+
+def require_project_document_same_tenant(document, tenant_id=None):
+    """Wrapper pentru rute: ascunde DocumentProiect inaccesibil prin 404."""
+    try:
+        return ensure_project_document_same_tenant(document, tenant_id=tenant_id)
+    except TenantAccessDenied:
+        abort(404)
+
+
+def query_legacy_documents_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru Document legacy prin Proiect/Angajat.
+
+    Documentele fara proiect si fara angajat nu au ownership sigur si nu sunt
+    returnate in modurile scoped. `include_global` ramane nefolosit intentionat
+    pentru date operationale de tip fisier.
+    """
+    from models import Angajat, Document, Proiect
+
+    query = Document.query
+    mod = get_tenant_mode()
+
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    proiect_ok = or_(
+        Document.proiect_id.is_(None),
+        Document.proiect.has(Proiect.tenant_id == tenant_curent),
+    )
+    angajat_ok = or_(
+        Document.angajat_id.is_(None),
+        Document.angajat.has(Angajat.tenant_id == tenant_curent),
+    )
+    are_owner = or_(
+        Document.proiect_id.isnot(None),
+        Document.angajat_id.isnot(None),
+    )
+
+    return query.filter(are_owner, proiect_ok, angajat_ok)
+
+
+def get_legacy_document_or_404(document_id, tenant_id=None):
+    """Returneaza Document legacy vizibil tenantului curent sau 404."""
+    from models import Document
+
+    document = query_legacy_documents_for_tenant(tenant_id=tenant_id).filter(
+        Document.id == document_id
+    ).first()
+    if document is None:
+        abort(404)
+    return document
+
+
+def ensure_legacy_document_same_tenant(document, tenant_id=None):
+    """Valideaza Document legacy prin toti ownerii expliciti disponibili."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return document
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return document
+        if mod == MODE_OPTIONAL:
+            return document
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    owner_tenants = []
+    proiect = getattr(document, 'proiect', None)
+    if getattr(document, 'proiect_id', None):
+        owner_tenants.append(_coerce_tenant_id(getattr(proiect, 'tenant_id', None)))
+    angajat = getattr(document, 'angajat', None)
+    if getattr(document, 'angajat_id', None):
+        owner_tenants.append(_coerce_tenant_id(getattr(angajat, 'tenant_id', None)))
+
+    if not owner_tenants:
+        raise TenantAccessDenied('Documentul nu are owner tenant-safe.')
+    if all(owner_tenant == tenant_curent for owner_tenant in owner_tenants):
+        return document
+
+    raise TenantAccessDenied('Documentul nu apartine tenantului curent.')
+
+
+def require_legacy_document_same_tenant(document, tenant_id=None):
+    """Wrapper pentru rute: ascunde Document legacy inaccesibil prin 404."""
+    try:
+        return ensure_legacy_document_same_tenant(document, tenant_id=tenant_id)
+    except TenantAccessDenied:
+        abort(404)
+
+
 def ensure_contract_inputs_same_tenant(proiect_id=None, contract_id=None, tenant_id=None):
     """Valideaza proiectul si contractul selectate in fluxurile contractuale."""
     mod = get_tenant_mode()

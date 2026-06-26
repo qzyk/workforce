@@ -17,6 +17,12 @@ from forms.documente_forms import (
     DocumentUploadForm, DocumentEditForm,
     DURATA_EXPIRARE, DOCUMENTE_OBLIGATORII
 )
+from services.security.tenant_access import (
+    get_legacy_document_or_404,
+    get_project_or_404,
+    query_for_tenant,
+    query_legacy_documents_for_tenant,
+)
 
 documente_bp = Blueprint('documente', __name__)
 
@@ -75,7 +81,9 @@ def _make_thumbnail(filepath):
 
 def _update_all_statuses():
     """Actualizeaza statusul tuturor documentelor."""
-    docs = Document.query.filter(Document.data_expirare.isnot(None)).all()
+    docs = query_legacy_documents_for_tenant().filter(
+        Document.data_expirare.isnot(None)
+    ).all()
     for doc in docs:
         new_status = doc.status_calculat
         if doc.status != new_status:
@@ -90,16 +98,50 @@ def _get_documente_obligatorii(functie):
 
 def _get_stats():
     """Returneaza statistici documente."""
-    total = Document.query.count()
-    expirate = Document.query.filter_by(status='expirat').count()
-    in_curand = Document.query.filter_by(status='in_curand').count()
-    valabile = Document.query.filter_by(status='valabil').count()
+    query = query_legacy_documents_for_tenant()
+    total = query.count()
+    expirate = query_legacy_documents_for_tenant().filter_by(status='expirat').count()
+    in_curand = query_legacy_documents_for_tenant().filter_by(status='in_curand').count()
+    valabile = query_legacy_documents_for_tenant().filter_by(status='valabil').count()
     return {
         'total': total,
         'expirate': expirate,
         'in_curand': in_curand,
         'valabile': valabile,
     }
+
+
+def _angajati_vizibili(status='activ'):
+    """Angajati vizibili tenantului curent pentru liste si dropdown-uri."""
+    query = query_for_tenant(Angajat)
+    if status:
+        query = query.filter_by(status=status)
+    return query.order_by(Angajat.nume).all()
+
+
+def _proiecte_vizibile_documente():
+    """Proiecte vizibile pentru upload documente legacy."""
+    return query_for_tenant(Proiect).filter(
+        Proiect.status.in_(['activ', 'planificat'])
+    ).order_by(Proiect.cod_proiect).all()
+
+
+def _get_angajat_or_404(angajat_id):
+    """Lookup angajat tenant-safe pentru documente HR."""
+    angajat = query_for_tenant(Angajat).filter(Angajat.id == angajat_id).first()
+    if angajat is None:
+        abort(404)
+    return angajat
+
+
+def _populeaza_upload_form_scoped(form):
+    """Suprascrie choices globale din form cu variante tenant-safe."""
+    form.angajat_id.choices = [(0, '-- Selectati angajat --')] + [
+        (a.id, f'{a.nume_complet} ({a.functie})') for a in _angajati_vizibili()
+    ]
+    form.proiect_id.choices = [(0, '-- Niciunul --')] + [
+        (p.id, f'{p.cod_proiect} - {p.nume}') for p in _proiecte_vizibile_documente()
+    ]
 
 
 # ============================================================
@@ -113,22 +155,25 @@ def panou():
     stats = _get_stats()
 
     # Documente expirate (top 10)
-    expirate = Document.query.filter_by(status='expirat')\
+    expirate = query_legacy_documents_for_tenant().filter_by(status='expirat')\
         .order_by(Document.data_expirare.asc()).limit(10).all()
 
     # Documente care expira curand (top 10)
-    expira_curand = Document.query.filter_by(status='in_curand')\
+    expira_curand = query_legacy_documents_for_tenant().filter_by(status='in_curand')\
         .order_by(Document.data_expirare.asc()).limit(10).all()
 
     # Ultimele documente incarcate
-    recente = Document.query.order_by(Document.data_upload.desc()).limit(10).all()
+    recente = query_legacy_documents_for_tenant().order_by(
+        Document.data_upload.desc()
+    ).limit(10).all()
 
     # Angajati cu documente lipsa
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    angajati = _angajati_vizibili()
     angajati_alerte = []
     for ang in angajati:
         obligatorii = _get_documente_obligatorii(ang.functie)
-        existente = [d.tip for d in ang.documente.filter(
+        existente = [d.tip for d in query_legacy_documents_for_tenant().filter(
+            Document.angajat_id == ang.id,
             Document.status.in_(['valabil', 'in_curand'])
         ).all()]
         lipsa = [t for t in obligatorii if t not in existente]
@@ -156,10 +201,10 @@ def panou():
 @documente_bp.route('/angajat/<int:angajat_id>')
 @login_required
 def lista_angajat(angajat_id):
-    angajat = Angajat.query.get_or_404(angajat_id)
+    angajat = _get_angajat_or_404(angajat_id)
     _update_all_statuses()
 
-    documente = Document.query.filter_by(angajat_id=angajat_id)\
+    documente = query_legacy_documents_for_tenant().filter_by(angajat_id=angajat_id)\
         .order_by(Document.tip, Document.data_upload.desc()).all()
 
     # Grupare per tip
@@ -174,7 +219,7 @@ def lista_angajat(angajat_id):
     existente_tipuri = set(d.tip for d in documente if d.status in ('valabil', 'in_curand'))
     lipsa = [t for t in obligatorii if t not in existente_tipuri]
 
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    angajati = _angajati_vizibili()
 
     return render_template('documente/lista_angajat.html',
                            angajat=angajat,
@@ -195,6 +240,7 @@ def lista_angajat(angajat_id):
 @login_required
 def upload():
     form = DocumentUploadForm()
+    _populeaza_upload_form_scoped(form)
 
     if form.validate_on_submit():
         fisier = form.fisier.data
@@ -208,6 +254,11 @@ def upload():
             return redirect(request.url)
 
         angajat_id = form.angajat_id.data
+        _get_angajat_or_404(angajat_id)
+        proiect_id = form.proiect_id.data if form.proiect_id.data else None
+        if proiect_id:
+            get_project_or_404(proiect_id)
+
         filepath, marime = _secure_save(fisier, angajat_id)
 
         # Thumbnail pt imagini
@@ -215,7 +266,7 @@ def upload():
 
         doc = Document(
             angajat_id=angajat_id,
-            proiect_id=form.proiect_id.data if form.proiect_id.data else None,
+            proiect_id=proiect_id,
             tip=form.tip.data,
             nume_document=form.nume_document.data.strip(),
             fisier_path=filepath,
@@ -250,7 +301,7 @@ def upload():
 @documente_bp.route('/<int:id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def editeaza(id):
-    doc = Document.query.get_or_404(id)
+    doc = get_legacy_document_or_404(id)
     form = DocumentEditForm(obj=doc)
 
     if form.validate_on_submit():
@@ -278,7 +329,7 @@ def editeaza(id):
 @documente_bp.route('/<int:id>/descarca')
 @login_required
 def descarca(id):
-    doc = Document.query.get_or_404(id)
+    doc = get_legacy_document_or_404(id)
     if doc.fisier_path and os.path.exists(doc.fisier_path):
         ext = doc.fisier_path.rsplit('.', 1)[1].lower() if '.' in doc.fisier_path else ''
         download_name = f"{doc.nume_document}.{ext}" if ext else doc.nume_document
@@ -294,7 +345,7 @@ def descarca(id):
 @documente_bp.route('/<int:id>/preview')
 @login_required
 def preview(id):
-    doc = Document.query.get_or_404(id)
+    doc = get_legacy_document_or_404(id)
     if doc.fisier_path and os.path.exists(doc.fisier_path):
         ext = doc.fisier_path.rsplit('.', 1)[1].lower() if '.' in doc.fisier_path else ''
         mime_types = {
@@ -320,7 +371,7 @@ def sterge(id):
         flash('Nu aveti permisiunea de a sterge documente.', 'danger')
         return redirect(url_for('documente.panou'))
 
-    doc = Document.query.get_or_404(id)
+    doc = get_legacy_document_or_404(id)
     angajat_id = doc.angajat_id
 
     # Stergere fisier fizic
@@ -351,11 +402,11 @@ def expirate():
     _update_all_statuses()
 
     # Toate expirate
-    docs_expirate = Document.query.filter_by(status='expirat')\
+    docs_expirate = query_legacy_documents_for_tenant().filter_by(status='expirat')\
         .join(Angajat).order_by(Angajat.nume, Document.data_expirare.asc()).all()
 
     # Toate care expira in 30 zile
-    docs_in_curand = Document.query.filter_by(status='in_curand')\
+    docs_in_curand = query_legacy_documents_for_tenant().filter_by(status='in_curand')\
         .join(Angajat).order_by(Document.data_expirare.asc()).all()
 
     # Grupare per angajat
@@ -422,7 +473,7 @@ def export_excel():
         cell.border = thin_border
     ws1.row_dimensions[1].height = 30
 
-    documente = Document.query.join(Angajat)\
+    documente = query_legacy_documents_for_tenant().join(Angajat)\
         .order_by(Angajat.nume, Document.tip).all()
 
     for i, doc in enumerate(documente, 1):
@@ -484,9 +535,9 @@ def export_excel():
         cell.border = thin_border
     ws2.row_dimensions[1].height = 40
 
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    angajati = _angajati_vizibili()
     for i, ang in enumerate(angajati, 1):
-        docs_ang = Document.query.filter_by(angajat_id=ang.id).all()
+        docs_ang = query_legacy_documents_for_tenant().filter_by(angajat_id=ang.id).all()
         docs_per_tip = {}
         for d in docs_ang:
             docs_per_tip[d.tip] = d
@@ -555,10 +606,10 @@ def export_excel():
 @login_required
 def api_alerte():
     _update_all_statuses()
-    expirate = Document.query.filter_by(status='expirat').count()
-    in_curand = Document.query.filter_by(status='in_curand').count()
+    expirate = query_legacy_documents_for_tenant().filter_by(status='expirat').count()
+    in_curand = query_legacy_documents_for_tenant().filter_by(status='in_curand').count()
 
-    docs_urgente = Document.query.filter(
+    docs_urgente = query_legacy_documents_for_tenant().filter(
         Document.status.in_(['expirat', 'in_curand'])
     ).join(Angajat).order_by(Document.data_expirare.asc()).limit(5).all()
 
@@ -604,11 +655,13 @@ def lista():
     status = request.args.get('status', '')
     angajat_id = request.args.get('angajat_id', '')
 
-    query = Document.query
+    query = query_legacy_documents_for_tenant()
     if tip:
         query = query.filter_by(tip=tip)
     if angajat_id:
-        query = query.filter_by(angajat_id=int(angajat_id))
+        angajat_id_int = int(angajat_id)
+        _get_angajat_or_404(angajat_id_int)
+        query = query.filter_by(angajat_id=angajat_id_int)
 
     page = request.args.get('page', 1, type=int)
     per_page = current_app.config.get('ITEMS_PER_PAGE', 25)
@@ -628,7 +681,7 @@ def lista():
     if status:
         documente = [d for d in documente if d.status == status]
 
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    angajati = _angajati_vizibili()
 
     return render_template('documente/lista.html',
                            documente=documente,

@@ -401,11 +401,77 @@ Nu s-a adaugat migrare deoarece toate modelele contractuale folosite au deja `te
 
 Urmatorul PR recomandat: `T1.6 Document Tenant Guard`. Daca apelurile directe catre serviciile contractuale devin necesare inainte de T1.6, se recomanda mai intai `T1.5B Contract Service Boundary Hardening`.
 
-## Urmatoarele integrari recomandate dupa T1.5
+## T1.6 Document Route Integration
 
-1. `DocumentProiect` / `Document`: autorizare download si ownership indirect.
-2. Proiect detail/edit/export: extindere catre datele nested din pagina, nu doar project lookup.
-3. `ModelBIM`: acces prin `tenant_id` si `Santier`.
-4. `GanttPlan` si configurari Gantt ramase: ownership prin tenant/proiect si verificari pe import/export.
-5. `T1.5B Contract Service Boundary Hardening` daca serviciile contractuale vor fi apelate direct din afara rutelor.
-6. S1.1/S1.2: extragere `activity_service.py` / `timesheet_service.py` dupa ce tenant guard-urile principale sunt stabile.
+T1.6 protejeaza accesul la documente si la raspunsurile de tip fisier fara sa schimbe schema, layout-ul de fisiere sau workflow-ul documentelor. Documentele nu sunt execution spine, dar sunt artefacte high-risk: o ruta IDOR poate expune fisiere HR, contractuale sau de proiect.
+
+Helpers adaugate:
+
+- `query_project_documents_for_tenant()`
+- `get_project_document_or_404()`
+- `query_project_document_revisions_for_tenant()`
+- `get_project_document_revision_or_404()`
+- `ensure_project_document_same_tenant()` / `require_project_document_same_tenant()`
+- `query_legacy_documents_for_tenant()`
+- `get_legacy_document_or_404()`
+- `ensure_legacy_document_same_tenant()` / `require_legacy_document_same_tenant()`
+
+Ownership paths:
+
+| Model | Ownership |
+|---|---|
+| `DocumentProiect` | `DocumentProiect -> Proiect -> tenant_id`. |
+| `RevizieDocument` | `RevizieDocument -> DocumentProiect -> Proiect -> tenant_id`. |
+| `Document` legacy/HR/proiect | `Document -> Proiect -> tenant_id` cand `proiect_id` exista si `Document -> Angajat -> tenant_id` cand `angajat_id` exista. Daca ambele exista, ambele trebuie sa apartina tenantului curent. |
+
+Rute protejate:
+
+- `routes/documente.py`: panou, lista generala, lista angajat, upload, editare metadata, download, preview, stergere, expirate, export Excel si API alerte.
+- `routes/documente_proiecte.py`: index proiect, listare pe instalatie, upload, detaliu, editare, upload revizie, download, preview, stergere, aprobare/respingere, export index, verificare completitudine, API tipuri documente si download revizie.
+- `routes/proiecte.py`: tab-ul de documente legacy din detalii/hub, upload document proiect legacy, download si stergere document legacy atasat proiectului.
+
+File-serving rule:
+
+- fiecare `send_file()` pentru document sau revizie este precedat de lookup tenant-safe;
+- path-ul fisierului nu este construit pentru documente straine;
+- documentele straine returneaza 404 pentru a evita enumerarea ID-urilor;
+- fisierele fizice se sterg doar dupa autorizarea randului DB, pastrand comportamentul existent.
+
+Comportament pe moduri:
+
+- in `off`, query-urile documentelor raman compatibile cu legacy single-tenant;
+- in `optional`, userii cu `tenant_id` vad doar documentele tenantului lor, iar userii fara tenant pastreaza comportamentul migration-friendly;
+- in `strict`, user normal fara tenant esueaza inchis, iar documentele/reviziile straine returneaza 404;
+- super-adminul fara tenant ramane explicit si nefiltrat, consecvent cu restul layer-ului.
+
+Upload/create:
+
+- upload-ul HR valideaza angajatul selectat prin `Angajat -> tenant_id` inainte de salvarea fisierului;
+- proiectul optional selectat pe document legacy este validat cu `get_project_or_404()`;
+- upload-ul pe documente proiect valideaza proiectul cu `get_project_or_404()` inainte de orice salvare;
+- nu s-au schimbat extensiile permise, folder-ele sau numele generate.
+
+Export:
+
+- exportul Excel al documentelor HR foloseste doar documente si angajati vizibili tenantului curent;
+- exportul indexului de documente proiect valideaza proiectul si foloseste query-ul tenant-safe pentru `DocumentProiect`;
+- nu s-a schimbat formatul workbook-urilor.
+
+Ce ramane neprotejat dupa T1.6:
+
+- `Document` legacy fara `proiect_id` si fara `angajat_id` nu are ownership sigur si nu este vizibil in moduri scoped;
+- tabelele de configurare document (`TipInstalatie`, `TipDocumentProiect`) raman globale;
+- rutele din `routes/proiecte.py` au multe agregari non-document ramase in afara T1.6;
+- nu exista inca un `document_service.py`, deci rutele raman boundary-ul principal de autorizare pentru documente.
+
+Nu s-a adaugat migrare deoarece T1.6 foloseste ownership-ul existent prin `Proiect` si `Angajat`. Nu s-a creat `document_service.py` deoarece acest PR este strict security/access-control; extragerea workflow-ului de documente trebuie sa ramana separata.
+
+Urmatorul PR recomandat: `T1.7 BIM Tenant Guard`, deoarece fisierele/modelarea BIM raman urmatorul domeniu cu risc mare de file/metadata leakage. Daca prioritatea operationala devine planificarea, alternativa este `T1.7 Gantt Tenant Guard`.
+
+## Urmatoarele integrari recomandate dupa T1.6
+
+1. `ModelBIM`: acces prin `tenant_id` si `Santier`.
+2. `GanttPlan` si configurari Gantt ramase: ownership prin tenant/proiect si verificari pe import/export.
+3. Proiect detail/edit/export: extindere catre celelalte date nested din pagina, nu doar project/document lookup.
+4. `T1.5B Contract Service Boundary Hardening` daca serviciile contractuale vor fi apelate direct din afara rutelor.
+5. S1.1/S1.2: extragere `activity_service.py` / `timesheet_service.py` dupa ce tenant guard-urile principale sunt stabile.

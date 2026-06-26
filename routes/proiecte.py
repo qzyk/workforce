@@ -12,8 +12,11 @@ from werkzeug.utils import secure_filename
 from models import db, Proiect, Angajat, AngajatProiect, Pontaj, Document, Utilizator
 from forms.proiecte_forms import ProiectForm
 from services.security.tenant_access import (
+    get_legacy_document_or_404,
     get_project_or_404,
     query_for_tenant,
+    query_legacy_documents_for_tenant,
+    query_project_documents_for_tenant,
     tenant_id_for_new_record_or_403,
 )
 
@@ -206,7 +209,9 @@ def detalii(id):
     cost_lunar = _get_cost_lunar(id)
 
     # Tab Documente
-    documente = Document.query.filter_by(proiect_id=id).order_by(Document.data_upload.desc()).all()
+    documente = query_legacy_documents_for_tenant().filter_by(proiect_id=id).order_by(
+        Document.data_upload.desc()
+    ).all()
 
     return render_template('proiecte/detalii.html',
                            proiect=proiect,
@@ -266,7 +271,9 @@ def hub(id):
         LocatieProiect.query.filter_by(proiect_id=id).first()))
     h['angajati'] = _safe(lambda: AngajatProiect.query.filter_by(proiect_id=id)
                           .filter(AngajatProiect.data_sfarsit.is_(None)).count(), 0)
-    h['documente'] = _safe(lambda: DocumentProiect.query.filter_by(proiect_id=id).count(), 0)
+    h['documente'] = _safe(lambda: query_project_documents_for_tenant().filter_by(
+        proiect_id=id
+    ).count(), 0)
 
     # santiere BIM legate (many-to-many) -> agregam BIM peste toate
     santiere = _safe(lambda: [ls.santier for ls in proiect.legaturi_santiere
@@ -901,7 +908,7 @@ def export_excel(id):
 @proiecte_bp.route('/<int:id>/upload-document', methods=['POST'])
 @login_required
 def upload_document(id):
-    proiect = Proiect.query.get_or_404(id)
+    proiect = get_project_or_404(id)
 
     fisier = request.files.get('fisier')
     nume_document = request.form.get('nume_document', '').strip()
@@ -965,9 +972,10 @@ def upload_document(id):
 @proiecte_bp.route('/<int:id>/documente/<int:doc_id>/download')
 @login_required
 def download_document(id, doc_id):
-    doc = Document.query.get_or_404(doc_id)
+    get_project_or_404(id)
+    doc = get_legacy_document_or_404(doc_id)
     if doc.proiect_id != id:
-        abort(403)
+        abort(404)
     if not doc.fisier_path or not os.path.exists(doc.fisier_path):
         flash('Fisierul nu mai este disponibil pe server.', 'danger')
         return redirect(url_for('proiecte.detalii', id=id))
@@ -983,9 +991,10 @@ def download_document(id, doc_id):
 def sterge_document(id, doc_id):
     if not current_user.is_manager:
         abort(403)
-    doc = Document.query.get_or_404(doc_id)
+    get_project_or_404(id)
+    doc = get_legacy_document_or_404(doc_id)
     if doc.proiect_id != id:
-        abort(403)
+        abort(404)
     # Sterge fisierul de pe disk
     if doc.fisier_path and os.path.exists(doc.fisier_path):
         try:
