@@ -70,6 +70,32 @@ from services.notificari_app import (
     marcheaza_citita, marcheaza_toate_citite, count_necitite, lista_notificari,
 )
 from services.pv_generator import genereaza_pv_docx, genereaza_pv_pdf
+from services.security.tenant_access import (
+    get_cantitate_executata_lunara_or_404,
+    get_contract_or_404,
+    get_corespondenta_or_404,
+    get_tenant_mode,
+    get_oferta_contract_or_404,
+    get_pozitie_boq_or_404,
+    get_program_referinta_or_404,
+    get_project_or_404,
+    get_raport_lucrari_proiect_or_404,
+    get_regula_notificare_or_404,
+    get_revendicare_cantitate_or_404,
+    get_revendicare_or_404,
+    get_revendicare_task_or_404,
+    get_revendicare_termen_or_404,
+    get_situatie_lunara_or_404,
+    get_task_program_or_404,
+    get_termen_contract_or_404,
+    get_proces_verbal_or_404,
+    query_contracts_for_tenant,
+    query_for_tenant,
+    query_tarife_categorie_for_tenant,
+    require_contract_inputs_same_tenant,
+    tenant_id_for_new_record_or_403,
+)
+from tenant import MODE_OFF
 from models import NotificareApp, ReguliNotificareProiect
 
 
@@ -92,6 +118,101 @@ def _check_flag():
         abort(404)
 
 
+def _proiecte_vizibile():
+    """Proiecte vizibile tenantului curent pentru liste si dropdown-uri."""
+    return query_for_tenant(Proiect).order_by(Proiect.cod_proiect).all()
+
+
+def _contracte_vizibile():
+    """Contracte vizibile tenantului curent pentru dropdown-uri."""
+    return query_contracts_for_tenant().order_by(Contract.nr_contract).all()
+
+
+def _tenant_id_din_proiect(proiect_id):
+    """Tenant pentru rand nou pornind din proiectul validat."""
+    tenant_curent = tenant_id_for_new_record_or_403()
+    if get_tenant_mode() == MODE_OFF:
+        return None
+    if not proiect_id:
+        return tenant_curent
+    proiect = get_project_or_404(proiect_id)
+    return tenant_curent if tenant_curent is not None else proiect.tenant_id
+
+
+def _tenant_id_din_contract(contract):
+    """Tenant pentru entitati copil dintr-un contract deja scoped."""
+    return contract.tenant_id if contract is not None else tenant_id_for_new_record_or_403()
+
+
+def _asigura_tarife_default_vizibile():
+    """Seed tarife globale doar daca nu exista niciun default vizibil tenantului."""
+    defaults_vizibile = query_tarife_categorie_for_tenant(
+        include_global_defaults=True
+    ).filter_by(proiect_id=None).count()
+    if defaults_vizibile == 0:
+        deviz_pricing.seed_tarife_default()
+
+
+def _tarife_efective_scoped(proiect_id):
+    """Tarife efective tenant-safe: default global + override pe proiect validat."""
+    tarife = {}
+    query = query_tarife_categorie_for_tenant(include_global_defaults=True)
+    for t in query.filter_by(proiect_id=None).all():
+        tarife[(t.disciplina, t.categorie_lucrare)] = t.tarif_baza or Decimal('0')
+    if proiect_id:
+        for t in query.filter_by(proiect_id=proiect_id).all():
+            tarife[(t.disciplina, t.categorie_lucrare)] = t.tarif_baza or Decimal('0')
+    return tarife
+
+
+def _populeaza_contract_form_scoped(form):
+    """Suprascrie choices globale din form cu variante tenant-safe."""
+    proiecte = _proiecte_vizibile()
+    form.proiect_id.choices = [
+        (p.id, f'{p.cod_proiect} - {p.nume}') for p in proiecte
+    ]
+    contracte_principale = query_contracts_for_tenant().filter(
+        Contract.parinte_contract_id.is_(None)
+    ).order_by(Contract.nr_contract).all()
+    form.parinte_contract_id.choices = [(0, '-- Niciunul (contract principal) --')] + [
+        (c.id, f'{c.nr_contract} ({c.proiect.cod_proiect if c.proiect else "?"})')
+        for c in contracte_principale
+    ]
+
+
+def _populeaza_pv_form_scoped(form):
+    """Suprascrie choices proiect/contract pentru PV."""
+    proiecte = _proiecte_vizibile()
+    form.proiect_id.choices = [
+        (p.id, f'{p.cod_proiect} - {p.nume}') for p in proiecte
+    ]
+    form.contract_id.choices = [(0, '-- Fara contract specific --')] + [
+        (c.id, f'{c.nr_contract}') for c in _contracte_vizibile()
+    ]
+
+
+def _populeaza_revendicare_form_scoped(form):
+    """Suprascrie choices proiect/contract pentru revendicari."""
+    proiecte = _proiecte_vizibile()
+    form.proiect_id.choices = [
+        (p.id, f'{p.cod_proiect} - {p.nume}') for p in proiecte
+    ]
+    form.contract_id.choices = [
+        (c.id, c.nr_contract) for c in _contracte_vizibile()
+    ]
+
+
+def _populeaza_corespondenta_form_scoped(form):
+    """Suprascrie choices proiect/contract pentru corespondenta."""
+    proiecte = _proiecte_vizibile()
+    form.proiect_id.choices = [
+        (p.id, f'{p.cod_proiect} - {p.nume}') for p in proiecte
+    ]
+    form.contract_id.choices = [(0, '-- Fara contract specific --')] + [
+        (c.id, c.nr_contract) for c in _contracte_vizibile()
+    ]
+
+
 # ============================================================
 # CONTRACT - lista, detalii, create, edit, delete
 # ============================================================
@@ -104,10 +225,11 @@ def lista():
     proiect_filtru = request.args.get('proiect', type=int)
     cautare = request.args.get('cautare', '').strip()
 
-    query = Contract.query
+    query = query_contracts_for_tenant()
     if status_filtru:
         query = query.filter_by(status=status_filtru)
     if proiect_filtru:
+        get_project_or_404(proiect_filtru)
         query = query.filter_by(proiect_id=proiect_filtru)
     if cautare:
         query = query.filter(
@@ -122,17 +244,17 @@ def lista():
     contracte = query.order_by(Contract.data_semnare.desc()).all()
 
     # Statistici simple pentru sidebar de filtre
-    total_activ = Contract.query.filter_by(
+    total_activ = query_contracts_for_tenant().filter_by(
         status='activ', parinte_contract_id=None
     ).count()
-    total_finalizat = Contract.query.filter_by(
+    total_finalizat = query_contracts_for_tenant().filter_by(
         status='finalizat', parinte_contract_id=None
     ).count()
-    total_suspendat = Contract.query.filter_by(
+    total_suspendat = query_contracts_for_tenant().filter_by(
         status='suspendat', parinte_contract_id=None
     ).count()
 
-    proiecte_pentru_filtru = Proiect.query.order_by(Proiect.cod_proiect).all()
+    proiecte_pentru_filtru = _proiecte_vizibile()
 
     return render_template(
         'contracte/lista.html',
@@ -152,13 +274,15 @@ def lista():
 @login_required
 def detalii(id):
     """Detalii contract + acte aditionale + termene + PV-uri asociate."""
-    c = Contract.query.get_or_404(id)
+    c = get_contract_or_404(id)
     # Acte aditionale (sortate dupa data semnare)
     acte = c.acte_aditionale.order_by(Contract.data_semnare).all()
     # Termene (sortate dupa data_scadenta)
-    termene = c.termeni.order_by(TermenContract.data_scadenta).all()
+    termene = query_for_tenant(TermenContract).filter_by(contract_id=c.id).order_by(
+        TermenContract.data_scadenta
+    ).all()
     # PV-uri asociate contractului
-    pv_list = ProcesVerbal.query.filter_by(contract_id=c.id).order_by(
+    pv_list = query_for_tenant(ProcesVerbal).filter_by(contract_id=c.id).order_by(
         ProcesVerbal.data_emitere.desc()
     ).all()
     return render_template(
@@ -175,13 +299,25 @@ def detalii(id):
 @login_required
 def formular_nou():
     """Creeaza un contract nou (principal sau act aditional)."""
+    tenant_id_nou = tenant_id_for_new_record_or_403()
     form = ContractForm()
+    _populeaza_contract_form_scoped(form)
     if form.validate_on_submit():
         try:
             parinte_id = form.parinte_contract_id.data or None
             if parinte_id == 0:
                 parinte_id = None
+            require_contract_inputs_same_tenant(
+                proiect_id=form.proiect_id.data,
+                contract_id=parinte_id,
+            )
+            tenant_id_contract = (
+                tenant_id_nou
+                if tenant_id_nou is not None
+                else _tenant_id_din_proiect(form.proiect_id.data)
+            )
             c = Contract(
+                tenant_id=tenant_id_contract,
                 proiect_id=form.proiect_id.data,
                 parinte_contract_id=parinte_id,
                 nr_contract=form.nr_contract.data.strip(),
@@ -220,8 +356,9 @@ def formular_nou():
 @login_required
 def formular_editeaza(id):
     """Editeaza un contract existent."""
-    c = Contract.query.get_or_404(id)
+    c = get_contract_or_404(id)
     form = ContractForm(obj=c)
+    _populeaza_contract_form_scoped(form)
     if request.method == 'GET':
         form.contract_id.data = c.id
         form.parinte_contract_id.data = c.parinte_contract_id or 0
@@ -241,6 +378,10 @@ def formular_editeaza(id):
             if parinte_id == c.id:
                 flash('Un contract nu poate fi propriul sau parinte.', 'danger')
                 return render_template('contracte/formular.html', form=form, contract=c)
+            require_contract_inputs_same_tenant(
+                proiect_id=form.proiect_id.data,
+                contract_id=parinte_id,
+            )
             c.proiect_id = form.proiect_id.data
             c.parinte_contract_id = parinte_id
             c.nr_contract = form.nr_contract.data.strip()
@@ -271,7 +412,7 @@ def formular_editeaza(id):
 def sterge(id):
     """Sterge un contract. Termenele + actele aditionale raman in DB
     (nu folosim cascade automata - permitem soft-handling)."""
-    c = Contract.query.get_or_404(id)
+    c = get_contract_or_404(id)
     # Refuz daca are acte aditionale active sau termene neindeplinite
     if c.acte_aditionale.count() > 0:
         flash('Nu poti sterge un contract care are acte aditionale. Sterge-le mai intai.', 'danger')
@@ -284,7 +425,7 @@ def sterge(id):
         })
         nr = c.nr_contract
         # Sterge termenele asociate explicit (fara cascade)
-        TermenContract.query.filter_by(contract_id=c.id).delete()
+        query_for_tenant(TermenContract).filter_by(contract_id=c.id).delete()
         db.session.delete(c)
         db.session.commit()
         flash(f'Contractul "{nr}" a fost sters.', 'info')
@@ -301,7 +442,7 @@ def sterge(id):
 @contracte_bp.route('/<int:contract_id>/termen/nou', methods=['GET', 'POST'])
 @login_required
 def termen_nou(contract_id):
-    c = Contract.query.get_or_404(contract_id)
+    c = get_contract_or_404(contract_id)
     form = TermenContractForm()
     form.contract_id_hidden.data = c.id
     if form.validate_on_submit():
@@ -310,6 +451,7 @@ def termen_nou(contract_id):
             if resp_id == 0:
                 resp_id = None
             t = TermenContract(
+                tenant_id=_tenant_id_din_contract(c),
                 contract_id=c.id,
                 proiect_id=c.proiect_id,
                 denumire=form.denumire.data.strip(),
@@ -342,8 +484,8 @@ def termen_nou(contract_id):
 @contracte_bp.route('/termen/<int:termen_id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def termen_editeaza(termen_id):
-    t = TermenContract.query.get_or_404(termen_id)
-    c = Contract.query.get_or_404(t.contract_id)
+    t = get_termen_contract_or_404(termen_id)
+    c = get_contract_or_404(t.contract_id)
     form = TermenContractForm(obj=t)
     if request.method == 'GET':
         form.termen_id.data = t.id
@@ -380,7 +522,7 @@ def termen_editeaza(termen_id):
 @contracte_bp.route('/termen/<int:termen_id>/sterge', methods=['POST'])
 @login_required
 def termen_sterge(termen_id):
-    t = TermenContract.query.get_or_404(termen_id)
+    t = get_termen_contract_or_404(termen_id)
     contract_id = t.contract_id
     try:
         audit_svc.log_delete('termen_contract', t.id, old_values={
@@ -408,14 +550,15 @@ def pv_lista():
     tip_filtru = request.args.get('tip', '').strip()
     proiect_filtru = request.args.get('proiect', type=int)
 
-    query = ProcesVerbal.query
+    query = query_for_tenant(ProcesVerbal)
     if tip_filtru:
         query = query.filter_by(tip=tip_filtru)
     if proiect_filtru:
+        get_project_or_404(proiect_filtru)
         query = query.filter_by(proiect_id=proiect_filtru)
     pv_list = query.order_by(ProcesVerbal.data_emitere.desc()).all()
 
-    proiecte_pentru_filtru = Proiect.query.order_by(Proiect.cod_proiect).all()
+    proiecte_pentru_filtru = _proiecte_vizibile()
     return render_template(
         'contracte/pv_lista.html',
         pv_list=pv_list,
@@ -429,21 +572,33 @@ def pv_lista():
 @contracte_bp.route('/pv/nou', methods=['GET', 'POST'])
 @login_required
 def pv_nou():
+    tenant_id_for_new_record_or_403()
     form = ProcesVerbalForm()
+    _populeaza_pv_form_scoped(form)
     # Pre-populare proiect_id dacă vine din URL ?proiect_id=X (creare din contextul unui contract)
     preset_proiect = request.args.get('proiect_id', type=int)
     preset_contract = request.args.get('contract_id', type=int)
     if request.method == 'GET':
         if preset_proiect:
+            get_project_or_404(preset_proiect)
             form.proiect_id.data = preset_proiect
         if preset_contract:
+            get_contract_or_404(preset_contract)
             form.contract_id.data = preset_contract
     if form.validate_on_submit():
         try:
             contract_id = form.contract_id.data or None
             if contract_id == 0:
                 contract_id = None
+            require_contract_inputs_same_tenant(
+                proiect_id=form.proiect_id.data,
+                contract_id=contract_id,
+            )
+            tenant_id_pv = _tenant_id_din_proiect(form.proiect_id.data)
+            if contract_id:
+                tenant_id_pv = _tenant_id_din_contract(get_contract_or_404(contract_id))
             pv = ProcesVerbal(
+                tenant_id=tenant_id_pv,
                 proiect_id=form.proiect_id.data,
                 contract_id=contract_id,
                 tip=form.tip.data,
@@ -475,8 +630,9 @@ def pv_nou():
 @contracte_bp.route('/pv/<int:id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def pv_editeaza(id):
-    pv = ProcesVerbal.query.get_or_404(id)
+    pv = get_proces_verbal_or_404(id)
     form = ProcesVerbalForm(obj=pv)
+    _populeaza_pv_form_scoped(form)
     if request.method == 'GET':
         form.pv_id.data = pv.id
         form.contract_id.data = pv.contract_id or 0
@@ -489,8 +645,16 @@ def pv_editeaza(id):
             contract_id = form.contract_id.data or None
             if contract_id == 0:
                 contract_id = None
+            require_contract_inputs_same_tenant(
+                proiect_id=form.proiect_id.data,
+                contract_id=contract_id,
+            )
             pv.proiect_id = form.proiect_id.data
             pv.contract_id = contract_id
+            if contract_id:
+                pv.tenant_id = _tenant_id_din_contract(get_contract_or_404(contract_id))
+            elif get_tenant_mode() != MODE_OFF:
+                pv.tenant_id = _tenant_id_din_proiect(form.proiect_id.data)
             pv.tip = form.tip.data
             pv.numar = (form.numar.data or '').strip() or None
             pv.data_emitere = form.data_emitere.data
@@ -514,7 +678,7 @@ def pv_editeaza(id):
 @contracte_bp.route('/pv/<int:id>/sterge', methods=['POST'])
 @login_required
 def pv_sterge(id):
-    pv = ProcesVerbal.query.get_or_404(id)
+    pv = get_proces_verbal_or_404(id)
     redirect_contract = pv.contract_id
     try:
         audit_svc.log_delete('proces_verbal', pv.id, old_values={
@@ -581,12 +745,11 @@ def _save_uploaded_file(file_storage, subdir: str, allowed_ext: set) -> str:
 @login_required
 def program_import(contract_id):
     """Upload + parse MS Project XML -> creeaza ProgramReferinta + N x TaskProgram."""
+    contract = get_contract_or_404(contract_id)
     if not is_enabled('controale-contract-import-msproject'):
         flash('Importul MS Project nu e activ. Activeaza flag-ul '
               '"controale-contract-import-msproject" din setari.', 'warning')
         return redirect(url_for('contracte.detalii', id=contract_id))
-
-    contract = Contract.query.get_or_404(contract_id)
 
     if request.method == 'POST':
         file_storage = request.files.get('fisier')
@@ -620,9 +783,11 @@ def program_import(contract_id):
         # Creez ProgramReferinta + taskuri in tranzactie
         try:
             # Versiune urmatoare pe proiect
-            ultima_v = db.session.query(db.func.max(ProgramReferinta.versiune)) \
-                .filter_by(proiect_id=contract.proiect_id).scalar() or 0
+            ultima_v = query_for_tenant(ProgramReferinta).with_entities(
+                db.func.max(ProgramReferinta.versiune)
+            ).filter_by(proiect_id=contract.proiect_id).scalar() or 0
             program = ProgramReferinta(
+                tenant_id=_tenant_id_din_contract(contract),
                 proiect_id=contract.proiect_id,
                 contract_id=contract.id,
                 versiune=ultima_v + 1,
@@ -642,6 +807,7 @@ def program_import(contract_id):
             tasks_buffer = []
             for ent in result.entities:
                 t = TaskProgram(
+                    tenant_id=_tenant_id_din_contract(contract),
                     program_id=program.id,
                     proiect_id=contract.proiect_id,
                     cod_extern=ent['cod_extern'],
@@ -702,10 +868,10 @@ def program_import(contract_id):
 @login_required
 def program_detalii(program_id):
     """Vezi programul + lista taskuri ierarhic."""
-    program = ProgramReferinta.query.get_or_404(program_id)
+    program = get_program_referinta_or_404(program_id)
     # Taskuri sortate dupa data_start_planificat (cu summary-urile sus prin
     # nivel_ierarhie ASC pe start egal)
-    taskuri = TaskProgram.query.filter_by(program_id=program.id) \
+    taskuri = query_for_tenant(TaskProgram).filter_by(program_id=program.id) \
         .order_by(TaskProgram.data_start_planificat,
                   TaskProgram.nivel_ierarhie,
                   TaskProgram.id).all()
@@ -721,7 +887,7 @@ def program_detalii(program_id):
 @login_required
 def oferta_import(contract_id):
     """Upload + parse eDevize XML sau Excel XLSX -> OfertaContract + N x PozitieBoQ."""
-    contract = Contract.query.get_or_404(contract_id)
+    contract = get_contract_or_404(contract_id)
 
     if request.method == 'POST':
         tip_parser = request.form.get('tip_parser', 'auto').strip()
@@ -775,8 +941,9 @@ def oferta_import(contract_id):
 
         # Creare oferta + pozitii in tranzactie
         try:
-            ultima_v = db.session.query(db.func.max(OfertaContract.versiune)) \
-                .filter_by(contract_id=contract.id).scalar() or 0
+            ultima_v = query_for_tenant(OfertaContract).with_entities(
+                db.func.max(OfertaContract.versiune)
+            ).filter_by(contract_id=contract.id).scalar() or 0
             data_emitere_str = result.stats.get('data_emitere')
             data_emitere_parsed = date.today()
             if data_emitere_str:
@@ -791,6 +958,7 @@ def oferta_import(contract_id):
                 for e in result.entities
             )
             oferta = OfertaContract(
+                tenant_id=_tenant_id_din_contract(contract),
                 contract_id=contract.id,
                 proiect_id=contract.proiect_id,
                 versiune=ultima_v + 1,
@@ -806,6 +974,7 @@ def oferta_import(contract_id):
 
             for ent in result.entities:
                 pz = PozitieBoQ(
+                    tenant_id=_tenant_id_din_contract(contract),
                     oferta_id=oferta.id,
                     proiect_id=contract.proiect_id,
                     cod_articol=ent['cod_articol'],
@@ -851,8 +1020,8 @@ def oferta_import(contract_id):
 @login_required
 def oferta_detalii(oferta_id):
     """Vezi oferta + pozitii BoQ cu totals pe categorii."""
-    oferta = OfertaContract.query.get_or_404(oferta_id)
-    pozitii = PozitieBoQ.query.filter_by(oferta_id=oferta.id) \
+    oferta = get_oferta_contract_or_404(oferta_id)
+    pozitii = query_for_tenant(PozitieBoQ).filter_by(oferta_id=oferta.id) \
         .order_by(PozitieBoQ.cod_capitol, PozitieBoQ.ordine).all()
     # Totals per categorie pentru un mic sumar
     totals = {'materiale': Decimal('0'), 'manopera': Decimal('0'),
@@ -878,7 +1047,7 @@ def oferta_cantitati(oferta_id):
     GET cu ?an=2026&luna=3&capitol=...&q=...&page=1 - lista filtrate
     POST cu hidden fields cantitate_<pid>, note_<pid> - bulk save
     """
-    oferta = OfertaContract.query.get_or_404(oferta_id)
+    oferta = get_oferta_contract_or_404(oferta_id)
     # Parametri filtrare / paginare
     today = date.today()
     an = request.args.get('an', type=int) or today.year
@@ -897,10 +1066,17 @@ def oferta_cantitati(oferta_id):
         for entry in bulk:
             pid = entry['pozitie_boq_id']
             # Validez ca pozitia apartine ofertei (evit injectii)
-            pz = PozitieBoQ.query.filter_by(id=pid, oferta_id=oferta.id).first()
-            if pz is None:
-                continue
-            existing = CantitateExecutataLunara.query.filter_by(
+            if get_tenant_mode() == MODE_OFF:
+                pz = query_for_tenant(PozitieBoQ).filter_by(
+                    id=pid, oferta_id=oferta.id
+                ).first()
+                if pz is None:
+                    continue
+            else:
+                pz = get_pozitie_boq_or_404(pid)
+                if pz.oferta_id != oferta.id:
+                    abort(404)
+            existing = query_for_tenant(CantitateExecutataLunara).filter_by(
                 pozitie_boq_id=pid, an=an, luna=luna
             ).first()
             cant_valoare = entry['cantitate_executata']
@@ -908,6 +1084,7 @@ def oferta_cantitati(oferta_id):
             val_calc = cant_valoare * pret
             if existing is None:
                 c = CantitateExecutataLunara(
+                    tenant_id=oferta.tenant_id,
                     pozitie_boq_id=pid, proiect_id=pz.proiect_id,
                     an=an, luna=luna,
                     cantitate_executata=cant_valoare,
@@ -949,7 +1126,7 @@ def oferta_cantitati(oferta_id):
         ))
 
     # GET - construiesc query
-    query = PozitieBoQ.query.filter_by(oferta_id=oferta.id)
+    query = query_for_tenant(PozitieBoQ).filter_by(oferta_id=oferta.id)
     if capitol:
         query = query.filter(PozitieBoQ.cod_capitol == capitol)
     if categorie:
@@ -968,7 +1145,7 @@ def oferta_cantitati(oferta_id):
     # Cantitati deja inregistrate pentru luna (mapate pe pozitie_boq_id)
     cantitati_existente = {}
     if pozitii:
-        for c in CantitateExecutataLunara.query.filter(
+        for c in query_for_tenant(CantitateExecutataLunara).filter(
             CantitateExecutataLunara.pozitie_boq_id.in_([p.id for p in pozitii]),
             CantitateExecutataLunara.an == an,
             CantitateExecutataLunara.luna == luna,
@@ -977,7 +1154,7 @@ def oferta_cantitati(oferta_id):
 
     # Capitole + categorii distincte pentru filtre dropdown
     capitole_distincte = [
-        c[0] for c in db.session.query(PozitieBoQ.cod_capitol).filter(
+        c[0] for c in query_for_tenant(PozitieBoQ).with_entities(PozitieBoQ.cod_capitol).filter(
             PozitieBoQ.oferta_id == oferta.id,
             PozitieBoQ.cod_capitol.isnot(None),
         ).distinct().order_by(PozitieBoQ.cod_capitol).all()
@@ -1003,7 +1180,7 @@ def cantitate_valideaza(cantitate_id):
     if current_user.rol not in ('admin', 'manager'):
         flash('Doar managerii pot valida cantitati.', 'danger')
         return redirect(request.referrer or url_for('contracte.lista'))
-    c = CantitateExecutataLunara.query.get_or_404(cantitate_id)
+    c = get_cantitate_executata_lunara_or_404(cantitate_id)
     if c.validat:
         flash('Cantitate deja validata.', 'info')
         return redirect(request.referrer or url_for('contracte.lista'))
@@ -1023,7 +1200,7 @@ def cantitate_valideaza(cantitate_id):
 @login_required
 def cantitate_sterge(cantitate_id):
     """Sterge o cantitate (doar daca nu e legata de o situatie emisa)."""
-    c = CantitateExecutataLunara.query.get_or_404(cantitate_id)
+    c = get_cantitate_executata_lunara_or_404(cantitate_id)
     pid = c.pozitie_boq_id
     try:
         audit_svc.log_delete('cantitate_executata_lunara', c.id, old_values={
@@ -1047,8 +1224,8 @@ def cantitate_sterge(cantitate_id):
 @login_required
 def situatii_lista(contract_id):
     """Lista situatii lunare pentru un contract."""
-    contract = Contract.query.get_or_404(contract_id)
-    situatii = SituatieLunara.query.filter_by(
+    contract = get_contract_or_404(contract_id)
+    situatii = query_for_tenant(SituatieLunara).filter_by(
         contract_id=contract.id
     ).order_by(SituatieLunara.an.desc(), SituatieLunara.luna.desc()).all()
     return render_template('contracte/situatii_lista.html',
@@ -1060,7 +1237,7 @@ def situatii_lista(contract_id):
 @login_required
 def situatie_nou(contract_id):
     """Genereaza o situatie lunara noua din cantitati validate."""
-    contract = Contract.query.get_or_404(contract_id)
+    contract = get_contract_or_404(contract_id)
     form = SituatieLunaraForm()
     if request.method == 'GET':
         # Preset luna/an din URL daca prezent
@@ -1079,11 +1256,13 @@ def situatie_nou(contract_id):
         an = form.an.data
         luna = form.luna.data
         # Verifica daca exista deja o situatie pentru (proiect, an, luna)
-        existing = SituatieLunara.query.filter_by(
+        existing = query_for_tenant(SituatieLunara).filter_by(
             proiect_id=contract.proiect_id, an=an, luna=luna,
         ).first()
         try:
             situatie = genereaza_situatie(contract.id, an, luna, current_user.id)
+            if get_tenant_mode() != MODE_OFF:
+                situatie.tenant_id = _tenant_id_din_contract(contract)
             # Aplic numar + status (override din form)
             if form.numar_situatie.data:
                 situatie.numar_situatie = form.numar_situatie.data.strip()
@@ -1120,7 +1299,7 @@ def situatie_nou(contract_id):
 def situatie_detalii(situatie_id):
     """Detalii situatie cu tabel pozitii, totaluri, butoane export + status."""
     from services.situatii import _get_situatie_data
-    situatie = SituatieLunara.query.get_or_404(situatie_id)
+    situatie = get_situatie_lunara_or_404(situatie_id)
     data = _get_situatie_data(situatie)
     # Status transitions valide (workflow simplu)
     transitions = {
@@ -1141,7 +1320,7 @@ def situatie_detalii(situatie_id):
 @login_required
 def situatie_schimba_status(situatie_id):
     """Schimba statusul unei situatii (workflow draft->emisa->aprobata->platita)."""
-    situatie = SituatieLunara.query.get_or_404(situatie_id)
+    situatie = get_situatie_lunara_or_404(situatie_id)
     nou_status = (request.form.get('nou_status') or '').strip()
     valid_statuses = {s[0] for s in SituatieLunara.STATUSES}
     if nou_status not in valid_statuses:
@@ -1165,8 +1344,9 @@ def situatie_schimba_status(situatie_id):
 def situatie_export_xlsx(situatie_id):
     """Export Excel pentru situatie lunara."""
     from flask import send_file
+    situatie = get_situatie_lunara_or_404(situatie_id)
     try:
-        path = export_situatie_xlsx(situatie_id)
+        path = export_situatie_xlsx(situatie.id)
     except Exception as e:
         flash(f'Eroare export Excel: {e}', 'danger')
         return redirect(url_for('contracte.situatie_detalii', situatie_id=situatie_id))
@@ -1180,8 +1360,9 @@ def situatie_export_xlsx(situatie_id):
 def situatie_export_pdf(situatie_id):
     """Export PDF pentru situatie lunara."""
     from flask import send_file
+    situatie = get_situatie_lunara_or_404(situatie_id)
     try:
-        path = export_situatie_pdf(situatie_id)
+        path = export_situatie_pdf(situatie.id)
     except Exception as e:
         flash(f'Eroare export PDF: {e}', 'danger')
         return redirect(url_for('contracte.situatie_detalii', situatie_id=situatie_id))
@@ -1198,8 +1379,8 @@ def situatie_export_pdf(situatie_id):
 @login_required
 def rapoarte_lucrari_lista(proiect_id):
     """Lista rapoarte lunare pentru un proiect."""
-    proiect = Proiect.query.get_or_404(proiect_id)
-    rapoarte = RaportLucrariProiect.query.filter_by(
+    proiect = get_project_or_404(proiect_id)
+    rapoarte = query_for_tenant(RaportLucrariProiect).filter_by(
         proiect_id=proiect_id
     ).order_by(RaportLucrariProiect.an.desc(),
                RaportLucrariProiect.luna.desc()).all()
@@ -1213,7 +1394,7 @@ def rapoarte_lucrari_lista(proiect_id):
 @login_required
 def raport_lucrari_genereaza(proiect_id):
     """Genereaza un raport lunar agregator (Pontaj + Activitati + Taskuri)."""
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     form = RaportLucrariForm()
     if request.method == 'GET':
         form.an.data = date.today().year
@@ -1224,6 +1405,8 @@ def raport_lucrari_genereaza(proiect_id):
             raport = genereaza_raport_lucrari(
                 proiect_id, form.an.data, form.luna.data, current_user.id
             )
+            if get_tenant_mode() != MODE_OFF:
+                raport.tenant_id = proiect.tenant_id
             # Permit override descriere manual
             if form.progres_descriere.data:
                 manual = form.progres_descriere.data.strip()
@@ -1257,12 +1440,12 @@ def raport_lucrari_genereaza(proiect_id):
 @login_required
 def raport_lucrari_detalii(raport_id):
     """Detalii raport lunar."""
-    raport = RaportLucrariProiect.query.get_or_404(raport_id)
+    raport = get_raport_lucrari_proiect_or_404(raport_id)
     # Imbogatesc cu numele taskurilor (cautam in TaskProgram)
     taskuri_acoperite_details = []
     if raport.taskuri_acoperite:
         for cod in raport.taskuri_acoperite:
-            t = TaskProgram.query.filter(
+            t = query_for_tenant(TaskProgram).filter(
                 TaskProgram.proiect_id == raport.proiect_id,
                 TaskProgram.cod_extern == cod,
             ).first()
@@ -1293,8 +1476,9 @@ def corespondenta_lista():
     cautare = (request.args.get('cautare') or '').strip()
     page = request.args.get('page', 1, type=int)
 
-    query = Corespondenta.query
+    query = query_for_tenant(Corespondenta)
     if proiect_filtru:
+        get_project_or_404(proiect_filtru)
         query = query.filter_by(proiect_id=proiect_filtru)
     if tip_filtru:
         query = query.filter_by(tip=tip_filtru)
@@ -1314,7 +1498,7 @@ def corespondenta_lista():
     pagination = query.order_by(Corespondenta.data_inregistrare.desc()) \
         .paginate(page=page, per_page=30, error_out=False)
 
-    proiecte_pentru_filtru = Proiect.query.order_by(Proiect.cod_proiect).all()
+    proiecte_pentru_filtru = _proiecte_vizibile()
     return render_template(
         'contracte/corespondenta_lista.html',
         corespondente=pagination.items, pagination=pagination,
@@ -1330,17 +1514,22 @@ def corespondenta_lista():
 @contracte_bp.route('/corespondenta/nou', methods=['GET', 'POST'])
 @login_required
 def corespondenta_nou():
+    tenant_id_for_new_record_or_403()
     form = CorespondentaForm()
+    _populeaza_corespondenta_form_scoped(form)
     preset_proiect = request.args.get('proiect_id', type=int)
     preset_contract = request.args.get('contract_id', type=int)
     if request.method == 'GET':
         if preset_proiect:
+            get_project_or_404(preset_proiect)
             form.proiect_id.data = preset_proiect
             form.populeaza_raspuns_la(preset_proiect)
         if preset_contract:
+            get_contract_or_404(preset_contract)
             form.contract_id.data = preset_contract
 
     if request.method == 'POST' and form.proiect_id.data:
+        get_project_or_404(form.proiect_id.data)
         form.populeaza_raspuns_la(form.proiect_id.data)
 
     if form.validate_on_submit():
@@ -1348,10 +1537,18 @@ def corespondenta_nou():
             contract_id = form.contract_id.data or None
             if contract_id == 0:
                 contract_id = None
+            require_contract_inputs_same_tenant(
+                proiect_id=form.proiect_id.data,
+                contract_id=contract_id,
+            )
             raspuns_la_id = form.raspuns_la_id.data or None
             if raspuns_la_id == 0:
                 raspuns_la_id = None
+            tenant_id_corespondenta = _tenant_id_din_proiect(form.proiect_id.data)
+            if contract_id:
+                tenant_id_corespondenta = _tenant_id_din_contract(get_contract_or_404(contract_id))
             c = Corespondenta(
+                tenant_id=tenant_id_corespondenta,
                 proiect_id=form.proiect_id.data,
                 contract_id=contract_id,
                 numar_inregistrare=form.numar_inregistrare.data.strip(),
@@ -1396,11 +1593,11 @@ def corespondenta_nou():
 @contracte_bp.route('/corespondenta/<int:id>')
 @login_required
 def corespondenta_detalii(id):
-    c = Corespondenta.query.get_or_404(id)
-    raspunsuri = Corespondenta.query.filter_by(raspuns_la_id=c.id).order_by(
+    c = get_corespondenta_or_404(id)
+    raspunsuri = query_for_tenant(Corespondenta).filter_by(raspuns_la_id=c.id).order_by(
         Corespondenta.data_inregistrare
     ).all()
-    termen_asociat = TermenUrmarit.query.filter_by(
+    termen_asociat = query_for_tenant(TermenUrmarit).filter_by(
         entitate_sursa='corespondenta', id_entitate_sursa=c.id
     ).first()
     return render_template('contracte/corespondenta_detalii.html',
@@ -1411,8 +1608,9 @@ def corespondenta_detalii(id):
 @contracte_bp.route('/corespondenta/<int:id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def corespondenta_editeaza(id):
-    c = Corespondenta.query.get_or_404(id)
+    c = get_corespondenta_or_404(id)
     form = CorespondentaForm(obj=c)
+    _populeaza_corespondenta_form_scoped(form)
     form.populeaza_raspuns_la(c.proiect_id)
     if request.method == 'GET':
         form.corespondenta_id.data = c.id
@@ -1429,11 +1627,19 @@ def corespondenta_editeaza(id):
             contract_id = form.contract_id.data or None
             if contract_id == 0:
                 contract_id = None
+            require_contract_inputs_same_tenant(
+                proiect_id=form.proiect_id.data,
+                contract_id=contract_id,
+            )
             raspuns_la_id = form.raspuns_la_id.data or None
             if raspuns_la_id == 0:
                 raspuns_la_id = None
             c.proiect_id = form.proiect_id.data
             c.contract_id = contract_id
+            if contract_id:
+                c.tenant_id = _tenant_id_din_contract(get_contract_or_404(contract_id))
+            elif get_tenant_mode() != MODE_OFF:
+                c.tenant_id = _tenant_id_din_proiect(form.proiect_id.data)
             c.numar_inregistrare = form.numar_inregistrare.data.strip()
             c.data_inregistrare = form.data_inregistrare.data
             c.tip = form.tip.data
@@ -1466,7 +1672,7 @@ def corespondenta_editeaza(id):
 @contracte_bp.route('/corespondenta/<int:id>/sterge', methods=['POST'])
 @login_required
 def corespondenta_sterge(id):
-    c = Corespondenta.query.get_or_404(id)
+    c = get_corespondenta_or_404(id)
     proiect_id = c.proiect_id
     try:
         audit_svc.log_delete('corespondenta', c.id, old_values={
@@ -1496,8 +1702,9 @@ def revendicari_lista():
     tip_filtru = (request.args.get('tip') or '').strip()
     cautare = (request.args.get('cautare') or '').strip()
 
-    query = Revendicare.query
+    query = query_for_tenant(Revendicare)
     if proiect_filtru:
+        get_project_or_404(proiect_filtru)
         query = query.filter_by(proiect_id=proiect_filtru)
     if status_filtru:
         query = query.filter_by(status=status_filtru)
@@ -1515,7 +1722,7 @@ def revendicari_lista():
     # Numara conflicte per revendicare (read-only, cache per request)
     conflicte_count = {r.id: numara_conflicte(r.id) for r in revendicari}
 
-    proiecte_pentru_filtru = Proiect.query.order_by(Proiect.cod_proiect).all()
+    proiecte_pentru_filtru = _proiecte_vizibile()
     return render_template(
         'contracte/revendicari_lista.html',
         revendicari=revendicari, conflicte_count=conflicte_count,
@@ -1529,12 +1736,14 @@ def revendicari_lista():
 @contracte_bp.route('/revendicare/nou', methods=['GET', 'POST'])
 @login_required
 def revendicare_nou():
+    tenant_id_for_new_record_or_403()
     form = RevendicareForm()
+    _populeaza_revendicare_form_scoped(form)
     preset_contract = request.args.get('contract_id', type=int)
     preset_corespondenta = request.args.get('corespondenta_id', type=int)
     if request.method == 'GET':
         if preset_contract:
-            contract = Contract.query.get(preset_contract)
+            contract = get_contract_or_404(preset_contract)
             if contract:
                 form.contract_id.data = contract.id
                 form.proiect_id.data = contract.proiect_id
@@ -1543,6 +1752,7 @@ def revendicare_nou():
             form.corespondenta_initiatoare_id.data = preset_corespondenta
 
     if request.method == 'POST' and form.proiect_id.data:
+        get_project_or_404(form.proiect_id.data)
         form.populeaza_corespondenta(form.proiect_id.data)
 
     if form.validate_on_submit():
@@ -1550,7 +1760,13 @@ def revendicare_nou():
             coresp_id = form.corespondenta_initiatoare_id.data or None
             if coresp_id == 0:
                 coresp_id = None
+            require_contract_inputs_same_tenant(
+                proiect_id=form.proiect_id.data,
+                contract_id=form.contract_id.data,
+            )
+            contract = get_contract_or_404(form.contract_id.data)
             r = Revendicare(
+                tenant_id=_tenant_id_din_contract(contract),
                 proiect_id=form.proiect_id.data,
                 contract_id=form.contract_id.data,
                 numar_revendicare=form.numar_revendicare.data.strip(),
@@ -1586,13 +1802,13 @@ def revendicare_nou():
 @contracte_bp.route('/revendicare/<int:id>')
 @login_required
 def revendicare_detalii(id):
-    r = Revendicare.query.get_or_404(id)
+    r = get_revendicare_or_404(id)
     # Conflicte detection (live)
     conflicte = detecta_conflicte(r.id)
     # Legaturi M:N
-    legaturi_termeni = RevendicareTermen.query.filter_by(revendicare_id=r.id).all()
-    legaturi_taskuri = RevendicareTask.query.filter_by(revendicare_id=r.id).all()
-    legaturi_cantitati = RevendicareCantitate.query.filter_by(revendicare_id=r.id).all()
+    legaturi_termeni = query_for_tenant(RevendicareTermen).filter_by(revendicare_id=r.id).all()
+    legaturi_taskuri = query_for_tenant(RevendicareTask).filter_by(revendicare_id=r.id).all()
+    legaturi_cantitati = query_for_tenant(RevendicareCantitate).filter_by(revendicare_id=r.id).all()
     return render_template(
         'contracte/revendicare_detalii.html',
         revendicare=r, conflicte=conflicte,
@@ -1605,8 +1821,9 @@ def revendicare_detalii(id):
 @contracte_bp.route('/revendicare/<int:id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def revendicare_editeaza(id):
-    r = Revendicare.query.get_or_404(id)
+    r = get_revendicare_or_404(id)
     form = RevendicareForm(obj=r)
+    _populeaza_revendicare_form_scoped(form)
     form.populeaza_corespondenta(r.proiect_id)
     if request.method == 'GET':
         form.revendicare_id.data = r.id
@@ -1621,8 +1838,15 @@ def revendicare_editeaza(id):
             coresp_id = form.corespondenta_initiatoare_id.data or None
             if coresp_id == 0:
                 coresp_id = None
+            require_contract_inputs_same_tenant(
+                proiect_id=form.proiect_id.data,
+                contract_id=form.contract_id.data,
+            )
+            contract = get_contract_or_404(form.contract_id.data)
             r.proiect_id = form.proiect_id.data
             r.contract_id = form.contract_id.data
+            if get_tenant_mode() != MODE_OFF:
+                r.tenant_id = _tenant_id_din_contract(contract)
             r.numar_revendicare = form.numar_revendicare.data.strip()
             r.data_emitere = form.data_emitere.data
             r.tip = form.tip.data
@@ -1649,15 +1873,15 @@ def revendicare_editeaza(id):
 @contracte_bp.route('/revendicare/<int:id>/sterge', methods=['POST'])
 @login_required
 def revendicare_sterge(id):
-    r = Revendicare.query.get_or_404(id)
+    r = get_revendicare_or_404(id)
     try:
         audit_svc.log_delete('revendicare', r.id, old_values={
             'numar_revendicare': r.numar_revendicare, 'tip': r.tip,
         })
         # Sterge legaturile M:N explicit
-        RevendicareTermen.query.filter_by(revendicare_id=r.id).delete()
-        RevendicareTask.query.filter_by(revendicare_id=r.id).delete()
-        RevendicareCantitate.query.filter_by(revendicare_id=r.id).delete()
+        query_for_tenant(RevendicareTermen).filter_by(revendicare_id=r.id).delete()
+        query_for_tenant(RevendicareTask).filter_by(revendicare_id=r.id).delete()
+        query_for_tenant(RevendicareCantitate).filter_by(revendicare_id=r.id).delete()
         db.session.delete(r)
         db.session.commit()
         flash('Revendicare stearsa.', 'info')
@@ -1674,12 +1898,14 @@ def revendicare_sterge(id):
 @contracte_bp.route('/revendicare/<int:id>/link/termen', methods=['GET', 'POST'])
 @login_required
 def revendicare_link_termen(id):
-    r = Revendicare.query.get_or_404(id)
+    r = get_revendicare_or_404(id)
     form = LinkRevendicareTermenForm()
     form.populeaza_termene(r.contract_id)
+    if request.method == 'POST':
+        get_termen_contract_or_404(request.form.get('termen_contract_id'))
     if form.validate_on_submit():
         # Verific unicitate
-        existing = RevendicareTermen.query.filter_by(
+        existing = query_for_tenant(RevendicareTermen).filter_by(
             revendicare_id=r.id, termen_contract_id=form.termen_contract_id.data,
         ).first()
         if existing:
@@ -1687,6 +1913,7 @@ def revendicare_link_termen(id):
         else:
             try:
                 link = RevendicareTermen(
+                    tenant_id=r.tenant_id,
                     revendicare_id=r.id,
                     termen_contract_id=form.termen_contract_id.data,
                     tip_legatura=form.tip_legatura.data,
@@ -1706,11 +1933,13 @@ def revendicare_link_termen(id):
 @contracte_bp.route('/revendicare/<int:id>/link/task', methods=['GET', 'POST'])
 @login_required
 def revendicare_link_task(id):
-    r = Revendicare.query.get_or_404(id)
+    r = get_revendicare_or_404(id)
     form = LinkRevendicareTaskForm()
     form.populeaza_taskuri(r.proiect_id)
+    if request.method == 'POST':
+        get_task_program_or_404(request.form.get('task_program_id'))
     if form.validate_on_submit():
-        existing = RevendicareTask.query.filter_by(
+        existing = query_for_tenant(RevendicareTask).filter_by(
             revendicare_id=r.id, task_program_id=form.task_program_id.data,
         ).first()
         if existing:
@@ -1718,6 +1947,7 @@ def revendicare_link_task(id):
         else:
             try:
                 link = RevendicareTask(
+                    tenant_id=r.tenant_id,
                     revendicare_id=r.id,
                     task_program_id=form.task_program_id.data,
                     tip_legatura=form.tip_legatura.data,
@@ -1737,11 +1967,13 @@ def revendicare_link_task(id):
 @contracte_bp.route('/revendicare/<int:id>/link/cantitate', methods=['GET', 'POST'])
 @login_required
 def revendicare_link_cantitate(id):
-    r = Revendicare.query.get_or_404(id)
+    r = get_revendicare_or_404(id)
     form = LinkRevendicareCantitateForm()
     form.populeaza_cantitati(r.proiect_id)
+    if request.method == 'POST':
+        get_cantitate_executata_lunara_or_404(request.form.get('cantitate_lunara_id'))
     if form.validate_on_submit():
-        existing = RevendicareCantitate.query.filter_by(
+        existing = query_for_tenant(RevendicareCantitate).filter_by(
             revendicare_id=r.id, cantitate_lunara_id=form.cantitate_lunara_id.data,
         ).first()
         if existing:
@@ -1749,6 +1981,7 @@ def revendicare_link_cantitate(id):
         else:
             try:
                 link = RevendicareCantitate(
+                    tenant_id=r.tenant_id,
                     revendicare_id=r.id,
                     cantitate_lunara_id=form.cantitate_lunara_id.data,
                     observatii=form.observatii.data or None,
@@ -1769,16 +2002,17 @@ def revendicare_link_cantitate(id):
 @login_required
 def revendicare_link_sterge(rev_id, tip, link_id):
     """Sterge o legatura M:N (tip = termen|task|cantitate)."""
-    model_map = {
-        'termen': RevendicareTermen,
-        'task': RevendicareTask,
-        'cantitate': RevendicareCantitate,
+    get_revendicare_or_404(rev_id)
+    helper_map = {
+        'termen': get_revendicare_termen_or_404,
+        'task': get_revendicare_task_or_404,
+        'cantitate': get_revendicare_cantitate_or_404,
     }
-    model = model_map.get(tip)
-    if not model:
+    get_link = helper_map.get(tip)
+    if not get_link:
         flash(f'Tip legatura necunoscut: {tip}', 'danger')
         return redirect(url_for('contracte.revendicare_detalii', id=rev_id))
-    link = model.query.get_or_404(link_id)
+    link = get_link(link_id)
     if link.revendicare_id != rev_id:
         abort(404)
     try:
@@ -1844,8 +2078,9 @@ def notificari_count():
 def pv_export_docx(id):
     """Export DOCX pentru un ProcesVerbal."""
     from flask import send_file
+    pv = get_proces_verbal_or_404(id)
     try:
-        path = genereaza_pv_docx(id)
+        path = genereaza_pv_docx(pv.id)
     except Exception as e:
         flash(f'Eroare generare DOCX: {e}', 'danger')
         return redirect(url_for('contracte.pv_lista'))
@@ -1861,8 +2096,9 @@ def pv_export_docx(id):
 def pv_export_pdf(id):
     """Export PDF pentru un ProcesVerbal."""
     from flask import send_file
+    pv = get_proces_verbal_or_404(id)
     try:
-        path = genereaza_pv_pdf(id)
+        path = genereaza_pv_pdf(pv.id)
     except Exception as e:
         flash(f'Eroare generare PDF: {e}', 'danger')
         return redirect(url_for('contracte.pv_lista'))
@@ -1879,8 +2115,8 @@ def pv_export_pdf(id):
 @login_required
 def reguli_notificare_lista(proiect_id):
     """Lista reguli notificare configurate pentru un proiect."""
-    proiect = Proiect.query.get_or_404(proiect_id)
-    reguli = ReguliNotificareProiect.query.filter_by(
+    proiect = get_project_or_404(proiect_id)
+    reguli = query_for_tenant(ReguliNotificareProiect).filter_by(
         proiect_id=proiect_id
     ).order_by(ReguliNotificareProiect.tip_eveniment).all()
     return render_template('contracte/reguli_notificare_lista.html',
@@ -1891,11 +2127,11 @@ def reguli_notificare_lista(proiect_id):
                     methods=['GET', 'POST'])
 @login_required
 def regula_notificare_nou(proiect_id):
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     form = ReguliNotificareForm()
     if form.validate_on_submit():
         # Verific unicitate (proiect_id, tip_eveniment)
-        existing = ReguliNotificareProiect.query.filter_by(
+        existing = query_for_tenant(ReguliNotificareProiect).filter_by(
             proiect_id=proiect_id, tip_eveniment=form.tip_eveniment.data
         ).first()
         if existing:
@@ -1905,6 +2141,7 @@ def regula_notificare_nou(proiect_id):
                                      id=existing.id))
         try:
             r = ReguliNotificareProiect(
+                tenant_id=proiect.tenant_id if get_tenant_mode() != MODE_OFF else None,
                 proiect_id=proiect_id,
                 tip_eveniment=form.tip_eveniment.data,
                 zile_anticipare=form.zile_anticipare.data,
@@ -1937,7 +2174,7 @@ def regula_notificare_nou(proiect_id):
                     methods=['GET', 'POST'])
 @login_required
 def regula_notificare_editeaza(id):
-    r = ReguliNotificareProiect.query.get_or_404(id)
+    r = get_regula_notificare_or_404(id)
     form = ReguliNotificareForm(obj=r)
     if request.method == 'GET':
         form.regula_id.data = r.id
@@ -1971,7 +2208,7 @@ def regula_notificare_editeaza(id):
 @contracte_bp.route('/regula-notificare/<int:id>/sterge', methods=['POST'])
 @login_required
 def regula_notificare_sterge(id):
-    r = ReguliNotificareProiect.query.get_or_404(id)
+    r = get_regula_notificare_or_404(id)
     proiect_id = r.proiect_id
     try:
         audit_svc.log_delete('reguli_notificare_proiect', r.id, old_values={
@@ -1995,7 +2232,7 @@ def regula_notificare_sterge(id):
 @login_required
 def oferta_pricing_preview(oferta_id):
     """JSON dry-run clasificare (distributie categorii + Diverse) - fara persist."""
-    oferta = OfertaContract.query.get_or_404(oferta_id)
+    oferta = get_oferta_contract_or_404(oferta_id)
     rez = deviz_pricing.dry_run_clasificare(oferta)
     return jsonify(rez)
 
@@ -2007,11 +2244,10 @@ def oferta_pricing(oferta_id):
     Wizard auto-pricing: clasifica pozitiile + distribuie un total global
     fara TVA, ponderat (cantitate x tarif x factor). Σ pozitii == total.
     """
-    oferta = OfertaContract.query.get_or_404(oferta_id)
+    oferta = get_oferta_contract_or_404(oferta_id)
     contract = oferta.contract
     # Asigur tarife default seed-uite
-    if TarifCategorie.query.filter_by(proiect_id=None).count() == 0:
-        deviz_pricing.seed_tarife_default()
+    _asigura_tarife_default_vizibile()
 
     if request.method == 'POST':
         try:
@@ -2022,7 +2258,7 @@ def oferta_pricing(oferta_id):
                 flash('Totalul global trebuie sa fie pozitiv.', 'danger')
                 return redirect(url_for('contracte.oferta_pricing', oferta_id=oferta.id))
 
-            tarife = deviz_pricing.get_tarife_efective(oferta.proiect_id)
+            tarife = _tarife_efective_scoped(oferta.proiect_id)
             stats = deviz_pricing.aplica_pricing(
                 oferta, total_global, tarife=tarife,
                 procent_material=procent_material, seed=seed,
@@ -2045,7 +2281,7 @@ def oferta_pricing(oferta_id):
 
     # GET: dry-run + total sugerat
     dry = deviz_pricing.dry_run_clasificare(oferta)
-    tarife = deviz_pricing.get_tarife_efective(oferta.proiect_id)
+    tarife = _tarife_efective_scoped(oferta.proiect_id)
     total_sug = deviz_pricing.total_sugerat(oferta, tarife)
     return render_template(
         'contracte/oferta_pricing.html',
@@ -2058,11 +2294,10 @@ def oferta_pricing(oferta_id):
 @login_required
 def tarife_lista(proiect_id):
     """Matrice editabila tarife per disciplina (global default + override proiect)."""
-    proiect = Proiect.query.get_or_404(proiect_id)
-    if TarifCategorie.query.filter_by(proiect_id=None).count() == 0:
-        deviz_pricing.seed_tarife_default()
+    proiect = get_project_or_404(proiect_id)
+    _asigura_tarife_default_vizibile()
     # Tarife efective: global default + override proiect, grupate pe disciplina
-    tarife = TarifCategorie.query.filter(
+    tarife = query_tarife_categorie_for_tenant(include_global_defaults=True).filter(
         db.or_(TarifCategorie.proiect_id.is_(None),
                TarifCategorie.proiect_id == proiect_id)
     ).order_by(TarifCategorie.disciplina, TarifCategorie.categorie_lucrare).all()
@@ -2095,8 +2330,9 @@ def tarife_lista(proiect_id):
 @login_required
 def tarife_salveaza(proiect_id):
     """Bulk save tarife override per proiect (chei: tarif_<disc>__<cat>)."""
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     count = 0
+    tenant_tarif = None if get_tenant_mode() == MODE_OFF else proiect.tenant_id
     for key, raw in request.form.items():
         if not key.startswith('tarif_'):
             continue
@@ -2111,15 +2347,20 @@ def tarife_salveaza(proiect_id):
         if val < 0:
             continue
         # Upsert override pe proiect
-        t = TarifCategorie.query.filter_by(
+        t = query_tarife_categorie_for_tenant(
+            include_global_defaults=True
+        ).filter_by(
             proiect_id=proiect_id, disciplina=disc, categorie_lucrare=cat
         ).first()
         if t is None:
-            t = TarifCategorie(proiect_id=proiect_id, disciplina=disc,
+            t = TarifCategorie(tenant_id=tenant_tarif,
+                               proiect_id=proiect_id, disciplina=disc,
                                categorie_lucrare=cat, tarif_baza=val,
                                creat_de_id=current_user.id)
             db.session.add(t)
         else:
+            if get_tenant_mode() != MODE_OFF:
+                t.tenant_id = tenant_tarif
             t.tarif_baza = val
         count += 1
     db.session.commit()
@@ -2135,7 +2376,7 @@ def tarife_salveaza(proiect_id):
 @login_required
 def clasifica_oferte_proiect(proiect_id):
     """Clasifica toate ofertele proiectului (bulk). Protejeaza editarile manuale."""
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     # doar_neclasificate din form (default True - nu suprascrie manualul)
     forteaza = request.form.get('forteaza') == '1'
     try:
@@ -2161,16 +2402,23 @@ def clasifica_oferte_proiect(proiect_id):
 @login_required
 def clasificare_manuala(oferta_id):
     """Matrice editabila categorie_lucrare per pozitie (override manual)."""
-    oferta = OfertaContract.query.get_or_404(oferta_id)
+    oferta = get_oferta_contract_or_404(oferta_id)
     doar_diverse = request.args.get('doar_diverse') == '1'
 
     if request.method == 'POST':
         categorii = parse_bulk_categorii(request.form)
         modificate = 0
         for pid, cat in categorii.items():
-            pz = PozitieBoQ.query.filter_by(id=pid, oferta_id=oferta.id).first()
-            if pz is None:
-                continue
+            if get_tenant_mode() == MODE_OFF:
+                pz = query_for_tenant(PozitieBoQ).filter_by(
+                    id=pid, oferta_id=oferta.id
+                ).first()
+                if pz is None:
+                    continue
+            else:
+                pz = get_pozitie_boq_or_404(pid)
+                if pz.oferta_id != oferta.id:
+                    abort(404)
             if (pz.categorie_lucrare or '') != cat:
                 pz.categorie_lucrare = cat
                 modificate += 1
@@ -2180,7 +2428,7 @@ def clasificare_manuala(oferta_id):
         return redirect(url_for('contracte.clasificare_manuala',
                                 oferta_id=oferta.id, doar_diverse=request.args.get('doar_diverse', '')))
 
-    query = PozitieBoQ.query.filter_by(oferta_id=oferta.id)
+    query = query_for_tenant(PozitieBoQ).filter_by(oferta_id=oferta.id)
     if doar_diverse:
         query = query.filter(
             db.or_(
@@ -2201,7 +2449,7 @@ def clasificare_manuala(oferta_id):
 @login_required
 def centralizator_proiect(proiect_id):
     """Centralizator: agregare toate ofertele pe disciplina -> categorie."""
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     data = centralizator.genereaza_centralizator(proiect.id)
     dry = centralizator.dry_run_proiect(proiect.id)
     return render_template(
@@ -2214,8 +2462,9 @@ def centralizator_proiect(proiect_id):
 @login_required
 def centralizator_export(proiect_id):
     from flask import send_file
+    proiect = get_project_or_404(proiect_id)
     try:
-        path = centralizator.export_centralizator_xlsx(proiect_id)
+        path = centralizator.export_centralizator_xlsx(proiect.id)
     except Exception as e:
         flash(f'Eroare export: {e}', 'danger')
         return redirect(url_for('contracte.centralizator_proiect', proiect_id=proiect_id))
@@ -2227,7 +2476,7 @@ def centralizator_export(proiect_id):
 @login_required
 def deviz_general_proiect(proiect_id):
     """Deviz General: consolidare pe capitole HG907/2016 + TVA."""
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     cota = request.args.get('cota_tva', type=float) or 21
     data = centralizator.genereaza_deviz_general(proiect.id, cota_tva=cota)
     return render_template(
@@ -2240,9 +2489,10 @@ def deviz_general_proiect(proiect_id):
 @login_required
 def deviz_general_export(proiect_id):
     from flask import send_file
+    proiect = get_project_or_404(proiect_id)
     cota = request.args.get('cota_tva', type=float) or 21
     try:
-        path = centralizator.export_deviz_general_xlsx(proiect_id, cota_tva=cota)
+        path = centralizator.export_deviz_general_xlsx(proiect.id, cota_tva=cota)
     except Exception as e:
         flash(f'Eroare export: {e}', 'danger')
         return redirect(url_for('contracte.deviz_general_proiect', proiect_id=proiect_id))

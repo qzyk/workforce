@@ -460,6 +460,216 @@ def require_timesheet_inputs_same_tenant(proiect_id=None, angajat_id=None, tenan
         abort(404)
 
 
+def query_contracts_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru Contract."""
+    from models import Contract
+
+    return query_for_tenant(
+        Contract,
+        tenant_id=tenant_id,
+        include_global=include_global,
+    )
+
+
+def get_contract_or_404(contract_id, tenant_id=None):
+    """Returneaza Contract vizibil tenantului curent sau 404."""
+    from models import Contract
+
+    return get_or_404_for_tenant(Contract, contract_id, tenant_id=tenant_id)
+
+
+def ensure_contract_same_tenant(contract, tenant_id=None):
+    """Valideaza ca un Contract apartine tenantului curent."""
+    return ensure_same_tenant(contract, tenant_id=tenant_id)
+
+
+def require_contract_same_tenant(contract, tenant_id=None):
+    """Wrapper pentru rute: ascunde contractele inaccesibile prin 404."""
+    return require_same_tenant(contract, tenant_id=tenant_id)
+
+
+def get_program_referinta_or_404(program_id, tenant_id=None):
+    """Returneaza ProgramReferinta vizibil tenantului curent sau 404."""
+    from models import ProgramReferinta
+
+    return get_or_404_for_tenant(ProgramReferinta, program_id, tenant_id=tenant_id)
+
+
+def get_task_program_or_404(task_id, tenant_id=None):
+    """Returneaza TaskProgram vizibil tenantului curent sau 404."""
+    from models import TaskProgram
+
+    return get_or_404_for_tenant(TaskProgram, task_id, tenant_id=tenant_id)
+
+
+def get_oferta_contract_or_404(oferta_id, tenant_id=None):
+    """Returneaza OfertaContract vizibila tenantului curent sau 404."""
+    from models import OfertaContract
+
+    return get_or_404_for_tenant(OfertaContract, oferta_id, tenant_id=tenant_id)
+
+
+def get_pozitie_boq_or_404(pozitie_id, tenant_id=None):
+    """Returneaza PozitieBoQ vizibila tenantului curent sau 404."""
+    from models import PozitieBoQ
+
+    return get_or_404_for_tenant(PozitieBoQ, pozitie_id, tenant_id=tenant_id)
+
+
+def get_situatie_lunara_or_404(situatie_id, tenant_id=None):
+    """Returneaza SituatieLunara vizibila tenantului curent sau 404."""
+    from models import SituatieLunara
+
+    return get_or_404_for_tenant(SituatieLunara, situatie_id, tenant_id=tenant_id)
+
+
+def get_revendicare_or_404(revendicare_id, tenant_id=None):
+    """Returneaza Revendicare vizibila tenantului curent sau 404."""
+    from models import Revendicare
+
+    return get_or_404_for_tenant(Revendicare, revendicare_id, tenant_id=tenant_id)
+
+
+def get_revendicare_termen_or_404(link_id, tenant_id=None):
+    """Returneaza link RevendicareTermen vizibil tenantului curent sau 404."""
+    from models import RevendicareTermen
+
+    return get_or_404_for_tenant(RevendicareTermen, link_id, tenant_id=tenant_id)
+
+
+def get_revendicare_task_or_404(link_id, tenant_id=None):
+    """Returneaza link RevendicareTask vizibil tenantului curent sau 404."""
+    from models import RevendicareTask
+
+    return get_or_404_for_tenant(RevendicareTask, link_id, tenant_id=tenant_id)
+
+
+def get_revendicare_cantitate_or_404(link_id, tenant_id=None):
+    """Returneaza link RevendicareCantitate vizibil tenantului curent sau 404."""
+    from models import RevendicareCantitate
+
+    return get_or_404_for_tenant(RevendicareCantitate, link_id, tenant_id=tenant_id)
+
+
+def get_termen_contract_or_404(termen_id, tenant_id=None):
+    """Returneaza TermenContract vizibil tenantului curent sau 404."""
+    from models import TermenContract
+
+    return get_or_404_for_tenant(TermenContract, termen_id, tenant_id=tenant_id)
+
+
+def get_cantitate_executata_lunara_or_404(cantitate_id, tenant_id=None):
+    """Returneaza CantitateExecutataLunara vizibila tenantului curent sau 404."""
+    from models import CantitateExecutataLunara
+
+    return get_or_404_for_tenant(
+        CantitateExecutataLunara,
+        cantitate_id,
+        tenant_id=tenant_id,
+    )
+
+
+def get_proces_verbal_or_404(proces_verbal_id, tenant_id=None):
+    """Returneaza ProcesVerbal vizibil tenantului curent sau 404."""
+    from models import ProcesVerbal
+
+    return get_or_404_for_tenant(ProcesVerbal, proces_verbal_id, tenant_id=tenant_id)
+
+
+def get_raport_lucrari_proiect_or_404(raport_id, tenant_id=None):
+    """Returneaza RaportLucrariProiect vizibil tenantului curent sau 404."""
+    from models import RaportLucrariProiect
+
+    return get_or_404_for_tenant(
+        RaportLucrariProiect,
+        raport_id,
+        tenant_id=tenant_id,
+    )
+
+
+def get_corespondenta_or_404(corespondenta_id, tenant_id=None):
+    """Returneaza Corespondenta vizibila tenantului curent sau 404."""
+    from models import Corespondenta
+
+    return get_or_404_for_tenant(Corespondenta, corespondenta_id, tenant_id=tenant_id)
+
+
+def get_regula_notificare_or_404(regula_id, tenant_id=None):
+    """Returneaza ReguliNotificareProiect vizibila tenantului curent sau 404."""
+    from models import ReguliNotificareProiect
+
+    return get_or_404_for_tenant(
+        ReguliNotificareProiect,
+        regula_id,
+        tenant_id=tenant_id,
+    )
+
+
+def query_tarife_categorie_for_tenant(tenant_id=None, include_global_defaults=False):
+    """Query tenant-safe pentru TarifCategorie.
+
+    `include_global_defaults=True` include doar tarifele globale
+    `tenant_id=NULL`, folosite ca seed/catalog default. Override-urile de proiect
+    raman filtrate prin `tenant_id` si prin ruta care valideaza proiectul.
+    """
+    from models import TarifCategorie
+
+    return query_for_tenant(
+        TarifCategorie,
+        tenant_id=tenant_id,
+        include_global=include_global_defaults,
+    )
+
+
+def ensure_contract_inputs_same_tenant(proiect_id=None, contract_id=None, tenant_id=None):
+    """Valideaza proiectul si contractul selectate in fluxurile contractuale."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return True
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return True
+        if mod == MODE_OPTIONAL:
+            return True
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    from models import Contract, Proiect
+
+    proiect_ids = _unique_positive_ints([proiect_id] if proiect_id is not None else [])
+    if proiect_ids:
+        proiect_ok = Proiect.query.filter(
+            Proiect.id == proiect_ids[0],
+            Proiect.tenant_id == tenant_curent,
+        ).first()
+        if proiect_ok is None:
+            raise TenantAccessDenied('Proiectul nu apartine tenantului curent.')
+
+    contract_ids = _unique_positive_ints([contract_id] if contract_id is not None else [])
+    if contract_ids:
+        contract_ok = Contract.query.filter(
+            Contract.id == contract_ids[0],
+            Contract.tenant_id == tenant_curent,
+        ).first()
+        if contract_ok is None:
+            raise TenantAccessDenied('Contractul nu apartine tenantului curent.')
+
+    return True
+
+
+def require_contract_inputs_same_tenant(proiect_id=None, contract_id=None, tenant_id=None):
+    """Wrapper pentru rute create/edit: abort daca inputurile amesteca tenanturi."""
+    try:
+        return ensure_contract_inputs_same_tenant(
+            proiect_id=proiect_id,
+            contract_id=contract_id,
+            tenant_id=tenant_id,
+        )
+    except TenantAccessDenied:
+        abort(404)
+
+
 def _resolve_tenant_id(tenant_id):
     if tenant_id is not None:
         return _coerce_tenant_id(tenant_id)

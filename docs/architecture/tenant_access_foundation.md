@@ -299,11 +299,113 @@ Riscuri ramase dupa T1.4:
 - importurile/rapoartele cross-domain trebuie revizuite din nou cand se extrage `timesheet_service.py`;
 - audit trail pentru aprobarile Pontaj ramane neuniform.
 
-## Urmatoarele integrari recomandate dupa T1.4
+## T1.5 Contract Route Integration
 
-1. `Contract`: acces direct prin `tenant_id` si verificare cu `Proiect`.
+T1.5 protejeaza accesul la rutele principale din domeniul Contract fara migrari si fara extragere de servicii. Ownership-ul canonic foloseste coloanele `tenant_id` deja existente pe modelele contractuale, plus validarea proiectului/contractului parinte inainte de import, export sau mutatie.
+
+Helpers adaugate sau completate:
+
+- `query_contracts_for_tenant()`
+- `get_contract_or_404()`
+- `ensure_contract_same_tenant()` / `require_contract_same_tenant()`
+- `get_program_referinta_or_404()`
+- `get_task_program_or_404()`
+- `get_oferta_contract_or_404()`
+- `get_pozitie_boq_or_404()`
+- `get_situatie_lunara_or_404()`
+- `get_revendicare_or_404()`
+- `get_revendicare_termen_or_404()`
+- `get_revendicare_task_or_404()`
+- `get_revendicare_cantitate_or_404()`
+- `get_termen_contract_or_404()`
+- `get_cantitate_executata_lunara_or_404()`
+- `get_proces_verbal_or_404()`
+- `get_raport_lucrari_proiect_or_404()`
+- `get_corespondenta_or_404()`
+- `get_regula_notificare_or_404()`
+- `query_tarife_categorie_for_tenant()`
+- `ensure_contract_inputs_same_tenant()` / `require_contract_inputs_same_tenant()`
+
+Ownership paths folosite:
+
+| Model | Ownership |
+|---|---|
+| `Contract` | `Contract.tenant_id`, validat cu `Proiect` la create/edit. |
+| `ProgramReferinta` / `TaskProgram` | `tenant_id` direct, derivat din contractul validat la import. |
+| `OfertaContract` / `PozitieBoQ` | `tenant_id` direct, derivat din contractul validat la import. |
+| `CantitateExecutataLunara` | `tenant_id` direct, plus `PozitieBoQ -> OfertaContract` in rutele bulk. |
+| `SituatieLunara` | `tenant_id` direct, validat inainte de detalii/export/status. |
+| `Revendicare` si link-uri M:N | `tenant_id` direct pe revendicare si pe link. Link target-urile se valideaza inainte de creare/stergere. |
+| `ProcesVerbal` | `tenant_id` direct, derivat din proiect/contract la create/edit. |
+| `RaportLucrariProiect` | `tenant_id` direct, proiectul este validat inainte de generare/listare. |
+| `Corespondenta` / `ReguliNotificareProiect` | `tenant_id` direct, proiect/contract validat la create/edit. |
+| `TarifCategorie` | `tenant_id` direct; `proiect_id=NULL` cu `tenant_id=NULL` este catalog global default explicit, iar override-urile de proiect sunt filtrate prin tenant si proiect validat. |
+
+Rute protejate:
+
+- `Contract` lista/detalii/create/edit/delete si dropdown-uri.
+- `TermenContract` create/edit/delete.
+- `ProgramReferinta` import si detalii program/taskuri.
+- `OfertaContract`, `PozitieBoQ`, cantitati lunare si clasificare manuala.
+- `SituatieLunara` lista/create/detalii/status/export XLSX/export PDF.
+- `RaportLucrariProiect` lista/generare/detalii.
+- `Corespondenta` lista/create/edit/delete/detalii.
+- `Revendicare` lista/create/edit/delete/detalii si link-uri catre termen/task/cantitate.
+- `ProcesVerbal` lista/create/edit/delete/export DOCX/export PDF.
+- `ReguliNotificareProiect` lista/create/edit/delete.
+- `TarifCategorie` lista si salvare override.
+- `Centralizator` si `Deviz General` view/export prin proiect validat.
+
+Import behavior:
+
+- importul MS Project valideaza contractul cu `get_contract_or_404()` inainte de procesarea fisierului;
+- importul Oferta/BoQ valideaza contractul cu `get_contract_or_404()` inainte de procesarea fisierului;
+- randurile create primesc `tenant_id` din contractul deja scopat cand mode-ul nu este `off`;
+- contract strain returneaza 404 inainte de parser/file workflow.
+
+Export behavior:
+
+- `SituatieLunara` XLSX/PDF valideaza sursa cu `get_situatie_lunara_or_404()` inainte de generare;
+- `ProcesVerbal` DOCX/PDF valideaza sursa cu `get_proces_verbal_or_404()` inainte de generare;
+- `Centralizator` si `Deviz General` valideaza proiectul cu `get_project_or_404()` inainte de apelul serviciului;
+- exporturile nu schimba layout-ul, formatul fisierelor sau calculul existent.
+
+Claim link behavior:
+
+- claim-ul parinte este validat cu `get_revendicare_or_404()`;
+- target-ul link-ului este validat cu helper-ul dedicat (`get_termen_contract_or_404()`, `get_task_program_or_404()`, `get_cantitate_executata_lunara_or_404()`);
+- stergerea link-urilor foloseste helper dedicat pentru `RevendicareTermen`, `RevendicareTask` si `RevendicareCantitate`;
+- link strain sau link care nu apartine revendicarii curente returneaza 404 si nu sterge partial.
+
+Comportament pe moduri:
+
+- in `off`, rutele pastreaza compatibilitatea legacy si query-urile raman permisive;
+- in `optional`, datele sunt filtrate cand exista tenant curent, iar fara tenant curent ramane modul de migrare;
+- in `strict`, user normal fara tenant esueaza inchis pentru date contractuale, iar ID-urile straine primesc 404;
+- super-adminul fara tenant ramane explicit si nefiltrat.
+
+Service boundary limitation:
+
+- `services/situatii.py`, `services/centralizator.py`, `services/pv_generator.py`, `services/conflict_revendicare.py`, `services/rapoarte_lucrari.py` si `services/deviz_pricing.py` inca presupun validare la nivel de ruta;
+- T1.5 evita refactorizarea acestor servicii si le apeleaza doar dupa validarea obiectului/proiectului sursa;
+- pentru `deviz_pricing`, rutele folosesc tarife tenant-safe cand calculeaza pricing, dar functiile publice ale serviciului nu sunt inca security boundary daca sunt apelate direct din alta parte.
+
+Ce ramane neprotejat dupa T1.5:
+
+- serviciile contractuale listate mai sus nu sunt inca harden-uite ca boundary independente;
+- `TermenUrmarit` este accesat doar prin sursa corespondentei validate, fara helper dedicat de ruta pe ID;
+- eventualele apeluri viitoare directe catre servicii trebuie sa primeasca helper dedicat sau parametru tenant;
+- import parsers si generatoarele XLSX/PDF raman componente de business/format, nu componente de autorizare.
+
+Nu s-a adaugat migrare deoarece toate modelele contractuale folosite au deja `tenant_id` sau ownership prin proiect/contract existent. Nu s-au creat `contract_service.py`, `baseline_service.py` sau `claims_service.py` deoarece acest PR este strict tenant guard; extragerea serviciilor ar schimba boundary-ul de business si trebuie facuta intr-un PR separat.
+
+Urmatorul PR recomandat: `T1.6 Document Tenant Guard`. Daca apelurile directe catre serviciile contractuale devin necesare inainte de T1.6, se recomanda mai intai `T1.5B Contract Service Boundary Hardening`.
+
+## Urmatoarele integrari recomandate dupa T1.5
+
+1. `DocumentProiect` / `Document`: autorizare download si ownership indirect.
 2. Proiect detail/edit/export: extindere catre datele nested din pagina, nu doar project lookup.
-3. `DocumentProiect` / `Document`: autorizare download si ownership indirect.
-4. `ModelBIM`: acces prin `tenant_id` si `Santier`.
-5. `GanttPlan` si `TaskProgram`: ownership prin tenant/proiect si verificari pe import/export.
+3. `ModelBIM`: acces prin `tenant_id` si `Santier`.
+4. `GanttPlan` si configurari Gantt ramase: ownership prin tenant/proiect si verificari pe import/export.
+5. `T1.5B Contract Service Boundary Hardening` daca serviciile contractuale vor fi apelate direct din afara rutelor.
 6. S1.1/S1.2: extragere `activity_service.py` / `timesheet_service.py` dupa ce tenant guard-urile principale sunt stabile.
