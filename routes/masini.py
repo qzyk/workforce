@@ -14,6 +14,21 @@ from models import (
     db, Masina, DocumentMasina, AtribuireMasina, ConducereMasina,
     DefectiuneMasina, Angajat, Proiect
 )
+from services.security.tenant_access import (
+    get_employee_or_404,
+    get_machine_defect_or_404,
+    get_machine_document_or_404,
+    get_machine_or_404,
+    get_project_or_404,
+    query_employees_for_tenant,
+    query_for_tenant,
+    query_machine_assignments_for_tenant,
+    query_machine_defects_for_tenant,
+    query_machine_driver_records_for_tenant,
+    query_machines_for_tenant,
+    require_fleet_inputs_same_tenant,
+    tenant_id_for_new_record_or_403,
+)
 
 masini_bp = Blueprint('masini', __name__, url_prefix='/masini')
 
@@ -46,7 +61,7 @@ def lista():
     combustibil = request.args.get('combustibil', '')
     sort = request.args.get('sort', 'nr_asc')
 
-    query = Masina.query
+    query = query_machines_for_tenant()
 
     if cautare:
         like = f'%{cautare}%'
@@ -63,6 +78,7 @@ def lista():
     if tip_vehicul:
         query = query.filter(Masina.tip_vehicul == tip_vehicul)
     if proiect_id:
+        get_project_or_404(int(proiect_id))
         query = query.filter(Masina.proiect_id == int(proiect_id))
     if combustibil:
         query = query.filter(Masina.tip_combustibil == combustibil)
@@ -82,21 +98,21 @@ def lista():
     masini = pagination.items
 
     # Stats
-    total = Masina.query.count()
-    disponibile = Masina.query.filter_by(status='disponibila').count()
-    atribuite = Masina.query.filter_by(status='atribuita').count()
-    in_service = Masina.query.filter_by(status='service').count()
+    total = query_machines_for_tenant().count()
+    disponibile = query_machines_for_tenant().filter_by(status='disponibila').count()
+    atribuite = query_machines_for_tenant().filter_by(status='atribuita').count()
+    in_service = query_machines_for_tenant().filter_by(status='service').count()
 
     # Alerte documente
     today = date.today()
-    docs_expirate = Masina.query.filter(
+    docs_expirate = query_machines_for_tenant().filter(
         db.or_(
             db.and_(Masina.data_itp_expirare.isnot(None), Masina.data_itp_expirare < today),
             db.and_(Masina.data_rca_expirare.isnot(None), Masina.data_rca_expirare < today),
         )
     ).count()
 
-    proiecte = Proiect.query.filter_by(status='activ').order_by(Proiect.cod_proiect).all()
+    proiecte = query_for_tenant(Proiect).filter_by(status='activ').order_by(Proiect.cod_proiect).all()
 
     return render_template('masini/lista.html',
         masini=masini, pagination=pagination, view=view,
@@ -118,8 +134,8 @@ def adauga():
     if request.method == 'POST':
         return _salveaza_masina(None)
 
-    proiecte = Proiect.query.filter_by(status='activ').order_by(Proiect.cod_proiect).all()
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    proiecte = query_for_tenant(Proiect).filter_by(status='activ').order_by(Proiect.cod_proiect).all()
+    angajati = query_employees_for_tenant().filter_by(status='activ').order_by(Angajat.nume).all()
     return render_template('masini/formular.html', masina=None, proiecte=proiecte, angajati=angajati)
 
 
@@ -130,7 +146,7 @@ def adauga():
 @masini_bp.route('/<int:id>')
 @login_required
 def fisa(id):
-    masina = Masina.query.get_or_404(id)
+    masina = get_machine_or_404(id)
 
     # Tab 1: Info generala (direct din masina)
     # Tab 2: Documente
@@ -155,8 +171,8 @@ def fisa(id):
     defectiuni = masina.defectiuni.order_by(DefectiuneMasina.data_raportare.desc()).all()
 
     # Tab 6: Istoric
-    proiecte = Proiect.query.filter_by(status='activ').order_by(Proiect.cod_proiect).all()
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    proiecte = query_for_tenant(Proiect).filter_by(status='activ').order_by(Proiect.cod_proiect).all()
+    angajati = query_employees_for_tenant().filter_by(status='activ').order_by(Angajat.nume).all()
 
     return render_template('masini/fisa.html',
         masina=masina, documente=documente, atribuiri=atribuiri,
@@ -174,12 +190,12 @@ def fisa(id):
 @login_required
 @manager_or_admin
 def editeaza(id):
-    masina = Masina.query.get_or_404(id)
+    masina = get_machine_or_404(id)
     if request.method == 'POST':
         return _salveaza_masina(masina)
 
-    proiecte = Proiect.query.filter_by(status='activ').order_by(Proiect.cod_proiect).all()
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    proiecte = query_for_tenant(Proiect).filter_by(status='activ').order_by(Proiect.cod_proiect).all()
+    angajati = query_employees_for_tenant().filter_by(status='activ').order_by(Angajat.nume).all()
     return render_template('masini/formular.html', masina=masina, proiecte=proiecte, angajati=angajati)
 
 
@@ -214,13 +230,23 @@ def _salveaza_masina(masina):
     if errors:
         for e in errors:
             flash(e, 'danger')
-        proiecte = Proiect.query.filter_by(status='activ').order_by(Proiect.cod_proiect).all()
-        angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+        proiecte = query_for_tenant(Proiect).filter_by(status='activ').order_by(Proiect.cod_proiect).all()
+        angajati = query_employees_for_tenant().filter_by(status='activ').order_by(Angajat.nume).all()
         return render_template('masini/formular.html', masina=masina, proiecte=proiecte, angajati=angajati)
 
-    if masina is None:
+    masina_noua = masina is None
+    if masina_noua:
         masina = Masina()
-        db.session.add(masina)
+
+    proiect_id = int(f.get('proiect_id')) if f.get('proiect_id') else None
+    angajat_responsabil_id = int(f.get('angajat_responsabil_id')) if f.get('angajat_responsabil_id') else None
+    tenant_curent = tenant_id_for_new_record_or_403()
+    if tenant_curent is not None and not proiect_id and not angajat_responsabil_id:
+        abort(403, 'Masina trebuie sa aiba proiect sau angajat responsabil tenant-safe.')
+    require_fleet_inputs_same_tenant(
+        project_id=proiect_id,
+        employee_id=angajat_responsabil_id,
+    )
 
     masina.numar_inmatriculare = nr_inm
     masina.marca = marca
@@ -239,8 +265,8 @@ def _salveaza_masina(masina):
     masina.consum_mediu = float(f.get('consum_mediu')) if f.get('consum_mediu') else None
     masina.serie_civ = f.get('serie_civ', '').strip() or None
     masina.nr_carte_identitate = f.get('nr_carte_identitate', '').strip() or None
-    masina.proiect_id = int(f.get('proiect_id')) if f.get('proiect_id') else None
-    masina.angajat_responsabil_id = int(f.get('angajat_responsabil_id')) if f.get('angajat_responsabil_id') else None
+    masina.proiect_id = proiect_id
+    masina.angajat_responsabil_id = angajat_responsabil_id
     masina.status = f.get('status', 'disponibila')
     masina.observatii = f.get('observatii', '').strip() or None
 
@@ -249,6 +275,9 @@ def _salveaza_masina(masina):
                    'data_rca_expirare', 'data_casco_expirare', 'data_rovinieta_expirare']:
         val = f.get(field, '').strip()
         setattr(masina, field, datetime.strptime(val, '%Y-%m-%d').date() if val else None)
+
+    if masina_noua:
+        db.session.add(masina)
 
     db.session.commit()
     flash(f'Masina {masina.denumire_completa} a fost salvata cu succes!', 'success')
@@ -263,7 +292,7 @@ def _salveaza_masina(masina):
 @login_required
 @manager_or_admin
 def atribuie(id):
-    masina = Masina.query.get_or_404(id)
+    masina = get_machine_or_404(id)
     f = request.form
 
     angajat_id = f.get('angajat_id', type=int)
@@ -271,12 +300,18 @@ def atribuie(id):
         flash('Selectati un angajat.', 'danger')
         return redirect(url_for('masini.fisa', id=id))
 
-    angajat = Angajat.query.get_or_404(angajat_id)
+    proiect_id = int(f.get('proiect_id')) if f.get('proiect_id') else None
+    require_fleet_inputs_same_tenant(
+        machine_id=masina.id,
+        project_id=proiect_id,
+        employee_id=angajat_id,
+    )
+    angajat = get_employee_or_404(angajat_id)
 
     atribuire = AtribuireMasina(
         masina_id=masina.id,
         angajat_id=angajat.id,
-        proiect_id=int(f.get('proiect_id')) if f.get('proiect_id') else None,
+        proiect_id=proiect_id,
         data_atribuire=datetime.strptime(f.get('data_atribuire'), '%Y-%m-%d').date() if f.get('data_atribuire') else date.today(),
         km_preluare=int(f.get('km_preluare')) if f.get('km_preluare') else masina.km_bord,
         stare_preluare=f.get('stare_preluare', 'buna'),
@@ -288,8 +323,8 @@ def atribuie(id):
 
     masina.status = 'atribuita'
     masina.angajat_responsabil_id = angajat.id
-    if f.get('proiect_id'):
-        masina.proiect_id = int(f.get('proiect_id'))
+    if proiect_id:
+        masina.proiect_id = proiect_id
 
     db.session.commit()
     flash(f'Masina {masina.numar_inmatriculare} a fost atribuita lui {angajat.nume_complet}.', 'success')
@@ -304,11 +339,11 @@ def atribuie(id):
 @login_required
 @manager_or_admin
 def returneaza(id):
-    masina = Masina.query.get_or_404(id)
+    masina = get_machine_or_404(id)
     f = request.form
 
     # Find active assignment
-    atribuire = AtribuireMasina.query.filter_by(
+    atribuire = query_machine_assignments_for_tenant().filter_by(
         masina_id=masina.id, data_returnare=None
     ).order_by(AtribuireMasina.data_atribuire.desc()).first()
 
@@ -335,7 +370,7 @@ def returneaza(id):
 @login_required
 @manager_or_admin
 def adauga_document(id):
-    masina = Masina.query.get_or_404(id)
+    masina = get_machine_or_404(id)
     f = request.form
 
     doc = DocumentMasina(
@@ -373,7 +408,7 @@ def adauga_document(id):
 @masini_bp.route('/<int:id>/conducere', methods=['POST'])
 @login_required
 def adauga_conducere(id):
-    masina = Masina.query.get_or_404(id)
+    masina = get_machine_or_404(id)
     f = request.form
 
     angajat_id = f.get('angajat_id_conducere', type=int)
@@ -381,13 +416,20 @@ def adauga_conducere(id):
         flash('Selectati un angajat.', 'danger')
         return redirect(url_for('masini.fisa', id=id))
 
+    proiect_id = int(f.get('proiect_id_conducere')) if f.get('proiect_id_conducere') else None
+    require_fleet_inputs_same_tenant(
+        machine_id=masina.id,
+        project_id=proiect_id,
+        employee_id=angajat_id,
+    )
+
     km_start = int(f.get('km_start')) if f.get('km_start') else masina.km_bord
     km_sfarsit = int(f.get('km_sfarsit')) if f.get('km_sfarsit') else None
 
     conducere = ConducereMasina(
         masina_id=masina.id,
         angajat_id=angajat_id,
-        proiect_id=int(f.get('proiect_id_conducere')) if f.get('proiect_id_conducere') else None,
+        proiect_id=proiect_id,
         data=datetime.strptime(f.get('data_conducere'), '%Y-%m-%d').date() if f.get('data_conducere') else date.today(),
         km_start=km_start,
         km_sfarsit=km_sfarsit,
@@ -415,12 +457,17 @@ def adauga_conducere(id):
 @masini_bp.route('/<int:id>/defectiune', methods=['POST'])
 @login_required
 def adauga_defectiune(id):
-    masina = Masina.query.get_or_404(id)
+    masina = get_machine_or_404(id)
     f = request.form
+    raportat_de = int(f.get('raportat_de')) if f.get('raportat_de') else None
+    require_fleet_inputs_same_tenant(
+        machine_id=masina.id,
+        employee_id=raportat_de,
+    )
 
     defectiune = DefectiuneMasina(
         masina_id=masina.id,
-        raportat_de=int(f.get('raportat_de')) if f.get('raportat_de') else None,
+        raportat_de=raportat_de,
         data_raportare=datetime.strptime(f.get('data_raportare'), '%Y-%m-%d').date() if f.get('data_raportare') else date.today(),
         descriere=f.get('descriere_defectiune', '').strip(),
         gravitate=f.get('gravitate', 'medie'),
@@ -445,7 +492,7 @@ def adauga_defectiune(id):
 @login_required
 @manager_or_admin
 def update_defectiune(def_id):
-    defectiune = DefectiuneMasina.query.get_or_404(def_id)
+    defectiune = get_machine_defect_or_404(def_id)
     f = request.form
 
     defectiune.status = f.get('status_defectiune', defectiune.status)
@@ -468,7 +515,7 @@ def update_defectiune(def_id):
 @login_required
 @manager_or_admin
 def schimba_status(id):
-    masina = Masina.query.get_or_404(id)
+    masina = get_machine_or_404(id)
     new_status = request.form.get('new_status', '')
 
     valid = [s[0] for s in Masina.STATUSURI]
@@ -516,7 +563,7 @@ def export_excel():
         cell.alignment = Alignment(horizontal='center')
         cell.border = thin_border
 
-    masini = Masina.query.order_by(Masina.numar_inmatriculare).all()
+    masini = query_machines_for_tenant().order_by(Masina.numar_inmatriculare).all()
     for row, m in enumerate(masini, 2):
         vals = [
             m.numar_inmatriculare, m.marca, m.model, m.an_fabricatie,
@@ -546,7 +593,9 @@ def export_excel():
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal='center')
 
-    atribuiri = AtribuireMasina.query.filter_by(data_returnare=None).order_by(AtribuireMasina.data_atribuire.desc()).all()
+    atribuiri = query_machine_assignments_for_tenant().filter_by(
+        data_returnare=None
+    ).order_by(AtribuireMasina.data_atribuire.desc()).all()
     for row, a in enumerate(atribuiri, 2):
         ws2.cell(row=row, column=1, value=a.masina.numar_inmatriculare)
         ws2.cell(row=row, column=2, value=f'{a.masina.marca} {a.masina.model}')
@@ -564,7 +613,7 @@ def export_excel():
         cell.font = header_font
         cell.fill = header_fill
 
-    defectiuni = DefectiuneMasina.query.filter(
+    defectiuni = query_machine_defects_for_tenant().filter(
         DefectiuneMasina.status.in_(['raportata', 'in_lucru'])
     ).order_by(DefectiuneMasina.data_raportare.desc()).all()
     for row, d in enumerate(defectiuni, 2):
@@ -585,7 +634,7 @@ def export_excel():
 
     alert_row = 2
     today = date.today()
-    for m in Masina.query.all():
+    for m in masini:
         for alerta in m.alerte_documente:
             ws4.cell(row=alert_row, column=1, value=m.numar_inmatriculare)
             ws4.cell(row=alert_row, column=2, value=alerta['doc'])
@@ -615,7 +664,7 @@ def cauta():
         return jsonify([])
 
     like = f'%{q}%'
-    masini = Masina.query.filter(
+    masini = query_machines_for_tenant().filter(
         db.or_(
             Masina.numar_inmatriculare.ilike(like),
             Masina.marca.ilike(like),
@@ -639,11 +688,12 @@ def cauta():
 @masini_bp.route('/<int:id>/conduceri-json')
 @login_required
 def conduceri_json(id):
-    masina = Masina.query.get_or_404(id)
+    masina = get_machine_or_404(id)
     luna = request.args.get('luna', date.today().month, type=int)
     an = request.args.get('an', date.today().year, type=int)
 
-    conduceri = masina.conduceri.filter(
+    conduceri = query_machine_driver_records_for_tenant().filter(
+        ConducereMasina.masina_id == masina.id,
         db.extract('month', ConducereMasina.data) == luna,
         db.extract('year', ConducereMasina.data) == an,
     ).order_by(ConducereMasina.data).all()
@@ -673,7 +723,7 @@ def conduceri_json(id):
 @masini_bp.route('/alerte')
 @login_required
 def alerte():
-    masini = Masina.query.filter(
+    masini = query_machines_for_tenant().filter(
         Masina.status.notin_(['casata', 'vanduta'])
     ).all()
 
@@ -701,7 +751,7 @@ def alerte():
 @login_required
 @manager_or_admin
 def sterge_document(doc_id):
-    doc = DocumentMasina.query.get_or_404(doc_id)
+    doc = get_machine_document_or_404(doc_id)
     masina_id = doc.masina_id
     db.session.delete(doc)
     db.session.commit()

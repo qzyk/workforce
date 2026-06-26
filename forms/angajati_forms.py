@@ -128,9 +128,10 @@ class AngajatForm(FlaskForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from models import Angajat, Proiect
+        from services.security.tenant_access import query_for_tenant
         self.functie.choices = Angajat.FUNCTII
         # Populez choices pentru proiecte cu cele active + planificate
-        proiecte = (Proiect.query
+        proiecte = (query_for_tenant(Proiect)
                     .filter(Proiect.status.in_(['activ', 'planificat']))
                     .order_by(Proiect.cod_proiect).all())
         self.proiecte_asignate.choices = [

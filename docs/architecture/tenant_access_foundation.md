@@ -716,13 +716,98 @@ Ce ramane neprotejat dupa T1.9:
 
 Nu s-a adaugat migrare deoarece `Raport` este protejat prin ownership existent (`parametri` + `Utilizator.tenant_id`), iar T1.x nu introduce coloane noi. Nu s-a creat `reporting_service.py` sau `dashboard_service.py` deoarece T1.9 este strict security/access-control; service extraction ar schimba boundary-ul de business si trebuie facuta ulterior.
 
-Urmatorul PR recomandat: `T1.10 Notifications/Admin Tenant Guard`. Daca serviciile de raportare vor fi apelate direct din joburi/API-uri noi, alternativa este `T1.9B Reporting Service Boundary Hardening`.
+Urmatorul PR recomandat la momentul T1.9 era `T1.10 Notifications/Admin Tenant Guard`. Review-ul T1.C9 a prioritizat insa HR/flota ca suprafata operationala cu PII si exporturi brute, deci T1.10 a fost alocat pentru `HR / Fleet Tenant Guard`.
 
-## Urmatoarele integrari recomandate dupa T1.9
+## T1.10 HR / Fleet Route Integration
 
-1. `T1.10 Notifications/Admin Tenant Guard` pentru suprafete administrative si notificari ramase.
-2. `T1.9B Reporting Service Boundary Hardening` daca generatoarele de rapoarte vor fi apelate direct din afara rutelor.
-3. `T1.8B Gantt Service Boundary Hardening` daca serviciile Gantt vor fi apelate direct din afara rutelor.
-4. `T1.7B BIM Service Boundary Hardening` daca serviciile BIM vor fi apelate direct din afara rutelor.
-5. `T1.5B Contract Service Boundary Hardening` daca serviciile contractuale vor fi apelate direct din afara rutelor.
-6. S1.1/S1.2: extragere `activity_service.py` / `timesheet_service.py` dupa ce tenant guard-urile principale sunt stabile.
+T1.10 protejeaza rutele HR si flota fara sa schimbe workflow-urile de angajati, masini, atribuire, documente, defectiuni sau exporturi. PR-ul ramane strict security/access-control: nu adauga schema, nu muta fisiere, nu schimba layout-ul workbook-urilor si nu extrage servicii HR/flota.
+
+Helpers adaugate:
+
+- `query_employees_for_tenant()` / `get_employee_or_404()`
+- `ensure_employee_same_tenant()` / `require_employee_same_tenant()`
+- `query_leave_requests_for_tenant()` / `get_leave_request_or_404()`
+- `query_machines_for_tenant()` / `get_machine_or_404()`
+- `ensure_machine_same_tenant()` / `require_machine_same_tenant()`
+- `query_machine_documents_for_tenant()` / `get_machine_document_or_404()`
+- `query_machine_assignments_for_tenant()` / `get_machine_assignment_or_404()`
+- `query_machine_driver_records_for_tenant()` / `get_machine_driver_record_or_404()`
+- `query_machine_defects_for_tenant()` / `get_machine_defect_or_404()`
+- `ensure_fleet_inputs_same_tenant()` / `require_fleet_inputs_same_tenant()`
+- `query_consum_utilaj_for_tenant()` / `get_consum_utilaj_or_404()`
+
+Ownership paths:
+
+| Model | Ownership |
+|---|---|
+| `Angajat` | `Angajat.tenant_id` direct. |
+| `Concediu` | `Concediu -> Angajat -> tenant_id`. |
+| `Document` legacy angajat | `Document -> Angajat -> tenant_id` si/sau `Document -> Proiect -> tenant_id` prin helperii T1.6. |
+| `Masina` | nu are `tenant_id`; acces prin toti ownerii expliciti disponibili: `Masina -> Proiect -> tenant_id` si/sau `Masina -> Angajat responsabil -> tenant_id`. |
+| `DocumentMasina` | `DocumentMasina -> Masina -> owner tenant-safe`. |
+| `AtribuireMasina` | `AtribuireMasina -> Masina / Proiect / Angajat`; toate inputurile explicite trebuie sa fie din acelasi tenant. |
+| `ConducereMasina` | `ConducereMasina -> Masina / Proiect / Angajat`; toate inputurile explicite trebuie sa fie din acelasi tenant. |
+| `DefectiuneMasina` | `DefectiuneMasina -> Masina` si raportorul, daca exista, trebuie sa fie din acelasi tenant. |
+| `ConsumUtilaj` | `ConsumUtilaj.tenant_id` direct sau `ConsumUtilaj -> Proiect -> tenant_id`. |
+
+HR routes protejate:
+
+- lista angajati, statistici si dropdown proiect;
+- adaugare angajat: seteaza `tenant_id` prin `tenant_id_for_new_record_or_403()`;
+- detalii angajat, editare, dezactivare/reactivare si upload poza;
+- export Excel angajati si statistici functie/status;
+- import Excel angajati: randurile noi primesc `tenant_id` cand exista tenant activ;
+- JSON pontaje angajat si cautare/autocomplete;
+- selectia de proiecte din `AngajatForm` este tenant-scoped.
+
+Fleet routes protejate:
+
+- lista masini, statistici, alerte documente si cautare/autocomplete;
+- fisa masina, editare, schimbare status si export Excel flota;
+- adaugare masina: in mod tenant-scoped cere proiect sau angajat responsabil tenant-safe, deoarece `Masina` nu are `tenant_id` direct;
+- atribuire masina, returnare masina, foaie de parcurs si defectiuni;
+- documente masina prin lookup tenant-safe inainte de stergere;
+- exportul flota filtreaza masini, atribuiri, defectiuni si alerte dupa tenant.
+
+File-serving si exporturi:
+
+- HR/flota nu schimba storage-ul fisierelor si nu muta fisiere pe disk;
+- orice document masina accesat prin ID trece prin `get_machine_document_or_404()` inainte de mutatie;
+- exporturile pastreaza layout-ul, sheet-urile si numele fisierelor existente;
+- exporturile all-employee/all-machine folosesc query-uri tenant-safe inainte de generarea workbook-ului.
+
+Comportament create/assignment:
+
+- `Angajat` nou primeste `tenant_id` cand userul curent are tenant activ;
+- in `strict`, user normal fara tenant primeste 403 la create HR;
+- `Masina` noua nu primeste coloana noua; trebuie sa aiba owner existent (`proiect_id` sau `angajat_responsabil_id`) validat prin tenant;
+- atribuirea unei masini catre proiect/angajat strain returneaza 404 si nu aplica mutatii partiale.
+
+Comportament pe moduri:
+
+- in `off`, HR/flota raman compatibile cu single-tenant si query-urile sunt nefiltrate;
+- in `optional`, userii cu `tenant_id` sunt scopati, iar userii fara tenant pastreaza comportamentul migration-friendly;
+- in `strict`, user normal fara `tenant_id` esueaza inchis, iar ID-urile straine primesc 404;
+- super-adminul fara tenant ramane explicit si nefiltrat, conform foundation layer.
+
+Ce ramane neprotejat dupa T1.10:
+
+- `Masina` fara proiect si fara angajat responsabil nu are owner sigur si nu este vizibila userilor tenant-scoped; un PR separat de schema ar fi necesar daca business-ul cere flota nealocata per tenant;
+- validarea de unicitate pentru CNP/numar inmatriculare/VIN ramane globala deoarece coloanele sunt unice in schema existenta;
+- rutele project nested din `routes/proiecte.py` pentru resurse/EVM/utilaje raman pentru `T1.10B Project Nested Aggregation Guard`;
+- Admin/tenants/settings/notifications raman pentru `T1.11 Notifications/Admin Tenant Guard`;
+- serviciile HR/flota nu sunt inca security boundaries independente.
+
+Nu s-a adaugat migrare deoarece `Angajat` are deja `tenant_id`, iar flota a fost protejata prin owneri existenti (`Proiect` si `Angajat responsabil`). Nu s-au creat `hr_service.py`, `employee_service.py` sau `fleet_service.py` deoarece T1.10 este strict tenant guard; service extraction ar schimba boundary-ul de business si trebuie facuta ulterior.
+
+Urmatorul PR recomandat: `T1.11 Notifications/Admin Tenant Guard`. Daca prioritatea ramane proiect-resurse, alternativa este `T1.10B Project Nested Aggregation Guard`.
+
+## Urmatoarele integrari recomandate dupa T1.10
+
+1. `T1.11 Notifications/Admin Tenant Guard` pentru suprafete administrative, users, backups si notificari.
+2. `T1.10B Project Nested Aggregation Guard` pentru resurse/EVM/utilaje din `routes/proiecte.py`.
+3. `T1.9B Reporting Service Boundary Hardening` daca generatoarele de rapoarte vor fi apelate direct din afara rutelor.
+4. `T1.8B Gantt Service Boundary Hardening` daca serviciile Gantt vor fi apelate direct din afara rutelor.
+5. `T1.7B BIM Service Boundary Hardening` daca serviciile BIM vor fi apelate direct din afara rutelor.
+6. `T1.5B Contract Service Boundary Hardening` daca serviciile contractuale vor fi apelate direct din afara rutelor.
+7. S1.1/S1.2: extragere `activity_service.py` / `timesheet_service.py` dupa ce tenant guard-urile principale sunt stabile.

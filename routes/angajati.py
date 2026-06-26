@@ -18,6 +18,16 @@ from sqlalchemy import extract, func
 
 from models import db, Angajat, AngajatProiect, Pontaj, Document, Concediu, Proiect
 from forms.angajati_forms import AngajatForm
+from services.security.tenant_access import (
+    get_employee_or_404,
+    get_project_or_404,
+    query_employees_for_tenant,
+    query_for_tenant,
+    query_leave_requests_for_tenant,
+    query_legacy_documents_for_tenant,
+    query_timesheets_for_tenant,
+    tenant_id_for_new_record_or_403,
+)
 
 angajati_bp = Blueprint('angajati', __name__)
 
@@ -36,7 +46,7 @@ def lista():
     proiect = request.args.get('proiect', '', type=str)
     sort = request.args.get('sort', 'nume_asc')
 
-    query = Angajat.query
+    query = query_employees_for_tenant()
 
     # Filtre text
     if cautare:
@@ -54,6 +64,7 @@ def lista():
 
     # Filtru proiect activ
     if proiect:
+        get_project_or_404(int(proiect))
         query = query.filter(
             Angajat.id.in_(
                 db.session.query(AngajatProiect.angajat_id).filter(
@@ -80,17 +91,18 @@ def lista():
     pagination = query.paginate(page=page, per_page=20, error_out=False)
 
     # Statistici
-    total_activi = Angajat.query.filter_by(status='activ').count()
-    total_inactivi = Angajat.query.filter_by(status='inactiv').count()
-    total_suspendati = Angajat.query.filter_by(status='suspendat').count()
+    total_activi = query_employees_for_tenant().filter_by(status='activ').count()
+    total_inactivi = query_employees_for_tenant().filter_by(status='inactiv').count()
+    total_suspendati = query_employees_for_tenant().filter_by(status='suspendat').count()
     stats_functii = dict(
-        db.session.query(Angajat.functie, func.count())
+        query_employees_for_tenant()
+        .with_entities(Angajat.functie, func.count())
         .filter_by(status='activ')
         .group_by(Angajat.functie).all()
     )
 
     # Proiecte active (pentru dropdown filtru)
-    proiecte_active = Proiect.query.filter_by(status='activ').order_by(Proiect.nume).all()
+    proiecte_active = query_for_tenant(Proiect).filter_by(status='activ').order_by(Proiect.nume).all()
 
     return render_template('angajati/lista.html',
                            pagination=pagination,
@@ -118,6 +130,7 @@ def adauga():
     form = AngajatForm()
     if form.validate_on_submit():
         angajat = Angajat(
+            tenant_id=tenant_id_for_new_record_or_403(),
             nume=form.nume.data.strip(),
             prenume=form.prenume.data.strip(),
             cnp=form.cnp.data.strip() if form.cnp.data else None,
@@ -162,27 +175,31 @@ def adauga():
 @angajati_bp.route('/<int:id>')
 @login_required
 def detalii(id):
-    angajat = Angajat.query.get_or_404(id)
-    proiecte_asoc = AngajatProiect.query.filter_by(angajat_id=id).all()
-    pontaje = Pontaj.query.filter_by(angajat_id=id).order_by(Pontaj.data.desc()).limit(30).all()
-    documente = Document.query.filter_by(angajat_id=id).order_by(Document.data_upload.desc()).all()
-    concedii = Concediu.query.filter_by(angajat_id=id).order_by(Concediu.data_start.desc()).limit(10).all()
+    angajat = get_employee_or_404(id)
+    proiecte_vizibile = query_for_tenant(Proiect).with_entities(Proiect.id)
+    proiecte_asoc = AngajatProiect.query.filter(
+        AngajatProiect.angajat_id == id,
+        AngajatProiect.proiect_id.in_(proiecte_vizibile),
+    ).all()
+    pontaje = query_timesheets_for_tenant().filter_by(angajat_id=id).order_by(Pontaj.data.desc()).limit(30).all()
+    documente = query_legacy_documents_for_tenant().filter_by(angajat_id=id).order_by(Document.data_upload.desc()).all()
+    concedii = query_leave_requests_for_tenant().filter_by(angajat_id=id).order_by(Concediu.data_start.desc()).limit(10).all()
 
     # Ore luna curenta
     luna_start = date.today().replace(day=1)
-    ore_luna = db.session.query(func.sum(Pontaj.ore_lucrate)).filter(
+    ore_luna = query_timesheets_for_tenant().with_entities(func.sum(Pontaj.ore_lucrate)).filter(
         Pontaj.angajat_id == id,
         Pontaj.data >= luna_start
     ).scalar()
     ore_luna = float(ore_luna) if ore_luna else 0
 
     # Documente expirate / expira curand
-    doc_expirate = Document.query.filter(
+    doc_expirate = query_legacy_documents_for_tenant().filter(
         Document.angajat_id == id,
         Document.data_expirare.isnot(None),
         Document.data_expirare < date.today()
     ).count()
-    doc_expira_curand = Document.query.filter(
+    doc_expira_curand = query_legacy_documents_for_tenant().filter(
         Document.angajat_id == id,
         Document.data_expirare.isnot(None),
         Document.data_expirare >= date.today(),
@@ -207,7 +224,7 @@ def detalii(id):
 @angajati_bp.route('/<int:id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def editeaza(id):
-    angajat = Angajat.query.get_or_404(id)
+    angajat = get_employee_or_404(id)
     form = AngajatForm(obj=angajat)
     form.angajat_id.data = str(angajat.id)
 
@@ -215,6 +232,7 @@ def editeaza(id):
     if request.method == 'GET':
         asocieri_active = AngajatProiect.query.filter(
             AngajatProiect.angajat_id == angajat.id,
+            AngajatProiect.proiect_id.in_(query_for_tenant(Proiect).with_entities(Proiect.id)),
             db.or_(
                 AngajatProiect.data_sfarsit.is_(None),
                 AngajatProiect.data_sfarsit >= date.today(),
@@ -279,11 +297,14 @@ def _sync_angajat_proiecte(angajat, proiecte_ids_noi):
     Returneaza tuple (adaugate, eliminate) - counturi pentru flash message.
     """
     proiecte_ids_noi = set(int(pid) for pid in proiecte_ids_noi if pid)
+    for pid in proiecte_ids_noi:
+        get_project_or_404(pid)
     today_d = date.today()
 
     # Asocieri active curente
     asocieri_active = AngajatProiect.query.filter(
         AngajatProiect.angajat_id == angajat.id,
+        AngajatProiect.proiect_id.in_(query_for_tenant(Proiect).with_entities(Proiect.id)),
         db.or_(
             AngajatProiect.data_sfarsit.is_(None),
             AngajatProiect.data_sfarsit >= today_d,
@@ -331,7 +352,7 @@ def _sync_angajat_proiecte(angajat, proiecte_ids_noi):
 @angajati_bp.route('/<int:id>/dezactiveaza', methods=['POST'])
 @login_required
 def dezactiveaza(id):
-    angajat = Angajat.query.get_or_404(id)
+    angajat = get_employee_or_404(id)
     if angajat.status == 'activ':
         angajat.status = 'inactiv'
         angajat.data_incetare = date.today()
@@ -351,7 +372,7 @@ def dezactiveaza(id):
 @angajati_bp.route('/<int:id>/poza', methods=['POST'])
 @login_required
 def upload_poza(id):
-    angajat = Angajat.query.get_or_404(id)
+    angajat = get_employee_or_404(id)
 
     if 'poza' not in request.files:
         if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -442,7 +463,7 @@ def export_excel():
         cell.alignment = header_align
         cell.border = thin_border
 
-    angajati = Angajat.query.order_by(Angajat.nume).all()
+    angajati = query_employees_for_tenant().order_by(Angajat.nume).all()
     for row_idx, ang in enumerate(angajati, 2):
         values = [
             row_idx - 1,
@@ -490,6 +511,8 @@ def export_excel():
 
     stats = db.session.query(
         Angajat.functie, Angajat.status, func.count()
+    ).filter(
+        Angajat.id.in_(query_employees_for_tenant().with_entities(Angajat.id))
     ).group_by(Angajat.functie, Angajat.status).all()
 
     pivot = {}
@@ -731,6 +754,7 @@ def import_excel():
             errors.append({'rand': row_idx, 'erori': row_errors})
         else:
             angajati_noi.append(Angajat(
+                tenant_id=tenant_id_for_new_record_or_403(),
                 nume=str(nume).strip(),
                 prenume=str(prenume).strip(),
                 cnp=str(cnp).strip() if cnp else None,
@@ -770,17 +794,17 @@ def import_excel():
 @angajati_bp.route('/<int:id>/pontaje-json')
 @login_required
 def pontaje_json(id):
-    Angajat.query.get_or_404(id)
+    get_employee_or_404(id)
     luna = request.args.get('luna', date.today().month, type=int)
     an = request.args.get('an', date.today().year, type=int)
 
-    pontaje = Pontaj.query.filter(
+    pontaje = query_timesheets_for_tenant().filter(
         Pontaj.angajat_id == id,
         extract('month', Pontaj.data) == luna,
         extract('year', Pontaj.data) == an
     ).all()
 
-    concedii = Concediu.query.filter(
+    concedii = query_leave_requests_for_tenant().filter(
         Concediu.angajat_id == id,
         Concediu.status == 'aprobat',
         extract('month', Concediu.data_start) <= luna,
@@ -836,7 +860,7 @@ def cauta():
     if len(q) < 2:
         return jsonify([])
 
-    results = Angajat.query.filter(
+    results = query_employees_for_tenant().filter(
         db.or_(
             Angajat.nume.ilike(f'%{q}%'),
             Angajat.prenume.ilike(f'%{q}%'),

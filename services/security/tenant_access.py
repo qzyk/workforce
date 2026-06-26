@@ -604,6 +604,385 @@ def require_timesheet_inputs_same_tenant(proiect_id=None, angajat_id=None, tenan
         abort(404)
 
 
+def query_employees_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru Angajat."""
+    from models import Angajat
+
+    return query_for_tenant(
+        Angajat,
+        tenant_id=tenant_id,
+        include_global=include_global,
+    )
+
+
+def get_employee_or_404(employee_id, tenant_id=None):
+    """Returneaza Angajat vizibil tenantului curent sau 404."""
+    from models import Angajat
+
+    return get_or_404_for_tenant(Angajat, employee_id, tenant_id=tenant_id)
+
+
+def ensure_employee_same_tenant(employee, tenant_id=None):
+    """Valideaza ca un Angajat apartine tenantului curent."""
+    return ensure_same_tenant(employee, tenant_id=tenant_id)
+
+
+def require_employee_same_tenant(employee, tenant_id=None):
+    """Wrapper pentru rute: ascunde angajatii inaccesibili prin 404."""
+    return require_same_tenant(employee, tenant_id=tenant_id)
+
+
+def query_leave_requests_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru Concediu prin Angajat -> tenant_id."""
+    from models import Angajat, Concediu
+
+    query = Concediu.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    angajat_scope = Angajat.tenant_id == tenant_curent
+    if include_global:
+        angajat_scope = or_(angajat_scope, Angajat.tenant_id.is_(None))
+    return query.filter(Concediu.angajat.has(angajat_scope))
+
+
+def get_leave_request_or_404(concediu_id, tenant_id=None):
+    """Returneaza Concediu vizibil tenantului curent sau 404."""
+    from models import Concediu
+
+    concediu = query_leave_requests_for_tenant(tenant_id=tenant_id).filter(
+        Concediu.id == concediu_id
+    ).first()
+    if concediu is None:
+        abort(404)
+    return concediu
+
+
+def query_machines_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru Masina prin proiect/angajat responsabil.
+
+    Masina nu are `tenant_id` direct. In modurile tenant-scoped sunt vizibile
+    doar masinile cu owner explicit tenant-safe; masinile fara proiect si fara
+    angajat responsabil raman ascunse pentru userii tenant-scoped.
+    """
+    from models import Masina
+
+    query = Masina.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    return query.filter(_machine_scope_expr(tenant_curent, include_global=include_global))
+
+
+def get_machine_or_404(machine_id, tenant_id=None):
+    """Returneaza Masina vizibila tenantului curent sau 404."""
+    from models import Masina
+
+    masina = query_machines_for_tenant(tenant_id=tenant_id).filter(
+        Masina.id == machine_id
+    ).first()
+    if masina is None:
+        abort(404)
+    return masina
+
+
+def ensure_machine_same_tenant(machine, tenant_id=None):
+    """Valideaza Masina prin toti ownerii expliciti disponibili."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return machine
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return machine
+        if mod == MODE_OPTIONAL:
+            return machine
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    if _machine_belongs_to_tenant(machine, tenant_curent):
+        return machine
+    raise TenantAccessDenied('Masina nu are owner tenant-safe pentru tenantul curent.')
+
+
+def require_machine_same_tenant(machine, tenant_id=None):
+    """Wrapper pentru rute: ascunde masinile inaccesibile prin 404."""
+    try:
+        return ensure_machine_same_tenant(machine, tenant_id=tenant_id)
+    except TenantAccessDenied:
+        abort(404)
+
+
+def query_machine_documents_for_tenant(tenant_id=None):
+    """Query tenant-safe pentru DocumentMasina prin Masina."""
+    from models import DocumentMasina
+
+    query = DocumentMasina.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    return query.filter(DocumentMasina.masina.has(_machine_scope_expr(tenant_curent)))
+
+
+def get_machine_document_or_404(document_id, tenant_id=None):
+    """Returneaza DocumentMasina vizibil tenantului curent sau 404."""
+    from models import DocumentMasina
+
+    document = query_machine_documents_for_tenant(tenant_id=tenant_id).filter(
+        DocumentMasina.id == document_id
+    ).first()
+    if document is None:
+        abort(404)
+    return document
+
+
+def query_machine_assignments_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru AtribuireMasina prin masina/proiect/angajat."""
+    from models import Angajat, AtribuireMasina, Proiect
+
+    query = AtribuireMasina.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    return query.filter(
+        AtribuireMasina.masina.has(_machine_scope_expr(tenant_curent)),
+        AtribuireMasina.angajat.has(Angajat.tenant_id == tenant_curent),
+        or_(
+            AtribuireMasina.proiect_id.is_(None),
+            AtribuireMasina.proiect.has(Proiect.tenant_id == tenant_curent),
+        ),
+    )
+
+
+def get_machine_assignment_or_404(assignment_id, tenant_id=None):
+    """Returneaza AtribuireMasina vizibila tenantului curent sau 404."""
+    from models import AtribuireMasina
+
+    atribuire = query_machine_assignments_for_tenant(tenant_id=tenant_id).filter(
+        AtribuireMasina.id == assignment_id
+    ).first()
+    if atribuire is None:
+        abort(404)
+    return atribuire
+
+
+def query_machine_driver_records_for_tenant(tenant_id=None):
+    """Query tenant-safe pentru ConducereMasina prin masina/proiect/angajat."""
+    from models import Angajat, ConducereMasina, Proiect
+
+    query = ConducereMasina.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    return query.filter(
+        ConducereMasina.masina.has(_machine_scope_expr(tenant_curent)),
+        ConducereMasina.angajat.has(Angajat.tenant_id == tenant_curent),
+        or_(
+            ConducereMasina.proiect_id.is_(None),
+            ConducereMasina.proiect.has(Proiect.tenant_id == tenant_curent),
+        ),
+    )
+
+
+def get_machine_driver_record_or_404(record_id, tenant_id=None):
+    """Returneaza ConducereMasina vizibila tenantului curent sau 404."""
+    from models import ConducereMasina
+
+    record = query_machine_driver_records_for_tenant(tenant_id=tenant_id).filter(
+        ConducereMasina.id == record_id
+    ).first()
+    if record is None:
+        abort(404)
+    return record
+
+
+def query_machine_defects_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru DefectiuneMasina prin masina si raportor."""
+    from models import Angajat, DefectiuneMasina
+
+    query = DefectiuneMasina.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    raportor_scope = Angajat.tenant_id == tenant_curent
+    if include_global:
+        raportor_scope = or_(raportor_scope, Angajat.tenant_id.is_(None))
+    return query.filter(
+        DefectiuneMasina.masina.has(_machine_scope_expr(tenant_curent)),
+        or_(
+            DefectiuneMasina.raportat_de.is_(None),
+            DefectiuneMasina.angajat_raportor.has(raportor_scope),
+        ),
+    )
+
+
+def get_machine_defect_or_404(defect_id, tenant_id=None):
+    """Returneaza DefectiuneMasina vizibila tenantului curent sau 404."""
+    from models import DefectiuneMasina
+
+    defectiune = query_machine_defects_for_tenant(tenant_id=tenant_id).filter(
+        DefectiuneMasina.id == defect_id
+    ).first()
+    if defectiune is None:
+        abort(404)
+    return defectiune
+
+
+def ensure_fleet_inputs_same_tenant(machine_id=None, project_id=None,
+                                    employee_id=None, tenant_id=None):
+    """Valideaza masina, proiectul si angajatul selectate in fluxurile flotei."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return True
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return True
+        if mod == MODE_OPTIONAL:
+            return True
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    from models import Angajat, Masina, Proiect
+
+    machine_ids = _unique_positive_ints([machine_id] if machine_id is not None else [])
+    if machine_ids:
+        masina = Masina.query.filter(Masina.id == machine_ids[0]).first()
+        if masina is None or not _machine_belongs_to_tenant(masina, tenant_curent):
+            raise TenantAccessDenied('Masina nu apartine tenantului curent.')
+
+    project_ids = _unique_positive_ints([project_id] if project_id is not None else [])
+    if project_ids:
+        proiect = Proiect.query.filter(
+            Proiect.id == project_ids[0],
+            Proiect.tenant_id == tenant_curent,
+        ).first()
+        if proiect is None:
+            raise TenantAccessDenied('Proiectul flotei nu apartine tenantului curent.')
+
+    employee_ids = _unique_positive_ints([employee_id] if employee_id is not None else [])
+    if employee_ids:
+        angajat = Angajat.query.filter(
+            Angajat.id == employee_ids[0],
+            Angajat.tenant_id == tenant_curent,
+        ).first()
+        if angajat is None:
+            raise TenantAccessDenied('Angajatul flotei nu apartine tenantului curent.')
+
+    return True
+
+
+def require_fleet_inputs_same_tenant(machine_id=None, project_id=None,
+                                     employee_id=None, tenant_id=None):
+    """Wrapper pentru rute create/edit: abort daca inputurile amesteca tenanturi."""
+    try:
+        return ensure_fleet_inputs_same_tenant(
+            machine_id=machine_id,
+            project_id=project_id,
+            employee_id=employee_id,
+            tenant_id=tenant_id,
+        )
+    except TenantAccessDenied:
+        abort(404)
+
+
+def query_consum_utilaj_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru ConsumUtilaj prin tenant_id direct si Proiect."""
+    from models import ConsumUtilaj, Proiect
+
+    query = ConsumUtilaj.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    direct_scope = ConsumUtilaj.tenant_id == tenant_curent
+    proiect_scope = and_(
+        ConsumUtilaj.tenant_id.is_(None),
+        ConsumUtilaj.proiect.has(Proiect.tenant_id == tenant_curent),
+    )
+    scope = or_(direct_scope, proiect_scope)
+    if include_global:
+        scope = or_(
+            scope,
+            and_(ConsumUtilaj.tenant_id.is_(None), ConsumUtilaj.proiect_id.is_(None)),
+        )
+    return query.filter(scope)
+
+
+def get_consum_utilaj_or_404(consum_id, tenant_id=None):
+    """Returneaza ConsumUtilaj vizibil tenantului curent sau 404."""
+    from models import ConsumUtilaj
+
+    consum = query_consum_utilaj_for_tenant(tenant_id=tenant_id).filter(
+        ConsumUtilaj.id == consum_id
+    ).first()
+    if consum is None:
+        abort(404)
+    return consum
+
+
 def query_contracts_for_tenant(tenant_id=None, include_global=False):
     """Query tenant-safe pentru Contract."""
     from models import Contract
@@ -1633,6 +2012,39 @@ def require_contract_inputs_same_tenant(proiect_id=None, contract_id=None, tenan
         )
     except TenantAccessDenied:
         abort(404)
+
+
+def _machine_scope_expr(tenant_id, include_global=False):
+    from models import Angajat, Masina, Proiect
+
+    # Masina nu are tenant_id direct. Orfanele raman ascunse pentru tenant users.
+    are_owner = or_(
+        Masina.proiect_id.isnot(None),
+        Masina.angajat_responsabil_id.isnot(None),
+    )
+    proiect_ok = or_(
+        Masina.proiect_id.is_(None),
+        Masina.proiect.has(Proiect.tenant_id == tenant_id),
+    )
+    angajat_ok = or_(
+        Masina.angajat_responsabil_id.is_(None),
+        Masina.angajat_responsabil.has(Angajat.tenant_id == tenant_id),
+    )
+    return and_(are_owner, proiect_ok, angajat_ok)
+
+
+def _machine_belongs_to_tenant(machine, tenant_id):
+    owner_tenants = []
+
+    if getattr(machine, 'proiect_id', None) is not None:
+        proiect = getattr(machine, 'proiect', None)
+        owner_tenants.append(_coerce_tenant_id(getattr(proiect, 'tenant_id', None)))
+
+    if getattr(machine, 'angajat_responsabil_id', None) is not None:
+        angajat = getattr(machine, 'angajat_responsabil', None)
+        owner_tenants.append(_coerce_tenant_id(getattr(angajat, 'tenant_id', None)))
+
+    return bool(owner_tenants) and all(owner == tenant_id for owner in owner_tenants)
 
 
 def _bim_site_scope_expr(tenant_id, include_global=False):
