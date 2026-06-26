@@ -17,6 +17,8 @@ from services.security.tenant_access import (
     get_site_or_404,
     query_bim_elements_for_tenant,
     query_bim_models_for_tenant,
+    query_gantt_plans_for_tenant,
+    query_gantt_wbs_nodes_for_tenant,
     query_sites_for_tenant,
     query_for_tenant,
     query_legacy_documents_for_tenant,
@@ -260,6 +262,16 @@ def hub(id):
                         GanttPlan, DocumentProiect, ModelBIM, Cladire, ElementBIM,
                         Santier, ProiectSantier)
 
+    def _gantt_planuri_proiect():
+        return query_gantt_plans_for_tenant().filter(GanttPlan.proiect_id == id)
+
+    def _gantt_sumar():
+        q = _gantt_planuri_proiect()
+        return {
+            'nr': q.count(),
+            'cost': float(q.with_entities(func.coalesce(func.sum(GanttPlan.cost_total), 0)).scalar() or 0),
+        }
+
     h = {}
     h['contracte'] = _safe(lambda: {'nr': Contract.query.filter_by(proiect_id=id).count(),
                                     'valoare': _suma(Contract, 'valoare_totala')}, {'nr': 0, 'valoare': 0})
@@ -268,8 +280,7 @@ def hub(id):
     h['situatie'] = _safe(lambda: (lambda s: {'procent': float(s.procent_avans_total or 0),
                                               'cumulat': float(s.valoare_cumulat_la_zi or 0)} if s else None)(
         SituatieLunara.query.filter_by(proiect_id=id).order_by(SituatieLunara.id.desc()).first()))
-    h['gantt'] = _safe(lambda: {'nr': GanttPlan.query.filter_by(proiect_id=id).count(),
-                                'cost': _suma(GanttPlan, 'cost_total')}, {'nr': 0, 'cost': 0})
+    h['gantt'] = _safe(_gantt_sumar, {'nr': 0, 'cost': 0})
     h['locatie'] = _safe(lambda: (lambda l: {'lat': float(l.latitudine), 'lng': float(l.longitudine)}
                                   if l and l.latitudine is not None else None)(
         LocatieProiect.query.filter_by(proiect_id=id).first()))
@@ -298,11 +309,12 @@ def hub(id):
 
     # ---- Parcurs ghidat (U2): etapele fluxului cu stare + pasul urmator ----
     from models import GanttWbsNod, ConsumUtilaj
-    plan = _safe(lambda: GanttPlan.query.filter_by(proiect_id=id)
+    plan = _safe(lambda: _gantt_planuri_proiect()
                  .order_by(GanttPlan.data_creare.desc()).first())
-    are_wbs = _safe(lambda: db.session.query(GanttWbsNod.id)
-                    .join(GanttPlan, GanttWbsNod.plan_id == GanttPlan.id)
-                    .filter(GanttPlan.proiect_id == id).first() is not None, False)
+    are_wbs = _safe(lambda: query_gantt_wbs_nodes_for_tenant()
+                    .filter(GanttWbsNod.plan_id.in_(
+                        _gantt_planuri_proiect().with_entities(GanttPlan.id)
+                    )).first() is not None, False)
     are_utilaj = _safe(lambda: ConsumUtilaj.query.filter_by(proiect_id=id).first() is not None, False)
     contracte_on = _safe(lambda: __import__('services.feature_flags', fromlist=['is_enabled'])
                          .is_enabled('controale-contract',

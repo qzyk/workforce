@@ -565,10 +565,100 @@ Nu s-a adaugat migrare deoarece modelele BIM relevante au deja `tenant_id` direc
 
 Urmatorul PR recomandat: `T1.8 Gantt Tenant Guard`. Daca se prioritizeaza suprafata operationala agregata, alternativa este `T1.8 Dashboard/Reporting Guard`.
 
-## Urmatoarele integrari recomandate dupa T1.7
+## T1.8 Gantt Route Integration
 
-1. `GanttPlan` si configurari Gantt ramase: ownership prin tenant/proiect si verificari pe import/export.
-2. Dashboard/reporting cross-domain: agregari proiect/BIM/contract/Gantt care inca folosesc servicii route-validated.
+T1.8 protejeaza planurile Gantt salvate, nodurile WBS editabile, save/create, exporturile pe plan salvat, configurarea Gantt si punctele directe BIM/Proiect care primesc sau afiseaza `GanttPlan`. PR-ul nu transforma `GanttPlan` in baseline contractual si nu introduce integrare `ProgramReferinta` / `TaskProgram`.
+
+Helpers adaugate:
+
+- `query_gantt_plans_for_tenant()` / `get_gantt_plan_or_404()`
+- `ensure_gantt_plan_same_tenant()` / `require_gantt_plan_same_tenant()`
+- `query_gantt_wbs_nodes_for_tenant()` / `get_gantt_wbs_node_or_404()`
+- `ensure_gantt_inputs_same_tenant()` / `require_gantt_inputs_same_tenant()`
+- `query_gantt_profiles_for_tenant()`
+- `query_gantt_synonyms_for_tenant()`
+- `query_gantt_classification_rules_for_tenant()`
+- `query_gantt_relation_templates_for_tenant()`
+
+Ownership paths:
+
+| Model | Ownership |
+|---|---|
+| `GanttPlan` | `tenant_id` direct; daca lipseste, `GanttPlan -> Proiect -> tenant_id`. Cand exista si `tenant_id`, si `proiect_id`, ambele trebuie sa fie compatibile. |
+| `GanttWbsNod` | `GanttWbsNod -> GanttPlan -> tenant_id / Proiect`; `tenant_id` direct pe nod trebuie sa fie compatibil cand exista. |
+| `GanttProfilMapare` | `tenant_id` sau rand global default (`tenant_id=NULL`). |
+| `GanttSinonimColoana` | `tenant_id` sau rand global default (`tenant_id=NULL`). |
+| `GanttClasificareRegula` | `tenant_id` sau rand global default (`tenant_id=NULL`). |
+| `GanttRelatieTemplate` | `tenant_id` sau rand global default (`tenant_id=NULL`). |
+
+Regula pentru `NULL`:
+
+- planurile Gantt salvate sunt date operationale si nu devin globale doar pentru ca `tenant_id=NULL`;
+- un plan legacy cu `tenant_id=NULL` este vizibil unui tenant doar daca are proiect parinte vizibil;
+- randurile Gantt de configurare cu `tenant_id=NULL` raman globale doar ca defaults shared;
+- userii tenant-scoped pot citi defaults globale, dar scriu numai randuri tenant-specific si nu modifica/delete global defaults.
+
+Rute/API-uri protejate:
+
+- `routes/gantt.py`: lista planuri salvate, detaliu plan, stergere plan, export plan, seeding/listare WBS si operatii WBS (`redenumeste`, `sus/jos`, `muta`, `adauga`, `sterge`, `reset`);
+- `routes/gantt.py`: dropdown-ul de proiecte din preview foloseste proiecte tenant-safe;
+- `routes/gantt.py`: save/create valideaza `proiect_id` inainte de creare si seteaza `tenant_id` pe planul nou cand modul are tenant activ;
+- `routes/gantt.py`: pagina `/gantt/config` listeaza tenant + global defaults, fara randuri din alt tenant;
+- `routes/gantt.py`: write-urile de config (`sinonim`, `regula`, `mapare`, `tarif`, `profil`) folosesc `tenant_id_for_new_record_or_403()`;
+- `routes/bim.py`: viewer-ul BIM filtreaza lista de planuri Gantt si `genereaza-4d` valideaza `plan_id` cu `get_gantt_plan_or_404()` inainte de generarea 4D;
+- `routes/proiecte.py`: hub-ul proiectului foloseste query-uri Gantt tenant-safe pentru count/cost, ultimul plan si detectia WBS.
+
+Save/create behavior:
+
+- `/gantt/salveaza` verifica fisierul temporar existent, apoi valideaza `proiect_id` cu `require_gantt_inputs_same_tenant()` inainte de a rula create;
+- in `off`, planul nou pastreaza comportamentul legacy (`tenant_id=NULL`);
+- in `optional`/`strict` cu tenant activ, planul nou primeste tenantul curent;
+- un proiect strain returneaza 404 si nu creeaza plan.
+
+Export behavior:
+
+- exportul din plan salvat (`/gantt/plan/<id>/export/<fmt>`) valideaza planul cu `get_gantt_plan_or_404()` inainte de pipeline si inainte de `send_file()`;
+- exporturile de preview pe token temporar raman compatibile si nu sunt legate de un `GanttPlan` salvat;
+- formatele CSV/MS Project/Primavera/JSON si layout-ul fisierelor generate nu au fost schimbate.
+
+WBS editor behavior:
+
+- planul parinte este validat inainte de seeding, randare si operatii;
+- `nod_id`, `grup_id` si `parinte_id` sunt validate prin `get_gantt_wbs_node_or_404()` si trebuie sa apartina aceluiasi plan;
+- mutarea sub un nod non-grup returneaza 404;
+- reset-ul ramane plan-scoped si nu schimba algoritmul de WBS automat.
+
+Config/global default behavior:
+
+- listele de config includ randuri globale si randuri ale tenantului curent, dar nu randuri din alt tenant;
+- write-urile de config creeaza/updateaza randuri tenant-specific pentru user tenant-scoped;
+- `services/gantt/store.py` refuza toggle/delete/rename pe randuri globale cand apelul vine cu `tenant_id` de tenant;
+- super-admin/global behavior ramane explicit cand apelul ajunge cu `tenant_id=None`;
+- in `strict`, user normal fara tenant esueaza inchis la write prin `tenant_id_for_new_record_or_403()`.
+
+Comportament pe moduri:
+
+- in `off`, query-urile Gantt raman compatibile cu legacy single-tenant;
+- in `optional`, userii cu `tenant_id` sunt scopati, iar userii fara tenant pastreaza comportamentul migration-friendly;
+- in `strict`, user normal fara `tenant_id` esueaza inchis pentru planuri salvate si create/write, iar ID-urile straine primesc 404;
+- super-adminul fara tenant ramane explicit si nefiltrat, conform foundation layer.
+
+Ce ramane neprotejat dupa T1.8:
+
+- `services/gantt/pipeline.py`, `services/gantt/program.py`, `services/gantt/wbs_editor.py`, `services/gantt/config_loader.py` si generatoarele de export nu sunt inca security boundaries independente;
+- rutele Gantt raman boundary-ul principal pentru planuri salvate, WBS si config;
+- API-urile stateless care primesc doar payload de activitati/articole nu au ownership DB si raman compatibile;
+- tokenurile temporare de preview nu sunt planuri salvate si nu sunt scoping boundary multi-tenant;
+- dashboard/reporting general inca are agregari Gantt brute si este recomandat pentru T1.9.
+
+Nu s-a adaugat migrare deoarece modelele Gantt relevante au deja `tenant_id` si/sau ownership prin `Proiect`. Nu s-a creat `gantt_plan_service.py` deoarece T1.8 este strict security/access-control; service extraction ar schimba boundary-ul de business si trebuie facuta ulterior. Nu s-a implementat sincronizare `ProgramReferinta` / `TaskProgram` si nu s-a introdus baseline approval.
+
+Urmatorul PR recomandat: `T1.9 Dashboard/Reporting Tenant Guard`.
+
+## Urmatoarele integrari recomandate dupa T1.8
+
+1. Dashboard/reporting cross-domain: agregari proiect/BIM/contract/Gantt care inca folosesc servicii route-validated.
+2. `T1.8B Gantt Service Boundary Hardening` daca serviciile Gantt vor fi apelate direct din afara rutelor.
 3. `T1.7B BIM Service Boundary Hardening` daca serviciile BIM vor fi apelate direct din afara rutelor.
 4. `T1.5B Contract Service Boundary Hardening` daca serviciile contractuale vor fi apelate direct din afara rutelor.
 5. S1.1/S1.2: extragere `activity_service.py` / `timesheet_service.py` dupa ce tenant guard-urile principale sunt stabile.

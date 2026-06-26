@@ -291,6 +291,14 @@ def _audit(action: str, entity_type: str, entity_id, values: dict) -> None:
         pass
 
 
+def _poate_modifica_rand(row, tenant_id) -> bool:
+    """Tenantul modifica doar randurile proprii; global doar in context global explicit."""
+    row_tenant_id = getattr(row, 'tenant_id', None)
+    if tenant_id is None:
+        return row_tenant_id is None
+    return row_tenant_id == tenant_id
+
+
 def lista_sinonime(tenant_id: Optional[int] = None) -> list:
     from models import GanttSinonimColoana as M
     return _scope(M.query, M, tenant_id).order_by(M.camp, M.sinonim).all()
@@ -377,7 +385,7 @@ def comuta_activ(entitate: str, id_: int, tenant_id=None):
     row = db.session.get(M, id_)
     if not row or not hasattr(row, 'activ'):
         return None
-    if getattr(row, 'tenant_id', None) not in (None, tenant_id):
+    if not _poate_modifica_rand(row, tenant_id):
         return None
     row.activ = not row.activ
     db.session.commit()
@@ -392,7 +400,7 @@ def sterge_rand(entitate: str, id_: int, tenant_id=None) -> bool:
     row = db.session.get(M, id_) if M else None
     if not row:
         return False
-    if getattr(row, 'tenant_id', None) not in (None, tenant_id):
+    if not _poate_modifica_rand(row, tenant_id):
         return False
     tn = M.__tablename__
     db.session.delete(row)
@@ -404,7 +412,7 @@ def sterge_rand(entitate: str, id_: int, tenant_id=None) -> bool:
 def redenumeste_profil(id_: int, nume: str, tenant_id=None) -> bool:
     from models import db, GanttProfilMapare as M
     row = db.session.get(M, id_)
-    if not row or getattr(row, 'tenant_id', None) not in (None, tenant_id):
+    if not row or not _poate_modifica_rand(row, tenant_id):
         return False
     row.nume = (nume or row.nume).strip()[:120]
     db.session.commit()

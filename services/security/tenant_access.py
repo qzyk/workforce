@@ -621,6 +621,251 @@ def query_tarife_categorie_for_tenant(tenant_id=None, include_global_defaults=Fa
     )
 
 
+def query_gantt_plans_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru planuri Gantt salvate.
+
+    Planurile operationale nu devin globale doar pentru ca au `tenant_id=NULL`.
+    In modurile scoped sunt vizibile prin `tenant_id` direct sau prin proiectul
+    parinte. `include_global=True` este rezervat doar compatibilitatii explicite
+    cu randuri vechi fara proiect si fara tenant.
+    """
+    from models import GanttPlan, Proiect, db
+
+    query = GanttPlan.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    proiect_scope = Proiect.tenant_id == tenant_curent
+    direct_scope = and_(
+        GanttPlan.tenant_id == tenant_curent,
+        or_(
+            GanttPlan.proiect_id.is_(None),
+            GanttPlan.proiect.has(proiect_scope),
+        ),
+    )
+    inherited_scope = and_(
+        GanttPlan.tenant_id.is_(None),
+        GanttPlan.proiect.has(proiect_scope),
+    )
+    scope = or_(direct_scope, inherited_scope)
+    if include_global:
+        scope = or_(
+            scope,
+            and_(GanttPlan.tenant_id.is_(None), GanttPlan.proiect_id.is_(None)),
+        )
+    return query.filter(scope)
+
+
+def get_gantt_plan_or_404(plan_id, tenant_id=None, include_global=False):
+    """Returneaza GanttPlan vizibil tenantului curent sau 404."""
+    from models import GanttPlan
+
+    plan = query_gantt_plans_for_tenant(
+        tenant_id=tenant_id,
+        include_global=include_global,
+    ).filter(GanttPlan.id == plan_id).first()
+    if plan is None:
+        abort(404)
+    return plan
+
+
+def ensure_gantt_plan_same_tenant(plan, tenant_id=None, include_global=False):
+    """Valideaza GanttPlan prin tenant_id direct si/sau Proiect."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return plan
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return plan
+        if mod == MODE_OPTIONAL:
+            return plan
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    tenant_plan = _coerce_tenant_id(getattr(plan, 'tenant_id', None))
+    proiect = getattr(plan, 'proiect', None)
+    proiect_id = getattr(plan, 'proiect_id', None)
+    tenant_proiect = _coerce_tenant_id(getattr(proiect, 'tenant_id', None))
+
+    if tenant_plan is not None and tenant_plan != tenant_curent:
+        raise TenantAccessDenied('Planul Gantt nu apartine tenantului curent.')
+
+    if proiect_id is not None and tenant_proiect != tenant_curent:
+        raise TenantAccessDenied('Proiectul planului Gantt nu apartine tenantului curent.')
+
+    if tenant_plan == tenant_curent:
+        return plan
+
+    if proiect_id is not None and tenant_proiect == tenant_curent:
+        return plan
+
+    if include_global and tenant_plan is None and proiect_id is None:
+        return plan
+
+    raise TenantAccessDenied('Planul Gantt nu are owner tenant-safe.')
+
+
+def require_gantt_plan_same_tenant(plan, tenant_id=None, include_global=False):
+    """Wrapper pentru rute: ascunde planurile Gantt inaccesibile prin 404."""
+    try:
+        return ensure_gantt_plan_same_tenant(
+            plan,
+            tenant_id=tenant_id,
+            include_global=include_global,
+        )
+    except TenantAccessDenied:
+        abort(404)
+
+
+def query_gantt_wbs_nodes_for_tenant(plan_id=None, tenant_id=None):
+    """Query tenant-safe pentru noduri WBS prin GanttPlan."""
+    from models import GanttPlan, GanttWbsNod
+
+    query = GanttWbsNod.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query.filter_by(plan_id=plan_id) if plan_id is not None else query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query.filter_by(plan_id=plan_id) if plan_id is not None else query
+        if mod == MODE_OPTIONAL:
+            return query.filter_by(plan_id=plan_id) if plan_id is not None else query
+        return query.filter(False)
+
+    plan_ids = query_gantt_plans_for_tenant(
+        tenant_id=tenant_curent,
+    ).with_entities(GanttPlan.id)
+    query = query.filter(
+        GanttWbsNod.plan_id.in_(plan_ids),
+        or_(
+            GanttWbsNod.tenant_id == tenant_curent,
+            GanttWbsNod.tenant_id.is_(None),
+        ),
+    )
+    if plan_id is not None:
+        query = query.filter(GanttWbsNod.plan_id == plan_id)
+    return query
+
+
+def get_gantt_wbs_node_or_404(node_id, tenant_id=None):
+    """Returneaza GanttWbsNod vizibil tenantului curent sau 404."""
+    from models import GanttWbsNod
+
+    nod = query_gantt_wbs_nodes_for_tenant(tenant_id=tenant_id).filter(
+        GanttWbsNod.id == node_id
+    ).first()
+    if nod is None:
+        abort(404)
+    return nod
+
+
+def ensure_gantt_inputs_same_tenant(proiect_id=None, plan_id=None, tenant_id=None):
+    """Valideaza proiectul si planul selectate in fluxurile Gantt."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return True
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return True
+        if mod == MODE_OPTIONAL:
+            return True
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    from models import GanttPlan, Proiect
+
+    proiect_ids = _unique_positive_ints([proiect_id] if proiect_id is not None else [])
+    proiect_ok = None
+    if proiect_ids:
+        proiect_ok = Proiect.query.filter(
+            Proiect.id == proiect_ids[0],
+            Proiect.tenant_id == tenant_curent,
+        ).first()
+        if proiect_ok is None:
+            raise TenantAccessDenied('Proiectul Gantt nu apartine tenantului curent.')
+
+    plan_ids = _unique_positive_ints([plan_id] if plan_id is not None else [])
+    if plan_ids:
+        plan = db.session.get(GanttPlan, plan_ids[0])
+        if plan is None:
+            raise TenantAccessDenied('Planul Gantt nu exista.')
+        ensure_gantt_plan_same_tenant(plan, tenant_id=tenant_curent)
+        if proiect_ok is not None and getattr(plan, 'proiect_id', None):
+            if plan.proiect_id != proiect_ok.id:
+                raise TenantAccessDenied('Planul Gantt nu apartine proiectului selectat.')
+
+    return True
+
+
+def require_gantt_inputs_same_tenant(proiect_id=None, plan_id=None, tenant_id=None):
+    """Wrapper pentru rute create/edit: abort daca inputurile amesteca tenanturi."""
+    try:
+        return ensure_gantt_inputs_same_tenant(
+            proiect_id=proiect_id,
+            plan_id=plan_id,
+            tenant_id=tenant_id,
+        )
+    except TenantAccessDenied:
+        abort(404)
+
+
+def query_gantt_profiles_for_tenant(tenant_id=None, include_global=True):
+    """Query tenant-safe pentru profiluri de mapare Gantt."""
+    from models import GanttProfilMapare
+
+    return query_for_tenant(
+        GanttProfilMapare,
+        tenant_id=tenant_id,
+        include_global=include_global,
+    )
+
+
+def query_gantt_synonyms_for_tenant(tenant_id=None, include_global=True):
+    """Query tenant-safe pentru sinonime de coloane Gantt."""
+    from models import GanttSinonimColoana
+
+    return query_for_tenant(
+        GanttSinonimColoana,
+        tenant_id=tenant_id,
+        include_global=include_global,
+    )
+
+
+def query_gantt_classification_rules_for_tenant(tenant_id=None, include_global=True):
+    """Query tenant-safe pentru reguli de clasificare Gantt."""
+    from models import GanttClasificareRegula
+
+    return query_for_tenant(
+        GanttClasificareRegula,
+        tenant_id=tenant_id,
+        include_global=include_global,
+    )
+
+
+def query_gantt_relation_templates_for_tenant(tenant_id=None, include_global=True):
+    """Query tenant-safe pentru template-uri de relatii Gantt."""
+    from models import GanttRelatieTemplate
+
+    return query_for_tenant(
+        GanttRelatieTemplate,
+        tenant_id=tenant_id,
+        include_global=include_global,
+    )
+
+
 def query_project_documents_for_tenant(tenant_id=None, include_global=False):
     """Query tenant-safe pentru DocumentProiect prin Proiect -> tenant_id."""
     from models import DocumentProiect, Proiect

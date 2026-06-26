@@ -60,6 +60,7 @@ from services import aps_viewer
 from services.security.tenant_access import (
     get_bim_building_or_404,
     get_bim_element_or_404,
+    get_gantt_plan_or_404,
     get_bim_issue_or_404,
     get_bim_level_or_404,
     get_bim_model_or_404,
@@ -76,6 +77,7 @@ from services.security.tenant_access import (
     query_bim_models_for_tenant,
     query_bim_spaces_for_tenant,
     query_for_tenant,
+    query_gantt_plans_for_tenant,
     query_sites_for_tenant,
     require_bim_record_same_tenant,
     tenant_id_for_new_record_or_403,
@@ -839,11 +841,9 @@ def viewer(model_id):
         # Prioritate 2: xeokit-sdk daca flag-ul e activ
         if feature_flags.is_enabled('bim-viewer-3d'):
             from models import GanttPlan
-            tid = getattr(current_user, 'tenant_id', None)
-            qp = GanttPlan.query
-            qp = (qp.filter((GanttPlan.tenant_id == tid) | (GanttPlan.tenant_id.is_(None)))
-                  if tid is not None else qp.filter(GanttPlan.tenant_id.is_(None)))
-            planuri = qp.order_by(GanttPlan.data_creare.desc()).all()
+            planuri = query_gantt_plans_for_tenant().order_by(
+                GanttPlan.data_creare.desc()
+            ).all()
             return render_template('bim/viewer_xeokit.html', model=model, planuri=planuri)
 
     # Fallback: viewer-ul existent (web-ifc-viewer)
@@ -881,12 +881,11 @@ def _elemente_model(model):
 def genereaza_4d(model_id):
     """Genereaza schedule-urile 4D pentru elementele modelului, dintr-un plan Gantt salvat."""
     model = get_bim_model_or_404(model_id)
-    from models import GanttPlan
     from services.gantt.pipeline import MotorPlanificare
     from services.gantt import import_engine, store as gstore
     from services import bim_4d_bridge
 
-    plan = (get_or_404_for_tenant(GanttPlan, int(request.form['plan_id']))
+    plan = (get_gantt_plan_or_404(int(request.form['plan_id']))
             if request.form.get('plan_id') else None)
     if not plan:
         flash('Alege un plan Gantt salvat pentru a genera 4D.', 'warning')

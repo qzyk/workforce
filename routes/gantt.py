@@ -34,6 +34,15 @@ from services.gantt import import_engine, export as export_engine, store, diagra
 from services.gantt.wbs import genereaza_wbs
 from services.gantt.dependinte import genereaza_dependinte
 from services.gantt.validare import valideaza
+from services.security.tenant_access import (
+    get_gantt_plan_or_404,
+    get_gantt_wbs_node_or_404,
+    query_for_tenant,
+    query_gantt_plans_for_tenant,
+    query_gantt_wbs_nodes_for_tenant,
+    require_gantt_inputs_same_tenant,
+    tenant_id_for_new_record_or_403,
+)
 
 gantt_bp = Blueprint('gantt', __name__, url_prefix='/gantt')
 
@@ -192,7 +201,7 @@ def _render_rezultat(rezultat, raport_import, token, nume_fisier, plan_id=None):
     session['gantt_nume_fisier'] = nume_fisier
     try:
         from models import Proiect
-        proiecte = Proiect.query.order_by(Proiect.nume).all()
+        proiecte = query_for_tenant(Proiect).order_by(Proiect.nume).all()
     except Exception:
         proiecte = []
     from services.gantt import resurse_timp
@@ -340,11 +349,14 @@ def export_f2(token):
 
 # ============================================================ PLANURI SALVATE
 def _plan_sau_404(id_):
-    from models import db, GanttPlan
-    p = db.session.get(GanttPlan, id_)
-    if not p or getattr(p, 'tenant_id', None) not in (None, getattr(current_user, 'tenant_id', None)):
+    return get_gantt_plan_or_404(id_)
+
+
+def _nod_plan_sau_404(nod_id, plan_id):
+    n = get_gantt_wbs_node_or_404(nod_id)
+    if n.plan_id != plan_id:
         abort(404)
-    return p
+    return n
 
 
 def _mapare_din_plan(p):
@@ -383,6 +395,9 @@ def salveaza():
         proiect_id = int(request.form.get('proiect_id')) if request.form.get('proiect_id') else None
     except (TypeError, ValueError):
         proiect_id = None
+    tenant_id_nou = tenant_id_for_new_record_or_403()
+    if proiect_id:
+        require_gantt_inputs_same_tenant(proiect_id=proiect_id)
 
     mapare, rand_antet = (_mapare_sesiune() if session.get('gantt_token') == token else (None, None))
     try:
@@ -401,7 +416,7 @@ def salveaza():
         data_start=date.today(),
         nr_activitati=st.get('nr_activitati', 0), durata_zile=st.get('durata_totala_zile', 0),
         cost_total=st.get('cost_total', 0) or 0,
-        proiect_id=proiect_id, tenant_id=getattr(current_user, 'tenant_id', None),
+        proiect_id=proiect_id, tenant_id=tenant_id_nou,
         creat_de_id=getattr(current_user, 'id', None))
     db.session.add(plan)
     db.session.commit()
@@ -419,12 +434,8 @@ def salveaza():
 @gantt_bp.route('/planuri')
 @login_required
 def planuri():
-    from sqlalchemy import or_
     from models import GanttPlan
-    tid = getattr(current_user, 'tenant_id', None)
-    q = GanttPlan.query
-    q = q.filter(or_(GanttPlan.tenant_id == tid, GanttPlan.tenant_id.is_(None))) if tid is not None \
-        else q.filter(GanttPlan.tenant_id.is_(None))
+    q = query_gantt_plans_for_tenant()
     return render_template('gantt/planuri.html',
                            planuri=q.order_by(GanttPlan.data_creare.desc()).all())
 
@@ -483,17 +494,26 @@ def plan_export(id_, fmt):
 # ===================== EDITOR WBS (pe plan salvat) =====================
 def _aplica_arbore_salvat(rezultat, plan_id):
     """Daca planul are arbore WBS salvat, inlocuieste WBS-ul auto cu cel editat."""
+    from models import GanttWbsNod
     from services.gantt import wbs_editor
-    if plan_id and wbs_editor.arbore_exista(plan_id):
-        noduri_db = wbs_editor.noduri_plan(plan_id)
+    noduri_db = query_gantt_wbs_nodes_for_tenant(plan_id=plan_id).order_by(
+        GanttWbsNod.parinte_id,
+        GanttWbsNod.ordine,
+        GanttWbsNod.id,
+    ).all() if plan_id else []
+    if noduri_db:
         rezultat.noduri_wbs = wbs_editor.wbs_din_arbore(rezultat.activitati, noduri_db)
     return rezultat
 
 
 def _arbore_nested(plan_id):
     """(arbore_nested, grupuri_flat) pentru editorul WBS."""
-    from services.gantt import wbs_editor
-    noduri = wbs_editor.noduri_plan(plan_id)
+    from models import GanttWbsNod
+    noduri = query_gantt_wbs_nodes_for_tenant(plan_id=plan_id).order_by(
+        GanttWbsNod.parinte_id,
+        GanttWbsNod.ordine,
+        GanttWbsNod.id,
+    ).all()
     by_parent: dict = {}
     for n in noduri:
         by_parent.setdefault(n.parinte_id, []).append(n)
@@ -533,16 +553,30 @@ def plan_wbs_op(id_):
     act = request.form.get('actiune')
     nod_id = request.form.get('nod_id', type=int)
     if act == 'redenumeste':
+        _nod_plan_sau_404(nod_id, p.id)
         wbs_editor.redenumeste(p.id, nod_id, request.form.get('nume'))
     elif act in ('sus', 'jos'):
+        _nod_plan_sau_404(nod_id, p.id)
         wbs_editor.muta(p.id, nod_id, act)
     elif act == 'muta':
-        wbs_editor.muta_in_grup(p.id, nod_id, request.form.get('grup_id', type=int) or None)
+        _nod_plan_sau_404(nod_id, p.id)
+        grup_id = request.form.get('grup_id', type=int) or None
+        if grup_id:
+            grup = _nod_plan_sau_404(grup_id, p.id)
+            if grup.tip != 'grup':
+                abort(404)
+        wbs_editor.muta_in_grup(p.id, nod_id, grup_id)
     elif act == 'adauga':
+        parinte_id = request.form.get('parinte_id', type=int) or None
+        if parinte_id:
+            parinte = _nod_plan_sau_404(parinte_id, p.id)
+            if parinte.tip != 'grup':
+                abort(404)
         if wbs_editor.adauga_grup(p, request.form.get('nume'),
-                                  request.form.get('parinte_id', type=int) or None):
+                                  parinte_id):
             flash('Grup adaugat.', 'success')
     elif act == 'sterge':
+        _nod_plan_sau_404(nod_id, p.id)
         wbs_editor.sterge_nod(p.id, nod_id)
     elif act == 'reset':
         wbs_editor.reset(p.id)
@@ -595,10 +629,11 @@ def mapare():
             semn = _semnatura_la_rand(continut, ext, rand_antet) or (
                 _semnaturi_fisier(continut, ext)[:1] or [''])[0]
             if semn:
+                tenant_id_profil = tenant_id_for_new_record_or_403()
                 store.salveaza_profil(
                     nume=(request.form.get('nume_profil') or nume_fisier),
                     semnatura=semn, coloane_map=mapare, rand_antet=rand_antet,
-                    sursa='wizard', tenant_id=getattr(current_user, 'tenant_id', None),
+                    sursa='wizard', tenant_id=tenant_id_profil,
                     user_id=getattr(current_user, 'id', None))
 
         # treci in fluxul de rezultat/export
@@ -677,9 +712,10 @@ def config():
 @gantt_bp.route('/config/sinonim', methods=['POST'])
 @login_required
 def config_sinonim_add():
+    tenant_id = tenant_id_for_new_record_or_403()
     _row, err = store.adauga_sinonim(
         request.form.get('camp'), request.form.get('sinonim'),
-        tenant_id=getattr(current_user, 'tenant_id', None),
+        tenant_id=tenant_id,
         user_id=getattr(current_user, 'id', None))
     _invalideaza_motor()
     flash(err or 'Sinonim adaugat.', 'warning' if err else 'success')
@@ -689,10 +725,11 @@ def config_sinonim_add():
 @gantt_bp.route('/config/regula', methods=['POST'])
 @login_required
 def config_regula_add():
+    tenant_id = tenant_id_for_new_record_or_403()
     _row, err = store.adauga_regula(
         request.form.get('categorie'), request.form.get('tip_regula', 'cuvant'),
         request.form.get('valoare'), request.form.get('prioritate', 100),
-        tenant_id=getattr(current_user, 'tenant_id', None),
+        tenant_id=tenant_id,
         user_id=getattr(current_user, 'id', None))
     _invalideaza_motor()
     flash(err or 'Regula adaugata.', 'warning' if err else 'success')
@@ -703,10 +740,11 @@ def config_regula_add():
 @login_required
 def config_mapare_add():
     """Suprascrie maparea unei categorii Gantt -> categorie_lucrare (F2)."""
+    tenant_id = tenant_id_for_new_record_or_403()
     _row, err = store.adauga_regula(
         request.form.get('categorie_lucrare'), 'mapare_categorie',
         request.form.get('categorie_gantt'),
-        tenant_id=getattr(current_user, 'tenant_id', None),
+        tenant_id=tenant_id,
         user_id=getattr(current_user, 'id', None))
     _invalideaza_motor()
     flash(err or 'Mapare salvata.', 'warning' if err else 'success')
@@ -718,7 +756,8 @@ def config_mapare_add():
 def config_comuta(entitate, id_):
     if entitate not in ('sinonim', 'regula'):
         abort(404)
-    row = store.comuta_activ(entitate, id_, getattr(current_user, 'tenant_id', None))
+    tenant_id = tenant_id_for_new_record_or_403()
+    row = store.comuta_activ(entitate, id_, tenant_id)
     _invalideaza_motor()
     flash('Stare actualizata.' if row else 'Nu am gasit randul.',
           'success' if row else 'warning')
@@ -730,7 +769,8 @@ def config_comuta(entitate, id_):
 def config_sterge(entitate, id_):
     if entitate not in ('sinonim', 'regula', 'profil'):
         abort(404)
-    ok = store.sterge_rand(entitate, id_, getattr(current_user, 'tenant_id', None))
+    tenant_id = tenant_id_for_new_record_or_403()
+    ok = store.sterge_rand(entitate, id_, tenant_id)
     if entitate in ('sinonim', 'regula'):
         _invalideaza_motor()
     flash('Sters definitiv.' if ok else 'Nu am gasit randul.', 'success' if ok else 'warning')
@@ -742,7 +782,7 @@ def config_sterge(entitate, id_):
 def config_tarif_set():
     cat = request.form.get('categorie')
     um = request.form.get('um')
-    tid = getattr(current_user, 'tenant_id', None)
+    tid = tenant_id_for_new_record_or_403()
     uid = getattr(current_user, 'id', None)
     _row, err = store.seteaza_tarif(cat, request.form.get('tarif'), um, tenant_id=tid, user_id=uid)
     err2 = None
@@ -758,8 +798,9 @@ def config_tarif_set():
 @gantt_bp.route('/config/profil/<int:id_>/redenumeste', methods=['POST'])
 @login_required
 def config_profil_redenumeste(id_):
+    tenant_id = tenant_id_for_new_record_or_403()
     ok = store.redenumeste_profil(id_, request.form.get('nume', ''),
-                                  getattr(current_user, 'tenant_id', None))
+                                  tenant_id)
     flash('Profil redenumit.' if ok else 'Nu am gasit profilul.',
           'success' if ok else 'warning')
     return redirect(url_for('gantt.config') + '#profiluri')
