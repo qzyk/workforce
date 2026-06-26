@@ -655,10 +655,74 @@ Nu s-a adaugat migrare deoarece modelele Gantt relevante au deja `tenant_id` si/
 
 Urmatorul PR recomandat: `T1.9 Dashboard/Reporting Tenant Guard`.
 
-## Urmatoarele integrari recomandate dupa T1.8
+## T1.9 Dashboard / Reporting Route Integration
 
-1. Dashboard/reporting cross-domain: agregari proiect/BIM/contract/Gantt care inca folosesc servicii route-validated.
-2. `T1.8B Gantt Service Boundary Hardening` daca serviciile Gantt vor fi apelate direct din afara rutelor.
-3. `T1.7B BIM Service Boundary Hardening` daca serviciile BIM vor fi apelate direct din afara rutelor.
-4. `T1.5B Contract Service Boundary Hardening` daca serviciile contractuale vor fi apelate direct din afara rutelor.
-5. S1.1/S1.2: extragere `activity_service.py` / `timesheet_service.py` dupa ce tenant guard-urile principale sunt stabile.
+T1.9 protejeaza dashboard-urile agregate, cautarea globala si modulul legacy de rapoarte. PR-ul ramane security/access-control: nu schimba formulele KPI, layout-urile XLSX/PDF, folderele de export, schema DB sau fluxurile de business.
+
+Helpers adaugate:
+
+- `query_reports_for_tenant()` / `get_report_or_404()`
+- `ensure_report_same_tenant()` / `require_report_same_tenant()`
+- `ensure_reporting_project_scope()` / `require_reporting_project_scope()`
+
+Ownership paths:
+
+| Model | Ownership |
+|---|---|
+| `Raport` | nu are `tenant_id`; acces punctual prin `parametri.proiect_id` / `parametri.angajat_id`, apoi prin `Raport.generator -> Utilizator.tenant_id`. |
+| `Dashboard project stats` | `Proiect.tenant_id` prin `query_for_tenant(Proiect)`. |
+| `Dashboard timesheet stats` | `Pontaj -> Proiect/Angajat -> tenant_id` prin `query_timesheets_for_tenant()`. |
+| `Dashboard legacy documents` | `Document -> Proiect/Angajat -> tenant_id` prin `query_legacy_documents_for_tenant()`. |
+| `Dashboard contracts` | `Contract.tenant_id` prin `query_contracts_for_tenant()`. |
+| `Dashboard BIM` | helperii BIM T1.7 (`query_sites_for_tenant`, `query_bim_*_for_tenant`). |
+| `Dashboard Gantt` | helperii Gantt T1.8 (`query_gantt_plans_for_tenant`). |
+
+Rute/API-uri protejate:
+
+- `routes/dashboard.py`: dashboard principal, API stats, dashboard executiv, cautare globala si trigger manual EVM;
+- `routes/rapoarte.py`: panou rapoarte, istoric, descarcare raport, stergere raport;
+- generare rapoarte pe proiect (`foaie_prezenta`, `situatie_proiect`) prin `get_project_or_404()` inainte de generator;
+- generare rapoarte pe angajat (`pontaj_individual`) prin angajat tenant-safe inainte de generator;
+- generare rapoarte all-project/all-employee (`stat_plata`, `centralizator_ore`, `documente_expirate`, `prezenta_zilnica`, `raport_ssm`) cu `tenant_id` transmis catre generator.
+
+Import/export/file-serving behavior:
+
+- `Raport` este validat cu `get_report_or_404()` inainte de `send_file()`;
+- exporturile XLSX/PDF pastreaza layout-ul si naming-ul existent;
+- rutele cu `proiect_id` resping proiectele straine cu 404 inainte de generare;
+- rutele all-project/all-employee filtreaza randurile din workbook/PDF dupa tenant cand modul are tenant activ;
+- trigger-ul manual EVM primeste un query de proiecte deja tenant-scoped si nu mai scaneaza intreg portofoliul din ruta.
+
+Comportament pe moduri:
+
+- in `off`, dashboard-urile, istoricul si exporturile raman compatibile cu single-tenant;
+- in `optional`, userii cu `tenant_id` sunt scopati, iar userii fara tenant pastreaza comportamentul migration-friendly;
+- in `strict`, user normal fara `tenant_id` esueaza inchis pentru download/generare si vede agregari goale;
+- super-adminul fara tenant ramane explicit si nefiltrat, conform foundation layer.
+
+Service boundary limitation:
+
+- `rapoarte/excel_generator.py` si `rapoarte/pdf_generator.py` au primit parametri `tenant_id` doar unde generau agregari fara proiect parinte;
+- generatorii si serviciile de dashboard/reporting nu sunt inca security boundaries independente;
+- rutele raman boundary-ul principal pentru validarea proiectelor, angajatilor si fisierelor servite;
+- serviciile `services/evm.py`, `services/notificari_job.py` si generatoarele de export trebuie tratate ca route-validated pana la un PR de hardening separat.
+
+Ce ramane neprotejat dupa T1.9:
+
+- generatorii project-specific (`foaie_prezenta`, `situatie_proiect`) inca presupun ca ruta a validat proiectul inainte de apel;
+- `Raport` nu are `tenant_id` direct, deci istoricul este listat prin generator si accesul punctual prin parametri salvati;
+- rapoartele vechi fara `parametri` si fara generator tenant-safe nu sunt vizibile tenantilor in strict mode;
+- serviciile de raportare nu au fost extrase intr-un `reporting_service.py`.
+
+Nu s-a adaugat migrare deoarece `Raport` este protejat prin ownership existent (`parametri` + `Utilizator.tenant_id`), iar T1.x nu introduce coloane noi. Nu s-a creat `reporting_service.py` sau `dashboard_service.py` deoarece T1.9 este strict security/access-control; service extraction ar schimba boundary-ul de business si trebuie facuta ulterior.
+
+Urmatorul PR recomandat: `T1.10 Notifications/Admin Tenant Guard`. Daca serviciile de raportare vor fi apelate direct din joburi/API-uri noi, alternativa este `T1.9B Reporting Service Boundary Hardening`.
+
+## Urmatoarele integrari recomandate dupa T1.9
+
+1. `T1.10 Notifications/Admin Tenant Guard` pentru suprafete administrative si notificari ramase.
+2. `T1.9B Reporting Service Boundary Hardening` daca generatoarele de rapoarte vor fi apelate direct din afara rutelor.
+3. `T1.8B Gantt Service Boundary Hardening` daca serviciile Gantt vor fi apelate direct din afara rutelor.
+4. `T1.7B BIM Service Boundary Hardening` daca serviciile BIM vor fi apelate direct din afara rutelor.
+5. `T1.5B Contract Service Boundary Hardening` daca serviciile contractuale vor fi apelate direct din afara rutelor.
+6. S1.1/S1.2: extragere `activity_service.py` / `timesheet_service.py` dupa ce tenant guard-urile principale sunt stabile.

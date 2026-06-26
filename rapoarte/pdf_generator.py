@@ -188,12 +188,13 @@ def generate_pdf_foaie_prezenta(proiect_id, luna, an):
 # 2. PDF STAT DE PLATA
 # ============================================================
 
-def generate_pdf_stat_plata(proiect_id, luna, an):
+def generate_pdf_stat_plata(proiect_id, luna, an, tenant_id=None):
     """Genereaza PDF Stat de Plata - A4 landscape."""
     if not REPORTLAB_AVAILABLE:
         raise ImportError('ReportLab nu este instalat.')
 
     from models import db, Proiect, Angajat, AngajatProiect, Pontaj
+    from services.security.tenant_access import query_for_tenant, query_timesheets_for_tenant
 
     month_names = ['', 'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
                    'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie']
@@ -222,10 +223,16 @@ def generate_pdf_stat_plata(proiect_id, luna, an):
 
     # Query
     if proiect_id:
-        asocieri = AngajatProiect.query.filter_by(proiect_id=proiect_id).all()
+        angajati_scope = query_for_tenant(Angajat, tenant_id=tenant_id).with_entities(Angajat.id)
+        asocieri = AngajatProiect.query.filter_by(proiect_id=proiect_id).filter(
+            AngajatProiect.angajat_id.in_(angajati_scope)
+        ).all()
         angajati = [a.angajat for a in asocieri]
     else:
-        angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+        angajati = query_for_tenant(
+            Angajat,
+            tenant_id=tenant_id,
+        ).filter_by(status='activ').order_by(Angajat.nume).all()
 
     header_row = ['Nr.', 'Nume', 'Functie', 'Ore\nNorm.', 'Ore\n50%', 'Ore\n100%',
                   'Tarif/h', 'Sal. Baza', 'Spor 50%', 'Spor 100%', 'BRUT', 'Semn.']
@@ -234,7 +241,7 @@ def generate_pdf_stat_plata(proiect_id, luna, an):
     totals = {'sal': 0, 's50': 0, 's100': 0, 'brut': 0}
 
     for i, ang in enumerate(angajati):
-        query = Pontaj.query.filter(
+        query = query_timesheets_for_tenant(tenant_id=tenant_id).filter(
             Pontaj.angajat_id == ang.id,
             db.extract('month', Pontaj.data) == luna,
             db.extract('year', Pontaj.data) == an,
@@ -306,14 +313,18 @@ def generate_pdf_stat_plata(proiect_id, luna, an):
 # 3. PDF PONTAJ INDIVIDUAL
 # ============================================================
 
-def generate_pdf_pontaj_individual(angajat_id, data_start, data_sfarsit):
+def generate_pdf_pontaj_individual(angajat_id, data_start, data_sfarsit, tenant_id=None):
     """Genereaza PDF fisa pontaj individual."""
     if not REPORTLAB_AVAILABLE:
         raise ImportError('ReportLab nu este instalat.')
 
     from models import db, Angajat, Pontaj
+    from services.security.tenant_access import query_for_tenant, query_timesheets_for_tenant
 
-    angajat = Angajat.query.get(angajat_id)
+    angajat = query_for_tenant(
+        Angajat,
+        tenant_id=tenant_id,
+    ).filter(Angajat.id == angajat_id).first()
     if not angajat:
         raise ValueError('Angajatul nu a fost gasit.')
 
@@ -342,7 +353,7 @@ def generate_pdf_pontaj_individual(angajat_id, data_start, data_sfarsit):
     ))
     elements.append(Spacer(1, 6*mm))
 
-    pontaje = Pontaj.query.filter(
+    pontaje = query_timesheets_for_tenant(tenant_id=tenant_id).filter(
         Pontaj.angajat_id == angajat_id,
         Pontaj.data >= data_start,
         Pontaj.data <= data_sfarsit

@@ -11,6 +11,17 @@ from flask_login import login_required, current_user
 from sqlalchemy import func, case, and_, or_, extract
 
 from models import db, Angajat, Proiect, Pontaj, Document, Concediu, AngajatProiect
+from services.security.tenant_access import (
+    query_bim_elements_for_tenant,
+    query_bim_issues_for_tenant,
+    query_bim_models_for_tenant,
+    query_contracts_for_tenant,
+    query_for_tenant,
+    query_gantt_plans_for_tenant,
+    query_legacy_documents_for_tenant,
+    query_sites_for_tenant,
+    query_timesheets_for_tenant,
+)
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
@@ -24,6 +35,10 @@ def index():
     """Dashboard principal cu toate statisticile."""
     today = date.today()
     luna_start = today.replace(day=1)
+    angajati_query = query_for_tenant(Angajat)
+    proiecte_query = query_for_tenant(Proiect)
+    pontaje_query = query_timesheets_for_tenant()
+    documente_query = query_legacy_documents_for_tenant()
 
     # Luna trecuta (pentru trend)
     if today.month == 1:
@@ -37,12 +52,12 @@ def index():
     # ========================================
     # CARDURI STATISTICI PRINCIPALE
     # ========================================
-    total_angajati_activi = Angajat.query.filter_by(status='activ').count()
+    total_angajati_activi = angajati_query.filter_by(status='activ').count()
 
-    proiecte_active = Proiect.query.filter_by(status='activ').count()
+    proiecte_active = proiecte_query.filter_by(status='activ').count()
 
     # Ore lucrate luna curenta (pontaje aprobate)
-    ore_luna_curenta = db.session.query(
+    ore_luna_curenta = pontaje_query.with_entities(
         func.coalesce(func.sum(Pontaj.ore_lucrate), 0)
     ).filter(
         Pontaj.data >= luna_start,
@@ -51,7 +66,7 @@ def index():
     ore_luna_curenta = float(ore_luna_curenta)
 
     # Ore luna trecuta (pentru trend)
-    ore_luna_trecuta = db.session.query(
+    ore_luna_trecuta = query_timesheets_for_tenant().with_entities(
         func.coalesce(func.sum(Pontaj.ore_lucrate), 0)
     ).filter(
         Pontaj.data >= luna_trecuta_start,
@@ -61,26 +76,26 @@ def index():
     ore_luna_trecuta = float(ore_luna_trecuta)
 
     # Documente expirate
-    documente_expirate = Document.query.filter(
+    documente_expirate = documente_query.filter(
         Document.data_expirare.isnot(None),
         Document.data_expirare < today
     ).count()
 
     # Documente expira in curand (30 zile)
-    documente_expira_curand = Document.query.filter(
+    documente_expira_curand = query_legacy_documents_for_tenant().filter(
         Document.data_expirare.isnot(None),
         Document.data_expirare >= today,
         Document.data_expirare <= today + timedelta(days=30)
     ).count()
 
     # Trend-uri fata de luna trecuta
-    angajati_luna_trecuta = Angajat.query.filter(
+    angajati_luna_trecuta = query_for_tenant(Angajat).filter(
         Angajat.status == 'activ',
         Angajat.data_angajare <= luna_trecuta_sfarsit
     ).count()
     trend_angajati = _calculeaza_trend(total_angajati_activi, angajati_luna_trecuta)
 
-    proiecte_luna_trecuta = Proiect.query.filter(
+    proiecte_luna_trecuta = query_for_tenant(Proiect).filter(
         Proiect.status == 'activ',
         Proiect.data_start <= luna_trecuta_sfarsit
     ).count()
@@ -91,11 +106,13 @@ def index():
     # ========================================
     # ANGAJATI FARA PONTAJ AZI
     # ========================================
-    angajati_cu_pontaj_azi = db.session.query(Pontaj.angajat_id).filter(
+    angajati_cu_pontaj_azi = query_timesheets_for_tenant().with_entities(
+        Pontaj.angajat_id
+    ).filter(
         Pontaj.data == today
     ).subquery()
 
-    angajati_fara_pontaj_azi = Angajat.query.filter(
+    angajati_fara_pontaj_azi = query_for_tenant(Angajat).filter(
         Angajat.status == 'activ',
         ~Angajat.id.in_(db.session.query(angajati_cu_pontaj_azi))
     ).count()
@@ -103,13 +120,13 @@ def index():
     # ========================================
     # COST MANOPERA LUNA CURENTA
     # ========================================
-    cost_manopera_luna = db.session.query(
+    cost_manopera_luna = query_timesheets_for_tenant().join(
+        Angajat, Pontaj.angajat_id == Angajat.id
+    ).with_entities(
         func.coalesce(
             func.sum(Pontaj.ore_lucrate * Angajat.salariu_baza / 168),
             0
         )
-    ).join(
-        Angajat, Pontaj.angajat_id == Angajat.id
     ).filter(
         Pontaj.data >= luna_start,
         Pontaj.status == 'aprobat',
@@ -125,20 +142,22 @@ def index():
     prezenta_saptamana = {}
     for i in range(min(5, today.weekday() + 1)):  # doar pana la ziua curenta, max vineri
         zi = luni_saptamana + timedelta(days=i)
-        pontati = Pontaj.query.filter(Pontaj.data == zi).distinct(Pontaj.angajat_id).count()
+        pontati = query_timesheets_for_tenant().with_entities(
+            Pontaj.angajat_id
+        ).filter(Pontaj.data == zi).distinct().count()
         procent = round(pontati / total_angajati_activi * 100) if total_angajati_activi > 0 else 0
         prezenta_saptamana[ZILE_SAPTAMANA_RO[i]] = procent
 
     # ========================================
     # TOP 5 PROIECTE DUPA ORE LUCRATE
     # ========================================
-    top_proiecte_ore = db.session.query(
+    top_proiecte_ore = query_timesheets_for_tenant().join(
+        Proiect, Pontaj.proiect_id == Proiect.id
+    ).with_entities(
         Proiect.id,
         Proiect.cod_proiect,
         Proiect.nume,
         func.coalesce(func.sum(Pontaj.ore_lucrate), 0).label('total_ore')
-    ).join(
-        Pontaj, Pontaj.proiect_id == Proiect.id
     ).filter(
         Proiect.status == 'activ',
         Pontaj.status == 'aprobat'
@@ -154,12 +173,12 @@ def index():
     # ========================================
     # ULTIMELE 10 PONTAJE PENDING
     # ========================================
-    pontaje_pending = db.session.query(
-        Pontaj, Angajat, Proiect
-    ).join(
+    pontaje_pending = query_timesheets_for_tenant().join(
         Angajat, Pontaj.angajat_id == Angajat.id
     ).join(
         Proiect, Pontaj.proiect_id == Proiect.id
+    ).with_entities(
+        Pontaj, Angajat, Proiect
     ).filter(
         Pontaj.status == 'trimis'
     ).order_by(
@@ -174,7 +193,9 @@ def index():
     for i in range(29, -1, -1):
         zi = today - timedelta(days=i)
         if zi.weekday() < 5:  # doar zile lucratoare
-            pontati = Pontaj.query.filter(Pontaj.data == zi).distinct(Pontaj.angajat_id).count()
+            pontati = query_timesheets_for_tenant().with_entities(
+                Pontaj.angajat_id
+            ).filter(Pontaj.data == zi).distinct().count()
             grafic_prezenta_labels.append(zi.strftime('%d.%m'))
             grafic_prezenta_data.append(pontati)
 
@@ -187,7 +208,7 @@ def index():
     # ========================================
     # GRAFIC DISTRIBUTIE FUNCTII (Chart.js JSON)
     # ========================================
-    distributie_functii = db.session.query(
+    distributie_functii = query_for_tenant(Angajat).with_entities(
         Angajat.functie,
         func.count(Angajat.id)
     ).filter(
@@ -232,7 +253,7 @@ def index():
             'url': url_for('pontaje.adauga')
         })
 
-    pontaje_asteptare = Pontaj.query.filter_by(status='trimis').count()
+    pontaje_asteptare = query_timesheets_for_tenant().filter_by(status='trimis').count()
     if pontaje_asteptare > 0 and current_user.is_manager:
         alerte.append({
             'tip': 'info',
@@ -242,7 +263,9 @@ def index():
         })
 
     # Concedii active azi
+    angajati_scope = query_for_tenant(Angajat).with_entities(Angajat.id)
     concedii_active = Concediu.query.filter(
+        Concediu.angajat_id.in_(angajati_scope),
         Concediu.data_start <= today,
         Concediu.data_sfarsit >= today,
         Concediu.status == 'aprobat'
@@ -267,8 +290,8 @@ def index():
 
     # Ghid „pasul urmator" (U4): adaptiv dupa stadiul contului
     from models import GanttPlan
-    ghid_nr_proiecte = Proiect.query.count()
-    ghid_nr_planuri = GanttPlan.query.count()
+    ghid_nr_proiecte = query_for_tenant(Proiect).count()
+    ghid_nr_planuri = query_gantt_plans_for_tenant().count()
 
     return render_template('dashboard.html',
                            ghid_nr_proiecte=ghid_nr_proiecte,
@@ -307,16 +330,16 @@ def api_stats():
     luna_start = today.replace(day=1)
 
     return jsonify({
-        'angajati_activi': Angajat.query.filter_by(status='activ').count(),
-        'proiecte_active': Proiect.query.filter_by(status='activ').count(),
-        'ore_luna': float(db.session.query(
+        'angajati_activi': query_for_tenant(Angajat).filter_by(status='activ').count(),
+        'proiecte_active': query_for_tenant(Proiect).filter_by(status='activ').count(),
+        'ore_luna': float(query_timesheets_for_tenant().with_entities(
             func.coalesce(func.sum(Pontaj.ore_lucrate), 0)
         ).filter(Pontaj.data >= luna_start, Pontaj.status == 'aprobat').scalar()),
-        'doc_expirate': Document.query.filter(
+        'doc_expirate': query_legacy_documents_for_tenant().filter(
             Document.data_expirare.isnot(None),
             Document.data_expirare < today
         ).count(),
-        'pontaje_pending': Pontaj.query.filter_by(status='trimis').count(),
+        'pontaje_pending': query_timesheets_for_tenant().filter_by(status='trimis').count(),
         'timestamp': datetime.utcnow().isoformat()
     })
 
@@ -348,32 +371,32 @@ def executiv():
         except Exception:
             return d
 
-    def suma(model, camp):
-        return float(db.session.query(func.coalesce(func.sum(getattr(model, camp)), 0))
+    def suma(query, model, camp):
+        return float(query.with_entities(func.coalesce(func.sum(getattr(model, camp)), 0))
                      .scalar() or 0)
 
     kpi = {
-        'proiecte_active': safe(lambda: Proiect.query.filter_by(status='activ').count()),
-        'proiecte_total': safe(lambda: Proiect.query.count()),
-        'contracte_val': safe(lambda: suma(Contract, 'valoare_totala'), 0.0),
-        'deviz_val': safe(lambda: suma(OfertaContract, 'valoare_totala'), 0.0),
-        'gantt_planuri': safe(lambda: GanttPlan.query.count()),
-        'gantt_cost': safe(lambda: suma(GanttPlan, 'cost_total'), 0.0),
-        'bim_modele': safe(lambda: ModelBIM.query.count()),
-        'bim_elemente': safe(lambda: ElementBIM.query.count()),
-        'bim_issues': safe(lambda: IssueBIM.query.filter(IssueBIM.status != 'inchis').count()),
+        'proiecte_active': safe(lambda: query_for_tenant(Proiect).filter_by(status='activ').count()),
+        'proiecte_total': safe(lambda: query_for_tenant(Proiect).count()),
+        'contracte_val': safe(lambda: suma(query_contracts_for_tenant(), Contract, 'valoare_totala'), 0.0),
+        'deviz_val': safe(lambda: suma(query_for_tenant(OfertaContract), OfertaContract, 'valoare_totala'), 0.0),
+        'gantt_planuri': safe(lambda: query_gantt_plans_for_tenant().count()),
+        'gantt_cost': safe(lambda: suma(query_gantt_plans_for_tenant(), GanttPlan, 'cost_total'), 0.0),
+        'bim_modele': safe(lambda: query_bim_models_for_tenant().count()),
+        'bim_elemente': safe(lambda: query_bim_elements_for_tenant().count()),
+        'bim_issues': safe(lambda: query_bim_issues_for_tenant().filter(IssueBIM.status != 'inchis').count()),
     }
 
     from services.evm import risc_proiect
     proiecte = []
-    for p in safe(lambda: Proiect.query.order_by(Proiect.data_creare.desc()).limit(40).all(), []):
-        sit = safe(lambda: SituatieLunara.query.filter_by(proiect_id=p.id)
+    for p in safe(lambda: query_for_tenant(Proiect).order_by(Proiect.data_creare.desc()).limit(40).all(), []):
+        sit = safe(lambda: query_for_tenant(SituatieLunara).filter_by(proiect_id=p.id)
                    .order_by(SituatieLunara.id.desc()).first(), None)
         proiecte.append({
             'p': p,
             'avans': float(sit.procent_avans_total) if sit and sit.procent_avans_total else 0.0,
-            'contracte': safe(lambda: Contract.query.filter_by(proiect_id=p.id).count()),
-            'planuri': safe(lambda: GanttPlan.query.filter_by(proiect_id=p.id).count()),
+            'contracte': safe(lambda: query_contracts_for_tenant().filter_by(proiect_id=p.id).count()),
+            'planuri': safe(lambda: query_gantt_plans_for_tenant().filter_by(proiect_id=p.id).count()),
             'santiere': safe(lambda: p.legaturi_santiere.count()),
             'risc': safe(lambda: (risc_proiect(p.id) or {}).get('status'), None),
         })
@@ -385,7 +408,9 @@ def executiv():
 def verifica_riscuri():
     """Genereaza notificari EVM pentru proiectele la risc (manual)."""
     from services.notificari_job import alerteaza_evm_risc
-    n = alerteaza_evm_risc()
+    n = alerteaza_evm_risc(
+        proiect_query=query_for_tenant(Proiect).filter_by(status='activ')
+    )
     flash(f'{n} alerte EVM generate — vezi notificari.' if n
           else 'Niciun proiect activ la risc EVM.', 'info' if n else 'success')
     return redirect(url_for('dashboard.executiv'))
@@ -402,23 +427,23 @@ def cauta():
     tid = getattr(current_user, 'tenant_id', None)
     out = []
 
-    for p in Proiect.query.filter(or_(Proiect.cod_proiect.ilike(like),
-                                      Proiect.nume.ilike(like))).limit(6).all():
+    for p in query_for_tenant(Proiect).filter(or_(Proiect.cod_proiect.ilike(like),
+                                                  Proiect.nume.ilike(like))).limit(6).all():
         out.append({'tip': 'proiect', 'label': f'{p.cod_proiect} · {p.nume}',
                     'cale': 'Proiect', 'url': url_for('proiecte.hub', id=p.id)})
 
     from models import GanttPlan, Santier
-    for pl in GanttPlan.query.filter(GanttPlan.nume.ilike(like)).limit(5).all():
+    for pl in query_gantt_plans_for_tenant().filter(GanttPlan.nume.ilike(like)).limit(5).all():
         out.append({'tip': 'plan', 'label': pl.nume, 'cale': 'Plan Gantt',
                     'url': url_for('gantt.plan', id_=pl.id)})
 
-    for a in Angajat.query.filter(or_(Angajat.nume.ilike(like),
-                                      Angajat.prenume.ilike(like))).limit(5).all():
+    for a in query_for_tenant(Angajat).filter(or_(Angajat.nume.ilike(like),
+                                                  Angajat.prenume.ilike(like))).limit(5).all():
         out.append({'tip': 'angajat', 'label': f'{a.nume} {a.prenume}',
                     'cale': a.functie or 'Angajat', 'url': url_for('angajati.detalii', id=a.id)})
 
-    for s in Santier.query.filter(or_(Santier.cod.ilike(like),
-                                      Santier.nume.ilike(like))).limit(5).all():
+    for s in query_sites_for_tenant().filter(or_(Santier.cod.ilike(like),
+                                                 Santier.nume.ilike(like))).limit(5).all():
         out.append({'tip': 'santier', 'label': f'{s.cod} · {s.nume}', 'cale': 'Santier',
                     'url': url_for('bim.santier_detaliu', id=s.id)})
 
@@ -426,7 +451,7 @@ def cauta():
         from services.feature_flags import is_enabled
         if is_enabled('controale-contract', tenant_id=tid):
             from models import Contract
-            for c in Contract.query.filter(Contract.nr_contract.ilike(like)).limit(5).all():
+            for c in query_contracts_for_tenant().filter(Contract.nr_contract.ilike(like)).limit(5).all():
                 out.append({'tip': 'contract', 'label': c.nr_contract, 'cale': 'Contract',
                             'url': url_for('contracte.detalii', id=c.id)})
     except Exception:

@@ -4,9 +4,11 @@ Acest modul este opt-in. Nu aplica filtre globale si nu inlocuieste inca
 helperii existenti din `tenant.py`.
 """
 
+import json
+
 from flask import abort, has_app_context, has_request_context
 from flask_login import current_user
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, false, or_
 
 from tenant import MODE_OFF, MODE_OPTIONAL, MODE_STRICT
 
@@ -186,6 +188,148 @@ def tenant_id_for_new_record_or_403():
         abort(403, 'Nu exista tenant activ pentru creare in strict mode.')
 
     return None
+
+
+def query_reports_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru rapoarte salvate.
+
+    `Raport` nu are `tenant_id` direct. Lista de istoric se scopeaza prin
+    utilizatorul generator; accesul punctual foloseste si parametrii salvati
+    prin `get_report_or_404`.
+    """
+    from models import Angajat, Proiect, Raport, Utilizator
+
+    query = Raport.query
+    mod = get_tenant_mode()
+
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    proiect_ids_tenant = [
+        row[0] for row in Proiect.query.with_entities(Proiect.id)
+        .filter(Proiect.tenant_id == tenant_curent)
+        .all()
+    ]
+    proiect_ids_toate = [row[0] for row in Proiect.query.with_entities(Proiect.id).all()]
+    angajat_ids_tenant = [
+        row[0] for row in Angajat.query.with_entities(Angajat.id)
+        .filter(or_(Angajat.tenant_id == tenant_curent, Angajat.tenant_id.is_(None)))
+        .all()
+    ]
+    angajat_ids_toate = [row[0] for row in Angajat.query.with_entities(Angajat.id).all()]
+
+    proiect_match = _report_json_id_match(Raport.parametri, 'proiect_id', proiect_ids_tenant)
+    proiect_any = _report_json_id_match(Raport.parametri, 'proiect_id', proiect_ids_toate)
+    angajat_match = _report_json_id_match(Raport.parametri, 'angajat_id', angajat_ids_tenant)
+    angajat_any = _report_json_id_match(Raport.parametri, 'angajat_id', angajat_ids_toate)
+
+    generator_match = Raport.generator.has(Utilizator.tenant_id == tenant_curent)
+    return query.filter(or_(
+        proiect_match,
+        and_(~proiect_any, angajat_match),
+        and_(~proiect_any, ~angajat_any, generator_match),
+    ))
+
+
+def get_report_or_404(report_id, tenant_id=None):
+    """Returneaza raportul salvat vizibil tenantului curent sau 404."""
+    from models import Raport
+
+    raport = Raport.query.filter(Raport.id == report_id).first()
+    if raport is None:
+        abort(404)
+    return require_report_same_tenant(raport, tenant_id=tenant_id)
+
+
+def ensure_report_same_tenant(report, tenant_id=None):
+    """Valideaza `Raport` prin parametri salvati sau prin generator."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return report
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return report
+        if mod == MODE_OPTIONAL:
+            return report
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    params = _report_params(report)
+
+    proiect_ids = _report_positive_ids(params, ('proiect_id', 'proiect_ids', 'proiecte_ids'))
+    if proiect_ids:
+        _ensure_report_projects_same_tenant(proiect_ids, tenant_curent)
+        return report
+
+    angajat_ids = _report_positive_ids(params, ('angajat_id', 'angajat_ids'))
+    if angajat_ids:
+        _ensure_report_employees_same_tenant(angajat_ids, tenant_curent)
+        return report
+
+    generator = getattr(report, 'generator', None)
+    generator_tenant = _coerce_tenant_id(getattr(generator, 'tenant_id', None))
+    if generator_tenant == tenant_curent:
+        return report
+
+    raise TenantAccessDenied('Raportul nu are owner tenant-safe.')
+
+
+def require_report_same_tenant(report, tenant_id=None):
+    """Wrapper pentru rute: ascunde rapoartele inaccesibile prin 404."""
+    try:
+        return ensure_report_same_tenant(report, tenant_id=tenant_id)
+    except TenantAccessDenied:
+        abort(404)
+
+
+def ensure_reporting_project_scope(proiect_id=None, tenant_id=None):
+    """Valideaza proiectul selectat pentru generarea de rapoarte."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return True
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return True
+        if mod == MODE_OPTIONAL:
+            return True
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    proiect_ids = _unique_positive_ints([proiect_id] if proiect_id is not None else [])
+    if not proiect_ids:
+        return True
+
+    from models import Proiect
+
+    proiect_ok = Proiect.query.filter(
+        Proiect.id == proiect_ids[0],
+        Proiect.tenant_id == tenant_curent,
+    ).first()
+    if proiect_ok is None:
+        raise TenantAccessDenied('Proiectul raportului nu apartine tenantului curent.')
+
+    return True
+
+
+def require_reporting_project_scope(proiect_id=None, tenant_id=None):
+    """Wrapper pentru rute: abort daca proiectul raportului e strain."""
+    try:
+        return ensure_reporting_project_scope(
+            proiect_id=proiect_id,
+            tenant_id=tenant_id,
+        )
+    except TenantAccessDenied:
+        abort(404)
 
 
 def query_activities_for_tenant(tenant_id=None, include_global=False):
@@ -1609,6 +1753,60 @@ def _bim_project_belongs_to_tenant(project, tenant_id):
         project is not None
         and _coerce_tenant_id(getattr(project, 'tenant_id', None)) == tenant_id
     )
+
+
+def _report_params(report):
+    raw = getattr(report, 'parametri', None)
+    if not raw:
+        return {}
+    try:
+        params = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return params if isinstance(params, dict) else {}
+
+
+def _report_positive_ids(params, keys):
+    values = []
+    for key in keys:
+        value = params.get(key)
+        if isinstance(value, (list, tuple, set)):
+            values.extend(value)
+        else:
+            values.append(value)
+    return _unique_positive_ints(values)
+
+
+def _report_json_id_match(column, key, ids):
+    clauses = []
+    for object_id in _unique_positive_ints(ids):
+        clauses.append(column.like(f'%"{key}": {object_id}%'))
+        clauses.append(column.like(f'%"{key}": "{object_id}"%'))
+    if not clauses:
+        return false()
+    return or_(*clauses)
+
+
+def _ensure_report_projects_same_tenant(proiect_ids, tenant_id):
+    from models import Proiect
+
+    count = Proiect.query.filter(
+        Proiect.id.in_(proiect_ids),
+        Proiect.tenant_id == tenant_id,
+    ).count()
+    if count != len(proiect_ids):
+        raise TenantAccessDenied('Cel putin un proiect al raportului este strain.')
+
+
+def _ensure_report_employees_same_tenant(angajat_ids, tenant_id):
+    from models import Angajat
+
+    count = Angajat.query.filter(
+        Angajat.id.in_(angajat_ids),
+        or_(Angajat.tenant_id == tenant_id, Angajat.tenant_id.is_(None)),
+    ).count()
+    if count != len(angajat_ids):
+        raise TenantAccessDenied('Cel putin un angajat al raportului este strain.')
 
 
 def _resolve_tenant_id(tenant_id):

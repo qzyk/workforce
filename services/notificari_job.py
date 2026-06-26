@@ -127,13 +127,14 @@ def ruleaza_job_notificari(today: Optional[date] = None) -> dict:
     return stats
 
 
-def alerteaza_evm_risc(today: Optional[date] = None) -> int:
+def alerteaza_evm_risc(today: Optional[date] = None, proiect_query=None) -> int:
     """Notifica managerii proiectelor active cu risc EVM (SPI/CPI sub prag).
     Idempotent pe zi (creeaza_notificare nu dubleaza). Intoarce nr. create."""
     from models import db, Proiect
     from services.evm import risc_proiect
     n = 0
-    for p in Proiect.query.filter_by(status='activ').all():
+    query = proiect_query if proiect_query is not None else Proiect.query.filter_by(status='activ')
+    for p in query.all():
         try:
             r = risc_proiect(p.id)
         except Exception:

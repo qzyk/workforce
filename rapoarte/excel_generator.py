@@ -259,9 +259,10 @@ def generate_foaie_prezenta(proiect_id, luna, an, include_supl=True, app=None):
 # 2. STAT DE PLATA SIMPLIFICAT
 # ============================================================
 
-def generate_stat_plata(proiect_id, luna, an, include_bonusuri=False):
+def generate_stat_plata(proiect_id, luna, an, include_bonusuri=False, tenant_id=None):
     """Genereaza Stat de Plata simplificat."""
     from models import db, Proiect, Angajat, AngajatProiect, Pontaj
+    from services.security.tenant_access import query_for_tenant, query_timesheets_for_tenant
 
     month_names = ['', 'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
                    'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie']
@@ -296,17 +297,23 @@ def generate_stat_plata(proiect_id, luna, an, include_bonusuri=False):
 
     # Query angajati
     if proiect_id:
-        asocieri = AngajatProiect.query.filter_by(proiect_id=proiect_id).all()
+        angajati_scope = query_for_tenant(Angajat, tenant_id=tenant_id).with_entities(Angajat.id)
+        asocieri = AngajatProiect.query.filter_by(proiect_id=proiect_id).filter(
+            AngajatProiect.angajat_id.in_(angajati_scope)
+        ).all()
         angajati = [a.angajat for a in asocieri]
     else:
-        angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+        angajati = query_for_tenant(
+            Angajat,
+            tenant_id=tenant_id,
+        ).filter_by(status='activ').order_by(Angajat.nume).all()
 
     totals = {'ore_n': 0, 'ore_50': 0, 'ore_100': 0, 'ore_total': 0,
               'sal_baza': 0, 'spor_50': 0, 'spor_100': 0, 'brut': 0}
 
     for i, ang in enumerate(angajati):
         r = row + 1 + i
-        query = Pontaj.query.filter(
+        query = query_timesheets_for_tenant(tenant_id=tenant_id).filter(
             Pontaj.angajat_id == ang.id,
             db.extract('month', Pontaj.data) == luna,
             db.extract('year', Pontaj.data) == an,
@@ -525,9 +532,10 @@ def generate_situatie_proiect(proiect_id, data_start=None, data_sfarsit=None, ni
 # 4. CENTRALIZATOR ORE LUNARE
 # ============================================================
 
-def generate_centralizator_ore(luna, an, grupare='angajat'):
+def generate_centralizator_ore(luna, an, grupare='angajat', tenant_id=None):
     """Genereaza centralizator ore lunare cu pivot angajati vs zile."""
     from models import db, Angajat, Proiect, Pontaj, AngajatProiect
+    from services.security.tenant_access import query_for_tenant, query_timesheets_for_tenant
 
     nr_zile = calendar.monthrange(an, luna)[1]
     month_names = ['', 'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
@@ -536,17 +544,29 @@ def generate_centralizator_ore(luna, an, grupare='angajat'):
     wb = Workbook()
 
     if grupare == 'proiect':
-        proiecte = Proiect.query.filter(Proiect.status.in_(['activ', 'planificat'])).all()
+        proiecte = query_for_tenant(
+            Proiect,
+            tenant_id=tenant_id,
+        ).filter(Proiect.status.in_(['activ', 'planificat'])).all()
         for proj in proiecte:
             ws = wb.create_sheet(title=proj.cod_proiect[:31])
             _build_centralizator_sheet(ws, proj.cod_proiect, luna, an, nr_zile,
-                                       month_names, proiect_id=proj.id)
+                                       month_names, proiect_id=proj.id,
+                                       tenant_id=tenant_id)
         if 'Sheet' in wb.sheetnames:
             del wb['Sheet']
     else:
         ws = wb.active
         ws.title = f'Centralizator {month_names[luna][:3]} {an}'
-        _build_centralizator_sheet(ws, 'TOATE PROIECTELE', luna, an, nr_zile, month_names)
+        _build_centralizator_sheet(
+            ws,
+            'TOATE PROIECTELE',
+            luna,
+            an,
+            nr_zile,
+            month_names,
+            tenant_id=tenant_id,
+        )
 
     # Sheet Total
     ws_total = wb.create_sheet('Total General')
@@ -559,10 +579,13 @@ def generate_centralizator_ore(luna, an, grupare='angajat'):
     for c, h in enumerate(headers_t, 1):
         _style_data_cell(ws_total, 3, c, h, font=HEADER_FONT, fill=HEADER_FILL)
 
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    angajati = query_for_tenant(
+        Angajat,
+        tenant_id=tenant_id,
+    ).filter_by(status='activ').order_by(Angajat.nume).all()
     gt_n, gt_s, gt_t = 0, 0, 0
     for i, ang in enumerate(angajati):
-        pontaje = Pontaj.query.filter(
+        pontaje = query_timesheets_for_tenant(tenant_id=tenant_id).filter(
             Pontaj.angajat_id == ang.id,
             db.extract('month', Pontaj.data) == luna,
             db.extract('year', Pontaj.data) == an
@@ -594,9 +617,11 @@ def generate_centralizator_ore(luna, an, grupare='angajat'):
     return wb
 
 
-def _build_centralizator_sheet(ws, titlu, luna, an, nr_zile, month_names, proiect_id=None):
+def _build_centralizator_sheet(ws, titlu, luna, an, nr_zile, month_names,
+                               proiect_id=None, tenant_id=None):
     """Helper: construieste un sheet centralizator cu pivot angajati vs zile."""
     from models import db, Angajat, Pontaj
+    from services.security.tenant_access import query_for_tenant, query_timesheets_for_tenant
 
     ws.cell(row=1, column=1, value=f'CENTRALIZATOR ORE - {titlu} - {month_names[luna]} {an}').font = TITLE_FONT
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=nr_zile + 4)
@@ -616,7 +641,10 @@ def _build_centralizator_sheet(ws, titlu, luna, an, nr_zile, month_names, proiec
 
     _style_data_cell(ws, row, nr_zile + 4, 'TOTAL', font=HEADER_FONT, fill=HEADER_FILL)
 
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    angajati = query_for_tenant(
+        Angajat,
+        tenant_id=tenant_id,
+    ).filter_by(status='activ').order_by(Angajat.nume).all()
 
     for i, ang in enumerate(angajati):
         r = row + 1 + i
@@ -624,7 +652,7 @@ def _build_centralizator_sheet(ws, titlu, luna, an, nr_zile, month_names, proiec
         _style_data_cell(ws, r, 2, ang.nume_complet, alignment=LEFT)
         _style_data_cell(ws, r, 3, ang.functie)
 
-        query = Pontaj.query.filter(
+        query = query_timesheets_for_tenant(tenant_id=tenant_id).filter(
             Pontaj.angajat_id == ang.id,
             db.extract('month', Pontaj.data) == luna,
             db.extract('year', Pontaj.data) == an
@@ -663,9 +691,10 @@ def _build_centralizator_sheet(ws, titlu, luna, an, nr_zile, month_names, proiec
 # 5. RAPORT DOCUMENTE
 # ============================================================
 
-def generate_raport_documente(tip_raport='toate', functie_filter=None):
+def generate_raport_documente(tip_raport='toate', functie_filter=None, tenant_id=None):
     """Genereaza raport documente cu status si alerte."""
     from models import db, Document, Angajat
+    from services.security.tenant_access import query_legacy_documents_for_tenant
 
     wb = Workbook()
     ws = wb.active
@@ -684,7 +713,7 @@ def generate_raport_documente(tip_raport='toate', functie_filter=None):
     for c, h in enumerate(headers, 1):
         _style_data_cell(ws, 4, c, h, font=HEADER_FONT, fill=HEADER_FILL)
 
-    query = Document.query.join(Angajat)
+    query = query_legacy_documents_for_tenant(tenant_id=tenant_id).join(Angajat)
     if functie_filter:
         query = query.filter(Angajat.functie == functie_filter)
     if tip_raport == 'expirate':
@@ -732,11 +761,15 @@ def generate_raport_documente(tip_raport='toate', functie_filter=None):
 # 6. PONTAJ INDIVIDUAL
 # ============================================================
 
-def generate_pontaj_individual(angajat_id, data_start, data_sfarsit):
+def generate_pontaj_individual(angajat_id, data_start, data_sfarsit, tenant_id=None):
     """Genereaza fisa pontaj individual per angajat."""
     from models import db, Angajat, Pontaj, Proiect
+    from services.security.tenant_access import query_for_tenant, query_timesheets_for_tenant
 
-    angajat = Angajat.query.get(angajat_id)
+    angajat = query_for_tenant(
+        Angajat,
+        tenant_id=tenant_id,
+    ).filter(Angajat.id == angajat_id).first()
     if not angajat:
         raise ValueError('Angajatul nu a fost gasit.')
 
@@ -763,7 +796,7 @@ def generate_pontaj_individual(angajat_id, data_start, data_sfarsit):
     for c, h in enumerate(headers, 1):
         _style_data_cell(ws, row, c, h, font=HEADER_FONT, fill=HEADER_FILL)
 
-    pontaje = Pontaj.query.filter(
+    pontaje = query_timesheets_for_tenant(tenant_id=tenant_id).filter(
         Pontaj.angajat_id == angajat_id,
         Pontaj.data >= data_start,
         Pontaj.data <= data_sfarsit
@@ -811,9 +844,10 @@ def generate_pontaj_individual(angajat_id, data_start, data_sfarsit):
 # 7. PREZENTA ZILNICA
 # ============================================================
 
-def generate_prezenta_zilnica(data_zi, proiect_id=None):
+def generate_prezenta_zilnica(data_zi, proiect_id=None, tenant_id=None):
     """Genereaza raport prezenta zilnica."""
     from models import db, Pontaj, Angajat, Proiect
+    from services.security.tenant_access import query_timesheets_for_tenant
 
     wb = Workbook()
     ws = wb.active
@@ -831,7 +865,7 @@ def generate_prezenta_zilnica(data_zi, proiect_id=None):
     for c, h in enumerate(headers, 1):
         _style_data_cell(ws, row, c, h, font=HEADER_FONT, fill=HEADER_FILL)
 
-    query = Pontaj.query.filter(Pontaj.data == data_zi)
+    query = query_timesheets_for_tenant(tenant_id=tenant_id).filter(Pontaj.data == data_zi)
     if proiect_id:
         query = query.filter(Pontaj.proiect_id == proiect_id)
 
@@ -870,9 +904,10 @@ def generate_prezenta_zilnica(data_zi, proiect_id=None):
 # 8. RAPORT SSM
 # ============================================================
 
-def generate_raport_ssm(tip_document=None, status_filter=None):
+def generate_raport_ssm(tip_document=None, status_filter=None, tenant_id=None):
     """Genereaza raport SSM - instructaje si autorizatii."""
     from models import db, Document, Angajat
+    from services.security.tenant_access import query_legacy_documents_for_tenant
 
     TIPURI_SSM = ['instructaj_SSM', 'fisa_aptitudini', 'autorizatie_ISCIR', 'permis_inaltime', 'certificat_calificare']
     TIPURI_DICT = dict(Document.TIPURI)
@@ -890,7 +925,9 @@ def generate_raport_ssm(tip_document=None, status_filter=None):
     for c, h in enumerate(headers, 1):
         _style_data_cell(ws, 3, c, h, font=HEADER_FONT, fill=HEADER_FILL)
 
-    query = Document.query.join(Angajat).filter(Document.tip.in_(TIPURI_SSM))
+    query = query_legacy_documents_for_tenant(tenant_id=tenant_id).join(
+        Angajat
+    ).filter(Document.tip.in_(TIPURI_SSM))
     if tip_document and tip_document in TIPURI_SSM:
         query = query.filter(Document.tip == tip_document)
     if status_filter == 'expirat':

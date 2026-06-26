@@ -9,10 +9,17 @@ import json
 from datetime import datetime, date, timedelta
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request,
-    current_app, send_file, jsonify
+    current_app, send_file, jsonify, abort
 )
 from flask_login import login_required, current_user
 from models import db, Raport, Pontaj, Angajat, Proiect, Document
+from services.security.tenant_access import (
+    get_project_or_404,
+    get_report_or_404,
+    query_for_tenant,
+    query_reports_for_tenant,
+    tenant_id_for_new_record_or_403,
+)
 
 rapoarte_bp = Blueprint('rapoarte', __name__)
 
@@ -62,6 +69,14 @@ def _month_name(luna):
     return names[luna] if 1 <= luna <= 12 else str(luna)
 
 
+def _get_angajat_or_404(angajat_id):
+    """Returneaza angajatul vizibil tenantului curent sau 404."""
+    angajat = query_for_tenant(Angajat).filter(Angajat.id == angajat_id).first()
+    if angajat is None:
+        abort(404)
+    return angajat
+
+
 # ============================================================
 # 1. PANOU RAPOARTE (Dashboard)
 # ============================================================
@@ -69,14 +84,14 @@ def _month_name(luna):
 @rapoarte_bp.route('/')
 @login_required
 def panou():
-    proiecte = Proiect.query.filter(
+    proiecte = query_for_tenant(Proiect).filter(
         Proiect.status.in_(['activ', 'planificat'])
     ).order_by(Proiect.cod_proiect).all()
 
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(Angajat.nume).all()
 
     # Ultimele 5 rapoarte
-    recente = Raport.query.order_by(Raport.data_generare.desc()).limit(5).all()
+    recente = query_reports_for_tenant().order_by(Raport.data_generare.desc()).limit(5).all()
 
     return render_template('rapoarte/panou.html',
                            proiecte=proiecte,
@@ -103,7 +118,7 @@ def foaie_prezenta():
         flash('Selectati un proiect!', 'danger')
         return redirect(url_for('rapoarte.panou'))
 
-    proiect = Proiect.query.get(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     titlu = f'Foaie Prezenta {proiect.cod_proiect} {_month_name(luna)} {an}'
 
     try:
@@ -148,16 +163,22 @@ def stat_plata():
     format_raport = request.form.get('format', 'xlsx')
 
     titlu = f'Stat Plata {_month_name(luna)} {an}'
+    tenant_id = tenant_id_for_new_record_or_403()
+    proiect = None
     if proiect_id:
-        proiect = Proiect.query.get(proiect_id)
-        if proiect:
-            titlu += f' - {proiect.cod_proiect}'
+        proiect = get_project_or_404(proiect_id)
+        titlu += f' - {proiect.cod_proiect}'
 
     try:
         if format_raport == 'pdf':
             try:
                 from rapoarte.pdf_generator import generate_pdf_stat_plata
-                filepath, filename = generate_pdf_stat_plata(proiect_id, luna, an)
+                filepath, filename = generate_pdf_stat_plata(
+                    proiect_id,
+                    luna,
+                    an,
+                    tenant_id=tenant_id,
+                )
                 _save_raport('stat_plata', titlu, filepath, 'pdf',
                              {'proiect_id': proiect_id, 'luna': luna, 'an': an})
                 flash('Statul de plata PDF a fost generat!', 'success')
@@ -166,7 +187,7 @@ def stat_plata():
                 flash('ReportLab nu este instalat. Se genereaza Excel.', 'warning')
 
         from rapoarte.excel_generator import generate_stat_plata
-        wb = generate_stat_plata(proiect_id, luna, an)
+        wb = generate_stat_plata(proiect_id, luna, an, tenant_id=tenant_id)
         label = f'{proiect_id or "toti"}_{luna:02d}_{an}'
         filename = f'stat_plata_{label}.xlsx'
         filepath = _get_export_path(filename)
@@ -198,7 +219,7 @@ def situatie_proiect():
         flash('Selectati un proiect!', 'danger')
         return redirect(url_for('rapoarte.panou'))
 
-    proiect = Proiect.query.get(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     ds = datetime.strptime(data_start, '%Y-%m-%d').date() if data_start else proiect.data_start
     dsf = datetime.strptime(data_sfarsit, '%Y-%m-%d').date() if data_sfarsit else date.today()
 
@@ -232,10 +253,11 @@ def centralizator_ore():
     grupare = request.form.get('grupare', 'angajat')
 
     titlu = f'Centralizator Ore {_month_name(luna)} {an}'
+    tenant_id = tenant_id_for_new_record_or_403()
 
     try:
         from rapoarte.excel_generator import generate_centralizator_ore
-        wb = generate_centralizator_ore(luna, an, grupare)
+        wb = generate_centralizator_ore(luna, an, grupare, tenant_id=tenant_id)
         filename = f'centralizator_{luna:02d}_{an}_{grupare}.xlsx'
         filepath = _get_export_path(filename)
         wb.save(filepath)
@@ -261,10 +283,11 @@ def documente_expirate():
     format_raport = request.form.get('format', 'xlsx')
 
     titlu = f'Raport Documente - {tip_raport}'
+    tenant_id = tenant_id_for_new_record_or_403()
 
     try:
         from rapoarte.excel_generator import generate_raport_documente
-        wb = generate_raport_documente(tip_raport, functie_filter)
+        wb = generate_raport_documente(tip_raport, functie_filter, tenant_id=tenant_id)
         filename = f'raport_documente_{tip_raport}_{datetime.now().strftime("%Y%m%d")}.xlsx'
         filepath = _get_export_path(filename)
         wb.save(filepath)
@@ -294,7 +317,8 @@ def pontaj_individual():
         flash('Selectati un angajat!', 'danger')
         return redirect(url_for('rapoarte.panou'))
 
-    angajat = Angajat.query.get(angajat_id)
+    angajat = _get_angajat_or_404(angajat_id)
+    tenant_id = tenant_id_for_new_record_or_403()
     ds = datetime.strptime(data_start, '%Y-%m-%d').date() if data_start else date.today().replace(day=1)
     dsf = datetime.strptime(data_sfarsit, '%Y-%m-%d').date() if data_sfarsit else date.today()
 
@@ -304,7 +328,12 @@ def pontaj_individual():
         if format_raport == 'pdf':
             try:
                 from rapoarte.pdf_generator import generate_pdf_pontaj_individual
-                filepath, filename = generate_pdf_pontaj_individual(angajat_id, ds, dsf)
+                filepath, filename = generate_pdf_pontaj_individual(
+                    angajat_id,
+                    ds,
+                    dsf,
+                    tenant_id=tenant_id,
+                )
                 _save_raport('pontaj_individual', titlu, filepath, 'pdf',
                              {'angajat_id': angajat_id, 'data_start': str(ds), 'data_sfarsit': str(dsf)})
                 flash('Pontajul individual PDF a fost generat!', 'success')
@@ -313,7 +342,7 @@ def pontaj_individual():
                 flash('ReportLab nu este instalat. Se genereaza Excel.', 'warning')
 
         from rapoarte.excel_generator import generate_pontaj_individual
-        wb = generate_pontaj_individual(angajat_id, ds, dsf)
+        wb = generate_pontaj_individual(angajat_id, ds, dsf, tenant_id=tenant_id)
         filename = f'pontaj_{angajat.nume}_{angajat.prenume}_{ds.strftime("%Y%m%d")}.xlsx'
         filepath = _get_export_path(filename)
         wb.save(filepath)
@@ -343,11 +372,14 @@ def prezenta_zilnica():
         return redirect(url_for('rapoarte.panou'))
 
     data_zi = datetime.strptime(data_zi_str, '%Y-%m-%d').date()
+    tenant_id = tenant_id_for_new_record_or_403()
+    if proiect_id:
+        get_project_or_404(proiect_id)
     titlu = f'Prezenta {data_zi.strftime("%d.%m.%Y")}'
 
     try:
         from rapoarte.excel_generator import generate_prezenta_zilnica
-        wb = generate_prezenta_zilnica(data_zi, proiect_id)
+        wb = generate_prezenta_zilnica(data_zi, proiect_id, tenant_id=tenant_id)
         filename = f'prezenta_{data_zi.strftime("%Y%m%d")}.xlsx'
         filepath = _get_export_path(filename)
         wb.save(filepath)
@@ -373,10 +405,11 @@ def raport_ssm():
     format_raport = request.form.get('format', 'xlsx')
 
     titlu = f'Raport SSM {datetime.now().strftime("%d.%m.%Y")}'
+    tenant_id = tenant_id_for_new_record_or_403()
 
     try:
         from rapoarte.excel_generator import generate_raport_ssm
-        wb = generate_raport_ssm(tip_document, status_filter)
+        wb = generate_raport_ssm(tip_document, status_filter, tenant_id=tenant_id)
         filename = f'raport_ssm_{datetime.now().strftime("%Y%m%d")}.xlsx'
         filepath = _get_export_path(filename)
         wb.save(filepath)
@@ -400,7 +433,7 @@ def istoric():
     tip_filtru = request.args.get('tip', '')
     page = request.args.get('page', 1, type=int)
 
-    query = Raport.query
+    query = query_reports_for_tenant()
     if tip_filtru:
         query = query.filter_by(tip_raport=tip_filtru)
 
@@ -422,7 +455,7 @@ def istoric():
 @rapoarte_bp.route('/descarca/<int:id>')
 @login_required
 def descarca(id):
-    raport = Raport.query.get_or_404(id)
+    raport = get_report_or_404(id)
     if raport.fisier_path and os.path.exists(raport.fisier_path):
         ext = raport.format or 'xlsx'
         download_name = f'{raport.titlu}.{ext}'.replace(' ', '_')
@@ -442,7 +475,7 @@ def sterge(id):
         flash('Nu aveti permisiunea de a sterge rapoarte.', 'danger')
         return redirect(url_for('rapoarte.istoric'))
 
-    raport = Raport.query.get_or_404(id)
+    raport = get_report_or_404(id)
     if raport.fisier_path and os.path.exists(raport.fisier_path):
         os.remove(raport.fisier_path)
     db.session.delete(raport)
