@@ -17,13 +17,19 @@ from flask import (Blueprint, render_template, request, redirect, url_for,
 from flask_login import login_required, current_user
 
 from models import db, Proiect, Angajat, Pontaj, IssueBIM, Santier, Cladire
+from services.security.tenant_access import (
+    query_for_tenant,
+    query_timesheets_for_tenant,
+    require_timesheet_inputs_same_tenant,
+    tenant_id_for_new_record_or_403,
+)
 
 teren_bp = Blueprint('teren', __name__, url_prefix='/teren')
 
 
 def _proiecte_active():
     """Proiectele pe care are sens sa pontezi/raportezi (activ + planificat)."""
-    return (Proiect.query
+    return (query_for_tenant(Proiect)
             .filter(Proiect.status.in_(['activ', 'planificat']))
             .order_by(Proiect.status.asc(), Proiect.nume.asc()).all())
 
@@ -33,14 +39,14 @@ def _angajat_curent():
     em = (getattr(current_user, 'email', None) or '').strip().lower()
     if not em:
         return None
-    return (Angajat.query
+    return (query_for_tenant(Angajat)
             .filter(db.func.lower(Angajat.email) == em,
                     Angajat.data_incetare.is_(None))
             .first())
 
 
 def _angajati_activi():
-    return (Angajat.query.filter(Angajat.data_incetare.is_(None))
+    return (query_for_tenant(Angajat).filter(Angajat.data_incetare.is_(None))
             .order_by(Angajat.nume.asc(), Angajat.prenume.asc()).all())
 
 
@@ -51,7 +57,7 @@ def index():
     eu = _angajat_curent()
     pontaje_azi = []
     if eu:
-        pontaje_azi = (Pontaj.query.filter_by(angajat_id=eu.id, data=azi)
+        pontaje_azi = (query_timesheets_for_tenant().filter_by(angajat_id=eu.id, data=azi)
                        .order_by(Pontaj.id.desc()).all())
     return render_template('teren/index.html', azi=azi, eu=eu,
                            pontaje_azi=pontaje_azi)
@@ -89,7 +95,14 @@ def pontaj():
             flash('Alege proiectul si angajatul.', 'danger')
             return redirect(url_for('teren.pontaj'))
 
-        exista = Pontaj.query.filter_by(angajat_id=angajat_id, data=d).first()
+        tenant_id_curent = tenant_id_for_new_record_or_403()
+        require_timesheet_inputs_same_tenant(
+            proiect_id=proiect_id,
+            angajat_id=angajat_id,
+            tenant_id=tenant_id_curent,
+        )
+
+        exista = query_timesheets_for_tenant().filter_by(angajat_id=angajat_id, data=d).first()
         if exista:
             flash('Exista deja un pontaj pentru acest angajat in ziua aleasa. '
                   'Editeaza-l din Pontaje.', 'warning')

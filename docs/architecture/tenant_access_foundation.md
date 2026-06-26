@@ -38,6 +38,12 @@ Layer-ul expune:
 - `require_activity_same_tenant(activity, tenant_id=None)`
 - `ensure_activity_inputs_same_tenant(proiect_ids, angajat_ids=None, tenant_id=None)`
 - `require_activity_inputs_same_tenant(proiect_ids, angajat_ids=None, tenant_id=None)`
+- `query_timesheets_for_tenant(tenant_id=None, include_global=False)`
+- `get_timesheet_or_404(timesheet_id, tenant_id=None)`
+- `ensure_timesheet_same_tenant(timesheet, tenant_id=None)`
+- `require_timesheet_same_tenant(timesheet, tenant_id=None)`
+- `ensure_timesheet_inputs_same_tenant(proiect_id=None, angajat_id=None, tenant_id=None)`
+- `require_timesheet_inputs_same_tenant(proiect_id=None, angajat_id=None, tenant_id=None)`
 
 Exceptiile de baza sunt:
 
@@ -94,6 +100,14 @@ activitate = get_activity_or_404(id)
 activitati = query_activities_for_tenant().all()
 ```
 
+Pentru pontaje:
+
+```python
+from services.security.tenant_access import get_timesheet_or_404, query_timesheets_for_tenant
+
+pontaj = get_timesheet_or_404(id)
+pontaje = query_timesheets_for_tenant().all()
+```
 
 ## 6. Reguli pentru `include_global=True`
 
@@ -114,6 +128,7 @@ Exemple deferred:
 Exemple implementate partial:
 
 - `RaportActivitate` prin `Proiect -> tenant_id`, cu verificare secundara pe `Angajat -> tenant_id`.
+- `Pontaj` prin `Proiect -> tenant_id`, cu verificare secundara pe `Angajat -> tenant_id`.
 
 ## T1.2 Project Route Integration
 
@@ -217,3 +232,78 @@ Riscuri ramase dupa T1.3:
 - exporturile pot deveni cross-domain daca viitoare coloane adauga Contract/Gantt/Pontaj fara helper dedicat;
 - lipseste inca audit trail unificat pentru aprobarile de activitati.
 
+## T1.4 Timesheet Route Integration
+
+`Pontaj` nu primeste inca `tenant_id` direct. Pentru T1.4 ownership-ul canonic este:
+
+```text
+Pontaj -> Proiect -> tenant_id
+```
+
+Se valideaza secundar si angajatul:
+
+```text
+Pontaj -> Angajat -> tenant_id
+```
+
+Rutele si zonele de pontaje protejate acum:
+
+| Zona | Schimbare |
+|---|---|
+| `pontaje.lista` | Statistici, calendar lunar, lista si dropdown-uri angajati/proiecte folosesc helper-ele tenant-safe. |
+| `pontaje.adauga` | Dropdown-uri tenant-scoped prin `PontajForm`; POST-ul valideaza proiectul si angajatul selectat. |
+| `pontaje.adauga_multiplu` | Valideaza proiectul si fiecare angajat inainte de creare; duplicatele se cauta tenant-scoped. |
+| `pontaje.angajati_proiect` | Verifica proiectul cu `get_project_or_404()` si returneaza doar angajati vizibili tenantului curent. |
+| `pontaje.verificare_duplicat` | Nu dezvaluie pontaje pentru angajati inaccesibili si cauta duplicatele tenant-scoped. |
+| `pontaje.situatie_zilnica` | Returneaza doar pontajele tenantului curent pentru ziua ceruta. |
+| `pontaje.calendar` | Dropdown-ul si pontajele lunare sunt tenant-scoped. |
+| `pontaje.aprobare` | Listeaza doar pontajele `trimis` ale tenantului curent. |
+| `pontaje.aproba` / `pontaje.respinge` | Folosesc `get_timesheet_or_404(id)` inainte de workflow approval. |
+| `pontaje.trimite` | Foloseste `get_timesheet_or_404(id)` inainte de schimbarea statusului. |
+| `pontaje.editeaza` | Foloseste `get_timesheet_or_404(id)` si valideaza proiectul/angajatul la salvare. |
+| `pontaje.sterge` | Foloseste `get_timesheet_or_404(id)` inainte de delete. |
+| `pontaje.aproba_multiplu` | In `strict`/`optional` respinge batch-uri care contin pontaje inaccesibile. |
+| `pontaje.export_lunar` | Exporta doar pontajele tenantului curent si valideaza `proiect_id` cu `get_project_or_404()`. |
+| `pontaje.import_excel` | CNP-ul angajatului, codul proiectului si duplicatele sunt rezolvate tenant-scoped. |
+| `teren.pontaj` | Listeaza proiecte/angajati tenant-scoped si valideaza inputurile inainte de creare Pontaj rapid. |
+
+Comportament:
+
+- in `off`, query-urile pentru pontaje raman compatibile cu single-tenant;
+- in `optional`, se filtreaza cand exista tenant curent; fara tenant curent ramane comportamentul de migrare;
+- in `strict`, userii normali fara tenant nu vad pontaje tenant-owned, iar ID-urile straine primesc 404;
+- super-adminul ramane explicit: admin fara `tenant_id` vede pontajele nefiltrat.
+
+Batch/import/export:
+
+- batch approval pastreaza comportamentul legacy in `off`;
+- in `optional`/`strict`, batch approval respinge intregul request daca include un ID inaccesibil;
+- importul Excel nu rezolva CNP-uri sau coduri de proiect din alt tenant;
+- exportul lunar fara filtru de proiect include doar pontajele tenantului curent in `optional`/`strict`;
+- exportul lunar cu `proiect_id` strain returneaza 404 inainte de generarea workbook-ului.
+
+Ce ramane neprotejat in T1.4:
+
+- `Pontaj` ramane fara `tenant_id` direct pana la o migrare separata;
+- legaturile BIM optionale de pe pontaj (`element_bim_id`, `spatiu_id`) nu sunt tenant-scoped in acest PR;
+- `AngajatProiect` nu primeste inca helper propriu complet;
+- rapoartele din servicii externe care citesc `Pontaj` direct nu sunt refactorizate;
+- logica de calcul ore, ore suplimentare, duplicate si workflow ramane in ruta pana la `timesheet_service.py`.
+
+Nu s-a adaugat migrare deoarece T1.4 foloseste ownership indirect existent si nu adauga coloane. Nu s-a creat `timesheet_service.py` deoarece acest PR este doar security/access-control; extragerea logicii de business ramane pentru S1.2.
+
+Riscuri ramase dupa T1.4:
+
+- servicii precum EVM/rapoarte lucrari pot citi `Pontaj` direct daca ruta nu le furnizeaza obiecte/ID-uri deja scopate;
+- BIM context si documentele atasate viitoare trebuie protejate separat;
+- importurile/rapoartele cross-domain trebuie revizuite din nou cand se extrage `timesheet_service.py`;
+- audit trail pentru aprobarile Pontaj ramane neuniform.
+
+## Urmatoarele integrari recomandate dupa T1.4
+
+1. `Contract`: acces direct prin `tenant_id` si verificare cu `Proiect`.
+2. Proiect detail/edit/export: extindere catre datele nested din pagina, nu doar project lookup.
+3. `DocumentProiect` / `Document`: autorizare download si ownership indirect.
+4. `ModelBIM`: acces prin `tenant_id` si `Santier`.
+5. `GanttPlan` si `TaskProgram`: ownership prin tenant/proiect si verificari pe import/export.
+6. S1.1/S1.2: extragere `activity_service.py` / `timesheet_service.py` dupa ce tenant guard-urile principale sunt stabile.

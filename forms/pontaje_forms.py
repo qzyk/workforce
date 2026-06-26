@@ -35,14 +35,16 @@ class PontajForm(FlaskForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from models import Pontaj, Angajat, Proiect
+        from services.security.tenant_access import query_for_tenant
+
         self.tip_zi.choices = Pontaj.TIPURI_ZI
 
-        angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+        angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(Angajat.nume).all()
         self.angajat_id.choices = [(0, '-- Selectati angajat --')] + [
             (a.id, f'{a.nume_complet} ({a.functie})') for a in angajati
         ]
 
-        proiecte = Proiect.query.filter(
+        proiecte = query_for_tenant(Proiect).filter(
             Proiect.status.in_(['activ', 'planificat'])
         ).order_by(Proiect.cod_proiect).all()
         self.proiect_id.choices = [(0, '-- Selectati proiect --')] + [

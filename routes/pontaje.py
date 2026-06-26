@@ -6,10 +6,19 @@ Timekeeping pentru constructii cu calcul ore, aprobare, export Excel
 import calendar
 from datetime import datetime, date, timedelta
 from decimal import Decimal
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort
 from flask_login import login_required, current_user
 from models import db, Pontaj, Angajat, Proiect, AngajatProiect, SarbatoareLegala
 from forms.pontaje_forms import PontajForm
+from services.security.tenant_access import (
+    get_project_or_404,
+    get_tenant_mode,
+    get_timesheet_or_404,
+    query_for_tenant,
+    query_timesheets_for_tenant,
+    require_timesheet_inputs_same_tenant,
+    tenant_id_for_new_record_or_403,
+)
 
 pontaje_bp = Blueprint('pontaje', __name__)
 
@@ -105,6 +114,13 @@ def _detect_tip_zi(data_pontaj):
     return 'lucratoare'
 
 
+def _form_int(name, default=0):
+    try:
+        return int(request.form.get(name) or default)
+    except (TypeError, ValueError):
+        return default
+
+
 # ============================================================
 # PANOU PRINCIPAL PONTAJ
 # ============================================================
@@ -117,16 +133,16 @@ def lista():
     anul = request.args.get('anul', today.year, type=int)
 
     # Statistici azi
-    total_angajati_activi = Angajat.query.filter_by(status='activ').count()
-    pontaje_azi = Pontaj.query.filter_by(data=today).count()
-    pontaje_de_aprobat = Pontaj.query.filter_by(status='trimis').count()
+    total_angajati_activi = query_for_tenant(Angajat).filter_by(status='activ').count()
+    pontaje_azi = query_timesheets_for_tenant().filter_by(data=today).count()
+    pontaje_de_aprobat = query_timesheets_for_tenant().filter_by(status='trimis').count()
 
     # Calendar lunar - date per zi
     _, days_in_month = calendar.monthrange(anul, luna)
     calendar_data = []
     for day in range(1, days_in_month + 1):
         d = date(anul, luna, day)
-        nr_pontaje = Pontaj.query.filter_by(data=d).count()
+        nr_pontaje = query_timesheets_for_tenant().filter_by(data=d).count()
         is_sarb = SarbatoareLegala.query.filter_by(data=d).first()
         dow = d.weekday()
 
@@ -162,7 +178,7 @@ def lista():
     angajat_id = request.args.get('angajat_id', '')
     status_filtru = request.args.get('status', '')
 
-    query = Pontaj.query
+    query = query_timesheets_for_tenant()
     if data_filtru:
         query = query.filter(Pontaj.data == datetime.strptime(data_filtru, '%Y-%m-%d').date())
     if proiect_id:
@@ -174,8 +190,8 @@ def lista():
 
     pontaje = query.order_by(Pontaj.data.desc(), Pontaj.id.desc()).limit(100).all()
 
-    proiecte = Proiect.query.filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    proiecte = query_for_tenant(Proiect).filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
+    angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(Angajat.nume).all()
 
     # First day padding
     first_dow = date(anul, luna, 1).weekday()  # 0=Luni
@@ -207,12 +223,23 @@ def lista():
 def adauga():
     form = PontajForm()
 
+    if request.method == 'POST':
+        tenant_id_curent = tenant_id_for_new_record_or_403()
+        proiect_id_form = _form_int('proiect_id')
+        angajat_id_form = _form_int('angajat_id')
+        if proiect_id_form and angajat_id_form:
+            require_timesheet_inputs_same_tenant(
+                proiect_id=proiect_id_form,
+                angajat_id=angajat_id_form,
+                tenant_id=tenant_id_curent,
+            )
+
     if form.validate_on_submit():
         data_pontaj = form.data.data
         tip_zi = form.tip_zi.data
 
         # Verificare duplicat
-        exista = Pontaj.query.filter_by(
+        exista = query_timesheets_for_tenant().filter_by(
             angajat_id=form.angajat_id.data,
             data=data_pontaj
         ).first()
@@ -265,6 +292,13 @@ def adauga_multiplu():
         actiune = request.form.get('actiune', 'draft')
 
         angajat_ids = request.form.getlist('angajat_ids')
+        tenant_id_curent = tenant_id_for_new_record_or_403()
+        for aid_str in angajat_ids:
+            require_timesheet_inputs_same_tenant(
+                proiect_id=proiect_id,
+                angajat_id=aid_str,
+                tenant_id=tenant_id_curent,
+            )
         count_ok = 0
         count_skip = 0
 
@@ -276,7 +310,7 @@ def adauga_multiplu():
             obs = request.form.get(f'observatii_{aid}', '').strip()
 
             # Verificare duplicat
-            exista = Pontaj.query.filter_by(angajat_id=aid, data=data_pontaj).first()
+            exista = query_timesheets_for_tenant().filter_by(angajat_id=aid, data=data_pontaj).first()
             if exista:
                 count_skip += 1
                 continue
@@ -306,7 +340,7 @@ def adauga_multiplu():
         flash(f'{count_ok} pontaje inregistrate cu succes. {count_skip} duplicate omise.', 'success')
         return redirect(url_for('pontaje.lista'))
 
-    proiecte = Proiect.query.filter(
+    proiecte = query_for_tenant(Proiect).filter(
         Proiect.status.in_(['activ', 'planificat'])
     ).order_by(Proiect.cod_proiect).all()
 
@@ -324,13 +358,23 @@ def adauga_multiplu():
 @login_required
 def angajati_proiect(proiect_id):
     """Returneaza angajatii activi pe un proiect (AJAX)."""
+    get_project_or_404(proiect_id)
     asocieri = AngajatProiect.query.filter(
         AngajatProiect.proiect_id == proiect_id,
         (AngajatProiect.data_sfarsit.is_(None)) | (AngajatProiect.data_sfarsit >= date.today())
     ).all()
 
+    angajat_ids = [ap.angajat_id for ap in asocieri]
+    angajati_vizibili = set()
+    if angajat_ids:
+        angajati_vizibili = {
+            a.id for a in query_for_tenant(Angajat).filter(Angajat.id.in_(angajat_ids)).all()
+        }
+
     result = []
     for ap in asocieri:
+        if ap.angajat_id not in angajati_vizibili:
+            continue
         a = ap.angajat
         result.append({
             'id': a.id,
@@ -386,7 +430,10 @@ def verificare_duplicat():
     except ValueError:
         return jsonify({'exists': False})
 
-    query = Pontaj.query.filter_by(angajat_id=angajat_id, data=data_pontaj)
+    if query_for_tenant(Angajat).filter_by(id=angajat_id).first() is None:
+        return jsonify({'exists': False})
+
+    query = query_timesheets_for_tenant().filter_by(angajat_id=angajat_id, data=data_pontaj)
     if pontaj_id:
         query = query.filter(Pontaj.id != pontaj_id)
 
@@ -418,7 +465,7 @@ def situatie_zilnica():
     except ValueError:
         return jsonify([])
 
-    pontaje = Pontaj.query.filter_by(data=data_pontaj).order_by(Pontaj.angajat_id).all()
+    pontaje = query_timesheets_for_tenant().filter_by(data=data_pontaj).order_by(Pontaj.angajat_id).all()
     result = []
     for p in pontaje:
         result.append({
@@ -445,7 +492,7 @@ def calendar_view():
     luna = request.args.get('luna', date.today().month, type=int)
     anul = request.args.get('anul', date.today().year, type=int)
 
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(Angajat.nume).all()
 
     angajat = None
     calendar_data = []
@@ -453,11 +500,11 @@ def calendar_view():
              'zile_lucrate': 0, 'zile_co': 0, 'zile_cm': 0, 'total_ore': 0}
 
     if angajat_id:
-        angajat = Angajat.query.get(angajat_id)
+        angajat = query_for_tenant(Angajat).filter_by(id=angajat_id).first()
         _, days_in_month = calendar.monthrange(anul, luna)
         first_dow = date(anul, luna, 1).weekday()
 
-        pontaje_luna = Pontaj.query.filter(
+        pontaje_luna = query_timesheets_for_tenant().filter(
             Pontaj.angajat_id == angajat_id,
             db.extract('month', Pontaj.data) == luna,
             db.extract('year', Pontaj.data) == anul
@@ -537,7 +584,7 @@ def aprobare():
     data_start = request.args.get('data_start', '')
     data_sfarsit = request.args.get('data_sfarsit', '')
 
-    query = Pontaj.query.filter_by(status='trimis')
+    query = query_timesheets_for_tenant().filter_by(status='trimis')
 
     if proiect_id:
         query = query.filter(Pontaj.proiect_id == int(proiect_id))
@@ -550,10 +597,10 @@ def aprobare():
 
     pontaje = query.order_by(Pontaj.data.desc()).all()
 
-    proiecte = Proiect.query.filter(
+    proiecte = query_for_tenant(Proiect).filter(
         Proiect.status.in_(['activ', 'planificat'])
     ).order_by(Proiect.cod_proiect).all()
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(Angajat.nume).all()
 
     return render_template('pontaje/aprobare.html',
                            pontaje=pontaje,
@@ -576,7 +623,7 @@ def aproba(id):
         flash('Nu aveti permisiunea de a aproba pontaje.', 'danger')
         return redirect(url_for('pontaje.lista'))
 
-    pontaj = Pontaj.query.get_or_404(id)
+    pontaj = get_timesheet_or_404(id)
     pontaj.status = 'aprobat'
     pontaj.aprobat_de = current_user.id
     pontaj.data_aprobare = datetime.utcnow()
@@ -598,7 +645,7 @@ def respinge(id):
         flash('Nu aveti permisiunea de a respinge pontaje.', 'danger')
         return redirect(url_for('pontaje.lista'))
 
-    pontaj = Pontaj.query.get_or_404(id)
+    pontaj = get_timesheet_or_404(id)
     pontaj.status = 'respins'
     pontaj.motiv_respingere = request.form.get('motiv', '')
     pontaj.aprobat_de = current_user.id
@@ -623,13 +670,32 @@ def aproba_multiplu():
 
     ids = request.form.getlist('pontaj_ids')
     count = 0
-    for pid_str in ids:
-        pontaj = Pontaj.query.get(int(pid_str))
-        if pontaj and pontaj.status == 'trimis':
-            pontaj.status = 'aprobat'
-            pontaj.aprobat_de = current_user.id
-            pontaj.data_aprobare = datetime.utcnow()
-            count += 1
+    if get_tenant_mode() == 'off':
+        pontaje = []
+        for pid_str in ids:
+            pontaj = Pontaj.query.get(int(pid_str))
+            if pontaj and pontaj.status == 'trimis':
+                pontaje.append(pontaj)
+    else:
+        try:
+            ids_int = [int(pid_str) for pid_str in ids]
+        except (TypeError, ValueError):
+            ids_int = []
+        ids_int = [pid for pid in ids_int if pid > 0]
+        if len(ids_int) != len(ids) or not ids_int:
+            abort(404)
+        pontaje = query_timesheets_for_tenant().filter(
+            Pontaj.id.in_(ids_int)
+        ).all()
+        if len({p.id for p in pontaje}) != len(set(ids_int)):
+            abort(404)
+        pontaje = [p for p in pontaje if p.status == 'trimis']
+
+    for pontaj in pontaje:
+        pontaj.status = 'aprobat'
+        pontaj.aprobat_de = current_user.id
+        pontaj.data_aprobare = datetime.utcnow()
+        count += 1
 
     db.session.commit()
     flash(f'{count} pontaje aprobate cu succes!', 'success')
@@ -643,7 +709,7 @@ def aproba_multiplu():
 @pontaje_bp.route('/<int:id>/trimite', methods=['POST'])
 @login_required
 def trimite(id):
-    pontaj = Pontaj.query.get_or_404(id)
+    pontaj = get_timesheet_or_404(id)
     if pontaj.status == 'draft':
         pontaj.status = 'trimis'
         db.session.commit()
@@ -658,7 +724,7 @@ def trimite(id):
 @pontaje_bp.route('/<int:id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def editeaza(id):
-    pontaj = Pontaj.query.get_or_404(id)
+    pontaj = get_timesheet_or_404(id)
 
     if pontaj.status not in ('draft', 'respins'):
         flash('Doar pontajele draft sau respinse pot fi editate.', 'danger')
@@ -666,12 +732,28 @@ def editeaza(id):
 
     form = PontajForm(obj=pontaj)
 
+    if request.method == 'POST':
+        tenant_id_curent = tenant_id_for_new_record_or_403()
+        proiect_id_form = _form_int('proiect_id')
+        angajat_id_form = _form_int('angajat_id')
+        if proiect_id_form and angajat_id_form:
+            require_timesheet_inputs_same_tenant(
+                proiect_id=proiect_id_form,
+                angajat_id=angajat_id_form,
+                tenant_id=tenant_id_curent,
+            )
+
     if form.validate_on_submit():
         data_pontaj = form.data.data
         tip_zi = form.tip_zi.data
+        require_timesheet_inputs_same_tenant(
+            proiect_id=form.proiect_id.data,
+            angajat_id=form.angajat_id.data,
+            tenant_id=tenant_id_for_new_record_or_403(),
+        )
 
         # Verificare duplicat (exclud pontajul curent)
-        exista = Pontaj.query.filter(
+        exista = query_timesheets_for_tenant().filter(
             Pontaj.angajat_id == form.angajat_id.data,
             Pontaj.data == data_pontaj,
             Pontaj.id != pontaj.id
@@ -712,7 +794,7 @@ def editeaza(id):
 @pontaje_bp.route('/<int:id>/sterge', methods=['POST'])
 @login_required
 def sterge(id):
-    pontaj = Pontaj.query.get_or_404(id)
+    pontaj = get_timesheet_or_404(id)
     if pontaj.status in ('draft', 'respins'):
         db.session.delete(pontaj)
         db.session.commit()
@@ -743,11 +825,13 @@ def export_lunar():
                    'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie']
 
     # Get pontaje
-    query = Pontaj.query.filter(
+    query = query_timesheets_for_tenant().filter(
         db.extract('month', Pontaj.data) == luna,
         db.extract('year', Pontaj.data) == anul
     )
+    proiect_export = None
     if proiect_id:
+        proiect_export = get_project_or_404(proiect_id)
         query = query.filter(Pontaj.proiect_id == proiect_id)
 
     pontaje = query.all()
@@ -794,7 +878,7 @@ def export_lunar():
 
     proiect_info = ''
     if proiect_id:
-        pr = Proiect.query.get(proiect_id)
+        pr = proiect_export
         if pr:
             proiect_info = f' - {pr.cod_proiect} {pr.nume}'
 
@@ -1087,14 +1171,14 @@ def import_excel():
             obs = str(row[6]).strip() if len(row) > 6 and row[6] else ''
 
             # Find angajat by CNP
-            angajat = Angajat.query.filter_by(cnp=cnp).first()
+            angajat = query_for_tenant(Angajat).filter_by(cnp=cnp).first()
             if not angajat:
                 errors.append(f'Rand {row_idx}: CNP {cnp} nu exista in sistem')
                 count_err += 1
                 continue
 
             # Find proiect
-            proiect = Proiect.query.filter_by(cod_proiect=cod_proiect).first()
+            proiect = query_for_tenant(Proiect).filter_by(cod_proiect=cod_proiect).first()
             if not proiect:
                 errors.append(f'Rand {row_idx}: Proiect {cod_proiect} nu exista')
                 count_err += 1
@@ -1112,7 +1196,10 @@ def import_excel():
                 continue
 
             # Check duplicate
-            exista = Pontaj.query.filter_by(angajat_id=angajat.id, data=data_pontaj).first()
+            exista = query_timesheets_for_tenant().filter_by(
+                angajat_id=angajat.id,
+                data=data_pontaj,
+            ).first()
             if exista:
                 errors.append(f'Rand {row_idx}: Duplicat - {angajat.nume_complet} are deja pontaj in {data_str}')
                 count_err += 1

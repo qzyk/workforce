@@ -325,6 +325,141 @@ def require_activity_inputs_same_tenant(proiect_ids, angajat_ids=None, tenant_id
         abort(404)
 
 
+def query_timesheets_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru Pontaj prin Proiect -> tenant_id."""
+    from models import Angajat, Pontaj, Proiect
+
+    query = Pontaj.query
+    mod = get_tenant_mode()
+
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    if include_global:
+        proiect_scope = or_(Proiect.tenant_id == tenant_curent, Proiect.tenant_id.is_(None))
+    else:
+        proiect_scope = Proiect.tenant_id == tenant_curent
+
+    return query.filter(
+        Pontaj.proiect.has(proiect_scope),
+        Pontaj.angajat.has(or_(
+            Angajat.tenant_id == tenant_curent,
+            Angajat.tenant_id.is_(None),
+        )),
+    )
+
+
+def get_timesheet_or_404(timesheet_id, tenant_id=None):
+    """Returneaza Pontaj vizibil tenantului curent sau 404."""
+    from models import Pontaj
+
+    pontaj = query_timesheets_for_tenant(tenant_id=tenant_id).filter(
+        Pontaj.id == timesheet_id
+    ).first()
+    if pontaj is None:
+        abort(404)
+    return pontaj
+
+
+def ensure_timesheet_same_tenant(timesheet, tenant_id=None):
+    """Valideaza indirect Pontaj -> Proiect -> tenant_id."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return timesheet
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return timesheet
+        if mod == MODE_OPTIONAL:
+            return timesheet
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    proiect = getattr(timesheet, 'proiect', None)
+    proiect_tenant_id = _coerce_tenant_id(getattr(proiect, 'tenant_id', None))
+    if proiect is None:
+        angajat = getattr(timesheet, 'angajat', None)
+        angajat_tenant_id = _coerce_tenant_id(getattr(angajat, 'tenant_id', None))
+        if angajat_tenant_id == tenant_curent:
+            return timesheet
+        raise TenantAccessDenied('Pontajul nu are proiect tenant-scoped.')
+
+    if proiect_tenant_id != tenant_curent:
+        raise TenantAccessDenied('Proiectul pontajului nu apartine tenantului curent.')
+
+    angajat = getattr(timesheet, 'angajat', None)
+    angajat_tenant_id = _coerce_tenant_id(getattr(angajat, 'tenant_id', None))
+    if angajat_tenant_id is not None and angajat_tenant_id != tenant_curent:
+        raise TenantAccessDenied('Angajatul pontajului nu apartine tenantului curent.')
+
+    return timesheet
+
+
+def require_timesheet_same_tenant(timesheet, tenant_id=None):
+    """Wrapper pentru rute: ascunde pontajele inaccesibile prin 404."""
+    try:
+        return ensure_timesheet_same_tenant(timesheet, tenant_id=tenant_id)
+    except TenantAccessDenied:
+        abort(404)
+
+
+def ensure_timesheet_inputs_same_tenant(proiect_id=None, angajat_id=None, tenant_id=None):
+    """Valideaza proiectul si angajatul selectati la creare/editare pontaj."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return True
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return True
+        if mod == MODE_OPTIONAL:
+            return True
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    from models import Angajat, Proiect
+
+    proiect_ids = _unique_positive_ints([proiect_id] if proiect_id is not None else [])
+    if proiect_ids:
+        proiect_ok = Proiect.query.filter(
+            Proiect.id == proiect_ids[0],
+            Proiect.tenant_id == tenant_curent,
+        ).first()
+        if proiect_ok is None:
+            raise TenantAccessDenied('Proiectul pontajului nu apartine tenantului curent.')
+
+    angajat_ids = _unique_positive_ints([angajat_id] if angajat_id is not None else [])
+    if angajat_ids:
+        angajat_ok = Angajat.query.filter(
+            Angajat.id == angajat_ids[0],
+            or_(Angajat.tenant_id == tenant_curent, Angajat.tenant_id.is_(None)),
+        ).first()
+        if angajat_ok is None:
+            raise TenantAccessDenied('Angajatul pontajului nu apartine tenantului curent.')
+
+    return True
+
+
+def require_timesheet_inputs_same_tenant(proiect_id=None, angajat_id=None, tenant_id=None):
+    """Wrapper pentru rute create/edit: abort daca formularul amesteca tenanturi."""
+    try:
+        return ensure_timesheet_inputs_same_tenant(
+            proiect_id=proiect_id,
+            angajat_id=angajat_id,
+            tenant_id=tenant_id,
+        )
+    except TenantAccessDenied:
+        abort(404)
+
+
 def _resolve_tenant_id(tenant_id):
     if tenant_id is not None:
         return _coerce_tenant_id(tenant_id)
