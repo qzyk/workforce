@@ -96,3 +96,49 @@ Exemple deferred:
 - `DocumentProiect` prin `Proiect`
 - `ElementBIM` prin `Santier` / `ModelBIM`
 
+
+## T1.2 Project Route Integration
+
+Rutele de proiect protejate acum:
+
+| Ruta | Schimbare |
+|---|---|
+| `proiecte.lista` | Foloseste `query_for_tenant(Proiect)` pentru lista si statistici. |
+| `proiecte.adauga` | Seteaza `tenant_id` pe proiect nou cand exista tenant curent in `optional`/`strict`; in `strict`, user normal fara tenant primeste 403. |
+| `proiecte.detalii` | Foloseste `get_project_or_404(id)`. |
+| `proiecte.hub` | Foloseste `get_project_or_404(id)`. |
+| `proiecte.editeaza` | Foloseste `get_project_or_404(id)`. |
+| `proiecte.schimba_status` | Foloseste `get_project_or_404(id)` inainte de mutatie. |
+| `proiecte.export_excel` | Foloseste `get_project_or_404(id)` inainte de generare export. |
+
+Comportament:
+
+- in `off`, rutele raman compatibile cu single-tenant;
+- in `optional`, rutele filtreaza cand exista tenant curent;
+- in `strict`, proiectele altui tenant primesc 404, iar create fara tenant pentru user normal primeste 403;
+- super-adminul ramane explicit: admin fara `tenant_id` vede proiectele nefiltrat si poate crea proiect global `tenant_id=NULL`.
+
+## Ce ramane neprotejat in `routes/proiecte.py`
+
+Acest PR nu protejeaza inca rutele nested sau agregarile din domenii copil:
+
+- asignari angajati pe proiect (`AngajatProiect`);
+- documente proiect legacy (`Document`);
+- resurse si utilaje;
+- link-uri BIM proiect-santier si BIM-deviz;
+- EVM, raport proiect si alte agregari;
+- contracte/Gantt/BIM/documente citite in interiorul `hub`.
+
+Nested domains sunt amanate deoarece multe folosesc ownership indirect sau modele fara `tenant_id` direct. Ele au nevoie de helpers dedicate pentru fiecare lant de proprietate, nu doar de inlocuirea mecanica a unui `get_or_404`.
+
+## Riscuri proiect urmatoare
+
+Urmatoarele zone project-related trebuie tratate in PR-uri separate:
+
+- project employee assignments;
+- project documents;
+- project resource/vehicle data;
+- project BIM links;
+- contract/Gantt data linked by `proiect_id`;
+- manager dropdown si form choices tenant-scoped;
+- exporturi si rapoarte care agrega modele fara `tenant_id` direct.

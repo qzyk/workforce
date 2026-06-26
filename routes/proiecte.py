@@ -11,6 +11,11 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from models import db, Proiect, Angajat, AngajatProiect, Pontaj, Document, Utilizator
 from forms.proiecte_forms import ProiectForm
+from services.security.tenant_access import (
+    get_project_or_404,
+    query_for_tenant,
+    tenant_id_for_new_record_or_403,
+)
 
 ALLOWED_EXT_PROIECT = {'pdf', 'dwg', 'dxf', 'docx', 'xlsx', 'jpg', 'jpeg', 'png', 'zip'}
 
@@ -30,7 +35,7 @@ def lista():
     manager_filtru = request.args.get('manager', '', type=str)
     sort = request.args.get('sort', 'data_start_desc')
 
-    query = Proiect.query
+    query = query_for_tenant(Proiect)
 
     if status_filtru:
         query = query.filter_by(status=status_filtru)
@@ -63,11 +68,12 @@ def lista():
     proiecte = pagination.items
 
     # Statistici
-    total_active = Proiect.query.filter_by(status='activ').count()
-    total_planificate = Proiect.query.filter_by(status='planificat').count()
-    total_finalizate = Proiect.query.filter_by(status='finalizat').count()
-    total_suspendate = Proiect.query.filter_by(status='suspendat').count()
-    buget_total_all = db.session.query(db.func.sum(Proiect.buget_total)).filter(
+    stats_query = query_for_tenant(Proiect)
+    total_active = stats_query.filter_by(status='activ').count()
+    total_planificate = stats_query.filter_by(status='planificat').count()
+    total_finalizate = stats_query.filter_by(status='finalizat').count()
+    total_suspendate = stats_query.filter_by(status='suspendat').count()
+    buget_total_all = stats_query.with_entities(db.func.sum(Proiect.buget_total)).filter(
         Proiect.status.in_(['activ', 'planificat'])
     ).scalar() or 0
 
@@ -102,6 +108,7 @@ def lista():
 @proiecte_bp.route('/adauga', methods=['GET', 'POST'])
 @login_required
 def adauga():
+    tenant_id_nou = tenant_id_for_new_record_or_403()
     form = ProiectForm()
 
     if form.validate_on_submit():
@@ -125,6 +132,7 @@ def adauga():
             manager_id=form.manager_id.data if form.manager_id.data else None,
             buget_total=form.buget_total.data,
             buget_manopera=form.buget_manopera.data,
+            tenant_id=tenant_id_nou,
         )
         db.session.add(proiect)
         db.session.commit()
@@ -149,7 +157,7 @@ def adauga():
 @proiecte_bp.route('/<int:id>')
 @login_required
 def detalii(id):
-    proiect = Proiect.query.get_or_404(id)
+    proiect = get_project_or_404(id)
 
     # Tab Echipa
     angajati_asoc = AngajatProiect.query.filter_by(proiect_id=id).order_by(
@@ -227,7 +235,7 @@ def hub(id):
     """Proiect 360: agrega cross-modul (BIM, contracte, oferte, planuri Gantt,
     situatii, locatie, angajati, documente) pe FK-urile existente."""
     from sqlalchemy import func
-    proiect = Proiect.query.get_or_404(id)
+    proiect = get_project_or_404(id)
 
     def _safe(fn, dflt=None):
         try:
@@ -565,7 +573,7 @@ def bim_deviz(id):
 @proiecte_bp.route('/<int:id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def editeaza(id):
-    proiect = Proiect.query.get_or_404(id)
+    proiect = get_project_or_404(id)
     form = ProiectForm(obj=proiect)
 
     if form.validate_on_submit():
@@ -615,7 +623,7 @@ def editeaza(id):
 @proiecte_bp.route('/<int:id>/schimba-status', methods=['POST'])
 @login_required
 def schimba_status(id):
-    proiect = Proiect.query.get_or_404(id)
+    proiect = get_project_or_404(id)
     data = request.get_json()
     new_status = data.get('status', '')
 
@@ -777,7 +785,7 @@ def export_excel(id):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-    proiect = Proiect.query.get_or_404(id)
+    proiect = get_project_or_404(id)
 
     wb = Workbook()
     header_font = Font(bold=True, color='FFFFFF', size=11)
