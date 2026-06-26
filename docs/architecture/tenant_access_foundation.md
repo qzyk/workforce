@@ -32,6 +32,12 @@ Layer-ul expune:
 - `require_same_tenant(obj, tenant_id=None, include_global=False)`
 - `get_project_or_404(project_id, tenant_id=None)`
 - `tenant_id_for_new_record_or_403()`
+- `query_activities_for_tenant(tenant_id=None, include_global=False)`
+- `get_activity_or_404(activity_id, tenant_id=None)`
+- `ensure_activity_same_tenant(activity, tenant_id=None)`
+- `require_activity_same_tenant(activity, tenant_id=None)`
+- `ensure_activity_inputs_same_tenant(proiect_ids, angajat_ids=None, tenant_id=None)`
+- `require_activity_inputs_same_tenant(proiect_ids, angajat_ids=None, tenant_id=None)`
 
 Exceptiile de baza sunt:
 
@@ -79,6 +85,15 @@ from services.security.tenant_access import tenant_id_for_new_record_or_403
 tenant_id = tenant_id_for_new_record_or_403()
 ```
 
+Pentru activitati:
+
+```python
+from services.security.tenant_access import get_activity_or_404, query_activities_for_tenant
+
+activitate = get_activity_or_404(id)
+activitati = query_activities_for_tenant().all()
+```
+
 
 ## 6. Reguli pentru `include_global=True`
 
@@ -96,6 +111,9 @@ Exemple deferred:
 - `DocumentProiect` prin `Proiect`
 - `ElementBIM` prin `Santier` / `ModelBIM`
 
+Exemple implementate partial:
+
+- `RaportActivitate` prin `Proiect -> tenant_id`, cu verificare secundara pe `Angajat -> tenant_id`.
 
 ## T1.2 Project Route Integration
 
@@ -142,3 +160,60 @@ Urmatoarele zone project-related trebuie tratate in PR-uri separate:
 - contract/Gantt data linked by `proiect_id`;
 - manager dropdown si form choices tenant-scoped;
 - exporturi si rapoarte care agrega modele fara `tenant_id` direct.
+
+## T1.3 Activity Route Integration
+
+`RaportActivitate` nu primeste inca `tenant_id` direct. Pentru T1.3 ownership-ul canonic este:
+
+```text
+RaportActivitate -> Proiect -> tenant_id
+```
+
+La creare/editare se verifica si angajatii selectati:
+
+```text
+RaportActivitate -> Angajat -> tenant_id
+```
+
+Rutele si zonele de activitati protejate acum:
+
+| Zona | Schimbare |
+|---|---|
+| `activitati.panou` | Listeaza activitati, count aprobare si dropdown-uri angajati/proiecte prin helper-ele tenant-safe. |
+| `activitati.adauga` / `activitati.adauga_rapida` | Dropdown-uri tenant-scoped; POST-ul valideaza proiectele si angajatii selectati. |
+| `activitati.detaliu` | Foloseste `get_activity_or_404(id)`. |
+| `activitati.editeaza` | Foloseste `get_activity_or_404(id)` si valideaza inputurile la salvare. |
+| `activitati.trimite` | Foloseste `get_activity_or_404(id)` inainte de schimbarea statusului. |
+| `activitati.aproba` / `activitati.respinge` | Folosesc `get_activity_or_404(id)` inainte de workflow approval. |
+| `activitati.sterge` | Foloseste `get_activity_or_404(id)` inainte de delete. |
+| `activitati.aprobare` | Listeaza doar activitatile tenantului curent. |
+| `activitati.aprobare_masa` | In `strict`/`optional` respinge batch-uri care contin activitati inaccesibile. |
+| `activitati.calendar` / API calendar | Listeaza activitati, proiecte si angajati tenant-scoped. |
+| Rapoarte saptamanale/lunare/anuale activitati | Folosesc `query_activities_for_tenant()` pentru `RaportActivitate`. |
+| Exporturi activitati | Helper-ele interne de export citesc activitati/proiecte/angajati prin query-uri tenant-safe. |
+
+Comportament:
+
+- in `off`, query-urile pentru activitati raman compatibile cu single-tenant;
+- in `optional`, se filtreaza cand exista tenant curent; fara tenant curent ramane comportamentul de migrare;
+- in `strict`, userii normali fara tenant nu vad activitati tenant-owned, iar ID-urile straine primesc 404;
+- super-adminul ramane explicit: admin fara `tenant_id` vede activitatile nefiltrat.
+
+Ce ramane neprotejat in T1.3:
+
+- `Pontaj` citit in paginile de activitati ramane in afara scope-ului acestui PR;
+- entitatile BIM selectate in formular (`Santier`, `Cladire`, `ElementBIM`, `Spatiu`, `Zona`) raman in afara scope-ului;
+- legaturile catre TaskProgram, Gantt si Contracte nu sunt introduse sau modificate;
+- atasamentele/documentele proof-of-work nu sunt schimbate;
+- `RaportActivitate` ramane fara `tenant_id` direct pana la un PR separat cu migrare.
+
+Nested domains sunt amanate deoarece au lanturi diferite de ownership si reguli de business proprii. Pentru Pontaj, BIM, documente si Gantt nu este suficienta inlocuirea mecanica a query-urilor din `routes/activitati.py`; fiecare are nevoie de helper dedicat, teste IDOR proprii si, unde lipseste ownership-ul, migrare separata.
+
+Riscuri ramase dupa T1.3:
+
+- Pontajele pot fi agregate separat de activitati in rapoarte lunare;
+- proiectele din JSON legacy (`proiecte_ids`, `detalii_pe_zi`) sunt validate la salvare, dar datele istorice pot contine amestecuri vechi;
+- BIM context selectat in activitati nu este inca tenant-scoped;
+- exporturile pot deveni cross-domain daca viitoare coloane adauga Contract/Gantt/Pontaj fara helper dedicat;
+- lipseste inca audit trail unificat pentru aprobarile de activitati.
+

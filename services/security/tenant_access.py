@@ -188,6 +188,143 @@ def tenant_id_for_new_record_or_403():
     return None
 
 
+def query_activities_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru RaportActivitate prin Proiect -> tenant_id."""
+    from models import Angajat, Proiect, RaportActivitate
+
+    query = RaportActivitate.query
+    mod = get_tenant_mode()
+
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    if include_global:
+        proiect_scope = or_(Proiect.tenant_id == tenant_curent, Proiect.tenant_id.is_(None))
+    else:
+        proiect_scope = Proiect.tenant_id == tenant_curent
+
+    return query.filter(
+        RaportActivitate.proiect.has(proiect_scope),
+        RaportActivitate.angajat.has(or_(
+            Angajat.tenant_id == tenant_curent,
+            Angajat.tenant_id.is_(None),
+        )),
+    )
+
+
+def get_activity_or_404(activity_id, tenant_id=None):
+    """Returneaza RaportActivitate vizibil tenantului curent sau 404."""
+    from models import RaportActivitate
+
+    activitate = query_activities_for_tenant(tenant_id=tenant_id).filter(
+        RaportActivitate.id == activity_id
+    ).first()
+    if activitate is None:
+        abort(404)
+    return activitate
+
+
+def ensure_activity_same_tenant(activity, tenant_id=None):
+    """Valideaza indirect RaportActivitate -> Proiect -> tenant_id."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return activity
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return activity
+        if mod == MODE_OPTIONAL:
+            return activity
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    proiect = getattr(activity, 'proiect', None)
+    proiect_tenant_id = _coerce_tenant_id(getattr(proiect, 'tenant_id', None))
+    if proiect is None:
+        angajat = getattr(activity, 'angajat', None)
+        angajat_tenant_id = _coerce_tenant_id(getattr(angajat, 'tenant_id', None))
+        if angajat_tenant_id == tenant_curent:
+            return activity
+        raise TenantAccessDenied('Activitatea nu are proiect tenant-scoped.')
+
+    if proiect_tenant_id != tenant_curent:
+        raise TenantAccessDenied('Proiectul activitatii nu apartine tenantului curent.')
+
+    angajat = getattr(activity, 'angajat', None)
+    angajat_tenant_id = _coerce_tenant_id(getattr(angajat, 'tenant_id', None))
+    if angajat_tenant_id is not None and angajat_tenant_id != tenant_curent:
+        raise TenantAccessDenied('Angajatul activitatii nu apartine tenantului curent.')
+
+    return activity
+
+
+def require_activity_same_tenant(activity, tenant_id=None):
+    """Wrapper pentru rute: ascunde activitatile inaccesibile prin 404."""
+    try:
+        return ensure_activity_same_tenant(activity, tenant_id=tenant_id)
+    except TenantAccessDenied:
+        abort(404)
+
+
+def ensure_activity_inputs_same_tenant(proiect_ids, angajat_ids=None, tenant_id=None):
+    """Valideaza proiectele si angajatii selectati la creare/editare activitate."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return True
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return True
+        if mod == MODE_OPTIONAL:
+            return True
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    from models import Angajat, Proiect
+
+    proiect_ids_clean = _unique_positive_ints(proiect_ids)
+    if not proiect_ids_clean:
+        raise TenantAccessDenied('Activitatea trebuie sa aiba proiect tenant-scoped.')
+
+    proiecte_ok = Proiect.query.filter(
+        Proiect.id.in_(proiect_ids_clean),
+        Proiect.tenant_id == tenant_curent,
+    ).count()
+    if proiecte_ok != len(proiect_ids_clean):
+        raise TenantAccessDenied('Cel putin un proiect nu apartine tenantului curent.')
+
+    angajat_ids_clean = _unique_positive_ints(angajat_ids or [])
+    if angajat_ids_clean:
+        angajati_ok = Angajat.query.filter(
+            Angajat.id.in_(angajat_ids_clean),
+            or_(Angajat.tenant_id == tenant_curent, Angajat.tenant_id.is_(None)),
+        ).count()
+        if angajati_ok != len(angajat_ids_clean):
+            raise TenantAccessDenied('Cel putin un angajat nu apartine tenantului curent.')
+
+    return True
+
+
+def require_activity_inputs_same_tenant(proiect_ids, angajat_ids=None, tenant_id=None):
+    """Wrapper pentru rute create/edit: abort daca formularul amesteca tenanturi."""
+    try:
+        return ensure_activity_inputs_same_tenant(
+            proiect_ids,
+            angajat_ids=angajat_ids,
+            tenant_id=tenant_id,
+        )
+    except TenantAccessDenied:
+        abort(404)
+
+
 def _resolve_tenant_id(tenant_id):
     if tenant_id is not None:
         return _coerce_tenant_id(tenant_id)
@@ -203,6 +340,16 @@ def _coerce_tenant_id(tenant_id):
         return None
 
 
+def _unique_positive_ints(values):
+    rezultat = []
+    for value in values:
+        try:
+            int_value = int(value)
+        except (TypeError, ValueError):
+            continue
+        if int_value > 0 and int_value not in rezultat:
+            rezultat.append(int_value)
+    return rezultat
 
 
 def _current_user_is_super_admin():

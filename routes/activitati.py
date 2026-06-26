@@ -12,15 +12,25 @@ from io import BytesIO
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
-    flash, jsonify, send_file, current_app
+    flash, jsonify, send_file, current_app, abort
 )
 from flask_login import login_required, current_user
+from werkzeug.exceptions import HTTPException
 
 from models import (
     db, Angajat, Proiect, Pontaj, TipInstalatie,
     AngajatProiect, SarbatoareLegala,
     RaportActivitate, CategorieActivitate,
     Santier, Cladire, ElementBIM, Spatiu, Zona,
+)
+from services.security.tenant_access import (
+    get_activity_or_404,
+    get_project_or_404,
+    get_tenant_mode,
+    query_activities_for_tenant,
+    query_for_tenant,
+    require_activity_inputs_same_tenant,
+    tenant_id_for_new_record_or_403,
 )
 
 activitati_bp = Blueprint('activitati', __name__, url_prefix='/activitati')
@@ -76,7 +86,7 @@ def _get_saptamana_bounds(an, saptamana):
 def _get_angajat_for_user(user):
     """Incearca sa gaseasca angajatul asociat utilizatorului logat (dupa email)."""
     if user and user.email:
-        return Angajat.query.filter_by(email=user.email, status='activ').first()
+        return query_for_tenant(Angajat).filter_by(email=user.email, status='activ').first()
     return None
 
 
@@ -104,14 +114,14 @@ def panou():
 
     if angajat_curent:
         # Activitate azi
-        activitate_azi = RaportActivitate.query.filter_by(
+        activitate_azi = query_activities_for_tenant().filter_by(
             angajat_id=angajat_curent.id, data=today
         ).first()
 
         # Saptamana curenta
         luni = today - timedelta(days=today.weekday())
         duminica = luni + timedelta(days=6)
-        activitati_saptamana = RaportActivitate.query.filter(
+        activitati_saptamana = query_activities_for_tenant().filter(
             RaportActivitate.angajat_id == angajat_curent.id,
             RaportActivitate.data >= luni,
             RaportActivitate.data <= duminica
@@ -121,7 +131,7 @@ def panou():
 
         # Luna curenta
         prima_zi = today.replace(day=1)
-        activitati_luna = RaportActivitate.query.filter(
+        activitati_luna = query_activities_for_tenant().filter(
             RaportActivitate.angajat_id == angajat_curent.id,
             RaportActivitate.data >= prima_zi,
             RaportActivitate.data <= today
@@ -131,7 +141,7 @@ def panou():
         activitati_pending_luna = sum(1 for a in activitati_luna if a.status in ('draft', 'trimis'))
 
     # Tabel activitati recente (manageri vad tot, operatorii doar ale lor)
-    query = RaportActivitate.query
+    query = query_activities_for_tenant()
 
     # Filtre
     f_angajat = request.args.get('angajat_id', '', type=int) or None
@@ -196,11 +206,11 @@ def panou():
     # Aprobare count (pentru manageri)
     pending_aprobare = 0
     if current_user.rol in ('admin', 'manager'):
-        pending_aprobare = RaportActivitate.query.filter_by(status='trimis').count()
+        pending_aprobare = query_activities_for_tenant().filter_by(status='trimis').count()
 
     # Dropdown-uri filtre
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
-    proiecte = Proiect.query.filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
+    angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(Angajat.nume).all()
+    proiecte = query_for_tenant(Proiect).filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
     bim_santiere = Santier.query.order_by(Santier.cod).all()
     bim_cladiri = Cladire.query.order_by(Cladire.cod).all()
@@ -260,8 +270,8 @@ def adauga():
     if angajat_curent:
         pontaj_azi = Pontaj.query.filter_by(angajat_id=angajat_curent.id, data=today).first()
 
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
-    proiecte = Proiect.query.filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
+    angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(Angajat.nume).all()
+    proiecte = query_for_tenant(Proiect).filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
     categorii = CategorieActivitate.query.filter_by(activa=True).order_by(CategorieActivitate.ordine).all()
     santiere = Santier.query.order_by(Santier.cod).all()
@@ -287,7 +297,7 @@ def adauga_rapida():
         return _salveaza_activitate(None, rapida=True)
 
     angajat_curent = _get_angajat_for_user(current_user)
-    proiecte = Proiect.query.filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
+    proiecte = query_for_tenant(Proiect).filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
 
     return render_template('activitati/formular_rapid.html',
@@ -305,7 +315,7 @@ def adauga_rapida():
 @login_required
 def detaliu(id):
     """Detaliu raport activitate."""
-    activitate = RaportActivitate.query.get_or_404(id)
+    activitate = get_activity_or_404(id)
     angajat_curent = _get_angajat_for_user(current_user)
 
     # Verificare acces
@@ -329,7 +339,7 @@ def detaliu(id):
 @login_required
 def editeaza(id):
     """Editare activitate existenta."""
-    activitate = RaportActivitate.query.get_or_404(id)
+    activitate = get_activity_or_404(id)
 
     # Doar draft-urile pot fi editate de autori
     angajat_curent = _get_angajat_for_user(current_user)
@@ -344,8 +354,8 @@ def editeaza(id):
     if request.method == 'POST':
         return _salveaza_activitate(activitate)
 
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
-    proiecte = Proiect.query.filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
+    angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(Angajat.nume).all()
+    proiecte = query_for_tenant(Proiect).filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
     categorii = CategorieActivitate.query.filter_by(activa=True).order_by(CategorieActivitate.ordine).all()
     santiere = Santier.query.order_by(Santier.cod).all()
@@ -481,6 +491,7 @@ def _salveaza_activitate(activitate, rapida=False):
 
         # Construire JSON detalii pe zi (doar randuri cu macar un camp completat)
         detalii_json = None
+        detalii_proiect_ids = []
         if tip_activitate in ('saptamanala', 'lunara') and det_data_list:
             detalii_curate = []
             for i, d_str in enumerate(det_data_list):
@@ -497,6 +508,7 @@ def _salveaza_activitate(activitate, rapida=False):
                 if proi_str:
                     try:
                         item['proiect_id'] = int(proi_str)
+                        detalii_proiect_ids.append(item['proiect_id'])
                     except (ValueError, TypeError):
                         pass
                 if text:
@@ -511,6 +523,17 @@ def _salveaza_activitate(activitate, rapida=False):
                 detalii_json = json.dumps(detalii_curate, ensure_ascii=False)
 
         echipamente = request.form.get('echipamente_folosite', '').strip()
+
+        tenant_id_curent = tenant_id_for_new_record_or_403()
+        angajat_ids_de_validat = [angajat_id]
+        if supervisor_id:
+            angajat_ids_de_validat.append(supervisor_id)
+        angajat_ids_de_validat.extend(subordonati_ids_clean)
+        require_activity_inputs_same_tenant(
+            proiecte_ids_clean + detalii_proiect_ids,
+            angajat_ids=angajat_ids_de_validat,
+            tenant_id=tenant_id_curent,
+        )
 
         if activitate is None:
             activitate = RaportActivitate()
@@ -570,6 +593,9 @@ def _salveaza_activitate(activitate, rapida=False):
 
         return redirect(url_for('activitati.detaliu', id=activitate.id))
 
+    except HTTPException:
+        db.session.rollback()
+        raise
     except Exception as e:
         db.session.rollback()
         flash(f'Eroare la salvare: {str(e)}', 'danger')
@@ -580,7 +606,7 @@ def _salveaza_activitate(activitate, rapida=False):
 @login_required
 def trimite(id):
     """Schimba status draft -> trimis."""
-    activitate = RaportActivitate.query.get_or_404(id)
+    activitate = get_activity_or_404(id)
     if activitate.status != 'draft':
         flash('Doar activitatile draft pot fi trimise.', 'warning')
     else:
@@ -595,7 +621,7 @@ def trimite(id):
 @manager_or_admin
 def aproba(id):
     """Aprobare activitate (manager/admin)."""
-    activitate = RaportActivitate.query.get_or_404(id)
+    activitate = get_activity_or_404(id)
     activitate.status = 'aprobat'
     activitate.aprobat_de_id = current_user.id
     activitate.data_aprobare = datetime.utcnow()
@@ -609,7 +635,7 @@ def aproba(id):
 @manager_or_admin
 def respinge(id):
     """Respingere activitate cu motiv."""
-    activitate = RaportActivitate.query.get_or_404(id)
+    activitate = get_activity_or_404(id)
     motiv = request.form.get('motiv_respingere', '').strip()
     activitate.status = 'respins'
     activitate.motiv_respingere = motiv or 'Fara motiv specificat'
@@ -622,7 +648,7 @@ def respinge(id):
 @login_required
 def sterge(id):
     """Sterge activitate (doar draft)."""
-    activitate = RaportActivitate.query.get_or_404(id)
+    activitate = get_activity_or_404(id)
     angajat_curent = _get_angajat_for_user(current_user)
 
     if current_user.rol == 'operator':
@@ -655,7 +681,7 @@ def ale_mele():
     luna = request.args.get('luna', date.today().month, type=int)
     an = request.args.get('an', date.today().year, type=int)
 
-    activitati = RaportActivitate.query.filter(
+    activitati = query_activities_for_tenant().filter(
         RaportActivitate.angajat_id == angajat_curent.id,
         db.extract('month', RaportActivitate.data) == luna,
         db.extract('year', RaportActivitate.data) == an,
@@ -683,7 +709,7 @@ def ale_mele_saptamana():
     sapt = request.args.get('saptamana', today.isocalendar()[1], type=int)
     luni, duminica = _get_saptamana_bounds(an, sapt)
 
-    activitati = RaportActivitate.query.filter(
+    activitati = query_activities_for_tenant().filter(
         RaportActivitate.angajat_id == angajat_curent.id,
         RaportActivitate.data >= luni,
         RaportActivitate.data <= duminica,
@@ -722,7 +748,7 @@ def ale_mele_luna():
 @manager_or_admin
 def aprobare():
     """Lista activitati in asteptare de aprobare."""
-    activitati = RaportActivitate.query.filter_by(status='trimis').order_by(
+    activitati = query_activities_for_tenant().filter_by(status='trimis').order_by(
         RaportActivitate.data.desc()
     ).all()
 
@@ -741,20 +767,39 @@ def aprobare_masa():
     motiv = request.form.get('motiv_respingere', '').strip()
 
     count = 0
-    for aid in ids:
+    if get_tenant_mode() == 'off':
+        activitati = []
+        for aid in ids:
+            try:
+                a = RaportActivitate.query.get(int(aid))
+                if a and a.status == 'trimis':
+                    activitati.append(a)
+            except (ValueError, TypeError):
+                continue
+    else:
         try:
-            a = RaportActivitate.query.get(int(aid))
-            if a and a.status == 'trimis':
-                if actiune == 'aproba':
-                    a.status = 'aprobat'
-                    a.aprobat_de_id = current_user.id
-                    a.data_aprobare = datetime.utcnow()
-                else:
-                    a.status = 'respins'
-                    a.motiv_respingere = motiv or 'Respins in masa'
-                count += 1
+            ids_int = [int(aid) for aid in ids]
         except (ValueError, TypeError):
-            continue
+            ids_int = []
+        ids_int = [aid for aid in ids_int if aid > 0]
+        if len(ids_int) != len(ids) or not ids_int:
+            abort(404)
+        activitati = query_activities_for_tenant().filter(
+            RaportActivitate.id.in_(ids_int)
+        ).all()
+        if len({a.id for a in activitati}) != len(set(ids_int)):
+            abort(404)
+        activitati = [a for a in activitati if a.status == 'trimis']
+
+    for a in activitati:
+        if actiune == 'aproba':
+            a.status = 'aprobat'
+            a.aprobat_de_id = current_user.id
+            a.data_aprobare = datetime.utcnow()
+        else:
+            a.status = 'respins'
+            a.motiv_respingere = motiv or 'Respins in masa'
+        count += 1
 
     db.session.commit()
 
@@ -780,8 +825,8 @@ def calendar_view():
     f_proiect = request.args.get('proiect_id', type=int) or None
     view_type = request.args.get('view', 'lunar')  # lunar / saptamanal
 
-    angajati = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
-    proiecte = Proiect.query.filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
+    angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(Angajat.nume).all()
+    proiecte = query_for_tenant(Proiect).filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
 
     return render_template('activitati/calendar.html',
@@ -810,7 +855,7 @@ def api_calendar_data():
     prima_zi = date(an, luna, 1)
     ultima_zi = date(an, luna, last_day)
 
-    query = RaportActivitate.query.filter(
+    query = query_activities_for_tenant().filter(
         RaportActivitate.data >= prima_zi,
         RaportActivitate.data <= ultima_zi,
     )
@@ -896,7 +941,7 @@ def raport_saptamanal():
     sapt = request.args.get('saptamana', today.isocalendar()[1], type=int)
     luni, duminica = _get_saptamana_bounds(an, sapt)
 
-    activitati = RaportActivitate.query.filter(
+    activitati = query_activities_for_tenant().filter(
         RaportActivitate.data >= luni,
         RaportActivitate.data <= duminica,
     ).order_by(RaportActivitate.angajat_id, RaportActivitate.data).all()
@@ -935,7 +980,7 @@ def raport_saptamanal():
 
     row = 4
     for ang_id, zile_dict in angajat_activitati.items():
-        ang = Angajat.query.get(ang_id)
+        ang = query_for_tenant(Angajat).filter_by(id=ang_id).first()
         ws.cell(row=row, column=1, value=ang.nume_complet if ang else '?').font = Font(name='Arial', bold=True, size=9)
         ws.cell(row=row, column=1).border = thin_border
 
@@ -990,7 +1035,7 @@ def raport_saptamanal():
 
     row = 1
     for pid, acts in proiect_acts.items():
-        p = Proiect.query.get(pid)
+        p = query_for_tenant(Proiect).filter_by(id=pid).first()
         ws3.merge_cells(start_row=row, start_column=1, end_row=row, end_column=6)
         ws3.cell(row=row, column=1, value=f'{p.cod_proiect} - {p.nume}' if p else '?')
         ws3.cell(row=row, column=1).font = Font(name='Arial', bold=True, size=11, color='1A237E')
@@ -1043,7 +1088,7 @@ def raport_lunar():
     luni_ro = ['', 'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
                'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie']
 
-    activitati = RaportActivitate.query.filter(
+    activitati = query_activities_for_tenant().filter(
         RaportActivitate.data >= prima_zi,
         RaportActivitate.data <= ultima_zi,
     ).order_by(RaportActivitate.angajat_id, RaportActivitate.data).all()
@@ -1078,7 +1123,7 @@ def raport_lunar():
 
     row = 3
     for ang_id, acts in angajat_acts.items():
-        ang = Angajat.query.get(ang_id)
+        ang = query_for_tenant(Angajat).filter_by(id=ang_id).first()
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=7)
         ws.cell(row=row, column=1, value=ang.nume_complet if ang else '?')
         ws.cell(row=row, column=1).font = Font(name='Arial', bold=True, size=12, color='1A237E')
@@ -1118,7 +1163,7 @@ def raport_lunar():
 
     row = 2
     for ang_id, acts in angajat_acts.items():
-        ang = Angajat.query.get(ang_id)
+        ang = query_for_tenant(Angajat).filter_by(id=ang_id).first()
         ws2.cell(row=row, column=1, value=ang.nume_complet if ang else '?').border = thin_border
 
         inst_zile = defaultdict(set)
@@ -1143,7 +1188,7 @@ def raport_lunar():
 
     row = 1
     for pid, acts in proiect_acts.items():
-        p = Proiect.query.get(pid)
+        p = query_for_tenant(Proiect).filter_by(id=pid).first()
         ws3.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
         ws3.cell(row=row, column=1, value=f'{p.cod_proiect} - {p.nume}' if p else '?')
         ws3.cell(row=row, column=1).font = Font(name='Arial', bold=True, size=11, color='1A237E')
@@ -1223,7 +1268,7 @@ def raport_anual():
     prima_zi = date(an, 1, 1)
     ultima_zi = date(an, 12, 31)
 
-    activitati = RaportActivitate.query.filter(
+    activitati = query_activities_for_tenant().filter(
         RaportActivitate.data >= prima_zi,
         RaportActivitate.data <= ultima_zi,
     ).order_by(RaportActivitate.angajat_id, RaportActivitate.data).all()
@@ -1257,7 +1302,7 @@ def raport_anual():
 
     row = 4
     for ang_id, lunar in angajat_lunar.items():
-        ang = Angajat.query.get(ang_id)
+        ang = query_for_tenant(Angajat).filter_by(id=ang_id).first()
         ws.cell(row=row, column=1, value=ang.nume_complet if ang else '?').border = thin_border
         total = 0
         for m in range(1, 13):
@@ -1384,8 +1429,8 @@ def raport_proiect():
         flash('Selectati un proiect.', 'warning')
         return redirect(url_for('activitati.panou'))
 
-    proiect = Proiect.query.get_or_404(proiect_id)
-    activitati = RaportActivitate.query.filter_by(proiect_id=proiect_id).order_by(
+    proiect = get_project_or_404(proiect_id)
+    activitati = query_activities_for_tenant().filter_by(proiect_id=proiect_id).order_by(
         RaportActivitate.data.desc()
     ).all()
 
@@ -1468,7 +1513,7 @@ def _zile_extra_lucrate_pentru_angajat(angajat_id, an, luna):
     extra = set()
 
     # 1. Activitati zilnice in weekend
-    daily_weekends = RaportActivitate.query.filter(
+    daily_weekends = query_activities_for_tenant().filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate == 'zilnica',
         RaportActivitate.data >= prima,
@@ -1480,7 +1525,7 @@ def _zile_extra_lucrate_pentru_angajat(angajat_id, an, luna):
 
     # 2. Activitati saptamanale/lunare cu include_sambata sau include_duminica
     luna_an = f'{an:04d}-{luna:02d}'
-    flagged = RaportActivitate.query.filter(
+    flagged = query_activities_for_tenant().filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate.in_(['saptamanala', 'lunara']),
         db.or_(
@@ -1529,7 +1574,7 @@ def _detalii_pe_zi_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
     iso_week = prima_zi.isocalendar()[1]
     luna_an = f'{an:04d}-{luna:02d}'
 
-    rapoarte = RaportActivitate.query.filter(
+    rapoarte = query_activities_for_tenant().filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate.in_(['saptamanala', 'lunara']),
         RaportActivitate.detalii_pe_zi.isnot(None),
@@ -1556,7 +1601,7 @@ def _detalii_pe_zi_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
                 if det.get('text'):
                     text_parts.append(det['text'])
                 if det.get('proiect_id'):
-                    p = Proiect.query.get(det['proiect_id'])
+                    p = query_for_tenant(Proiect).filter_by(id=det['proiect_id']).first()
                     if p:
                         text_parts.append(f'[{p.cod_proiect}]')
                 if det.get('ore'):
@@ -1584,7 +1629,7 @@ def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
     luna_an = f'{an:04d}-{luna:02d}'
 
     # Daily: data intre prima si ultima zi
-    daily = RaportActivitate.query.filter(
+    daily = query_activities_for_tenant().filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate == 'zilnica',
         RaportActivitate.data >= prima_zi,
@@ -1592,7 +1637,7 @@ def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
     ).all()
 
     # Weekly: same iso week sau interval suprapus (activitatea = principala+detaliata)
-    weekly = RaportActivitate.query.filter(
+    weekly = query_activities_for_tenant().filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate == 'saptamanala',
         db.or_(
@@ -1608,7 +1653,7 @@ def _activitati_pentru_saptamana(angajat_id, zile_saptamana, luna, an):
     ).all()
 
     # Monthly: aceeasi luna_an (activitatea = principala+detaliata)
-    monthly = RaportActivitate.query.filter(
+    monthly = query_activities_for_tenant().filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate == 'lunara',
         db.or_(
@@ -1775,12 +1820,12 @@ def _info_zile(angajat_id, zile):
 
     def _proj_nume(pid):
         if pid not in _proj_cache:
-            p = Proiect.query.get(pid)
+            p = query_for_tenant(Proiect).filter_by(id=pid).first()
             _proj_cache[pid] = (p.nume.strip() if p and p.nume else None)
         return _proj_cache[pid]
 
     # 1. DETALII PE ZI - proiect + text + ore individuale pe fiecare zi
-    for a in RaportActivitate.query.filter(
+    for a in query_activities_for_tenant().filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate.in_(['saptamanala', 'lunara']),
         RaportActivitate.detalii_pe_zi.isnot(None),
@@ -1813,7 +1858,7 @@ def _info_zile(angajat_id, zile):
                 info[d]['activitati'].append(t)
 
     # 2. ZILNICE pe data lor
-    for a in RaportActivitate.query.filter(
+    for a in query_activities_for_tenant().filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate == 'zilnica',
         RaportActivitate.data >= prima, RaportActivitate.data <= ultima,
@@ -1832,7 +1877,7 @@ def _info_zile(angajat_id, zile):
             info[a.data]['activitati'].append(t)
 
     # 3. SPAN fara detalii_pe_zi - completeaza DOAR proiectul pe zilele acoperite
-    for a in RaportActivitate.query.filter(
+    for a in query_activities_for_tenant().filter(
         RaportActivitate.angajat_id == angajat_id,
         RaportActivitate.tip_activitate.in_(['saptamanala', 'lunara']),
         db.or_(RaportActivitate.detalii_pe_zi.is_(None),
@@ -2185,7 +2230,7 @@ def _pregateste_export_din_args():
             return None, None, None, None, ('Nu sunteti asociat unui angajat.', 'warning')
         angajati = [operator_angajat]
     elif f_angajat_ids:
-        angajati = Angajat.query.filter(Angajat.id.in_(f_angajat_ids)).order_by(
+        angajati = query_for_tenant(Angajat).filter(Angajat.id.in_(f_angajat_ids)).order_by(
             Angajat.nume, Angajat.prenume).all()
         if not angajati:
             return None, None, None, None, ('Niciunul din angajatii selectati nu exista.', 'danger')
@@ -2193,17 +2238,17 @@ def _pregateste_export_din_args():
         from calendar import monthrange
         prima_zi = date(p_start[0], p_start[1], 1)
         ultima_zi = date(p_end[0], p_end[1], monthrange(p_end[0], p_end[1])[1])
-        q = db.session.query(RaportActivitate.angajat_id).filter(
+        q = query_activities_for_tenant().with_entities(RaportActivitate.angajat_id).filter(
             RaportActivitate.data >= prima_zi,
             RaportActivitate.data <= ultima_zi)
         if f_tip in ('zilnica', 'saptamanala', 'lunara'):
             q = q.filter(RaportActivitate.tip_activitate == f_tip)
         angajati_ids = [r[0] for r in q.distinct().all() if r[0]]
         if angajati_ids:
-            angajati = Angajat.query.filter(Angajat.id.in_(angajati_ids)).order_by(
+            angajati = query_for_tenant(Angajat).filter(Angajat.id.in_(angajati_ids)).order_by(
                 Angajat.nume, Angajat.prenume).all()
         else:
-            angajati = Angajat.query.filter_by(status='activ').order_by(
+            angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(
                 Angajat.nume, Angajat.prenume).all()
 
     if not angajati:
