@@ -886,12 +886,92 @@ Nu s-a adaugat migrare deoarece modelele implicate au deja `tenant_id` direct sa
 
 Urmatorul PR recomandat: `T1.12 Project Nested Aggregation Guard` pentru resurse/EVM/utilaje si alte agregari nested din `routes/proiecte.py`. Alternativa, daca serviciile vor fi apelate direct din afara rutelor, este `T1.11B Admin/Notification Service Boundary Hardening`.
 
-## Urmatoarele integrari recomandate dupa T1.11
+## T1.12 Project Nested Aggregation Guard
 
-1. `T1.12 Project Nested Aggregation Guard` pentru resurse/EVM/utilaje din `routes/proiecte.py`.
-2. `T1.11B Admin/Notification Service Boundary Hardening` daca serviciile de admin/notificari/realtime/presence vor fi apelate direct din afara rutelor.
-3. `T1.9B Reporting Service Boundary Hardening` daca generatoarele de rapoarte vor fi apelate direct din afara rutelor.
-4. `T1.8B Gantt Service Boundary Hardening` daca serviciile Gantt vor fi apelate direct din afara rutelor.
-5. `T1.7B BIM Service Boundary Hardening` daca serviciile BIM vor fi apelate direct din afara rutelor.
-6. `T1.5B Contract Service Boundary Hardening` daca serviciile contractuale vor fi apelate direct din afara rutelor.
-7. S1.1/S1.2: extragere `activity_service.py` / `timesheet_service.py` dupa ce tenant guard-urile principale sunt stabile.
+T1.12 protejeaza agregari si mutatii nested din `routes/proiecte.py`, fara sa schimbe workflow-ul proiectului, formulele financiare, layout-ul exporturilor sau schema DB. Project pages raman agregatoare peste domeniile existente; nu devin sursa noua de adevar.
+
+Helpers adaugate:
+
+- `query_project_assignments_for_tenant()`
+- `get_project_assignment_or_404()`
+- `ensure_project_assignment_same_tenant()` / `require_project_assignment_same_tenant()`
+- `query_project_nested_resources_for_tenant()`
+- `query_project_consum_utilaj_for_tenant()`
+- `ensure_project_nested_inputs_same_tenant()` / `require_project_nested_inputs_same_tenant()`
+
+Ownership paths:
+
+| Model / zona | Ownership |
+|---|---|
+| `AngajatProiect` | `AngajatProiect -> Proiect -> tenant_id` si `AngajatProiect -> Angajat -> tenant_id`; ambii owneri trebuie sa fie compatibili. |
+| `ConsumUtilaj` | `ConsumUtilaj.tenant_id`, `ConsumUtilaj -> Proiect -> tenant_id` si, cand exista, `ConsumUtilaj -> Masina -> owner tenant-safe`. |
+| `ExtrasResursa` | `ExtrasResursa.tenant_id` si `ExtrasResursa -> Proiect -> tenant_id`; randurile `tenant_id=NULL` sunt vizibile doar prin proiect validat, nu global. |
+| Documente proiect legacy | `Document -> Proiect / Angajat -> tenant_id` prin helperii T1.6. |
+| BIM proiect | `Santier` / `ModelBIM` / `ElementBIM` prin helperii BIM T1.7 si legatura `ProiectSantier`. |
+| Gantt proiect | `GanttPlan` si `GanttWbsNod` prin helperii T1.8. |
+| Contract / oferta / situatie | `Contract`, `OfertaContract`, `SituatieLunara` prin tenant direct si proiect validat. |
+| EVM / resurse / BIM-deviz | proiect validat in ruta plus query-uri tenant-safe in serviciile chemate direct. |
+
+Project detail/hub areas protejate:
+
+- tabul Echipa foloseste asignari proiect-angajat tenant-safe;
+- dropdown-ul de angajati disponibili este tenant-scoped;
+- pontajele, totalul de ore, orele pe angajat si graficele saptamanale/lunare folosesc `query_timesheets_for_tenant()`;
+- costul manoperei foloseste pontaje si asignari tenant-safe, pastrand formula existenta;
+- documentele legacy din tabul Documente folosesc `query_legacy_documents_for_tenant()`;
+- hub-ul proiectului foloseste query-uri tenant-safe pentru contracte, oferte, situatii, Gantt, WBS, BIM, documente, angajati si consum utilaj;
+- lista de santiere BIM disponibile/legate este filtrata prin `query_sites_for_tenant()`.
+
+Project nested mutation safeguards:
+
+- adaugarea angajatului pe proiect valideaza proiectul, angajatul si compatibilitatea tenantului inainte de create;
+- dezalocarea, realocarea si stergerea definitiva a unei asignari folosesc `get_project_assignment_or_404()`;
+- legarea/dezlegarea unui santier BIM valideaza proiectul si santierul inainte de mutatie;
+- adaugarea/stergerea unui consum utilaj valideaza proiectul, masina selectata si randul consumului;
+- upload/reimport/stergere extrase C6/C7/C8 sterge sau creeaza doar randuri vizibile tenantului curent;
+- ID-urile nested straine returneaza 404 si nu aplica mutatii partiale.
+
+Project export safeguards:
+
+- exportul Excel proiect valideaza proiectul cu `get_project_or_404()`;
+- sheet-ul Echipa foloseste `query_project_assignments_for_tenant()`;
+- sheet-ul Pontaje foloseste `query_timesheets_for_tenant()`;
+- totalurile din sheet-ul Informatii Proiect folosesc totaluri tenant-safe;
+- CSV-ul de aprovizionare C6 foloseste `query_project_nested_resources_for_tenant()`;
+- layout-ul workbook/CSV si numele fisierelor generate nu au fost schimbate.
+
+Service boundary decisions:
+
+- `services/evm.py` a primit hardening local prin helperii existenti pentru Gantt, SituatieLunara, Pontaj, AngajatProiect, ConsumUtilaj si ExtrasResursa;
+- `services/deviz_extras.py` foloseste helperi tenant-safe pentru planuri Gantt si extrase proiect;
+- `services/legatura_bim.py` foloseste helperi tenant-safe pentru proiect, santiere, elemente BIM, planuri Gantt si extrase;
+- aceste servicii raman totusi route-validated, nu security boundaries independente complete;
+- nu s-au extras `project_service.py`, `project_metrics_service.py`, `reporting_service.py`, `fleet_service.py` sau `activity_service.py`.
+
+Comportament pe moduri:
+
+- in `off`, rutele proiect si query-urile nested pastreaza comportamentul legacy single-tenant;
+- in `optional`, userii cu `tenant_id` sunt scopati, iar userii fara tenant raman migration-friendly conform foundation layer;
+- in `strict`, user normal fara tenant esueaza inchis prin helperii existenti, iar proiectele/child ID-urile straine primesc 404;
+- super-adminul fara tenant ramane explicit si nefiltrat, conform regulii centrale.
+
+Ce ramane neprotejat dupa T1.12:
+
+- metodele de model precum `Proiect.get_total_ore()` si `Proiect.get_angajati_activi()` pot ramane raw daca sunt apelate din alte zone decat rutele proiect hardenate aici;
+- serviciile EVM/deviz/BIM-deviz nu sunt inca boundary-uri complete pentru apeluri arbitrare din afara rutelor validate;
+- integritatea datelor istorice deja contaminate cross-tenant nu este reparata de T1.12; PR-ul doar le exclude din rute in tenant-aware modes;
+- nu exista inca un audit final de acoperire pentru toate rutele ramase.
+
+Nu s-a adaugat migrare deoarece toate protectiile folosesc ownership existent (`Proiect`, `Angajat`, `Masina`, `Santier`, `GanttPlan`, `Contract`) si coloanele `tenant_id` deja existente acolo unde sunt disponibile. Nu s-au creat `project_service.py` sau `project_metrics_service.py` deoarece T1.12 este strict security/access-control; service extraction ar schimba boundary-ul de business si trebuie facuta ulterior.
+
+Urmatorul pas recomandat: `T1.C12 Final Tenant Guard Coverage Review`, apoi decizie intre `S1.1 Activity Service Extraction` si hardening separat pentru service boundaries ramase.
+
+## Urmatoarele integrari recomandate dupa T1.12
+
+1. `T1.C12 Final Tenant Guard Coverage Review` pentru audit final de acoperire rute/helperi/teste.
+2. `S1.1 Activity Service Extraction` daca prioritatea devine separarea boundary-ului de activitati dupa stabilizarea guard-urilor.
+3. `T1.11B Admin/Notification Service Boundary Hardening` daca serviciile de admin/notificari/realtime/presence vor fi apelate direct din afara rutelor.
+4. `T1.9B Reporting Service Boundary Hardening` daca generatoarele de rapoarte vor fi apelate direct din afara rutelor.
+5. `T1.8B Gantt Service Boundary Hardening` daca serviciile Gantt vor fi apelate direct din afara rutelor.
+6. `T1.7B BIM Service Boundary Hardening` daca serviciile BIM vor fi apelate direct din afara rutelor.
+7. `T1.5B Contract Service Boundary Hardening` daca serviciile contractuale vor fi apelate direct din afara rutelor.

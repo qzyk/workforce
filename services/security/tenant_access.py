@@ -190,6 +190,240 @@ def tenant_id_for_new_record_or_403():
     return None
 
 
+def query_project_assignments_for_tenant(project_id=None, tenant_id=None,
+                                         include_global=False):
+    """Query tenant-safe pentru AngajatProiect prin Proiect si Angajat."""
+    from models import Angajat, AngajatProiect, Proiect
+
+    query = AngajatProiect.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query.filter_by(proiect_id=project_id) if project_id is not None else query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query.filter_by(proiect_id=project_id) if project_id is not None else query
+        if mod == MODE_OPTIONAL:
+            return query.filter_by(proiect_id=project_id) if project_id is not None else query
+        return query.filter(False)
+
+    proiect_scope = Proiect.tenant_id == tenant_curent
+    angajat_scope = Angajat.tenant_id == tenant_curent
+    if include_global:
+        proiect_scope = or_(proiect_scope, Proiect.tenant_id.is_(None))
+        angajat_scope = or_(angajat_scope, Angajat.tenant_id.is_(None))
+
+    query = query.filter(
+        AngajatProiect.proiect.has(proiect_scope),
+        AngajatProiect.angajat.has(angajat_scope),
+    )
+    if project_id is not None:
+        query = query.filter(AngajatProiect.proiect_id == project_id)
+    return query
+
+
+def get_project_assignment_or_404(assignment_id, tenant_id=None):
+    """Returneaza AngajatProiect vizibil tenantului curent sau 404."""
+    from models import AngajatProiect
+
+    assignment = query_project_assignments_for_tenant(tenant_id=tenant_id).filter(
+        AngajatProiect.id == assignment_id
+    ).first()
+    if assignment is None:
+        abort(404)
+    return assignment
+
+
+def ensure_project_assignment_same_tenant(assignment, tenant_id=None):
+    """Valideaza asocierea proiect-angajat prin ambii owneri expliciti."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return assignment
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return assignment
+        if mod == MODE_OPTIONAL:
+            return assignment
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    proiect = getattr(assignment, 'proiect', None)
+    angajat = getattr(assignment, 'angajat', None)
+    proiect_tenant = _coerce_tenant_id(getattr(proiect, 'tenant_id', None))
+    angajat_tenant = _coerce_tenant_id(getattr(angajat, 'tenant_id', None))
+
+    if proiect_tenant != tenant_curent:
+        raise TenantAccessDenied('Proiectul asocierii nu apartine tenantului curent.')
+    if angajat_tenant != tenant_curent:
+        raise TenantAccessDenied('Angajatul asocierii nu apartine tenantului curent.')
+    return assignment
+
+
+def require_project_assignment_same_tenant(assignment, tenant_id=None):
+    """Wrapper pentru rute: ascunde asocierile proiect-angajat inaccesibile."""
+    try:
+        return ensure_project_assignment_same_tenant(
+            assignment,
+            tenant_id=tenant_id,
+        )
+    except TenantAccessDenied:
+        abort(404)
+
+
+def query_project_nested_resources_for_tenant(project_id=None, tenant_id=None):
+    """Query tenant-safe pentru ExtrasResursa prin tenant_id si proiect."""
+    from models import ExtrasResursa, Proiect
+
+    query = ExtrasResursa.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query.filter_by(proiect_id=project_id) if project_id is not None else query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query.filter_by(proiect_id=project_id) if project_id is not None else query
+        if mod == MODE_OPTIONAL:
+            return query.filter_by(proiect_id=project_id) if project_id is not None else query
+        return query.filter(False)
+
+    query = query.filter(
+        ExtrasResursa.proiect.has(Proiect.tenant_id == tenant_curent),
+        or_(ExtrasResursa.tenant_id == tenant_curent, ExtrasResursa.tenant_id.is_(None)),
+    )
+    if project_id is not None:
+        query = query.filter(ExtrasResursa.proiect_id == project_id)
+    return query
+
+
+def query_project_consum_utilaj_for_tenant(project_id=None, tenant_id=None):
+    """Query tenant-safe pentru ConsumUtilaj intr-un proiect, inclusiv masina."""
+    from models import ConsumUtilaj, Proiect
+
+    query = ConsumUtilaj.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query.filter_by(proiect_id=project_id) if project_id is not None else query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query.filter_by(proiect_id=project_id) if project_id is not None else query
+        if mod == MODE_OPTIONAL:
+            return query.filter_by(proiect_id=project_id) if project_id is not None else query
+        return query.filter(False)
+
+    query = query.filter(
+        ConsumUtilaj.proiect.has(Proiect.tenant_id == tenant_curent),
+        or_(ConsumUtilaj.tenant_id == tenant_curent, ConsumUtilaj.tenant_id.is_(None)),
+        or_(
+            ConsumUtilaj.masina_id.is_(None),
+            ConsumUtilaj.masina.has(_machine_scope_expr(tenant_curent)),
+        ),
+    )
+    if project_id is not None:
+        query = query.filter(ConsumUtilaj.proiect_id == project_id)
+    return query
+
+
+def ensure_project_nested_inputs_same_tenant(project_id=None, employee_id=None,
+                                             machine_id=None, site_id=None,
+                                             plan_id=None, contract_id=None,
+                                             tenant_id=None):
+    """Valideaza inputuri nested trimise de rutele proiectului."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return True
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return True
+        if mod == MODE_OPTIONAL:
+            return True
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    from models import Angajat, Contract, GanttPlan, Masina, Proiect, Santier
+
+    project_ids = _unique_positive_ints([project_id] if project_id is not None else [])
+    proiect = None
+    if project_ids:
+        proiect = Proiect.query.filter(
+            Proiect.id == project_ids[0],
+            Proiect.tenant_id == tenant_curent,
+        ).first()
+        if proiect is None:
+            raise TenantAccessDenied('Proiectul nested nu apartine tenantului curent.')
+
+    employee_ids = _unique_positive_ints([employee_id] if employee_id is not None else [])
+    if employee_ids:
+        angajat = Angajat.query.filter(
+            Angajat.id == employee_ids[0],
+            Angajat.tenant_id == tenant_curent,
+        ).first()
+        if angajat is None:
+            raise TenantAccessDenied('Angajatul nested nu apartine tenantului curent.')
+
+    machine_ids = _unique_positive_ints([machine_id] if machine_id is not None else [])
+    if machine_ids:
+        masina = Masina.query.filter(Masina.id == machine_ids[0]).first()
+        if masina is None or not _machine_belongs_to_tenant(masina, tenant_curent):
+            raise TenantAccessDenied('Masina nested nu apartine tenantului curent.')
+
+    site_ids = _unique_positive_ints([site_id] if site_id is not None else [])
+    if site_ids:
+        santier = Santier.query.filter(
+            Santier.id == site_ids[0],
+            _bim_site_scope_expr(tenant_curent),
+        ).first()
+        if santier is None:
+            raise TenantAccessDenied('Santierul BIM nested nu apartine tenantului curent.')
+
+    plan_ids = _unique_positive_ints([plan_id] if plan_id is not None else [])
+    if plan_ids:
+        plan = query_gantt_plans_for_tenant(tenant_id=tenant_curent).filter(
+            GanttPlan.id == plan_ids[0]
+        ).first()
+        if plan is None:
+            raise TenantAccessDenied('Planul Gantt nested nu apartine tenantului curent.')
+        if proiect is not None and getattr(plan, 'proiect_id', None):
+            if plan.proiect_id != proiect.id:
+                raise TenantAccessDenied('Planul Gantt nu apartine proiectului curent.')
+
+    contract_ids = _unique_positive_ints([contract_id] if contract_id is not None else [])
+    if contract_ids:
+        contract = query_contracts_for_tenant(tenant_id=tenant_curent).filter(
+            Contract.id == contract_ids[0]
+        ).first()
+        if contract is None:
+            raise TenantAccessDenied('Contractul nested nu apartine tenantului curent.')
+        if proiect is not None and getattr(contract, 'proiect_id', None) != proiect.id:
+            raise TenantAccessDenied('Contractul nu apartine proiectului curent.')
+
+    return True
+
+
+def require_project_nested_inputs_same_tenant(project_id=None, employee_id=None,
+                                             machine_id=None, site_id=None,
+                                             plan_id=None, contract_id=None,
+                                             tenant_id=None):
+    """Wrapper pentru rute proiect: 404 la inputuri nested cross-tenant."""
+    try:
+        return ensure_project_nested_inputs_same_tenant(
+            project_id=project_id,
+            employee_id=employee_id,
+            machine_id=machine_id,
+            site_id=site_id,
+            plan_id=plan_id,
+            contract_id=contract_id,
+            tenant_id=tenant_id,
+        )
+    except TenantAccessDenied:
+        abort(404)
+
+
 def query_users_for_tenant(tenant_id=None, include_global=False):
     """Query tenant-safe pentru Utilizator."""
     from models import Utilizator

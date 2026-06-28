@@ -37,21 +37,35 @@ TIP_F2 = {
 
 def _elemente_proiect(proiect_id):
     """Elementele BIM ale proiectului (prin santierele legate)."""
-    from models import ElementBIM, Cladire, Proiect
-    p = Proiect.query.get(proiect_id)
+    from models import Cladire, ElementBIM, ProiectSantier, Santier
+    from services.security.tenant_access import (
+        get_project_or_404,
+        query_bim_elements_for_tenant,
+        query_sites_for_tenant,
+    )
+    p = get_project_or_404(proiect_id)
     if not p:
         return []
-    sids = [ls.santier_id for ls in p.legaturi_santiere if ls.santier_id]
+    sids = [
+        s.id for s in query_sites_for_tenant().join(
+            ProiectSantier, ProiectSantier.santier_id == Santier.id
+        ).filter(ProiectSantier.proiect_id == proiect_id).all()
+    ]
     if not sids:
         return []
-    return (ElementBIM.query.join(Cladire, ElementBIM.cladire_id == Cladire.id)
+    return (query_bim_elements_for_tenant()
+            .join(Cladire, ElementBIM.cladire_id == Cladire.id)
             .filter(Cladire.santier_id.in_(sids)).all())
 
 
 def legatura_bim(proiect_id: int) -> dict:
-    from models import GanttPlan, ExtrasResursa
+    from models import GanttPlan
     from services.ifc_qto import qto_din_elemente
     from services.deviz_extras import cod_resursa, _rezultat_plan
+    from services.security.tenant_access import (
+        query_gantt_plans_for_tenant,
+        query_project_nested_resources_for_tenant,
+    )
 
     elemente = _elemente_proiect(proiect_id)
     # 1. QTO model -> grupat pe categorie F2
@@ -68,7 +82,7 @@ def legatura_bim(proiect_id: int) -> dict:
 
     # 2. F3 (plan) -> grupat pe categorie_lucrare + codurile de resursa pe categorie
     f3 = {}      # categorie -> {cant, um, valoare, coduri:set}
-    plan = (GanttPlan.query.filter_by(proiect_id=proiect_id)
+    plan = (query_gantt_plans_for_tenant().filter_by(proiect_id=proiect_id)
             .order_by(GanttPlan.data_creare.desc()).first())
     if plan:
         try:
@@ -89,7 +103,9 @@ def legatura_bim(proiect_id: int) -> dict:
             plan = None
 
     # 3. resurse C (pe cod) -> atasate categoriei via codurile articolelor F3
-    extrase = {e.cod: e for e in ExtrasResursa.query.filter_by(proiect_id=proiect_id).all()
+    extrase = {e.cod: e for e in query_project_nested_resources_for_tenant(
+        project_id=proiect_id
+    ).all()
                if e.cod}
 
     cats = sorted(set(model) | set(f3))

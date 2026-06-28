@@ -106,14 +106,18 @@ def legatura_resurse(proiect_id: int) -> dict:
     {'are_plan', 'are_extrase', 'luni_axa': [...], 'resurse': [ {cod, denumire,
     tip, um, f3_cant, extras_cant, extras_val, diff_pct, status, activitati: [...],
     luni: {eticheta: cantitate}} ]}."""
-    from models import GanttPlan, ExtrasResursa
+    from models import GanttPlan
+    from services.security.tenant_access import (
+        query_gantt_plans_for_tenant,
+        query_project_nested_resources_for_tenant,
+    )
     from services.gantt.diagrama import _calendar_lucrator
 
     extrase = {}
-    for e in ExtrasResursa.query.filter_by(proiect_id=proiect_id).all():
+    for e in query_project_nested_resources_for_tenant(project_id=proiect_id).all():
         if e.cod:
             extrase[e.cod] = e
-    plan = (GanttPlan.query.filter_by(proiect_id=proiect_id)
+    plan = (query_gantt_plans_for_tenant().filter_by(proiect_id=proiect_id)
             .order_by(GanttPlan.data_creare.desc()).first())
     if not plan:
         return {'are_plan': False, 'are_extrase': bool(extrase),
@@ -178,14 +182,18 @@ def reconciliere(proiect_id: int) -> dict:
     """Compara totalurile M/m/U din planul F3 (Gantt) vs extrasele C6/C7/C8.
     {'material'|'manopera'|'utilaj': {f3, extras, diff_pct, status}, are_plan, are_extrase}.
     status: ok (<=5%), atentie (<=20%), critic (>20%), lipsa (fara extras)."""
-    from models import GanttPlan, ExtrasResursa
+    from models import GanttPlan
+    from services.security.tenant_access import (
+        query_gantt_plans_for_tenant,
+        query_project_nested_resources_for_tenant,
+    )
     ex = {'material': 0.0, 'manopera': 0.0, 'utilaj': 0.0}
-    for e in ExtrasResursa.query.filter_by(proiect_id=proiect_id).all():
+    for e in query_project_nested_resources_for_tenant(project_id=proiect_id).all():
         if e.tip in ex:
             ex[e.tip] += float(e.valoare or 0)
 
     f3 = {'material': 0.0, 'manopera': 0.0, 'utilaj': 0.0}
-    plan = (GanttPlan.query.filter_by(proiect_id=proiect_id)
+    plan = (query_gantt_plans_for_tenant().filter_by(proiect_id=proiect_id)
             .order_by(GanttPlan.data_creare.desc()).first())
     are_plan = False
     if plan:

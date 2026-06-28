@@ -12,23 +12,57 @@ from werkzeug.utils import secure_filename
 from models import db, Proiect, Angajat, AngajatProiect, Pontaj, Document, Utilizator
 from forms.proiecte_forms import ProiectForm
 from services.security.tenant_access import (
+    get_employee_or_404,
     get_legacy_document_or_404,
     get_project_or_404,
+    get_project_assignment_or_404,
     get_site_or_404,
+    get_tenant_mode,
     query_bim_elements_for_tenant,
     query_bim_models_for_tenant,
+    query_contracts_for_tenant,
+    query_employees_for_tenant,
     query_gantt_plans_for_tenant,
     query_gantt_wbs_nodes_for_tenant,
     query_sites_for_tenant,
     query_for_tenant,
     query_legacy_documents_for_tenant,
+    query_machines_for_tenant,
+    query_project_assignments_for_tenant,
+    query_project_consum_utilaj_for_tenant,
     query_project_documents_for_tenant,
+    query_project_nested_resources_for_tenant,
+    query_timesheets_for_tenant,
+    query_users_for_tenant,
+    require_project_nested_inputs_same_tenant,
     tenant_id_for_new_record_or_403,
 )
+from tenant import MODE_OFF
 
 ALLOWED_EXT_PROIECT = {'pdf', 'dwg', 'dxf', 'docx', 'xlsx', 'jpg', 'jpeg', 'png', 'zip'}
 
 proiecte_bp = Blueprint('proiecte', __name__)
+
+
+def _populeaza_manageri_form(form):
+    """Suprascrie dropdown-ul raw al formularului cu useri tenant-safe."""
+    manageri = query_users_for_tenant().filter(
+        Utilizator.rol.in_(['admin', 'manager']),
+        Utilizator.activ == True
+    ).order_by(Utilizator.nume, Utilizator.prenume).all()
+    form.manager_id.choices = [(0, '-- Selectati --')] + [
+        (m.id, m.get_full_name()) for m in manageri
+    ]
+
+
+def _tenant_id_din_proiect(proiect):
+    """Tenant pentru randuri copil create dintr-un proiect deja validat."""
+    if get_tenant_mode() == MODE_OFF:
+        return None
+    tenant_proiect = getattr(proiect, 'tenant_id', None)
+    if tenant_proiect is not None:
+        return tenant_proiect
+    return tenant_id_for_new_record_or_403()
 
 
 # ============================================================
@@ -87,10 +121,10 @@ def lista():
     ).scalar() or 0
 
     # Manager list for filter
-    manageri = Utilizator.query.filter(
+    manageri = query_users_for_tenant().filter(
         Utilizator.rol.in_(['admin', 'manager']),
         Utilizator.activ == True
-    ).all()
+    ).order_by(Utilizator.nume, Utilizator.prenume).all()
 
     view_mode = request.args.get('view', 'cards')
 
@@ -119,8 +153,11 @@ def lista():
 def adauga():
     tenant_id_nou = tenant_id_for_new_record_or_403()
     form = ProiectForm()
+    _populeaza_manageri_form(form)
 
     if form.validate_on_submit():
+        if form.manager_id.data:
+            query_users_for_tenant().filter(Utilizator.id == form.manager_id.data).first_or_404()
         locatie = ''
         if form.judet.data:
             locatie = form.judet.data
@@ -169,7 +206,7 @@ def detalii(id):
     proiect = get_project_or_404(id)
 
     # Tab Echipa
-    angajati_asoc = AngajatProiect.query.filter_by(proiect_id=id).order_by(
+    angajati_asoc = query_project_assignments_for_tenant(project_id=id).order_by(
         AngajatProiect.data_sfarsit.asc().nullsfirst(),
         AngajatProiect.data_start.desc()
     ).all()
@@ -177,7 +214,9 @@ def detalii(id):
     # Activ = data_sfarsit IS NULL. Cand se dezaloca, set data_sfarsit = today,
     # deci dispare imediat din "activi". Filter simplu si clar.
     angajati_activi = [a for a in angajati_asoc if not a.data_sfarsit]
-    angajati_disponibili = Angajat.query.filter_by(status='activ').order_by(Angajat.nume).all()
+    angajati_disponibili = query_employees_for_tenant().filter_by(
+        status='activ'
+    ).order_by(Angajat.nume).all()
 
     # Distributie functii pentru chart
     dist_functii = {}
@@ -189,22 +228,25 @@ def detalii(id):
     luna = request.args.get('luna', date.today().month, type=int)
     anul = request.args.get('anul', date.today().year, type=int)
 
-    pontaje = Pontaj.query.filter(
+    pontaje = query_timesheets_for_tenant().filter(
         Pontaj.proiect_id == id,
         db.extract('month', Pontaj.data) == luna,
         db.extract('year', Pontaj.data) == anul
     ).order_by(Pontaj.data.desc()).all()
 
-    total_ore = proiect.get_total_ore()
+    total_ore = _get_total_ore(id)
 
     # Ore per angajat (luna curenta)
+    pontaje_luna_ids = query_timesheets_for_tenant().filter(
+        Pontaj.proiect_id == id,
+        db.extract('month', Pontaj.data) == luna,
+        db.extract('year', Pontaj.data) == anul
+    ).with_entities(Pontaj.id)
     ore_per_angajat = db.session.query(
         Angajat.nume, Angajat.prenume,
         db.func.sum(Pontaj.ore_lucrate).label('total_ore')
     ).join(Pontaj, Angajat.id == Pontaj.angajat_id).filter(
-        Pontaj.proiect_id == id,
-        db.extract('month', Pontaj.data) == luna,
-        db.extract('year', Pontaj.data) == anul
+        Pontaj.id.in_(pontaje_luna_ids)
     ).group_by(Angajat.id).all()
 
     # Ore saptamanale (ultimele 12 saptamani)
@@ -254,9 +296,10 @@ def hub(id):
         except Exception:
             return dflt
 
-    def _suma(model, camp):
-        return float(db.session.query(func.coalesce(func.sum(getattr(model, camp)), 0))
-                     .filter(model.proiect_id == id).scalar() or 0)
+    def _suma(query, model, camp):
+        return float(query.with_entities(
+            func.coalesce(func.sum(getattr(model, camp)), 0)
+        ).filter(model.proiect_id == id).scalar() or 0)
 
     from models import (Contract, OfertaContract, SituatieLunara, LocatieProiect,
                         GanttPlan, DocumentProiect, ModelBIM, Cladire, ElementBIM,
@@ -273,26 +316,33 @@ def hub(id):
         }
 
     h = {}
-    h['contracte'] = _safe(lambda: {'nr': Contract.query.filter_by(proiect_id=id).count(),
-                                    'valoare': _suma(Contract, 'valoare_totala')}, {'nr': 0, 'valoare': 0})
-    h['oferte'] = _safe(lambda: {'nr': OfertaContract.query.filter_by(proiect_id=id).count(),
-                                 'valoare': _suma(OfertaContract, 'valoare_totala')}, {'nr': 0, 'valoare': 0})
+    h['contracte'] = _safe(lambda: {
+        'nr': query_contracts_for_tenant().filter_by(proiect_id=id).count(),
+        'valoare': _suma(query_contracts_for_tenant(), Contract, 'valoare_totala')
+    }, {'nr': 0, 'valoare': 0})
+    h['oferte'] = _safe(lambda: {
+        'nr': query_for_tenant(OfertaContract).filter_by(proiect_id=id).count(),
+        'valoare': _suma(query_for_tenant(OfertaContract), OfertaContract, 'valoare_totala')
+    }, {'nr': 0, 'valoare': 0})
     h['situatie'] = _safe(lambda: (lambda s: {'procent': float(s.procent_avans_total or 0),
                                               'cumulat': float(s.valoare_cumulat_la_zi or 0)} if s else None)(
-        SituatieLunara.query.filter_by(proiect_id=id).order_by(SituatieLunara.id.desc()).first()))
+        query_for_tenant(SituatieLunara).filter_by(proiect_id=id).order_by(
+            SituatieLunara.id.desc()
+        ).first()))
     h['gantt'] = _safe(_gantt_sumar, {'nr': 0, 'cost': 0})
     h['locatie'] = _safe(lambda: (lambda l: {'lat': float(l.latitudine), 'lng': float(l.longitudine)}
                                   if l and l.latitudine is not None else None)(
-        LocatieProiect.query.filter_by(proiect_id=id).first()))
-    h['angajati'] = _safe(lambda: AngajatProiect.query.filter_by(proiect_id=id)
+        query_for_tenant(LocatieProiect).filter_by(proiect_id=id).first()))
+    h['angajati'] = _safe(lambda: query_project_assignments_for_tenant(project_id=id)
                           .filter(AngajatProiect.data_sfarsit.is_(None)).count(), 0)
     h['documente'] = _safe(lambda: query_project_documents_for_tenant().filter_by(
         proiect_id=id
     ).count(), 0)
 
     # santiere BIM legate (many-to-many) -> agregam BIM peste toate
-    santiere = _safe(lambda: [ls.santier for ls in proiect.legaturi_santiere
-                              if ls.santier is not None], []) or []
+    santiere = _safe(lambda: query_sites_for_tenant().join(
+        ProiectSantier, ProiectSantier.santier_id == Santier.id
+    ).filter(ProiectSantier.proiect_id == id).order_by(Santier.cod).all(), []) or []
     if santiere:
         sids = [s.id for s in santiere]
         h['bim'] = _safe(lambda: {
@@ -315,7 +365,9 @@ def hub(id):
                     .filter(GanttWbsNod.plan_id.in_(
                         _gantt_planuri_proiect().with_entities(GanttPlan.id)
                     )).first() is not None, False)
-    are_utilaj = _safe(lambda: ConsumUtilaj.query.filter_by(proiect_id=id).first() is not None, False)
+    are_utilaj = _safe(lambda: query_project_consum_utilaj_for_tenant(
+        project_id=id
+    ).first() is not None, False)
     contracte_on = _safe(lambda: __import__('services.feature_flags', fromlist=['is_enabled'])
                          .is_enabled('controale-contract',
                                      tenant_id=getattr(current_user, 'tenant_id', None)), False)
@@ -346,16 +398,17 @@ def hub(id):
 @login_required
 def leaga_santier(id):
     from models import ProiectSantier, Santier
-    get_project_or_404(id)
+    proiect = get_project_or_404(id)
     try:
         sid = int(request.form['santier_id'])
     except (KeyError, ValueError, TypeError):
         flash('Alege un santier BIM.', 'warning')
         return redirect(url_for('proiecte.hub', id=id))
     get_site_or_404(sid)
+    require_project_nested_inputs_same_tenant(project_id=id, site_id=sid)
     if not ProiectSantier.query.filter_by(proiect_id=id, santier_id=sid).first():
         ps = ProiectSantier(proiect_id=id, santier_id=sid,
-                            tenant_id=getattr(current_user, 'tenant_id', None),
+                            tenant_id=_tenant_id_din_proiect(proiect),
                             creat_de_id=getattr(current_user, 'id', None))
         db.session.add(ps)
         db.session.commit()
@@ -375,6 +428,7 @@ def dezleaga_santier(id, santier_id):
     from models import ProiectSantier
     get_project_or_404(id)
     get_site_or_404(santier_id)
+    require_project_nested_inputs_same_tenant(project_id=id, site_id=santier_id)
     ps = ProiectSantier.query.filter_by(proiect_id=id, santier_id=santier_id).first()
     if ps:
         psid = ps.id
@@ -394,7 +448,7 @@ def dezleaga_santier(id, santier_id):
 def evm(id):
     """Earned Value: plan (curba S Gantt) vs realizat (situatii lunare) -> SPI/CPI."""
     from services.evm import evm_proiect
-    proiect = Proiect.query.get_or_404(id)
+    proiect = get_project_or_404(id)
     data = None
     try:
         data = evm_proiect(id, getattr(current_user, 'tenant_id', None))
@@ -409,10 +463,10 @@ def utilaje(id):
     """Consum real de utilaj pe proiect (Faza 3 - C) + comparatie cu planificatul."""
     from models import ConsumUtilaj, Masina
     from services.evm import evm_proiect
-    proiect = Proiect.query.get_or_404(id)
-    randuri = (ConsumUtilaj.query.filter_by(proiect_id=id)
+    proiect = get_project_or_404(id)
+    randuri = (query_project_consum_utilaj_for_tenant(project_id=id)
                .order_by(ConsumUtilaj.data.desc(), ConsumUtilaj.id.desc()).all())
-    masini = Masina.query.order_by(Masina.numar_inmatriculare).all()
+    masini = query_machines_for_tenant().order_by(Masina.numar_inmatriculare).all()
     real_total = sum(r.calc_cost() for r in randuri)
     planificat = 0.0
     try:
@@ -430,7 +484,7 @@ def utilaje(id):
 @login_required
 def utilaje_adauga(id):
     from models import ConsumUtilaj
-    Proiect.query.get_or_404(id)
+    proiect = get_project_or_404(id)
     denumire = (request.form.get('denumire') or '').strip()
     if not denumire:
         flash('Completeaza denumirea utilajului.', 'danger')
@@ -454,13 +508,14 @@ def utilaje_adauga(id):
         mid = int(request.form.get('masina_id') or 0) or None
     except ValueError:
         mid = None
+    require_project_nested_inputs_same_tenant(project_id=id, machine_id=mid)
     db.session.add(ConsumUtilaj(
         proiect_id=id, masina_id=mid, denumire=denumire[:150], data=d,
         ore=ore, tarif_ora=tarif, cost=cost,
         categorie_lucrare=(request.form.get('categorie_lucrare') or '').strip()[:60] or None,
         observatii=(request.form.get('observatii') or '').strip() or None,
         introdus_de=getattr(current_user, 'id', None),
-        tenant_id=getattr(current_user, 'tenant_id', None)))
+        tenant_id=_tenant_id_din_proiect(proiect)))
     db.session.commit()
     flash(f'Consum utilaj adaugat: {denumire} ({cost:,.0f} lei).', 'success')
     return redirect(url_for('proiecte.utilaje', id=id))
@@ -470,11 +525,15 @@ def utilaje_adauga(id):
 @login_required
 def utilaje_sterge(id, cid):
     from models import ConsumUtilaj
-    r = db.session.get(ConsumUtilaj, cid)
-    if r and r.proiect_id == id:
-        db.session.delete(r)
-        db.session.commit()
-        flash('Consum sters.', 'success')
+    get_project_or_404(id)
+    r = query_project_consum_utilaj_for_tenant(project_id=id).filter(
+        ConsumUtilaj.id == cid
+    ).first()
+    if r is None:
+        abort(404)
+    db.session.delete(r)
+    db.session.commit()
+    flash('Consum sters.', 'success')
     return redirect(url_for('proiecte.utilaje', id=id))
 
 
@@ -484,9 +543,9 @@ def utilaje_sterge(id, cid):
 def resurse(id):
     """Extrase de resurse din deviz (C6 materiale / C7 manopera / C8 utilaje)."""
     from models import ExtrasResursa
-    proiect = Proiect.query.get_or_404(id)
+    proiect = get_project_or_404(id)
     grupuri = {'material': [], 'manopera': [], 'utilaj': []}
-    for e in (ExtrasResursa.query.filter_by(proiect_id=id)
+    for e in (query_project_nested_resources_for_tenant(project_id=id)
               .order_by(ExtrasResursa.valoare.desc()).all()):
         grupuri.setdefault(e.tip, []).append(e)
     totaluri = {t: sum(float(x.valoare or 0) for x in lst) for t, lst in grupuri.items()}
@@ -510,7 +569,7 @@ def resurse_conexiune(id):
     """Conexiunea reala F3 <-> C pe cod de resursa: reconciliere la nivel de articol,
     necesar esalonat in timp (per resursa) si drill-down resursa -> activitati."""
     from services.deviz_extras import legatura_resurse
-    proiect = Proiect.query.get_or_404(id)
+    proiect = get_project_or_404(id)
     leg = legatura_resurse(id)
     sumar = {'ok': 0, 'atentie': 0, 'critic': 0, 'lipsa': 0}
     for r in leg.get('resurse', []):
@@ -526,8 +585,8 @@ def resurse_aprovizionare_csv(id):
     import csv as _csv
     from io import StringIO, BytesIO
     from models import ExtrasResursa
-    Proiect.query.get_or_404(id)
-    mat = (ExtrasResursa.query.filter_by(proiect_id=id, tip='material')
+    get_project_or_404(id)
+    mat = (query_project_nested_resources_for_tenant(project_id=id).filter_by(tip='material')
            .order_by(ExtrasResursa.furnizor, ExtrasResursa.denumire).all())
     out = StringIO()
     w = _csv.writer(out, delimiter=';')
@@ -544,7 +603,7 @@ def resurse_aprovizionare_csv(id):
 def resurse_upload(id):
     from models import ExtrasResursa
     from services.deviz_extras import parse_extras
-    Proiect.query.get_or_404(id)
+    proiect = get_project_or_404(id)
     fisier = request.files.get('fisier')
     if not fisier or not fisier.filename:
         flash('Selecteaza un fisier C6/C7/C8 (.xls/.xlsx).', 'warning')
@@ -559,7 +618,8 @@ def resurse_upload(id):
         flash('Fisierul nu pare un extras C6/C7/C8 valid (Formular C6/C7/C8).', 'warning')
         return redirect(url_for('proiecte.resurse', id=id))
     # re-import = inlocuieste extrasul de acelasi tip
-    ExtrasResursa.query.filter_by(proiect_id=id, tip=tip).delete()
+    for extras in query_project_nested_resources_for_tenant(project_id=id).filter_by(tip=tip).all():
+        db.session.delete(extras)
     for r in rows:
         db.session.add(ExtrasResursa(
             proiect_id=id, tip=tip, cod=(r['cod'][:60] or None), denumire=r['denumire'],
@@ -567,7 +627,7 @@ def resurse_upload(id):
             valoare=r['valoare'], furnizor=r['furnizor'],
             nume_fisier=fisier.filename[:255],
             introdus_de=getattr(current_user, 'id', None),
-            tenant_id=getattr(current_user, 'tenant_id', None)))
+            tenant_id=_tenant_id_din_proiect(proiect)))
     db.session.commit()
     etichete = {'material': 'C6 materiale', 'manopera': 'C7 manopera', 'utilaj': 'C8 utilaje'}
     flash(f'{etichete.get(tip, tip)}: {len(rows)} resurse importate.', 'success')
@@ -578,7 +638,11 @@ def resurse_upload(id):
 @login_required
 def resurse_sterge(id, tip):
     from models import ExtrasResursa
-    n = ExtrasResursa.query.filter_by(proiect_id=id, tip=tip).delete()
+    get_project_or_404(id)
+    randuri = query_project_nested_resources_for_tenant(project_id=id).filter_by(tip=tip).all()
+    n = len(randuri)
+    for extras in randuri:
+        db.session.delete(extras)
     db.session.commit()
     flash(f'{n} resurse sterse.', 'success')
     return redirect(url_for('proiecte.resurse', id=id))
@@ -590,7 +654,7 @@ def bim_deviz(id):
     """Puntea BIM (model 3D) <-> deviz F3 <-> resurse C, pe categorie de lucrare:
     reconciliere cantitati model vs deviz + resursele implicate."""
     from services.legatura_bim import legatura_bim
-    proiect = Proiect.query.get_or_404(id)
+    proiect = get_project_or_404(id)
     leg = legatura_bim(id)
     return render_template('proiecte/bim_deviz.html', proiect=proiect, leg=leg)
 
@@ -600,8 +664,11 @@ def bim_deviz(id):
 def editeaza(id):
     proiect = get_project_or_404(id)
     form = ProiectForm(obj=proiect)
+    _populeaza_manageri_form(form)
 
     if form.validate_on_submit():
+        if form.manager_id.data:
+            query_users_for_tenant().filter(Utilizator.id == form.manager_id.data).first_or_404()
         locatie = ''
         if form.judet.data:
             locatie = form.judet.data
@@ -671,12 +738,14 @@ def schimba_status(id):
 @proiecte_bp.route('/<int:id>/adauga-angajat', methods=['POST'])
 @login_required
 def adauga_angajat(id):
-    proiect = Proiect.query.get_or_404(id)
+    get_project_or_404(id)
     angajat_id = int(request.form['angajat_id'])
+    get_employee_or_404(angajat_id)
+    require_project_nested_inputs_same_tenant(project_id=id, employee_id=angajat_id)
     functie = request.form.get('functie_pe_proiect', '')
     tarif = float(request.form['tarif_negociat']) if request.form.get('tarif_negociat') else None
 
-    exista = AngajatProiect.query.filter_by(
+    exista = query_project_assignments_for_tenant(project_id=id).filter_by(
         angajat_id=angajat_id, proiect_id=id
     ).filter(AngajatProiect.data_sfarsit.is_(None)).first()
 
@@ -704,10 +773,10 @@ def adauga_angajat(id):
 @login_required
 def elimina_angajat(id, ap_id):
     """Dezalocare soft: seteaza data_sfarsit = today, pastreaza istoricul."""
-    ap = AngajatProiect.query.get_or_404(ap_id)
+    get_project_or_404(id)
+    ap = get_project_assignment_or_404(ap_id)
     if ap.proiect_id != id:
-        flash('Asociere invalida.', 'danger')
-        return redirect(url_for('proiecte.detalii', id=id))
+        abort(404)
 
     nume = ap.angajat.nume_complet
     ap.data_sfarsit = date.today()
@@ -721,10 +790,10 @@ def elimina_angajat(id, ap_id):
 @login_required
 def realoca_angajat(id, ap_id):
     """Re-activare asociere dezalocata: data_sfarsit = NULL, data_start = today."""
-    ap = AngajatProiect.query.get_or_404(ap_id)
+    get_project_or_404(id)
+    ap = get_project_assignment_or_404(ap_id)
     if ap.proiect_id != id:
-        flash('Asociere invalida.', 'danger')
-        return redirect(url_for('proiecte.detalii', id=id))
+        abort(404)
 
     if not ap.data_sfarsit:
         flash(f'Angajatul {ap.angajat.nume_complet} e deja activ pe proiect.', 'info')
@@ -749,10 +818,10 @@ def sterge_asignare(id, ap_id):
         flash('Doar admin / manager poate sterge definitiv o asociere.', 'danger')
         return redirect(url_for('proiecte.detalii', id=id))
 
-    ap = AngajatProiect.query.get_or_404(ap_id)
+    get_project_or_404(id)
+    ap = get_project_assignment_or_404(ap_id)
     if ap.proiect_id != id:
-        flash('Asociere invalida.', 'danger')
-        return redirect(url_for('proiecte.detalii', id=id))
+        abort(404)
 
     nume = ap.angajat.nume_complet
     db.session.delete(ap)
@@ -768,25 +837,28 @@ def sterge_asignare(id, ap_id):
 @proiecte_bp.route('/<int:id>/raport')
 @login_required
 def raport(id):
-    proiect = Proiect.query.get_or_404(id)
+    proiect = get_project_or_404(id)
 
-    angajati_asoc = AngajatProiect.query.filter_by(proiect_id=id).all()
+    angajati_asoc = query_project_assignments_for_tenant(project_id=id).all()
     # Activ = data_sfarsit IS NULL. Cand se dezaloca, set data_sfarsit = today,
     # deci dispare imediat din "activi". Filter simplu si clar.
     angajati_activi = [a for a in angajati_asoc if not a.data_sfarsit]
 
-    total_ore = proiect.get_total_ore()
+    total_ore = _get_total_ore(id)
     cost_manopera = _calculeaza_cost_manopera(id)
     cost_lunar = _get_cost_lunar(id)
 
     # Ore per angajat (toate lunile)
+    pontaje_ids = query_timesheets_for_tenant().filter(
+        Pontaj.proiect_id == id
+    ).with_entities(Pontaj.id)
     ore_per_angajat = db.session.query(
         Angajat.nume, Angajat.prenume,
         db.func.sum(Pontaj.ore_lucrate).label('total_ore'),
         db.func.sum(Pontaj.ore_suplimentare_50).label('ore_supl_50'),
         db.func.sum(Pontaj.ore_suplimentare_100).label('ore_supl_100')
     ).join(Pontaj, Angajat.id == Pontaj.angajat_id).filter(
-        Pontaj.proiect_id == id
+        Pontaj.id.in_(pontaje_ids)
     ).group_by(Angajat.id).all()
 
     return render_template('proiecte/raport.html',
@@ -836,7 +908,7 @@ def export_excel(id):
         ['Data Sfarsit Planificat', proiect.data_sfarsit_planificat.strftime('%d.%m.%Y') if proiect.data_sfarsit_planificat else '-'],
         ['Buget Total (RON)', float(proiect.buget_total) if proiect.buget_total else 0],
         ['Buget Manopera (RON)', float(proiect.buget_manopera) if proiect.buget_manopera else 0],
-        ['Total Ore Lucrate', proiect.get_total_ore()],
+        ['Total Ore Lucrate', _get_total_ore(id)],
         ['Descriere', proiect.descriere or '-'],
     ]
     for row_idx, (label, value) in enumerate(info_data, 1):
@@ -855,7 +927,7 @@ def export_excel(id):
         cell.alignment = Alignment(horizontal='center')
         cell.border = thin_border
 
-    angajati_asoc = AngajatProiect.query.filter_by(proiect_id=id).all()
+    angajati_asoc = query_project_assignments_for_tenant(project_id=id).all()
     for idx, ap in enumerate(angajati_asoc, 1):
         activ = not ap.data_sfarsit or ap.data_sfarsit >= date.today()
         row = [
@@ -886,7 +958,9 @@ def export_excel(id):
         cell.alignment = Alignment(horizontal='center')
         cell.border = thin_border
 
-    pontaje = Pontaj.query.filter_by(proiect_id=id).order_by(Pontaj.data.desc()).all()
+    pontaje = query_timesheets_for_tenant().filter_by(
+        proiect_id=id
+    ).order_by(Pontaj.data.desc()).all()
     for idx, p in enumerate(pontaje, 1):
         row = [
             p.data.strftime('%d.%m.%Y') if p.data else '-',
@@ -1029,8 +1103,22 @@ def sterge_document(id, doc_id):
 # HELPER: Calculeaza cost manopera
 # ============================================================
 
+def _get_total_ore(proiect_id):
+    """Total ore lucrate pentru proiect, calculat prin Pontaj tenant-safe."""
+    result = query_timesheets_for_tenant().filter(
+        Pontaj.proiect_id == proiect_id
+    ).with_entities(db.func.sum(Pontaj.ore_lucrate)).scalar()
+    return float(result) if result else 0
+
+
 def _calculeaza_cost_manopera(proiect_id):
     """Calculeaza costul total al manoperei pe proiect."""
+    pontaje_ids = query_timesheets_for_tenant().filter(
+        Pontaj.proiect_id == proiect_id
+    ).with_entities(Pontaj.id)
+    asignari_ids = query_project_assignments_for_tenant(
+        project_id=proiect_id
+    ).with_entities(AngajatProiect.id)
     result = db.session.query(
         db.func.sum(
             Pontaj.ore_normale * db.func.coalesce(AngajatProiect.tarif_negociat, 0) +
@@ -1041,7 +1129,8 @@ def _calculeaza_cost_manopera(proiect_id):
         AngajatProiect.angajat_id == Pontaj.angajat_id,
         AngajatProiect.proiect_id == Pontaj.proiect_id
     )).filter(
-        Pontaj.proiect_id == proiect_id
+        Pontaj.id.in_(pontaje_ids),
+        AngajatProiect.id.in_(asignari_ids),
     ).scalar()
     return float(result) if result else 0
 
@@ -1053,13 +1142,11 @@ def _get_ore_saptamanale(proiect_id, weeks=12):
     for i in range(weeks - 1, -1, -1):
         start = today - timedelta(days=today.weekday() + 7 * i)
         end = start + timedelta(days=6)
-        ore = db.session.query(
-            db.func.sum(Pontaj.ore_lucrate)
-        ).filter(
+        ore = query_timesheets_for_tenant().filter(
             Pontaj.proiect_id == proiect_id,
             Pontaj.data >= start,
             Pontaj.data <= end
-        ).scalar()
+        ).with_entities(db.func.sum(Pontaj.ore_lucrate)).scalar()
         results.append({
             'label': f'S{start.isocalendar()[1]}',
             'start': start.strftime('%d.%m'),
@@ -1080,17 +1167,24 @@ def _get_cost_lunar(proiect_id, months=6):
             m += 12
             y -= 1
 
+        pontaje_ids = query_timesheets_for_tenant().filter(
+            Pontaj.proiect_id == proiect_id,
+            db.extract('month', Pontaj.data) == m,
+            db.extract('year', Pontaj.data) == y
+        ).with_entities(Pontaj.id)
+        asignari_ids = query_project_assignments_for_tenant(
+            project_id=proiect_id
+        ).with_entities(AngajatProiect.id)
         cost = db.session.query(
             db.func.sum(
                 Pontaj.ore_lucrate * db.func.coalesce(AngajatProiect.tarif_negociat, 0)
             )
         ).join(AngajatProiect, db.and_(
-            AngajatProiect.angajat_id == Pontaj.angajat_id,
-            AngajatProiect.proiect_id == Pontaj.proiect_id
-        )).filter(
-            Pontaj.proiect_id == proiect_id,
-            db.extract('month', Pontaj.data) == m,
-            db.extract('year', Pontaj.data) == y
+        AngajatProiect.angajat_id == Pontaj.angajat_id,
+        AngajatProiect.proiect_id == Pontaj.proiect_id
+    )).filter(
+            Pontaj.id.in_(pontaje_ids),
+            AngajatProiect.id.in_(asignari_ids),
         ).scalar()
 
         month_names = ['', 'Ian', 'Feb', 'Mar', 'Apr', 'Mai', 'Iun',

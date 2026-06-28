@@ -14,17 +14,30 @@ from __future__ import annotations
 
 from datetime import date
 
+from flask import has_request_context
+
 # tarif orar implicit (lei/ora) cand angajatul nu are tarif_negociat pe proiect
 TARIF_ORAR_IMPLICIT = 30.0
 
 
-def _pontaje_cumulativ(proiect_id: int):
+def _pontaje_cumulativ(proiect_id: int, tenant_id=None):
     """([(data, cost_cumulat)], total_ore) din pontaje (cost manopera reala).
     cost = ore_lucrate x tarif + prime ore suplimentare; tarif din AngajatProiect."""
     from models import Pontaj, AngajatProiect
-    tarife = {ap.angajat_id: float(ap.tarif_negociat or 0)
-              for ap in AngajatProiect.query.filter_by(proiect_id=proiect_id).all()}
-    pontaje = (Pontaj.query.filter_by(proiect_id=proiect_id)
+    from services.security.tenant_access import (
+        query_project_assignments_for_tenant,
+        query_timesheets_for_tenant,
+    )
+    tarife = {
+        ap.angajat_id: float(ap.tarif_negociat or 0)
+        for ap in query_project_assignments_for_tenant(
+            project_id=proiect_id,
+            tenant_id=tenant_id,
+        ).all()
+    }
+    pontaje = (query_timesheets_for_tenant(tenant_id=tenant_id).filter_by(
+                    proiect_id=proiect_id
+               )
                .order_by(Pontaj.data).all())
     cum, ore_tot, serie = 0.0, 0.0, []
     for p in pontaje:
@@ -49,10 +62,14 @@ def _man_la_data(serie, d: date) -> float:
     return val
 
 
-def _utilaj_cumulativ(proiect_id: int):
+def _utilaj_cumulativ(proiect_id: int, tenant_id=None):
     """([(data, cost_cumulat)], total_ore) din ConsumUtilaj (cost utilaj real)."""
     from models import ConsumUtilaj
-    randuri = (ConsumUtilaj.query.filter_by(proiect_id=proiect_id)
+    from services.security.tenant_access import query_project_consum_utilaj_for_tenant
+    randuri = (query_project_consum_utilaj_for_tenant(
+                    project_id=proiect_id,
+                    tenant_id=tenant_id,
+               )
                .order_by(ConsumUtilaj.data).all())
     cum, ore_tot, serie = 0.0, 0.0, []
     for r in randuri:
@@ -117,13 +134,20 @@ def _pv_la_data(pv_pts, d: date) -> float:
     return proc
 
 
-def risc_proiect(proiect_id: int) -> dict:
+def risc_proiect(proiect_id: int, tenant_id=None) -> dict:
     """Evaluare RAPIDA de risc (fara re-rularea pipeline-ului): SPI/CPI din ultima
     situatie vs plan (PV liniar din durata). {spi, cpi, status, ev_pct} sau None."""
     from models import GanttPlan, SituatieLunara
-    plan = (GanttPlan.query.filter_by(proiect_id=proiect_id)
+    from services.security.tenant_access import query_for_tenant, query_gantt_plans_for_tenant
+    if tenant_id is None and not has_request_context():
+        plan_query = GanttPlan.query
+        situatie_query = SituatieLunara.query
+    else:
+        plan_query = query_gantt_plans_for_tenant(tenant_id=tenant_id)
+        situatie_query = query_for_tenant(SituatieLunara, tenant_id=tenant_id)
+    plan = (plan_query.filter_by(proiect_id=proiect_id)
             .order_by(GanttPlan.data_creare.desc()).first())
-    sit = (SituatieLunara.query.filter_by(proiect_id=proiect_id)
+    sit = (situatie_query.filter_by(proiect_id=proiect_id)
            .order_by(SituatieLunara.id.desc()).first())
     if not plan or not sit:
         return None
@@ -148,7 +172,12 @@ def risc_proiect(proiect_id: int) -> dict:
 def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
     """EVM pentru un proiect (None daca nu exista plan Gantt). Robust la date lipsa."""
     from models import GanttPlan, SituatieLunara
-    plan = (GanttPlan.query.filter_by(proiect_id=proiect_id)
+    from services.security.tenant_access import (
+        query_for_tenant,
+        query_gantt_plans_for_tenant,
+        query_project_nested_resources_for_tenant,
+    )
+    plan = (query_gantt_plans_for_tenant(tenant_id=tenant_id).filter_by(proiect_id=proiect_id)
             .order_by(GanttPlan.data_creare.desc()).first())
     if not plan:
         return None
@@ -157,15 +186,23 @@ def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
     except Exception:
         pv_pts, bac, utilaj_plan = [], float(plan.cost_total or 0), 0.0
 
-    pont_serie, pont_ore = _pontaje_cumulativ(proiect_id)   # manopera reala (pontaje)
+    pont_serie, pont_ore = _pontaje_cumulativ(
+        proiect_id,
+        tenant_id=tenant_id,
+    )   # manopera reala (pontaje)
     man_total = pont_serie[-1][1] if pont_serie else 0.0
-    util_serie, util_ore = _utilaj_cumulativ(proiect_id)    # utilaj real (ConsumUtilaj)
+    util_serie, util_ore = _utilaj_cumulativ(
+        proiect_id,
+        tenant_id=tenant_id,
+    )    # utilaj real (ConsumUtilaj)
     util_total = util_serie[-1][1] if util_serie else 0.0
     # B: utilaj PLANIFICAT din extrasul C8 (daca importat), altfel estimarea din plan
     util_plan_ore, util_sursa = 0.0, 'plan'
     try:
-        from models import ExtrasResursa
-        c8 = ExtrasResursa.query.filter_by(proiect_id=proiect_id, tip='utilaj').all()
+        c8 = query_project_nested_resources_for_tenant(
+            project_id=proiect_id,
+            tenant_id=tenant_id,
+        ).filter_by(tip='utilaj').all()
         if c8:
             utilaj_plan = sum(float(x.valoare or 0) for x in c8)
             util_plan_ore = sum(float(x.cantitate or 0) for x in c8)
@@ -173,7 +210,9 @@ def evm_proiect(proiect_id: int, tenant_id=None) -> dict:
     except Exception:
         pass
 
-    situatii = (SituatieLunara.query.filter_by(proiect_id=proiect_id)
+    situatii = (query_for_tenant(SituatieLunara, tenant_id=tenant_id).filter_by(
+                    proiect_id=proiect_id
+                )
                 .order_by(SituatieLunara.an, SituatieLunara.luna).all())
     serie = []
     for s in situatii:
