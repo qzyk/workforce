@@ -17,6 +17,10 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from models import db, RealtimeEvent
+from services.security.tenant_access import (
+    get_current_tenant_id_safe,
+    query_realtime_events_for_tenant,
+)
 
 
 _logger = logging.getLogger(__name__)
@@ -40,8 +44,9 @@ def publish_event(event_type: str, *,
         issue_status_change | comment_new | sensor_alert |
         presence_join | presence_leave | model_version_changed
     """
+    tenant_event = tenant_id if tenant_id is not None else get_current_tenant_id_safe()
     event = RealtimeEvent(
-        tenant_id=tenant_id,
+        tenant_id=tenant_event,
         santier_id=santier_id,
         proiect_id=proiect_id,
         event_type=event_type,
@@ -64,11 +69,12 @@ def publish_event(event_type: str, *,
 def get_events_since(event_id: int, *,
                      santier_id: Optional[int] = None,
                      proiect_id: Optional[int] = None,
+                     tenant_id: Optional[int] = None,
                      limit: int = 100) -> list[RealtimeEvent]:
     """
     Returneaza evenimentele cu id > event_id, filtrate pe scope.
     """
-    q = RealtimeEvent.query.filter(RealtimeEvent.id > event_id)
+    q = query_realtime_events_for_tenant(tenant_id=tenant_id).filter(RealtimeEvent.id > event_id)
     if santier_id is not None:
         q = q.filter(RealtimeEvent.santier_id == santier_id)
     if proiect_id is not None:
@@ -76,9 +82,11 @@ def get_events_since(event_id: int, *,
     return q.order_by(RealtimeEvent.id).limit(limit).all()
 
 
-def get_latest_event_id() -> int:
+def get_latest_event_id(tenant_id: Optional[int] = None) -> int:
     """Returneaza id-ul ultimului eveniment (sau 0 daca tabel gol)."""
-    last = RealtimeEvent.query.order_by(RealtimeEvent.id.desc()).first()
+    last = query_realtime_events_for_tenant(tenant_id=tenant_id).order_by(
+        RealtimeEvent.id.desc()
+    ).first()
     return last.id if last else 0
 
 
@@ -110,7 +118,8 @@ def cleanup_old_events(older_than_days: int = 7) -> int:
 def sse_stream(santier_id: Optional[int], proiect_id: Optional[int],
                start_after_id: int = 0,
                max_duration_seconds: int = 30,
-               poll_interval_seconds: float = 2.0):
+               poll_interval_seconds: float = 2.0,
+               tenant_id: Optional[int] = None):
     """
     Generator pentru SSE stream. Yield evenimente noi pe parcursul
     max_duration_seconds. Format SSE: 'data: <json>\\n\\n'.
@@ -131,7 +140,8 @@ def sse_stream(santier_id: Optional[int], proiect_id: Optional[int],
 
         try:
             events = get_events_since(cursor, santier_id=santier_id,
-                                       proiect_id=proiect_id, limit=50)
+                                       proiect_id=proiect_id,
+                                       tenant_id=tenant_id, limit=50)
         except Exception as e:
             _logger.warning('sse_stream get_events error: %s', e)
             yield f'event: error\ndata: {{"error": "{e}"}}\n\n'

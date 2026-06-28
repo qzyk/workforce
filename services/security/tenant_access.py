@@ -190,6 +190,240 @@ def tenant_id_for_new_record_or_403():
     return None
 
 
+def query_users_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru Utilizator."""
+    from models import Utilizator
+
+    return query_for_tenant(
+        Utilizator,
+        tenant_id=tenant_id,
+        include_global=include_global,
+    )
+
+
+def get_user_or_404(user_id, tenant_id=None, include_global=False):
+    """Returneaza Utilizator vizibil tenantului curent sau 404."""
+    from models import Utilizator
+
+    return get_or_404_for_tenant(
+        Utilizator,
+        user_id,
+        tenant_id=tenant_id,
+        include_global=include_global,
+    )
+
+
+def ensure_user_same_tenant(user, tenant_id=None, include_global=False):
+    """Valideaza ca un Utilizator apartine tenantului curent."""
+    return ensure_same_tenant(
+        user,
+        tenant_id=tenant_id,
+        include_global=include_global,
+    )
+
+
+def require_user_same_tenant(user, tenant_id=None, include_global=False):
+    """Wrapper pentru rute: ascunde utilizatorii inaccesibili prin 404."""
+    return require_same_tenant(
+        user,
+        tenant_id=tenant_id,
+        include_global=include_global,
+    )
+
+
+def query_notifications_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru NotificareApp prin tenant si destinatar."""
+    from models import NotificareApp, Utilizator
+
+    query = NotificareApp.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    recipient_scope = NotificareApp.utilizator.has(Utilizator.tenant_id == tenant_curent)
+    notification_scope = NotificareApp.tenant_id == tenant_curent
+    if include_global:
+        notification_scope = or_(notification_scope, NotificareApp.tenant_id.is_(None))
+    else:
+        notification_scope = or_(notification_scope, NotificareApp.tenant_id.is_(None))
+    return query.filter(recipient_scope, notification_scope)
+
+
+def get_notification_or_404(notification_id, tenant_id=None, include_global=False):
+    """Returneaza NotificareApp vizibila tenantului curent sau 404."""
+    from models import NotificareApp
+
+    notificare = query_notifications_for_tenant(
+        tenant_id=tenant_id,
+        include_global=include_global,
+    ).filter(NotificareApp.id == notification_id).first()
+    if notificare is None:
+        abort(404)
+    return notificare
+
+
+def ensure_notification_same_tenant(notification, tenant_id=None, include_global=False):
+    """Valideaza NotificareApp prin tenant_id si destinatar."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return notification
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return notification
+        if mod == MODE_OPTIONAL:
+            return notification
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    direct_tenant = _coerce_tenant_id(getattr(notification, 'tenant_id', None))
+    recipient = getattr(notification, 'utilizator', None)
+    recipient_tenant = _coerce_tenant_id(getattr(recipient, 'tenant_id', None))
+
+    if recipient_tenant != tenant_curent:
+        raise TenantAccessDenied('Destinatarul notificarii nu apartine tenantului curent.')
+    if direct_tenant not in (None, tenant_curent):
+        raise TenantAccessDenied('Notificarea nu apartine tenantului curent.')
+    if direct_tenant is None and not include_global:
+        # Compatibilitate legacy: notificarea fara tenant este permisa doar
+        # cand destinatarul este acelasi tenant, nu ca broadcast global.
+        return notification
+    return notification
+
+
+def require_notification_same_tenant(notification, tenant_id=None, include_global=False):
+    """Wrapper pentru rute: ascunde notificarile inaccesibile prin 404."""
+    try:
+        return ensure_notification_same_tenant(
+            notification,
+            tenant_id=tenant_id,
+            include_global=include_global,
+        )
+    except TenantAccessDenied:
+        abort(404)
+
+
+def query_realtime_events_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru RealtimeEvent prin tenant, user, proiect sau santier."""
+    from models import Proiect, RealtimeEvent, Santier, Utilizator
+
+    query = RealtimeEvent.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    has_owner = or_(
+        RealtimeEvent.tenant_id.isnot(None),
+        RealtimeEvent.user_id.isnot(None),
+        RealtimeEvent.proiect_id.isnot(None),
+        RealtimeEvent.santier_id.isnot(None),
+    )
+    scoped = and_(
+        has_owner,
+        or_(RealtimeEvent.tenant_id.is_(None), RealtimeEvent.tenant_id == tenant_curent),
+        or_(
+            RealtimeEvent.user_id.is_(None),
+            RealtimeEvent.user.has(Utilizator.tenant_id == tenant_curent),
+        ),
+        or_(
+            RealtimeEvent.proiect_id.is_(None),
+            RealtimeEvent.proiect.has(Proiect.tenant_id == tenant_curent),
+        ),
+        or_(
+            RealtimeEvent.santier_id.is_(None),
+            RealtimeEvent.santier.has(
+                _bim_site_scope_expr(tenant_curent, include_global=include_global)
+            ),
+        ),
+    )
+    if include_global:
+        scoped = or_(
+            scoped,
+            and_(
+                RealtimeEvent.tenant_id.is_(None),
+                RealtimeEvent.user_id.is_(None),
+                RealtimeEvent.proiect_id.is_(None),
+                RealtimeEvent.santier_id.is_(None),
+            ),
+        )
+    return query.filter(scoped)
+
+
+def query_presence_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru UserPresence prin tenant_id si utilizator."""
+    from models import UserPresence, Utilizator
+
+    query = UserPresence.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    scoped = and_(
+        UserPresence.user.has(Utilizator.tenant_id == tenant_curent),
+        or_(UserPresence.tenant_id.is_(None), UserPresence.tenant_id == tenant_curent),
+    )
+    if include_global:
+        scoped = or_(
+            scoped,
+            and_(UserPresence.tenant_id.is_(None), UserPresence.user_id.is_(None)),
+        )
+    return query.filter(scoped)
+
+
+def require_admin_tenant_scope(target_tenant_id=None, tenant_id=None):
+    """Valideaza ca un admin tenant-scoped nu opereaza pe alt tenant."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return True
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if _current_user_is_super_admin():
+        return True
+    if tenant_curent is None:
+        if mod == MODE_OPTIONAL:
+            return True
+        abort(403, 'Admin tenant lipsa in strict mode.')
+
+    target = _coerce_tenant_id(target_tenant_id)
+    if target is not None and target != tenant_curent:
+        abort(404)
+    return True
+
+
+def require_super_admin_for_global_scope():
+    """Permite operatii globale doar super-adminului in modurile tenant-aware."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return True
+    if _current_user_is_super_admin():
+        return True
+    abort(403, 'Operatie globala permisa doar super-adminului.')
+
+
 def query_reports_for_tenant(tenant_id=None, include_global=False):
     """Query tenant-safe pentru rapoarte salvate.
 

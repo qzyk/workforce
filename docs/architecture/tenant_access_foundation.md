@@ -802,10 +802,94 @@ Nu s-a adaugat migrare deoarece `Angajat` are deja `tenant_id`, iar flota a fost
 
 Urmatorul PR recomandat: `T1.11 Notifications/Admin Tenant Guard`. Daca prioritatea ramane proiect-resurse, alternativa este `T1.10B Project Nested Aggregation Guard`.
 
-## Urmatoarele integrari recomandate dupa T1.10
+## T1.11 Notifications / Admin Route Integration
 
-1. `T1.11 Notifications/Admin Tenant Guard` pentru suprafete administrative, users, backups si notificari.
-2. `T1.10B Project Nested Aggregation Guard` pentru resurse/EVM/utilaje din `routes/proiecte.py`.
+T1.11 protejeaza suprafetele administrative, user management, tenant management, backup/file access, notificari in-app, realtime events si presence fara sa schimbe schema, flow-ul de autentificare, formatele backup/export sau servicii de business. PR-ul ramane strict security/access-control.
+
+Helpers adaugate:
+
+- `query_users_for_tenant()` / `get_user_or_404()`
+- `ensure_user_same_tenant()` / `require_user_same_tenant()`
+- `query_notifications_for_tenant()` / `get_notification_or_404()`
+- `ensure_notification_same_tenant()` / `require_notification_same_tenant()`
+- `query_realtime_events_for_tenant()`
+- `query_presence_for_tenant()`
+- `require_admin_tenant_scope()`
+- `require_super_admin_for_global_scope()`
+
+Ownership paths:
+
+| Model / suprafata | Ownership |
+|---|---|
+| `Utilizator` | `Utilizator.tenant_id` direct. |
+| `NotificareApp` | `NotificareApp.tenant_id` si `NotificareApp -> Utilizator.tenant_id`; ambele trebuie sa nu intre in conflict. |
+| `RealtimeEvent` | toti ownerii expliciti disponibili trebuie sa fie compatibili: `tenant_id`, `user_id -> Utilizator.tenant_id`, `proiect_id -> Proiect.tenant_id`, `santier_id -> Santier/Proiect`. |
+| `UserPresence` | `UserPresence.tenant_id` si `UserPresence -> Utilizator.tenant_id`. |
+| `Tenant` management | operatie globala; permisa doar super-adminului in modurile tenant-aware. |
+| Backup/jurnal/setari globale | operatie globala; permisa doar super-adminului in modurile tenant-aware. |
+
+Admin/settings routes protejate:
+
+- `routes/setari.py`: lista utilizatori, statistici useri, editare user, reset parola si toggle status folosesc useri tenant-safe;
+- userii noi creati din setari primesc `tenant_id` prin `tenant_id_for_new_record_or_403()` cand exista tenant activ;
+- `info-sistem` foloseste count-uri tenant-safe pentru angajati, proiecte, pontaje, documente, utilizatori si rapoarte;
+- setarile companiei, sarbatorile legale, backup-urile, snapshot DB, jurnalul, setarile generale si cleanup-ul de exporturi sunt tratate ca operatii globale si cer super-admin in `optional`/`strict`.
+
+Tenant admin routes protejate:
+
+- `routes/tenants.py` ramane route-level global admin surface;
+- in `off`, comportamentul legacy este pastrat;
+- in `optional` si `strict`, doar adminul fara `tenant_id` poate lista, crea, edita, activa/dezactiva sau sterge tenants.
+
+Notification behavior:
+
+- `services/notificari_app.py` filtreaza inbox/count/mark-read/mark-all-read prin `query_notifications_for_tenant()`;
+- o notificare cu `tenant_id=NULL` ramane compatibila doar daca destinatarul apartine tenantului curent; nu devine broadcast global pentru tenantii operationali;
+- la creare, tenantul notificarii este derivat din destinatar cand nu este transmis explicit;
+- o notificare transmisa cu tenant diferit fata de destinatar este refuzata fara mutatie.
+
+Realtime si presence:
+
+- `services/realtime.py` foloseste `query_realtime_events_for_tenant()` pentru stream si polling;
+- evenimentele publicate fara tenant explicit primesc tenantul curent cand exista;
+- un eveniment cu owneri in conflict intre tenant/user/proiect/santier nu este vizibil tenantului curent;
+- `services/presence.py` seteaza tenantul din request sau din user si listeaza doar presence compatibil cu tenantul curent.
+
+Background job behavior:
+
+- `services/notificari_job.py` trimite alerte EVM cu `tenant_id` din proiect;
+- destinatarii in-app ai termenelor sunt filtrati pe tenant in modurile tenant-aware;
+- emailurile externe din `ReguliNotificareProiect` sunt filtrate pe `tenant_id` cand modul tenant-aware este activ.
+
+File/backup behavior:
+
+- backup-urile si snapshot-urile DB raman fisiere globale ale instantei;
+- numele, formatul si continutul backup-urilor nu au fost schimbate;
+- download/delete backup si cleanup exporturi sunt permise doar super-adminului in `optional`/`strict`.
+
+Comportament pe moduri:
+
+- in `off`, admin, tenant management, notificari, realtime si presence raman compatibile cu single-tenant;
+- in `optional`, userii cu `tenant_id` sunt scopati, iar userii fara tenant pastreaza comportamentul migration-friendly doar unde helperii de baza permit asta;
+- in `strict`, user normal fara `tenant_id` esueaza inchis pentru acces la useri, notificari, realtime si presence;
+- super-adminul fara tenant ramane explicit si nefiltrat pentru operatii globale.
+
+Ce ramane neprotejat dupa T1.11:
+
+- `routes/contracte.py` contine in continuare endpoint-urile de notificari, dar securizarea lor este facuta prin `services/notificari_app.py`, fara refactor de contracte;
+- `services/audit.py` nu este inca security boundary independent; producatorii de audit trebuie sa transmita tenant corect in PR-urile de domeniu;
+- `services/realtime.py` si `services/presence.py` au entry points tenant-safe, dar cleanup-ul global ramane operatie de mentenanta;
+- `routes/setari.py` pastreaza configuratii globale single-instance, protejate prin super-admin, nu prin partitionare tenant;
+- tenant management ramane suprafata super-admin si nu a fost transformat intr-un self-service tenant admin flow.
+
+Nu s-a adaugat migrare deoarece modelele implicate au deja `tenant_id` direct sau ownership prin `Utilizator`/`Proiect`/`Santier`. Nu s-au creat `notification_service.py`, `admin_service.py`, `user_service.py`, `tenant_admin_service.py`, `realtime_service.py` sau `presence_service.py` deoarece T1.11 este strict tenant guard; service extraction ar schimba boundary-ul de business si trebuie facuta ulterior.
+
+Urmatorul PR recomandat: `T1.12 Project Nested Aggregation Guard` pentru resurse/EVM/utilaje si alte agregari nested din `routes/proiecte.py`. Alternativa, daca serviciile vor fi apelate direct din afara rutelor, este `T1.11B Admin/Notification Service Boundary Hardening`.
+
+## Urmatoarele integrari recomandate dupa T1.11
+
+1. `T1.12 Project Nested Aggregation Guard` pentru resurse/EVM/utilaje din `routes/proiecte.py`.
+2. `T1.11B Admin/Notification Service Boundary Hardening` daca serviciile de admin/notificari/realtime/presence vor fi apelate direct din afara rutelor.
 3. `T1.9B Reporting Service Boundary Hardening` daca generatoarele de rapoarte vor fi apelate direct din afara rutelor.
 4. `T1.8B Gantt Service Boundary Hardening` daca serviciile Gantt vor fi apelate direct din afara rutelor.
 5. `T1.7B BIM Service Boundary Hardening` daca serviciile BIM vor fi apelate direct din afara rutelor.

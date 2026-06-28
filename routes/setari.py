@@ -20,6 +20,17 @@ from models import (
     db, Utilizator, Angajat, Proiect, Pontaj, Document,
     Raport, Concediu, SarbatoareLegala
 )
+from services.security.tenant_access import (
+    get_user_or_404,
+    query_employees_for_tenant,
+    query_for_tenant,
+    query_legacy_documents_for_tenant,
+    query_reports_for_tenant,
+    query_timesheets_for_tenant,
+    query_users_for_tenant,
+    require_super_admin_for_global_scope,
+    tenant_id_for_new_record_or_403,
+)
 
 setari_bp = Blueprint('setari', __name__)
 
@@ -174,6 +185,7 @@ def index():
 @admin_required
 def firma():
     """Setari date firma / companie."""
+    require_super_admin_for_global_scope()
     cfg = _load_config()
 
     if request.method == 'POST':
@@ -202,7 +214,7 @@ def utilizatori():
     rol_filtru = request.args.get('rol', '')
     cautare = request.args.get('q', '').strip()
 
-    query = Utilizator.query
+    query = query_users_for_tenant()
 
     if rol_filtru:
         query = query.filter_by(rol=rol_filtru)
@@ -220,11 +232,11 @@ def utilizatori():
     pagination = query.paginate(page=page, per_page=20, error_out=False)
 
     stats = {
-        'total': Utilizator.query.count(),
-        'activi': Utilizator.query.filter_by(activ=True).count(),
-        'admini': Utilizator.query.filter_by(rol='admin').count(),
-        'manageri': Utilizator.query.filter_by(rol='manager').count(),
-        'operatori': Utilizator.query.filter_by(rol='operator').count(),
+        'total': query_users_for_tenant().count(),
+        'activi': query_users_for_tenant().filter_by(activ=True).count(),
+        'admini': query_users_for_tenant().filter_by(rol='admin').count(),
+        'manageri': query_users_for_tenant().filter_by(rol='manager').count(),
+        'operatori': query_users_for_tenant().filter_by(rol='operator').count(),
     }
 
     return render_template('setari/utilizatori.html',
@@ -266,7 +278,8 @@ def adauga_utilizator():
 
         user = Utilizator(
             nume=nume, prenume=prenume, email=email,
-            rol=rol, activ=True
+            rol=rol, activ=True,
+            tenant_id=tenant_id_for_new_record_or_403(),
         )
         user.set_password(parola)
         db.session.add(user)
@@ -283,7 +296,7 @@ def adauga_utilizator():
 @admin_required
 def editeaza_utilizator(id):
     """Editare utilizator existent."""
-    user = Utilizator.query.get_or_404(id)
+    user = get_user_or_404(id)
 
     if request.method == 'POST':
         user.nume = request.form.get('nume', '').strip()
@@ -325,7 +338,7 @@ def editeaza_utilizator(id):
 @admin_required
 def reset_parola(id):
     """Resetare parola utilizator."""
-    user = Utilizator.query.get_or_404(id)
+    user = get_user_or_404(id)
     parola_noua = request.form.get('parola_noua', '')
 
     if len(parola_noua) < 6:
@@ -344,7 +357,7 @@ def reset_parola(id):
 @admin_required
 def toggle_utilizator(id):
     """Activare/dezactivare cont utilizator."""
-    user = Utilizator.query.get_or_404(id)
+    user = get_user_or_404(id)
 
     if user.id == current_user.id:
         flash('Nu puteti dezactiva propriul cont!', 'danger')
@@ -400,6 +413,7 @@ RUSALII = {
 @admin_required
 def sarbatori():
     """Gestionare sarbatori legale."""
+    require_super_admin_for_global_scope()
     an = request.args.get('an', date.today().year, type=int)
     sarbatori_list = SarbatoareLegala.query.filter_by(an=an).order_by(SarbatoareLegala.data).all()
     ani_disponibili = db.session.query(
@@ -423,6 +437,7 @@ def sarbatori():
 @admin_required
 def importa_sarbatori(an):
     """Importa sarbatorile legale din Romania pentru un an."""
+    require_super_admin_for_global_scope()
     if an < 2020 or an > 2035:
         flash('An invalid.', 'danger')
         return redirect(url_for('setari.sarbatori', an=an))
@@ -481,6 +496,7 @@ def importa_sarbatori(an):
 @admin_required
 def adauga_sarbatoare():
     """Adauga o sarbatoare legala."""
+    require_super_admin_for_global_scope()
     data_str = request.form.get('data', '')
     denumire = request.form.get('denumire', '').strip()
 
@@ -513,6 +529,7 @@ def adauga_sarbatoare():
 @admin_required
 def sterge_sarbatoare(id):
     """Sterge o sarbatoare legala."""
+    require_super_admin_for_global_scope()
     s = SarbatoareLegala.query.get_or_404(id)
     an = s.an
     denumire = s.denumire
@@ -532,6 +549,7 @@ def sterge_sarbatoare(id):
 @admin_required
 def backup():
     """Pagina backup si restore."""
+    require_super_admin_for_global_scope()
     backup_dir = os.path.join(current_app.root_path, 'backups')
     os.makedirs(backup_dir, exist_ok=True)
 
@@ -583,6 +601,7 @@ def backup():
 @admin_required
 def creeaza_backup():
     """Creeaza un backup complet (DB + uploads)."""
+    require_super_admin_for_global_scope()
     backup_dir = os.path.join(current_app.root_path, 'backups')
     os.makedirs(backup_dir, exist_ok=True)
 
@@ -624,6 +643,7 @@ def creeaza_backup():
 @admin_required
 def descarca_backup(filename):
     """Descarca un fisier backup."""
+    require_super_admin_for_global_scope()
     if '..' in filename or '/' in filename:
         abort(403)
 
@@ -642,6 +662,7 @@ def descarca_backup(filename):
 @admin_required
 def sterge_backup(filename):
     """Sterge un fisier backup."""
+    require_super_admin_for_global_scope()
     if '..' in filename or '/' in filename:
         abort(403)
 
@@ -663,6 +684,7 @@ def sterge_backup(filename):
 def snapshot_db():
     """Snapshot rapid CONSISTENT al bazei (doar DB, prin API-ul sqlite .backup()).
     Util inainte de o operatie riscanta — mai rapid decat ZIP-ul complet."""
+    require_super_admin_for_global_scope()
     from services import backup as backup_svc
     r = backup_svc.creeaza_backup('manual')
     if r.get('ok'):
@@ -681,6 +703,7 @@ def snapshot_db():
 @admin_required
 def jurnal():
     """Vizualizare jurnal activitate."""
+    require_super_admin_for_global_scope()
     page = request.args.get('page', 1, type=int)
     cautare = request.args.get('q', '').strip()
     per_page = 30
@@ -730,6 +753,7 @@ def jurnal():
 @admin_required
 def curata_jurnal():
     """Curata jurnalul de activitate."""
+    require_super_admin_for_global_scope()
     path = _get_jurnal_path()
     if os.path.exists(path):
         with open(path, 'w', encoding='utf-8') as f:
@@ -746,6 +770,7 @@ def curata_jurnal():
 @admin_required
 def generale():
     """Setari generale aplicatie."""
+    require_super_admin_for_global_scope()
     cfg = _load_config()
 
     if request.method == 'POST':
@@ -774,6 +799,7 @@ def generale():
 @admin_required
 def curata_exporturi():
     """Sterge fisierele de export mai vechi de X zile."""
+    require_super_admin_for_global_scope()
     cfg = _load_config()
     zile = cfg.get('cleanup_export_zile', 30)
     cutoff = datetime.now() - timedelta(days=zile)
@@ -806,14 +832,14 @@ def info_sistem():
     db_size = os.path.getsize(db_path) if os.path.exists(db_path) else 0
 
     return jsonify({
-        'angajati': Angajat.query.count(),
-        'angajati_activi': Angajat.query.filter_by(status='activ').count(),
-        'proiecte': Proiect.query.count(),
-        'proiecte_active': Proiect.query.filter_by(status='activ').count(),
-        'pontaje': Pontaj.query.count(),
-        'documente': Document.query.count(),
-        'utilizatori': Utilizator.query.count(),
-        'rapoarte': Raport.query.count(),
+        'angajati': query_employees_for_tenant().count(),
+        'angajati_activi': query_employees_for_tenant().filter_by(status='activ').count(),
+        'proiecte': query_for_tenant(Proiect).count(),
+        'proiecte_active': query_for_tenant(Proiect).filter_by(status='activ').count(),
+        'pontaje': query_timesheets_for_tenant().count(),
+        'documente': query_legacy_documents_for_tenant().count(),
+        'utilizatori': query_users_for_tenant().count(),
+        'rapoarte': query_reports_for_tenant().count(),
         'db_size': db_size,
     })
 

@@ -16,7 +16,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from models import db, NotificareApp
+from models import db, NotificareApp, Utilizator
+from services.security.tenant_access import (
+    get_tenant_mode,
+    query_notifications_for_tenant,
+)
+from tenant import MODE_OFF
 
 
 def creeaza_notificare(
@@ -39,6 +44,13 @@ def creeaza_notificare(
 
     Returneaza NotificareApp creat sau (None daca skipped duplicate).
     """
+    tenant_notificare = _tenant_id_notificare_pentru_destinatar(
+        utilizator_id,
+        tenant_id,
+    )
+    if tenant_notificare is False:
+        return None
+
     if skip_duplicate_today and entitate_referinta and id_entitate_referinta:
         # fereastra de azi pe acelasi ceas ca `data_creare` (UTC) - altfel, in
         # fusurile UTC+N, inainte de pranz UTC fereastra (miezul noptii local)
@@ -62,7 +74,7 @@ def creeaza_notificare(
         link_url=link_url,
         entitate_referinta=entitate_referinta,
         id_entitate_referinta=id_entitate_referinta,
-        tenant_id=tenant_id,
+        tenant_id=tenant_notificare,
         citita=False,
     )
     db.session.add(n)
@@ -72,7 +84,7 @@ def creeaza_notificare(
 
 def marcheaza_citita(notificare_id: int, utilizator_id: int) -> bool:
     """Marcheaza o notificare ca citita. Returneaza True daca a actualizat."""
-    n = NotificareApp.query.filter_by(
+    n = query_notifications_for_tenant().filter_by(
         id=notificare_id, utilizator_id=utilizator_id
     ).first()
     if n is None:
@@ -87,7 +99,7 @@ def marcheaza_citita(notificare_id: int, utilizator_id: int) -> bool:
 
 def marcheaza_toate_citite(utilizator_id: int) -> int:
     """Bulk mark-as-read pentru un utilizator. Returneaza count actualizat."""
-    necitite = NotificareApp.query.filter_by(
+    necitite = query_notifications_for_tenant().filter_by(
         utilizator_id=utilizator_id, citita=False
     ).all()
     now = datetime.utcnow()
@@ -101,7 +113,7 @@ def marcheaza_toate_citite(utilizator_id: int) -> int:
 def count_necitite(utilizator_id: int) -> int:
     """Numara notificarile necitite (folosit pentru bell badge)."""
     try:
-        return NotificareApp.query.filter_by(
+        return query_notifications_for_tenant().filter_by(
             utilizator_id=utilizator_id, citita=False
         ).count()
     except Exception:
@@ -115,7 +127,22 @@ def lista_notificari(
     limit: int = 100,
 ) -> list[NotificareApp]:
     """Lista notificari pentru un utilizator, sortate descrescator dupa data."""
-    q = NotificareApp.query.filter_by(utilizator_id=utilizator_id)
+    q = query_notifications_for_tenant().filter_by(utilizator_id=utilizator_id)
     if doar_necitite:
         q = q.filter_by(citita=False)
     return q.order_by(NotificareApp.data_creare.desc()).limit(limit).all()
+
+
+def _tenant_id_notificare_pentru_destinatar(utilizator_id: int, tenant_id):
+    """Returneaza tenant_id sigur pentru notificare sau False daca e mix strain."""
+    if get_tenant_mode() == MODE_OFF:
+        return tenant_id
+
+    user = db.session.get(Utilizator, utilizator_id)
+    user_tenant_id = getattr(user, 'tenant_id', None) if user else None
+
+    if tenant_id is not None and user_tenant_id is not None and int(tenant_id) != int(user_tenant_id):
+        return False
+    if tenant_id is None:
+        return user_tenant_id
+    return tenant_id

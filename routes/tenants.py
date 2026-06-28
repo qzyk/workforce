@@ -17,6 +17,7 @@ from flask import (
 from flask_login import login_required, current_user
 
 from models import db, Tenant, Utilizator, Angajat, Proiect
+from services.security.tenant_access import require_super_admin_for_global_scope
 
 tenants_bp = Blueprint('tenants', __name__, url_prefix='/admin/tenants')
 
@@ -30,11 +31,7 @@ def super_admin_required(f):
         if current_user.rol != 'admin':
             flash('Doar super-administratorii pot gestiona tenants.', 'danger')
             abort(403)
-        # In MODE=strict, super-admin = admin fara tenant_id
-        if current_app.config.get('MULTI_TENANT_MODE') == 'strict':
-            if getattr(current_user, 'tenant_id', None) is not None:
-                flash('Doar super-administratorii (fara tenant) pot gestiona tenants.', 'danger')
-                abort(403)
+        require_super_admin_for_global_scope()
         return f(*args, **kwargs)
     return wrapper
 

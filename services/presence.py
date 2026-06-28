@@ -10,7 +10,11 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from models import db, UserPresence
+from models import db, UserPresence, Utilizator
+from services.security.tenant_access import (
+    get_current_tenant_id_safe,
+    query_presence_for_tenant,
+)
 
 
 _logger = logging.getLogger(__name__)
@@ -28,9 +32,15 @@ def heartbeat(user_id: int, *,
     """UPSERT presence pentru un user."""
     presence = UserPresence.query.filter_by(user_id=user_id).first()
     now = datetime.utcnow()
+    tenant_presence = tenant_id
+    if tenant_presence is None:
+        tenant_presence = get_current_tenant_id_safe()
+    if tenant_presence is None:
+        user = db.session.get(Utilizator, user_id)
+        tenant_presence = getattr(user, 'tenant_id', None) if user else None
     if presence is None:
         presence = UserPresence(
-            tenant_id=tenant_id,
+            tenant_id=tenant_presence,
             user_id=user_id,
             user_nume=user_nume,
             context_type=context_type,
@@ -40,6 +50,7 @@ def heartbeat(user_id: int, *,
         db.session.add(presence)
     else:
         presence.last_seen_at = now
+        presence.tenant_id = tenant_presence
         if user_nume:
             presence.user_nume = user_nume
         if context_type:
@@ -59,13 +70,11 @@ def get_active_users(*, context_type: Optional[str] = None,
     Optional filtrat pe context (ex: cine e pe kanban santier 5).
     """
     cutoff = datetime.utcnow() - timedelta(seconds=PRESENCE_TIMEOUT_SECONDS)
-    q = UserPresence.query.filter(UserPresence.last_seen_at >= cutoff)
+    q = query_presence_for_tenant(tenant_id=tenant_id).filter(UserPresence.last_seen_at >= cutoff)
     if context_type:
         q = q.filter_by(context_type=context_type)
     if context_id is not None:
         q = q.filter_by(context_id=context_id)
-    if tenant_id is not None:
-        q = q.filter_by(tenant_id=tenant_id)
     return q.order_by(UserPresence.last_seen_at.desc()).all()
 
 

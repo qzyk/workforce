@@ -36,6 +36,8 @@ from models import (
 from services.notificari_app import creeaza_notificare
 from services.email_notif import trimite_email_termen, smtp_configured
 from services.feature_flags import is_enabled
+from services.security.tenant_access import get_tenant_mode
+from tenant import MODE_OFF
 
 
 _logger = logging.getLogger(__name__)
@@ -145,7 +147,8 @@ def alerteaza_evm_risc(today: Optional[date] = None, proiect_query=None) -> int:
             utilizator_id=p.manager_id, tip='evm_risc',
             titlu=f"Proiect {p.cod_proiect}: SPI {r['spi']} / CPI {r['cpi']} ({r['status']})",
             mesaj=f"Avans real {r['ev_pct']}%. Verifica graficul si bugetul in EVM.",
-            entitate_referinta='proiect', id_entitate_referinta=p.id)
+            entitate_referinta='proiect', id_entitate_referinta=p.id,
+            tenant_id=getattr(p, 'tenant_id', None))
         n += 1
     db.session.commit()
     return n
@@ -161,9 +164,12 @@ def _get_destinatari_utilizatori(termen: TermenUrmarit) -> list[Utilizator]:
     primesc spam pentru termene de management).
     """
     q = Utilizator.query.filter_by(activ=True)
-    if termen.tenant_id is not None:
-        q = q.filter(db.or_(Utilizator.tenant_id == termen.tenant_id,
-                            Utilizator.tenant_id.is_(None)))
+    if get_tenant_mode() == MODE_OFF:
+        pass
+    elif termen.tenant_id is not None:
+        q = q.filter(Utilizator.tenant_id == termen.tenant_id)
+    else:
+        q = q.filter(Utilizator.tenant_id.is_(None))
     q = q.filter(Utilizator.rol.in_(['admin', 'manager']))
     return q.all()
 
@@ -172,11 +178,14 @@ def _get_emails_externe(termen: TermenUrmarit, tip_notif: str) -> list[str]:
     """
     Extrage emailurile destinatari din ReguliNotificareProiect pentru proiect.
     """
-    regula = ReguliNotificareProiect.query.filter_by(
+    query = ReguliNotificareProiect.query.filter_by(
         proiect_id=termen.proiect_id,
         tip_eveniment=tip_notif,
         email_activ=True,
-    ).first()
+    )
+    if get_tenant_mode() != MODE_OFF:
+        query = query.filter(ReguliNotificareProiect.tenant_id == termen.tenant_id)
+    regula = query.first()
     if regula is None:
         return []
     return regula.email_destinatari or []
