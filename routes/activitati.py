@@ -31,6 +31,7 @@ from services.security.tenant_access import (
     query_bim_buildings_for_tenant,
     query_bim_elements_for_tenant,
     query_sites_for_tenant,
+    query_timesheets_for_tenant,
     query_for_tenant,
     require_activity_bim_context_same_tenant,
     require_activity_inputs_same_tenant,
@@ -1112,8 +1113,8 @@ def raport_lunar():
         RaportActivitate.data <= ultima_zi,
     ).order_by(RaportActivitate.angajat_id, RaportActivitate.data).all()
 
-    # Pontaje din aceeasi perioada
-    pontaje = Pontaj.query.filter(
+    # Pontaje din aceeasi perioada — tenant-safe pentru a nu scurge ore din alt tenant
+    pontaje = query_timesheets_for_tenant().filter(
         Pontaj.data >= prima_zi, Pontaj.data <= ultima_zi
     ).all()
     pontaj_map = {}
