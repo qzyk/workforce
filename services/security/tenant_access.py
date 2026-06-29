@@ -1113,6 +1113,103 @@ def require_activity_inputs_same_tenant(proiect_ids, angajat_ids=None, tenant_id
         abort(404)
 
 
+def ensure_activity_bim_context_same_tenant(
+    santier_id=None,
+    cladire_id=None,
+    nivel_id=None,
+    zona_id=None,
+    spatiu_id=None,
+    element_bim_id=None,
+    proiect_id=None,
+    tenant_id=None,
+):
+    """Valideaza contextul BIM optional atasat unei activitati.
+
+    BIM ramane context, nu owner pentru RaportActivitate. Helperul verifica doar
+    ca ID-urile BIM trimise in formular/filtre sunt vizibile tenantului curent.
+    """
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return _resolve_activity_bim_context_unscoped(
+            santier_id=santier_id,
+            cladire_id=cladire_id,
+            nivel_id=nivel_id,
+            zona_id=zona_id,
+            spatiu_id=spatiu_id,
+            element_bim_id=element_bim_id,
+            proiect_id=proiect_id,
+        )
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin() or mod == MODE_OPTIONAL:
+            return _resolve_activity_bim_context_unscoped(
+                santier_id=santier_id,
+                cladire_id=cladire_id,
+                nivel_id=nivel_id,
+                zona_id=zona_id,
+                spatiu_id=spatiu_id,
+                element_bim_id=element_bim_id,
+                proiect_id=proiect_id,
+            )
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    from models import Cladire, ElementBIM, Nivel, Proiect, Santier, Spatiu, Zona
+
+    return {
+        'proiect': _tenant_scoped_one(
+            query_for_tenant(Proiect, tenant_id=tenant_curent),
+            Proiect,
+            proiect_id,
+            'Proiectul activitatii nu apartine tenantului curent.',
+        ),
+        'santier': _tenant_scoped_one(
+            query_sites_for_tenant(tenant_id=tenant_curent),
+            Santier,
+            santier_id,
+            'Santierul BIM nu apartine tenantului curent.',
+        ),
+        'cladire': _tenant_scoped_one(
+            query_bim_buildings_for_tenant(tenant_id=tenant_curent),
+            Cladire,
+            cladire_id,
+            'Cladirea BIM nu apartine tenantului curent.',
+        ),
+        'nivel': _tenant_scoped_one(
+            query_bim_levels_for_tenant(tenant_id=tenant_curent),
+            Nivel,
+            nivel_id,
+            'Nivelul BIM nu apartine tenantului curent.',
+        ),
+        'zona': _tenant_scoped_one(
+            query_bim_zones_for_tenant(tenant_id=tenant_curent),
+            Zona,
+            zona_id,
+            'Zona BIM nu apartine tenantului curent.',
+        ),
+        'spatiu': _tenant_scoped_one(
+            query_bim_spaces_for_tenant(tenant_id=tenant_curent),
+            Spatiu,
+            spatiu_id,
+            'Spatiul BIM nu apartine tenantului curent.',
+        ),
+        'element_bim': _tenant_scoped_one(
+            query_bim_elements_for_tenant(tenant_id=tenant_curent),
+            ElementBIM,
+            element_bim_id,
+            'Elementul BIM nu apartine tenantului curent.',
+        ),
+    }
+
+
+def require_activity_bim_context_same_tenant(**kwargs):
+    """Wrapper pentru rute: ascunde contextul BIM strain prin 404."""
+    try:
+        return ensure_activity_bim_context_same_tenant(**kwargs)
+    except (TenantScopeUnsupported, TenantAccessDenied):
+        abort(404)
+
+
 def query_timesheets_for_tenant(tenant_id=None, include_global=False):
     """Query tenant-safe pentru Pontaj prin Proiect -> tenant_id."""
     from models import Angajat, Pontaj, Proiect
@@ -2338,9 +2435,48 @@ def get_bim_level_or_404(level_id, tenant_id=None):
     return nivel
 
 
+def query_bim_zones_for_tenant(tenant_id=None, include_global=False):
+    """Query tenant-safe pentru Zona prin Cladire/Nivel -> Santier."""
+    from models import Cladire, Nivel, Zona
+
+    query = Zona.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    site_scope = _bim_site_scope_expr(tenant_curent, include_global=include_global)
+    return query.filter(
+        Zona.cladire.has(Cladire.santier.has(site_scope)),
+        or_(
+            Zona.nivel_id.is_(None),
+            Zona.nivel.has(Nivel.cladire.has(Cladire.santier.has(site_scope))),
+        ),
+    )
+
+
+def get_bim_zone_or_404(zone_id, tenant_id=None):
+    """Returneaza Zona vizibila tenantului curent sau 404."""
+    from models import Zona
+
+    zona = query_bim_zones_for_tenant(tenant_id=tenant_id).filter(
+        Zona.id == zone_id
+    ).first()
+    if zona is None:
+        abort(404)
+    return zona
+
+
 def query_bim_spaces_for_tenant(tenant_id=None, include_global=False):
     """Query tenant-safe pentru Spatiu prin Nivel -> Cladire -> Santier."""
-    from models import Cladire, Nivel, Spatiu
+    from models import Cladire, Nivel, Spatiu, Zona
 
     query = Spatiu.query
     mod = get_tenant_mode()
@@ -2362,7 +2498,35 @@ def query_bim_spaces_for_tenant(tenant_id=None, include_global=False):
                     _bim_site_scope_expr(tenant_curent, include_global=include_global)
                 )
             )
-        )
+        ),
+        or_(
+            Spatiu.zona_id.is_(None),
+            Spatiu.zona.has(
+                and_(
+                    Zona.cladire.has(
+                        Cladire.santier.has(
+                            _bim_site_scope_expr(
+                                tenant_curent,
+                                include_global=include_global,
+                            )
+                        )
+                    ),
+                    or_(
+                        Zona.nivel_id.is_(None),
+                        Zona.nivel.has(
+                            Nivel.cladire.has(
+                                Cladire.santier.has(
+                                    _bim_site_scope_expr(
+                                        tenant_curent,
+                                        include_global=include_global,
+                                    )
+                                )
+                            )
+                        ),
+                    ),
+                )
+            ),
+        ),
     )
 
 
@@ -3067,6 +3231,37 @@ def _ensure_report_employees_same_tenant(angajat_ids, tenant_id):
     ).count()
     if count != len(angajat_ids):
         raise TenantAccessDenied('Cel putin un angajat al raportului este strain.')
+
+
+def _tenant_scoped_one(query, model, object_id, error_message):
+    if object_id is None:
+        return None
+    obiect = query.filter(model.id == object_id).first()
+    if obiect is None:
+        raise TenantAccessDenied(error_message)
+    return obiect
+
+
+def _resolve_activity_bim_context_unscoped(
+    santier_id=None,
+    cladire_id=None,
+    nivel_id=None,
+    zona_id=None,
+    spatiu_id=None,
+    element_bim_id=None,
+    proiect_id=None,
+):
+    from models import Cladire, ElementBIM, Nivel, Proiect, Santier, Spatiu, Zona
+
+    return {
+        'proiect': Proiect.query.get(proiect_id) if proiect_id else None,
+        'santier': Santier.query.get(santier_id) if santier_id else None,
+        'cladire': Cladire.query.get(cladire_id) if cladire_id else None,
+        'nivel': Nivel.query.get(nivel_id) if nivel_id else None,
+        'zona': Zona.query.get(zona_id) if zona_id else None,
+        'spatiu': Spatiu.query.get(spatiu_id) if spatiu_id else None,
+        'element_bim': ElementBIM.query.get(element_bim_id) if element_bim_id else None,
+    }
 
 
 def _resolve_tenant_id(tenant_id):

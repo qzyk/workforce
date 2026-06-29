@@ -74,6 +74,7 @@ from services.security.tenant_access import (
     get_or_404_for_tenant,
     get_project_or_404,
     get_site_or_404,
+    query_activities_for_tenant,
     query_api_tokens_for_tenant,
     query_bim_buildings_for_tenant,
     query_bim_elements_for_tenant,
@@ -88,6 +89,7 @@ from services.security.tenant_access import (
     query_sensor_alerts_for_tenant,
     query_sensors_for_tenant,
     query_sites_for_tenant,
+    query_timesheets_for_tenant,
     require_bim_record_same_tenant,
     tenant_id_for_new_record_or_403,
 )
@@ -331,10 +333,14 @@ def elemente_lista():
 def element_detaliu(id):
     e = get_bim_element_or_404(id)
     # Activitati workforce asociate
-    rapoarte = RaportActivitate.query.filter_by(element_bim_id=e.id).order_by(
+    rapoarte = query_activities_for_tenant().filter(
+        RaportActivitate.element_bim_id == e.id
+    ).order_by(
         RaportActivitate.data.desc()
     ).limit(20).all()
-    pontaje = Pontaj.query.filter_by(element_bim_id=e.id).order_by(
+    pontaje = query_timesheets_for_tenant().filter(
+        Pontaj.element_bim_id == e.id
+    ).order_by(
         Pontaj.data.desc()
     ).limit(20).all()
     issues = query_bim_issues_for_tenant().filter_by(element_bim_id=e.id).order_by(
@@ -470,7 +476,9 @@ def api_element(id):
             'in_garantie': e.asset.in_garantie,
             'urmatoarea_mentenanta': e.asset.urmatoarea_mentenanta.isoformat() if e.asset and e.asset.urmatoarea_mentenanta else None,
         } if e.asset else None,
-        'nr_activitati': RaportActivitate.query.filter_by(element_bim_id=e.id).count(),
+        'nr_activitati': query_activities_for_tenant().filter(
+            RaportActivitate.element_bim_id == e.id
+        ).count(),
         'nr_issues_deschise': query_bim_issues_for_tenant().filter_by(element_bim_id=e.id).filter(
             IssueBIM.status.in_(['deschis', 'in_lucru'])
         ).count(),

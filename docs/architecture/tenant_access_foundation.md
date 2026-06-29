@@ -1040,11 +1040,75 @@ Ce ramane neprotejat dupa T1.13:
 
 Nu s-a adaugat migrare deoarece modelele implicate au deja `tenant_id` direct sau owneri existenti (`Proiect`, `Utilizator`, `Santier`/BIM hierarchy). Nu s-au creat `audit_service.py`, `token_service.py`, `iot_service.py` sau alte service extractii noi; T1.13 este strict security/access-control.
 
-Urmatorul pas recomandat: `T1.C13 Tenant Guard Checkpoint`, apoi `S1.1 Activity Service Extraction` daca testele si diff-ul raman curate. Daca IoT/ExternalMapping vor fi apelate direct din joburi/API noi, alternativa este `T1.13B IoT / ExternalMapping Service Boundary Hardening`.
+Urmatorul pas recomandat: `T1.C13 Tenant Guard Checkpoint`, apoi `T1.14 Activity BIM Context Tenant Guard` daca auditul gaseste inca raw BIM context in activitati. Daca IoT/ExternalMapping vor fi apelate direct din joburi/API noi, alternativa este `T1.13B IoT / ExternalMapping Service Boundary Hardening`.
 
-## Urmatoarele integrari recomandate dupa T1.13
+## T1.14 Activity BIM Context Tenant Guard
 
-1. `T1.C13 Tenant Guard Checkpoint` pentru verificarea finala rute/helperi/teste dupa T1.13.
+T1.14 inchide ultimul blocker route-level gasit in T1.C13 inainte de `S1.1 Activity Service Extraction`: contextul BIM optional atasat activitatilor. PR-ul nu transforma BIM in sursa de adevar pentru executie; `RaportActivitate` ramane proof-of-work, iar BIM ramane context spatial.
+
+Helpers adaugati sau reutilizati:
+
+- reutilizati: `query_activities_for_tenant()`, `query_timesheets_for_tenant()`, `query_sites_for_tenant()`, `get_site_or_404()`, `query_bim_buildings_for_tenant()`, `get_bim_building_or_404()`, `query_bim_levels_for_tenant()`, `get_bim_level_or_404()`, `query_bim_spaces_for_tenant()`, `get_bim_space_or_404()`, `query_bim_elements_for_tenant()`, `get_bim_element_or_404()`;
+- adaugati: `query_bim_zones_for_tenant()` / `get_bim_zone_or_404()`;
+- adaugati: `ensure_activity_bim_context_same_tenant()` / `require_activity_bim_context_same_tenant()`.
+
+Ownership paths:
+
+| Zona | Ownership |
+|---|---|
+| `RaportActivitate` | `RaportActivitate -> Proiect -> tenant_id` si `RaportActivitate -> Angajat -> tenant_id`. |
+| `Pontaj` | `Pontaj -> Proiect -> tenant_id` si `Pontaj -> Angajat -> tenant_id`. |
+| `Santier` | `Santier.tenant_id` sau `Santier -> Proiect -> tenant_id`. |
+| `Cladire` | `Cladire -> Santier -> tenant_id / Proiect`. |
+| `Nivel` | `Nivel -> Cladire -> Santier`. |
+| `Zona` | `Zona -> Cladire / Nivel -> Santier`. |
+| `Spatiu` | `Spatiu -> Nivel / Zona -> Santier`. |
+| `ElementBIM` | `ElementBIM -> ModelBIM` sau `ElementBIM -> Spatiu / Nivel / Cladire -> Santier`. |
+
+Activity dropdown/filter safeguards:
+
+- `routes/activitati.py` nu mai populeaza filtrele/picker-ele cu `Santier.query` sau `Cladire.query` raw;
+- dropdown-urile de santier si cladire folosesc `query_sites_for_tenant()` si `query_bim_buildings_for_tenant()`;
+- filtrele `santier_id`, `cladire_id`, `element_bim_id` si `tip_element` sunt aplicate peste `query_bim_elements_for_tenant()`;
+- ID-urile inexistente sau straine din filtre pastreaza stilul legacy al panoului (200 cu rezultat gol), fara nume/ID/count-uri straine.
+
+Activity create/edit BIM context safeguards:
+
+- formularul poate trimite `bim_santier_id`, `bim_cladire_id`, `bim_nivel_id`, `bim_spatiu_id`, `bim_zona_id` si `bim_element_id`;
+- toate ID-urile trimise sunt validate prin `require_activity_bim_context_same_tenant()` inainte de mutatie;
+- `Spatiu` folosit pentru derivarea automata a `zona_id` este incarcat tenant-safe, nu prin `Spatiu.query.get()`;
+- un context BIM strain sau mixt cross-tenant intoarce 404 si nu salveaza partial activitatea;
+- proiectul activitatii ramane validat prin helperii T1.3.
+
+BIM element detail aggregation safeguards:
+
+- `/bim/element/<id>` valideaza elementul prin `get_bim_element_or_404()`;
+- activitatile asociate elementului sunt citite prin `query_activities_for_tenant()`;
+- pontajele asociate elementului sunt citite prin `query_timesheets_for_tenant()`;
+- `/bim/api/element/<id>` calculeaza `nr_activitati` prin query tenant-safe;
+- randurile istorice contaminate, in care un `RaportActivitate` sau `Pontaj` strain pointeaza catre elementul tenantului curent, sunt excluse din agregari.
+
+Comportament pe moduri:
+
+- in `off`, contextul BIM ramane compatibil cu lookup-ul legacy single-tenant;
+- in `optional`, userii cu `tenant_id` vad si pot trimite doar context BIM din tenantul lor, iar userii fara tenant raman migration-friendly;
+- in `strict`, user normal fara tenant esueaza inchis, iar ID-urile BIM straine primesc 404;
+- super-adminul fara tenant ramane explicit si nefiltrat conform regulii centrale.
+
+Ce ramane neprotejat dupa T1.14:
+
+- serviciile BIM si generatoarele raman boundary-uri route-validated, nu servicii tenant-safe pentru apeluri arbitrare;
+- picker-ul BIM ramane dependent de API-urile BIM existente pentru cascade; T1.14 nu rescrie UI-ul;
+- corelarea business intre proiectul activitatii si santierul BIM nu este fortata daca ambele sunt in acelasi tenant, ca sa nu schimbe workflow-ul existent;
+- integritatea datelor istorice contaminate nu este reparata, doar exclusa din rutele tenant-aware.
+
+Nu s-a adaugat migrare deoarece toate verificarile folosesc ownership existent (`Proiect`, `Angajat`, `Santier`, `Cladire`, `Nivel`, `Zona`, `Spatiu`, `ElementBIM`). Nu s-a creat `activity_service.py`, `bim_service.py` sau alta extractie de servicii deoarece T1.14 este strict security/access-control si trebuie sa ramana inaintea lui S1.1.
+
+Urmatorul pas recomandat: `T1.C14 Final Tenant Guard Review`, apoi `S1.1 Activity Service Extraction` daca auditul si testele raman curate.
+
+## Urmatoarele integrari recomandate dupa T1.14
+
+1. `T1.C14 Final Tenant Guard Review` pentru verificarea finala rute/helperi/teste dupa T1.14.
 2. `S1.1 Activity Service Extraction` daca prioritatea devine separarea boundary-ului de activitati dupa stabilizarea guard-urilor.
 3. `T1.13B IoT / ExternalMapping Service Boundary Hardening` daca serviciile IoT/mapping vor fi apelate direct din afara rutelor validate.
 4. `T1.11B Admin/Notification Service Boundary Hardening` daca serviciile de admin/notificari/realtime/presence vor fi apelate direct din afara rutelor.

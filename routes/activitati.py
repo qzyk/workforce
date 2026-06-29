@@ -21,14 +21,18 @@ from models import (
     db, Angajat, Proiect, Pontaj, TipInstalatie,
     AngajatProiect, SarbatoareLegala,
     RaportActivitate, CategorieActivitate,
-    Santier, Cladire, ElementBIM, Spatiu, Zona,
+    Santier, Cladire, ElementBIM,
 )
 from services.security.tenant_access import (
     get_activity_or_404,
     get_project_or_404,
     get_tenant_mode,
     query_activities_for_tenant,
+    query_bim_buildings_for_tenant,
+    query_bim_elements_for_tenant,
+    query_sites_for_tenant,
     query_for_tenant,
+    require_activity_bim_context_same_tenant,
     require_activity_inputs_same_tenant,
     tenant_id_for_new_record_or_403,
 )
@@ -188,18 +192,22 @@ def panou():
         except ValueError:
             pass
 
-    # Filtre BIM (un singur JOIN cu ElementBIM ca sa evit dublarea)
-    if f_element_bim:
-        query = query.filter_by(element_bim_id=f_element_bim)
-    if f_tip_element or f_cladire or f_santier:
-        query = query.join(ElementBIM, RaportActivitate.element_bim_id == ElementBIM.id)
+    # Filtre BIM: aplicate peste subquery tenant-safe ca ID-urile straine sa nu scurga date.
+    if f_element_bim or f_tip_element or f_cladire or f_santier:
+        elemente_query = query_bim_elements_for_tenant()
+        if f_element_bim:
+            elemente_query = elemente_query.filter(ElementBIM.id == f_element_bim)
         if f_tip_element:
-            query = query.filter(ElementBIM.tip_element == f_tip_element)
+            elemente_query = elemente_query.filter(ElementBIM.tip_element == f_tip_element)
         if f_cladire:
-            query = query.filter(ElementBIM.cladire_id == f_cladire)
+            elemente_query = elemente_query.filter(ElementBIM.cladire_id == f_cladire)
         if f_santier:
-            query = query.join(Cladire, ElementBIM.cladire_id == Cladire.id) \
-                         .filter(Cladire.santier_id == f_santier)
+            elemente_query = elemente_query.filter(
+                ElementBIM.cladire.has(Cladire.santier_id == f_santier)
+            )
+        query = query.filter(
+            RaportActivitate.element_bim_id.in_(elemente_query.with_entities(ElementBIM.id))
+        )
 
     activitati_recente = query.order_by(RaportActivitate.data.desc(), RaportActivitate.introdus_la.desc()).limit(50).all()
 
@@ -212,8 +220,8 @@ def panou():
     angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(Angajat.nume).all()
     proiecte = query_for_tenant(Proiect).filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
-    bim_santiere = Santier.query.order_by(Santier.cod).all()
-    bim_cladiri = Cladire.query.order_by(Cladire.cod).all()
+    bim_santiere = query_sites_for_tenant().order_by(Santier.cod).all()
+    bim_cladiri = query_bim_buildings_for_tenant().order_by(Cladire.cod).all()
     bim_tipuri_element = ElementBIM.TIPURI
 
     return render_template('activitati/panou.html',
@@ -274,7 +282,7 @@ def adauga():
     proiecte = query_for_tenant(Proiect).filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
     categorii = CategorieActivitate.query.filter_by(activa=True).order_by(CategorieActivitate.ordine).all()
-    santiere = Santier.query.order_by(Santier.cod).all()
+    santiere = query_sites_for_tenant().order_by(Santier.cod).all()
 
     return render_template('activitati/formular.html',
         activitate=None,
@@ -358,7 +366,7 @@ def editeaza(id):
     proiecte = query_for_tenant(Proiect).filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
     instalatii = TipInstalatie.query.filter_by(activ=True).order_by(TipInstalatie.ordine).all()
     categorii = CategorieActivitate.query.filter_by(activa=True).order_by(CategorieActivitate.ordine).all()
-    santiere = Santier.query.order_by(Santier.cod).all()
+    santiere = query_sites_for_tenant().order_by(Santier.cod).all()
 
     return render_template('activitati/formular.html',
         activitate=activitate,
@@ -422,14 +430,13 @@ def _salveaza_activitate(activitate, rapida=False):
         actiune = request.form.get('actiune', 'draft')  # draft / trimite / alta
 
         # BIM context (toate optionale)
+        bim_santier_id = request.form.get('bim_santier_id', type=int) or None
+        bim_cladire_id = request.form.get('bim_cladire_id', type=int) or None
+        bim_nivel_id = request.form.get('bim_nivel_id', type=int) or None
         bim_element_id = request.form.get('bim_element_id', type=int) or None
         bim_spatiu_id = request.form.get('bim_spatiu_id', type=int) or None
         # Zona se ia din spatiu daca exista, altfel din formular
         bim_zona_id = request.form.get('bim_zona_id', type=int) or None
-        if not bim_zona_id and bim_spatiu_id:
-            sp = Spatiu.query.get(bim_spatiu_id)
-            if sp and sp.zona_id:
-                bim_zona_id = sp.zona_id
 
         # Detalii pe zi (pentru saptamanala/lunara): liste paralele
         det_data_list = request.form.getlist('detaliu_data[]')
@@ -534,6 +541,18 @@ def _salveaza_activitate(activitate, rapida=False):
             angajat_ids=angajat_ids_de_validat,
             tenant_id=tenant_id_curent,
         )
+        bim_context = require_activity_bim_context_same_tenant(
+            santier_id=bim_santier_id,
+            cladire_id=bim_cladire_id,
+            nivel_id=bim_nivel_id,
+            zona_id=bim_zona_id,
+            spatiu_id=bim_spatiu_id,
+            element_bim_id=bim_element_id,
+            proiect_id=proiect_id,
+            tenant_id=tenant_id_curent,
+        )
+        if not bim_zona_id and bim_context.get('spatiu'):
+            bim_zona_id = getattr(bim_context['spatiu'], 'zona_id', None)
 
         if activitate is None:
             activitate = RaportActivitate()
