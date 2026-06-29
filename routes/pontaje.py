@@ -23,6 +23,7 @@ from services.security.tenant_access import (
 from services.timesheet_service import (
     calculate_timesheet_hours,
     check_timesheet_duplicate,
+    create_multiple_timesheets_from_form_data,
     create_timesheet_from_form_data,
     get_daily_timesheet_rows,
     get_project_employees_for_timesheet,
@@ -150,56 +151,20 @@ def adauga():
 @login_required
 def adauga_multiplu():
     if request.method == 'POST':
-        proiect_id = int(request.form['proiect_id'])
-        data_pontaj = datetime.strptime(request.form['data'], '%Y-%m-%d').date()
-        actiune = request.form.get('actiune', 'draft')
-
-        angajat_ids = request.form.getlist('angajat_ids')
-        tenant_id_curent = tenant_id_for_new_record_or_403()
-        for aid_str in angajat_ids:
-            require_timesheet_inputs_same_tenant(
-                proiect_id=proiect_id,
-                angajat_id=aid_str,
-                tenant_id=tenant_id_curent,
+        try:
+            rezultat = create_multiple_timesheets_from_form_data(
+                form_data=request.form,
+                current_user=current_user,
             )
-        count_ok = 0
-        count_skip = 0
+        except HTTPException:
+            db.session.rollback()
+            raise
+        except Exception:
+            db.session.rollback()
+            raise
 
-        for aid_str in angajat_ids:
-            aid = int(aid_str)
-            ora_start = request.form.get(f'ora_start_{aid}', '08:00')
-            ora_sfarsit = request.form.get(f'ora_sfarsit_{aid}', '16:00')
-            tip_zi = request.form.get(f'tip_zi_{aid}', 'lucratoare')
-            obs = request.form.get(f'observatii_{aid}', '').strip()
-
-            # Verificare duplicat
-            exista = query_timesheets_for_tenant().filter_by(angajat_id=aid, data=data_pontaj).first()
-            if exista:
-                count_skip += 1
-                continue
-
-            result = calculate_hours(ora_start, ora_sfarsit, tip_zi, data_pontaj)
-            status = 'trimis' if actiune == 'trimite' else 'draft'
-
-            pontaj = Pontaj(
-                angajat_id=aid,
-                proiect_id=proiect_id,
-                data=data_pontaj,
-                ora_start=ora_start,
-                ora_sfarsit=ora_sfarsit,
-                ore_lucrate=result['ore_lucrate'],
-                ore_normale=result['ore_normale'],
-                ore_suplimentare_50=result['ore_supl_50'],
-                ore_suplimentare_100=result['ore_supl_100'],
-                tip_zi=result['tip_zi'],
-                status=status,
-                observatii=obs,
-                introdus_de=current_user.id
-            )
-            db.session.add(pontaj)
-            count_ok += 1
-
-        db.session.commit()
+        count_ok = rezultat['created_count']
+        count_skip = rezultat['skipped_count']
         flash(f'{count_ok} pontaje inregistrate cu succes. {count_skip} duplicate omise.', 'success')
         return redirect(url_for('pontaje.lista'))
 

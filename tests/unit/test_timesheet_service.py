@@ -39,6 +39,46 @@ def _form_pontaj(*, angajat_id, proiect_id, data_pontaj, ora_start='08:00',
     return form
 
 
+class _BulkForm:
+    def __init__(self, values):
+        self._values = values
+
+    def __getitem__(self, name):
+        return self._values[name]
+
+    def get(self, name, default=None):
+        return self._values.get(name, default)
+
+    def getlist(self, name):
+        value = self._values.get(name, [])
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple)):
+            return list(value)
+        return [value]
+
+
+def _form_bulk(*, proiect_id, data_pontaj, angajat_ids, actiune='draft', randuri=None):
+    if isinstance(data_pontaj, date):
+        data_value = data_pontaj.isoformat()
+    else:
+        data_value = data_pontaj
+    randuri = randuri or {}
+    values = {
+        'proiect_id': str(proiect_id),
+        'data': data_value,
+        'actiune': actiune,
+        'angajat_ids': [str(aid) for aid in angajat_ids],
+    }
+    for aid in angajat_ids:
+        row = randuri.get(aid, {})
+        values[f'ora_start_{aid}'] = row.get('ora_start', '08:00')
+        values[f'ora_sfarsit_{aid}'] = row.get('ora_sfarsit', '16:00')
+        values[f'tip_zi_{aid}'] = row.get('tip_zi', 'lucratoare')
+        values[f'observatii_{aid}'] = row.get('observatii', '')
+    return _BulkForm(values)
+
+
 @pytest.fixture(autouse=True)
 def curata_s12a(app):
     _curata(app)
@@ -601,6 +641,8 @@ def test_save_helpers_fara_query_brut(app):
 
     for fn_name in ('create_timesheet_from_form_data',
                     'update_timesheet_from_form_data',
+                    'create_multiple_timesheets_from_form_data',
+                    '_bulk_timesheet_rows_from_form_data',
                     '_find_timesheet_duplicate',
                     '_validate_timesheet_inputs'):
         sursa = inspect.getsource(getattr(svc, fn_name))
@@ -608,6 +650,285 @@ def test_save_helpers_fara_query_brut(app):
         assert 'Angajat.query.' not in sursa, fn_name
         assert 'Proiect.query.' not in sursa, fn_name
         assert 'RaportActivitate.query.' not in sursa, fn_name
+
+
+# ============================================================
+# S1.2B2 — save bulk create (HTTP-free, tenant-safe)
+# ============================================================
+
+def test_bulk_create_pontaje_multiple_cu_campuri_si_status(app):
+    from services.timesheet_service import create_multiple_timesheets_from_form_data
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        ang_2 = _angajat(app, tenant_id=ids['tenant_a'], suffix='A2', cnp='1900012000199')
+        zi = date(2026, 5, 4)
+        form = _form_bulk(
+            proiect_id=ids['proiect_a'],
+            data_pontaj=zi,
+            angajat_ids=[ids['ang_a'], ang_2],
+            actiune='trimite',
+            randuri={
+                ids['ang_a']: {'observatii': 'TEST_S12A_BULK_A'},
+                ang_2: {
+                    'ora_start': '08:00',
+                    'ora_sfarsit': '14:00',
+                    'tip_zi': 'sambata',
+                    'observatii': 'TEST_S12A_BULK_A2',
+                },
+            },
+        )
+        with app.test_request_context('/'):
+            rezultat = create_multiple_timesheets_from_form_data(
+                form_data=form,
+                current_user=_FakeUser(user_id=902),
+            )
+
+        pontaje = Pontaj.query.filter(
+            Pontaj.data == zi,
+            Pontaj.angajat_id.in_([ids['ang_a'], ang_2]),
+        ).all()
+        by_angajat = {p.angajat_id: p for p in pontaje}
+
+        assert rezultat['created_count'] == 2
+        assert rezultat['skipped_count'] == 0
+        assert len(rezultat['created_timesheets']) == 2
+        assert by_angajat[ids['ang_a']].proiect_id == ids['proiect_a']
+        assert by_angajat[ids['ang_a']].ora_start == '08:00'
+        assert by_angajat[ids['ang_a']].ora_sfarsit == '16:00'
+        assert float(by_angajat[ids['ang_a']].ore_lucrate) == 7.5
+        assert float(by_angajat[ids['ang_a']].ore_normale) == 7.5
+        assert by_angajat[ids['ang_a']].status == 'trimis'
+        assert by_angajat[ids['ang_a']].observatii == 'TEST_S12A_BULK_A'
+        assert by_angajat[ids['ang_a']].introdus_de == 902
+        assert by_angajat[ids['ang_a']].aprobat_de is None
+        assert by_angajat[ids['ang_a']].data_aprobare is None
+        assert float(by_angajat[ang_2].ore_lucrate) == 6
+        assert float(by_angajat[ang_2].ore_suplimentare_50) == 6
+        assert by_angajat[ang_2].tip_zi == 'sambata'
+
+
+def test_bulk_create_duplicate_skip_si_counturi(app):
+    from services.timesheet_service import create_multiple_timesheets_from_form_data
+    from models import Pontaj
+
+    ids = _seed(app)
+    zi = date(2026, 5, 5)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        ang_2 = _angajat(app, tenant_id=ids['tenant_a'], suffix='A3', cnp='1900012000198')
+        _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'], data=zi)
+        form = _form_bulk(
+            proiect_id=ids['proiect_a'],
+            data_pontaj=zi,
+            angajat_ids=[ids['ang_a'], ang_2],
+            randuri={
+                ids['ang_a']: {'observatii': 'TEST_S12A_BULK_DUP'},
+                ang_2: {'observatii': 'TEST_S12A_BULK_OK'},
+            },
+        )
+        with app.test_request_context('/'):
+            rezultat = create_multiple_timesheets_from_form_data(
+                form_data=form,
+                current_user=_FakeUser(),
+            )
+
+        assert rezultat['created_count'] == 1
+        assert rezultat['skipped_count'] == 1
+        assert Pontaj.query.filter_by(angajat_id=ids['ang_a'], data=zi).count() == 1
+        assert Pontaj.query.filter_by(angajat_id=ang_2, data=zi).count() == 1
+
+
+def test_bulk_create_respinge_proiect_strain_fara_mutatie(app):
+    from services.timesheet_service import create_multiple_timesheets_from_form_data
+    from models import Pontaj
+    from flask import g
+
+    ids = _seed(app)
+    zi = date(2026, 5, 6)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        form = _form_bulk(
+            proiect_id=ids['proiect_b'],
+            data_pontaj=zi,
+            angajat_ids=[ids['ang_a']],
+            randuri={ids['ang_a']: {'observatii': 'TEST_S12A_BULK_FOREIGN_PROJECT'}},
+        )
+        with app.test_request_context('/'):
+            g.tenant_override = ids['tenant_a']
+            with pytest.raises(HTTPException) as exc:
+                create_multiple_timesheets_from_form_data(
+                    form_data=form,
+                    current_user=_FakeUser(),
+                )
+
+        assert exc.value.code == 404
+        assert Pontaj.query.filter_by(data=zi).count() == 0
+
+
+def test_bulk_create_respinge_lista_mixta_fara_mutatie(app):
+    from services.timesheet_service import create_multiple_timesheets_from_form_data
+    from models import Pontaj
+    from flask import g
+
+    ids = _seed(app)
+    zi = date(2026, 5, 7)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        form = _form_bulk(
+            proiect_id=ids['proiect_a'],
+            data_pontaj=zi,
+            angajat_ids=[ids['ang_a'], ids['ang_b']],
+            randuri={
+                ids['ang_a']: {'observatii': 'TEST_S12A_BULK_MIX_A'},
+                ids['ang_b']: {'observatii': 'TEST_S12A_BULK_MIX_B'},
+            },
+        )
+        with app.test_request_context('/'):
+            g.tenant_override = ids['tenant_a']
+            with pytest.raises(HTTPException) as exc:
+                create_multiple_timesheets_from_form_data(
+                    form_data=form,
+                    current_user=_FakeUser(),
+                )
+
+        assert exc.value.code == 404
+        assert Pontaj.query.filter_by(data=zi).count() == 0
+
+
+def test_bulk_create_strict_fara_tenant_fail_closed(app):
+    from services.timesheet_service import create_multiple_timesheets_from_form_data
+    from models import Pontaj
+
+    ids = _seed(app)
+    zi = date(2026, 5, 8)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        form = _form_bulk(
+            proiect_id=ids['proiect_a'],
+            data_pontaj=zi,
+            angajat_ids=[ids['ang_a']],
+            randuri={ids['ang_a']: {'observatii': 'TEST_S12A_BULK_NO_TENANT'}},
+        )
+        with app.test_request_context('/'):
+            with pytest.raises(HTTPException) as exc:
+                create_multiple_timesheets_from_form_data(
+                    form_data=form,
+                    current_user=_FakeUser(),
+                )
+
+        assert exc.value.code == 403
+        assert Pontaj.query.filter_by(data=zi).count() == 0
+
+
+def test_bulk_create_off_mode_pastreaza_legacy_cross_tenant(app):
+    from services.timesheet_service import create_multiple_timesheets_from_form_data
+    from models import Pontaj
+
+    ids = _seed(app)
+    zi = date(2026, 5, 9)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        form = _form_bulk(
+            proiect_id=ids['proiect_a'],
+            data_pontaj=zi,
+            angajat_ids=[ids['ang_b']],
+            randuri={ids['ang_b']: {'observatii': 'TEST_S12A_BULK_OFF'}},
+        )
+        with app.test_request_context('/'):
+            rezultat = create_multiple_timesheets_from_form_data(
+                form_data=form,
+                current_user=_FakeUser(),
+            )
+
+        pontaj = Pontaj.query.filter_by(angajat_id=ids['ang_b'], data=zi).first()
+        assert rezultat['created_count'] == 1
+        assert rezultat['skipped_count'] == 0
+        assert pontaj is not None
+        assert pontaj.proiect_id == ids['proiect_a']
+
+
+def test_bulk_create_fara_angajati_pastreaza_zero_zero(app):
+    from services.timesheet_service import create_multiple_timesheets_from_form_data
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        form = _form_bulk(
+            proiect_id=ids['proiect_a'],
+            data_pontaj=date(2026, 5, 10),
+            angajat_ids=[],
+        )
+        with app.test_request_context('/'):
+            rezultat = create_multiple_timesheets_from_form_data(
+                form_data=form,
+                current_user=_FakeUser(),
+            )
+
+        assert rezultat['created_count'] == 0
+        assert rezultat['skipped_count'] == 0
+        assert rezultat['created_timesheets'] == []
+
+
+def test_bulk_create_duplicate_tenant_scoped_nu_sare_pontaj_strain(app):
+    from services.timesheet_service import create_multiple_timesheets_from_form_data
+    from models import Pontaj
+    from flask import g
+
+    ids = _seed(app)
+    zi = date(2026, 5, 11)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        _pontaj(app, angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'], data=zi)
+        form = _form_bulk(
+            proiect_id=ids['proiect_a'],
+            data_pontaj=zi,
+            angajat_ids=[ids['ang_a']],
+            randuri={ids['ang_a']: {'observatii': 'TEST_S12A_BULK_SCOPED'}},
+        )
+        with app.test_request_context('/'):
+            g.tenant_override = ids['tenant_a']
+            rezultat = create_multiple_timesheets_from_form_data(
+                form_data=form,
+                current_user=_FakeUser(),
+            )
+
+        assert rezultat['created_count'] == 1
+        assert rezultat['skipped_count'] == 0
+        assert Pontaj.query.filter_by(angajat_id=ids['ang_a'], data=zi).count() == 1
+
+
+def test_bulk_create_face_un_singur_commit(app, monkeypatch):
+    from services.timesheet_service import create_multiple_timesheets_from_form_data
+    from models import db
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        original_commit = db.session.commit
+        calls = []
+
+        def counted_commit():
+            calls.append(True)
+            return original_commit()
+
+        monkeypatch.setattr(db.session, 'commit', counted_commit)
+        form = _form_bulk(
+            proiect_id=ids['proiect_a'],
+            data_pontaj=date(2026, 5, 12),
+            angajat_ids=[ids['ang_a']],
+            randuri={ids['ang_a']: {'observatii': 'TEST_S12A_BULK_COMMIT'}},
+        )
+        with app.test_request_context('/'):
+            rezultat = create_multiple_timesheets_from_form_data(
+                form_data=form,
+                current_user=_FakeUser(),
+            )
+
+        assert rezultat['created_count'] == 1
+        assert len(calls) == 1
 
 
 # ============================================================
@@ -650,6 +971,22 @@ def _pontaj(app, *, angajat_id, proiect_id, data=date(2026, 4, 6), status='draft
         db.session.add(p)
         db.session.commit()
         return p.id
+
+
+def _angajat(app, *, tenant_id, suffix, cnp):
+    from models import Angajat, db
+    with app.app_context():
+        a = Angajat(
+            tenant_id=tenant_id,
+            nume=f'S12A-{suffix}',
+            prenume='Test',
+            cnp=cnp,
+            status='activ',
+            data_angajare=date(2026, 1, 1),
+        )
+        db.session.add(a)
+        db.session.commit()
+        return a.id
 
 
 def _aloca(app, *, angajat_id, proiect_id):

@@ -14,9 +14,11 @@ S1.2B1 adauga DOAR salvarea single create/edit:
   * adauga POST valid-save;
   * editeaza POST valid-save.
 
-NU contine si nu trebuie sa contina in S1.2B1 (raman in rute, extrase ulterior
-in S1.2B2/C/D):
-  * salvarea bulk (adauga_multiplu POST);
+S1.2B2 adauga DOAR salvarea bulk create:
+  * adauga_multiplu POST bulk-save.
+
+NU contine si nu trebuie sa contina in S1.2B2 (raman in rute, extrase ulterior
+in S1.2C/D):
   * tranzitiile de workflow (aproba/respinge/trimite/aproba_multiplu);
   * export/import (export_lunar, import_excel, template_import).
 
@@ -25,7 +27,7 @@ services/security/tenant_access.py. SarbatoareLegala este catalog global
 (non-tenant) si ramane query direct, identic cu rutele de dinainte.
 
 Serviciul este HTTP-free: fara flash/redirect/render_template/jsonify/request/
-send_file. Pentru write-urile S1.2B1, serviciul face commit; ruta face rollback
+send_file. Pentru write-urile S1.2B1/S1.2B2, serviciul face commit; ruta face rollback
 pe exceptii si pastreaza comportamentul HTTP vizibil.
 """
 
@@ -261,6 +263,122 @@ def update_timesheet_from_form_data(*, timesheet, form_data, current_user=None,
     db.session.commit()
     return {'timesheet': timesheet, 'updated': True, 'duplicate': False,
             'action': values['actiune']}
+
+
+# ============================================================
+# S1.2B2 - salvare bulk create (HTTP-free)
+# ============================================================
+
+def _required_form_value(form_data, name):
+    if hasattr(form_data, '__getitem__'):
+        return form_data[name]
+    return _field_data(form_data, name)
+
+
+def _form_values_list(form_data, name):
+    if hasattr(form_data, 'getlist'):
+        return form_data.getlist(name)
+    value = _field_data(form_data, name, [])
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return [value]
+
+
+def _bulk_timesheet_values_from_form_data(form_data):
+    proiect_id = int(_required_form_value(form_data, 'proiect_id'))
+    data_pontaj = _as_date(_required_form_value(form_data, 'data'))
+    actiune = _field_data(form_data, 'actiune', 'draft') or 'draft'
+    angajat_ids = _form_values_list(form_data, 'angajat_ids')
+
+    return {
+        'proiect_id': proiect_id,
+        'data': data_pontaj,
+        'actiune': actiune,
+        'angajat_ids': angajat_ids,
+    }
+
+
+def _bulk_timesheet_rows_from_form_data(form_data, angajat_ids):
+    randuri = []
+    for aid_str in angajat_ids:
+        aid = int(aid_str)
+        randuri.append({
+            'angajat_id': aid,
+            'ora_start': _field_data(form_data, f'ora_start_{aid}', '08:00'),
+            'ora_sfarsit': _field_data(form_data, f'ora_sfarsit_{aid}', '16:00'),
+            'tip_zi': _field_data(form_data, f'tip_zi_{aid}', 'lucratoare'),
+            'observatii': (_field_data(form_data, f'observatii_{aid}', '') or '').strip(),
+        })
+    return randuri
+
+
+def create_multiple_timesheets_from_form_data(*, form_data, current_user,
+                                              tenant_id=None):
+    """Creeaza pontaje bulk din formularul adauga_multiplu.
+
+    Ruta ramane responsabila pentru flash/redirect/render. Serviciul pastreaza
+    validarea tenant-safe, skip-ul de duplicate, asignarea campurilor si commit-ul
+    unic dupa loop. La eroare de tenant/parsare nu creeaza randuri.
+    """
+    values = _bulk_timesheet_values_from_form_data(form_data)
+    tenant_id_curent = _tenant_id_for_timesheet_write(tenant_id)
+    for aid_str in values['angajat_ids']:
+        require_timesheet_inputs_same_tenant(
+            proiect_id=values['proiect_id'],
+            angajat_id=aid_str,
+            tenant_id=tenant_id_curent,
+        )
+    randuri = _bulk_timesheet_rows_from_form_data(form_data, values['angajat_ids'])
+
+    count_ok = 0
+    count_skip = 0
+    created_timesheets = []
+    status = 'trimis' if values['actiune'] == 'trimite' else 'draft'
+
+    for rand in randuri:
+        duplicate = _find_timesheet_duplicate(
+            employee_id=rand['angajat_id'],
+            date_value=values['data'],
+            tenant_id=tenant_id_curent,
+        )
+        if duplicate:
+            count_skip += 1
+            continue
+
+        result = calculate_timesheet_hours(
+            ora_start=rand['ora_start'],
+            ora_sfarsit=rand['ora_sfarsit'],
+            tip_zi=rand['tip_zi'],
+            data_pontaj=values['data'],
+        )
+        pontaj = Pontaj(
+            angajat_id=rand['angajat_id'],
+            proiect_id=values['proiect_id'],
+            data=values['data'],
+            ora_start=rand['ora_start'],
+            ora_sfarsit=rand['ora_sfarsit'],
+            ore_lucrate=result['ore_lucrate'],
+            ore_normale=result['ore_normale'],
+            ore_suplimentare_50=result['ore_supl_50'],
+            ore_suplimentare_100=result['ore_supl_100'],
+            tip_zi=result['tip_zi'],
+            status=status,
+            observatii=rand['observatii'],
+            introdus_de=getattr(current_user, 'id', None),
+        )
+        db.session.add(pontaj)
+        created_timesheets.append(pontaj)
+        count_ok += 1
+
+    db.session.commit()
+    return {
+        'created_count': count_ok,
+        'skipped_count': count_skip,
+        'created_timesheets': created_timesheets,
+        'action': values['actiune'],
+    }
 
 
 # ============================================================
