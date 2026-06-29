@@ -29,10 +29,12 @@ request context) si aplica regulile de scoping deja stabilite in T1.x.
 """
 
 import calendar
+import json
 from datetime import datetime, date, timedelta
+from decimal import Decimal
 
 from models import (
-    Angajat, Proiect, TipInstalatie, CategorieActivitate,
+    db, Angajat, Proiect, TipInstalatie, CategorieActivitate,
     RaportActivitate, Santier, Cladire, ElementBIM, SarbatoareLegala,
 )
 from services.security.tenant_access import (
@@ -41,7 +43,22 @@ from services.security.tenant_access import (
     query_bim_elements_for_tenant,
     query_sites_for_tenant,
     query_for_tenant,
+    require_activity_inputs_same_tenant,
+    require_activity_bim_context_same_tenant,
+    tenant_id_for_new_record_or_403,
 )
+
+
+class ActivityValidationError(Exception):
+    """Validare de business esuata la salvarea activitatii (camp obligatoriu lipsa).
+
+    Ruta o transforma in flash + redirect(request.url), pastrand comportamentul
+    existent. Nu este o eroare de tenant (acelea raman HTTPException/abort).
+    """
+
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
 
 
 def get_current_employee_for_user(*, current_user, tenant_id=None):
@@ -285,3 +302,236 @@ def get_activity_form_context(*, activity=None, current_user=None, tenant_id=Non
         ).all(),
         'santiere': query_sites_for_tenant(tenant_id=tenant_id).order_by(Santier.cod).all(),
     }
+
+
+def save_activity_from_form_data(*, activity=None, form_data, current_user=None, tenant_id=None):
+    """Orchestreaza salvarea (create/edit) unei activitati din datele formularului.
+
+    Mutat din routes/activitati.py::_salveaza_activitate (corpul try). Pastreaza
+    identic: parsarea/sanitizarea campurilor, validarile tenant-safe, atribuirea
+    campurilor pe RaportActivitate, serializarea JSON, derivarea zonei din spatiu,
+    statusul inline pe salvare si calculeaza_perioada().
+
+    `form_data` este un MultiDict (de regula request.form). Nu atinge HTTP:
+    - campurile obligatorii lipsa ridica ActivityValidationError (ruta o
+      transforma in flash + redirect);
+    - ID-urile straine (proiect/angajat/BIM) ridica HTTPException prin helperii
+      tenant-safe, inainte de orice mutatie;
+    - commit-ul este facut aici; rollback-ul ramane in responsabilitatea rutei.
+
+    Returneaza un dict {'activity': <RaportActivitate>, 'actiune': <str>} pe care
+    ruta il foloseste ca sa aleaga flash-ul, redirect-ul sau raspunsul JSON.
+    """
+    angajat_id = form_data.get('angajat_id', type=int)
+    # Multi-proiect: accepta atat 'proiect_ids[]' (multi) cat si 'proiect_id' (legacy)
+    proiect_ids_raw = form_data.getlist('proiect_ids[]') or form_data.getlist('proiect_ids')
+    proiecte_ids_clean = []
+    for v in proiect_ids_raw:
+        try:
+            n = int(v)
+            if n > 0 and n not in proiecte_ids_clean:
+                proiecte_ids_clean.append(n)
+        except (ValueError, TypeError):
+            continue
+    if not proiecte_ids_clean:
+        # Fallback la single proiect_id (forma veche)
+        single = form_data.get('proiect_id', type=int)
+        if single:
+            proiecte_ids_clean = [single]
+    proiect_id = proiecte_ids_clean[0] if proiecte_ids_clean else None
+    proiecte_json = json.dumps(proiecte_ids_clean) if proiecte_ids_clean else None
+    data_str = form_data.get('data', '')
+    data_sfarsit_str = form_data.get('data_sfarsit', '').strip()
+    tip_activitate = form_data.get('tip_activitate', 'zilnica').strip() or 'zilnica'
+    if tip_activitate not in ('zilnica', 'saptamanala', 'lunara'):
+        tip_activitate = 'zilnica'
+    supervisor_id = form_data.get('supervisor_id', type=int) or None
+    subordonati_raw = form_data.getlist('subordonati_ids[]') or form_data.getlist('subordonati_ids')
+    ore_lucrate_str = form_data.get('ore_lucrate', '').strip()
+    status_executie = form_data.get('status_executie', 'planificata').strip() or 'planificata'
+    if status_executie not in ('planificata', 'in_desfasurare', 'finalizata'):
+        status_executie = 'planificata'
+    tip_instalatie_id = form_data.get('tip_instalatie_id', type=int) or None
+    categorie_id = form_data.get('categorie_activitate_id', type=int) or None
+    zona_lucru = form_data.get('zona_lucru', '').strip()
+    activitate_principala = form_data.get('activitate_principala', '').strip()
+    activitate_detaliata = form_data.get('activitate_detaliata', '').strip()
+    cantitate = form_data.get('cantitate_executata', '')
+    um = form_data.get('unitate_masura', '').strip()
+    procent = form_data.get('procent_realizare', type=int)
+    probleme = form_data.get('probleme_intampinate', '').strip()
+    solutii = form_data.get('solutii_aplicate', '').strip()
+    observatii = form_data.get('observatii', '').strip()
+    necesita_aprobare = bool(form_data.get('necesita_aprobare_tehnica'))
+    include_sambata = bool(form_data.get('include_sambata'))
+    include_duminica = bool(form_data.get('include_duminica'))
+    actiune = form_data.get('actiune', 'draft')  # draft / trimite / alta
+
+    # BIM context (toate optionale)
+    bim_santier_id = form_data.get('bim_santier_id', type=int) or None
+    bim_cladire_id = form_data.get('bim_cladire_id', type=int) or None
+    bim_nivel_id = form_data.get('bim_nivel_id', type=int) or None
+    bim_element_id = form_data.get('bim_element_id', type=int) or None
+    bim_spatiu_id = form_data.get('bim_spatiu_id', type=int) or None
+    # Zona se ia din spatiu daca exista, altfel din formular
+    bim_zona_id = form_data.get('bim_zona_id', type=int) or None
+
+    # Detalii pe zi (pentru saptamanala/lunara): liste paralele
+    det_data_list = form_data.getlist('detaliu_data[]')
+    det_proiect_list = form_data.getlist('detaliu_proiect[]')
+    det_text_list = form_data.getlist('detaliu_text[]')
+    det_ore_list = form_data.getlist('detaliu_ore[]')
+
+    # Validare
+    if not angajat_id or not proiect_id:
+        raise ActivityValidationError('Angajatul si cel putin un proiect sunt obligatorii.')
+    if not activitate_principala:
+        raise ActivityValidationError('Titlul activitatii este obligatoriu.')
+    if not data_str:
+        raise ActivityValidationError('Data de inceput este obligatorie.')
+
+    data_val = datetime.strptime(data_str, '%Y-%m-%d').date()
+    data_sfarsit_val = None
+    if data_sfarsit_str:
+        try:
+            data_sfarsit_val = datetime.strptime(data_sfarsit_str, '%Y-%m-%d').date()
+        except ValueError:
+            data_sfarsit_val = None
+
+    # subordonati_ids - parseaza si curata
+    subordonati_ids_clean = []
+    for raw_val in subordonati_raw:
+        try:
+            v = int(raw_val)
+            if v != angajat_id and v not in subordonati_ids_clean:
+                subordonati_ids_clean.append(v)
+        except (ValueError, TypeError):
+            continue
+    subordonati_json = json.dumps(subordonati_ids_clean) if subordonati_ids_clean else None
+
+    # ore lucrate
+    try:
+        ore_lucrate_val = Decimal(ore_lucrate_str) if ore_lucrate_str else None
+    except (ValueError, TypeError):
+        ore_lucrate_val = None
+
+    # Materiale JSON
+    materiale_json = '[]'
+    mat_denumiri = form_data.getlist('mat_denumire[]')
+    mat_cantitati = form_data.getlist('mat_cantitate[]')
+    mat_um = form_data.getlist('mat_um[]')
+    if mat_denumiri:
+        materiale = []
+        for i in range(len(mat_denumiri)):
+            if mat_denumiri[i].strip():
+                materiale.append({
+                    'denumire': mat_denumiri[i].strip(),
+                    'cantitate': mat_cantitati[i].strip() if i < len(mat_cantitati) else '',
+                    'um': mat_um[i].strip() if i < len(mat_um) else ''
+                })
+        materiale_json = json.dumps(materiale, ensure_ascii=False)
+
+    # Construire JSON detalii pe zi (doar randuri cu macar un camp completat)
+    detalii_json = None
+    detalii_proiect_ids = []
+    if tip_activitate in ('saptamanala', 'lunara') and det_data_list:
+        detalii_curate = []
+        for i, d_str in enumerate(det_data_list):
+            d_str = (d_str or '').strip()
+            if not d_str:
+                continue
+            proi_str = det_proiect_list[i] if i < len(det_proiect_list) else ''
+            text = (det_text_list[i] if i < len(det_text_list) else '').strip()
+            ore_str = (det_ore_list[i] if i < len(det_ore_list) else '').strip()
+            # Sare peste randuri complet goale (dar pastreaza data ca placeholder)
+            if not text and not ore_str and not proi_str:
+                continue
+            item = {'data': d_str}
+            if proi_str:
+                try:
+                    item['proiect_id'] = int(proi_str)
+                    detalii_proiect_ids.append(item['proiect_id'])
+                except (ValueError, TypeError):
+                    pass
+            if text:
+                item['text'] = text[:500]
+            if ore_str:
+                try:
+                    item['ore'] = float(ore_str)
+                except (ValueError, TypeError):
+                    pass
+            detalii_curate.append(item)
+        if detalii_curate:
+            detalii_json = json.dumps(detalii_curate, ensure_ascii=False)
+
+    echipamente = form_data.get('echipamente_folosite', '').strip()
+
+    tenant_id_curent = tenant_id_for_new_record_or_403()
+    angajat_ids_de_validat = [angajat_id]
+    if supervisor_id:
+        angajat_ids_de_validat.append(supervisor_id)
+    angajat_ids_de_validat.extend(subordonati_ids_clean)
+    require_activity_inputs_same_tenant(
+        proiecte_ids_clean + detalii_proiect_ids,
+        angajat_ids=angajat_ids_de_validat,
+        tenant_id=tenant_id_curent,
+    )
+    bim_context = require_activity_bim_context_same_tenant(
+        santier_id=bim_santier_id,
+        cladire_id=bim_cladire_id,
+        nivel_id=bim_nivel_id,
+        zona_id=bim_zona_id,
+        spatiu_id=bim_spatiu_id,
+        element_bim_id=bim_element_id,
+        proiect_id=proiect_id,
+        tenant_id=tenant_id_curent,
+    )
+    if not bim_zona_id and bim_context.get('spatiu'):
+        bim_zona_id = getattr(bim_context['spatiu'], 'zona_id', None)
+
+    if activity is None:
+        activity = RaportActivitate()
+        db.session.add(activity)
+
+    activity.angajat_id = angajat_id
+    activity.proiect_id = proiect_id
+    activity.proiecte_ids = proiecte_json
+    activity.element_bim_id = bim_element_id
+    activity.spatiu_id = bim_spatiu_id
+    activity.zona_id = bim_zona_id
+    activity.data = data_val
+    activity.data_sfarsit = data_sfarsit_val
+    activity.tip_activitate = tip_activitate
+    activity.supervisor_id = supervisor_id if supervisor_id != angajat_id else None
+    activity.subordonati_ids = subordonati_json
+    activity.ore_lucrate = ore_lucrate_val
+    activity.status_executie = status_executie
+    activity.tip_instalatie_id = tip_instalatie_id
+    activity.categorie_activitate_id = categorie_id
+    activity.zona_lucru = zona_lucru
+    activity.activitate_principala = activitate_principala[:500]
+    activity.activitate_detaliata = activitate_detaliata[:2000] if activitate_detaliata else None
+    activity.materiale_folosite = materiale_json
+    activity.echipamente_folosite = echipamente or None
+    activity.cantitate_executata = Decimal(cantitate) if cantitate else None
+    activity.unitate_masura = um or None
+    activity.procent_realizare = min(100, max(0, procent)) if procent is not None else None
+    activity.probleme_intampinate = probleme or None
+    activity.solutii_aplicate = solutii or None
+    activity.observatii = observatii or None
+    activity.necesita_aprobare_tehnica = necesita_aprobare
+    activity.include_sambata = include_sambata
+    activity.include_duminica = include_duminica
+    activity.detalii_pe_zi = detalii_json
+
+    # Auto-completare numar_saptamana / luna_an din tip si data inceput
+    activity.calculeaza_perioada()
+
+    if actiune == 'trimite':
+        activity.status = 'trimis'
+    elif activity.status == 'respins':
+        activity.status = 'draft'
+
+    db.session.commit()
+
+    return {'activity': activity, 'actiune': actiune}

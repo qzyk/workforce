@@ -3,10 +3,8 @@ EDIFICO WORKFORCE - Modul Rapoarte Activitate Zilnica
 Blueprint: /activitati
 """
 
-import json
 import os
 from datetime import datetime, date, timedelta
-from decimal import Decimal
 from functools import wraps
 from io import BytesIO
 
@@ -29,14 +27,13 @@ from services.security.tenant_access import (
     query_activities_for_tenant,
     query_timesheets_for_tenant,
     query_for_tenant,
-    require_activity_bim_context_same_tenant,
-    require_activity_inputs_same_tenant,
-    tenant_id_for_new_record_or_403,
 )
 from services.activity_service import (
+    ActivityValidationError,
     get_activity_form_context,
     get_activity_panel_context,
     get_current_employee_for_user,
+    save_activity_from_form_data,
 )
 
 activitati_bp = Blueprint('activitati', __name__, url_prefix='/activitati')
@@ -212,236 +209,21 @@ def editeaza(id):
 
 
 def _salveaza_activitate(activitate, rapida=False):
-    """Logica comuna salvare activitate (add/edit)."""
+    """Wrapper subtire HTTP peste activity_service.save_activity_from_form_data.
+
+    Pastreaza identic comportamentul vizibil utilizatorului: flash-uri, redirect-uri,
+    raspunsul JSON pentru forma rapida, plus try/except si rollback-ul existent.
+    Logica de validare/parsare/persistenta a fost mutata in serviciu (S1.1B).
+    """
     try:
-        angajat_id = request.form.get('angajat_id', type=int)
-        # Multi-proiect: accepta atat 'proiect_ids[]' (multi) cat si 'proiect_id' (legacy)
-        proiect_ids_raw = request.form.getlist('proiect_ids[]') or request.form.getlist('proiect_ids')
-        proiecte_ids_clean = []
-        for v in proiect_ids_raw:
-            try:
-                n = int(v)
-                if n > 0 and n not in proiecte_ids_clean:
-                    proiecte_ids_clean.append(n)
-            except (ValueError, TypeError):
-                continue
-        if not proiecte_ids_clean:
-            # Fallback la single proiect_id (forma veche)
-            single = request.form.get('proiect_id', type=int)
-            if single:
-                proiecte_ids_clean = [single]
-        proiect_id = proiecte_ids_clean[0] if proiecte_ids_clean else None
-        proiecte_json = json.dumps(proiecte_ids_clean) if proiecte_ids_clean else None
-        data_str = request.form.get('data', '')
-        data_sfarsit_str = request.form.get('data_sfarsit', '').strip()
-        tip_activitate = request.form.get('tip_activitate', 'zilnica').strip() or 'zilnica'
-        if tip_activitate not in ('zilnica', 'saptamanala', 'lunara'):
-            tip_activitate = 'zilnica'
-        supervisor_id = request.form.get('supervisor_id', type=int) or None
-        subordonati_raw = request.form.getlist('subordonati_ids[]') or request.form.getlist('subordonati_ids')
-        ore_lucrate_str = request.form.get('ore_lucrate', '').strip()
-        status_executie = request.form.get('status_executie', 'planificata').strip() or 'planificata'
-        if status_executie not in ('planificata', 'in_desfasurare', 'finalizata'):
-            status_executie = 'planificata'
-        tip_instalatie_id = request.form.get('tip_instalatie_id', type=int) or None
-        categorie_id = request.form.get('categorie_activitate_id', type=int) or None
-        zona_lucru = request.form.get('zona_lucru', '').strip()
-        activitate_principala = request.form.get('activitate_principala', '').strip()
-        activitate_detaliata = request.form.get('activitate_detaliata', '').strip()
-        cantitate = request.form.get('cantitate_executata', '')
-        um = request.form.get('unitate_masura', '').strip()
-        procent = request.form.get('procent_realizare', type=int)
-        probleme = request.form.get('probleme_intampinate', '').strip()
-        solutii = request.form.get('solutii_aplicate', '').strip()
-        observatii = request.form.get('observatii', '').strip()
-        necesita_aprobare = bool(request.form.get('necesita_aprobare_tehnica'))
-        include_sambata = bool(request.form.get('include_sambata'))
-        include_duminica = bool(request.form.get('include_duminica'))
-        actiune = request.form.get('actiune', 'draft')  # draft / trimite / alta
-
-        # BIM context (toate optionale)
-        bim_santier_id = request.form.get('bim_santier_id', type=int) or None
-        bim_cladire_id = request.form.get('bim_cladire_id', type=int) or None
-        bim_nivel_id = request.form.get('bim_nivel_id', type=int) or None
-        bim_element_id = request.form.get('bim_element_id', type=int) or None
-        bim_spatiu_id = request.form.get('bim_spatiu_id', type=int) or None
-        # Zona se ia din spatiu daca exista, altfel din formular
-        bim_zona_id = request.form.get('bim_zona_id', type=int) or None
-
-        # Detalii pe zi (pentru saptamanala/lunara): liste paralele
-        det_data_list = request.form.getlist('detaliu_data[]')
-        det_proiect_list = request.form.getlist('detaliu_proiect[]')
-        det_text_list = request.form.getlist('detaliu_text[]')
-        det_ore_list = request.form.getlist('detaliu_ore[]')
-
-        # Validare
-        if not angajat_id or not proiect_id:
-            flash('Angajatul si cel putin un proiect sunt obligatorii.', 'danger')
-            return redirect(request.url)
-        if not activitate_principala:
-            flash('Titlul activitatii este obligatoriu.', 'danger')
-            return redirect(request.url)
-        if not data_str:
-            flash('Data de inceput este obligatorie.', 'danger')
-            return redirect(request.url)
-
-        data_val = datetime.strptime(data_str, '%Y-%m-%d').date()
-        data_sfarsit_val = None
-        if data_sfarsit_str:
-            try:
-                data_sfarsit_val = datetime.strptime(data_sfarsit_str, '%Y-%m-%d').date()
-            except ValueError:
-                data_sfarsit_val = None
-
-        # subordonati_ids - parseaza si curata
-        subordonati_ids_clean = []
-        for raw_val in subordonati_raw:
-            try:
-                v = int(raw_val)
-                if v != angajat_id and v not in subordonati_ids_clean:
-                    subordonati_ids_clean.append(v)
-            except (ValueError, TypeError):
-                continue
-        subordonati_json = json.dumps(subordonati_ids_clean) if subordonati_ids_clean else None
-
-        # ore lucrate
-        try:
-            ore_lucrate_val = Decimal(ore_lucrate_str) if ore_lucrate_str else None
-        except (ValueError, TypeError):
-            ore_lucrate_val = None
-
-        # Materiale JSON
-        materiale_json = '[]'
-        mat_denumiri = request.form.getlist('mat_denumire[]')
-        mat_cantitati = request.form.getlist('mat_cantitate[]')
-        mat_um = request.form.getlist('mat_um[]')
-        if mat_denumiri:
-            materiale = []
-            for i in range(len(mat_denumiri)):
-                if mat_denumiri[i].strip():
-                    materiale.append({
-                        'denumire': mat_denumiri[i].strip(),
-                        'cantitate': mat_cantitati[i].strip() if i < len(mat_cantitati) else '',
-                        'um': mat_um[i].strip() if i < len(mat_um) else ''
-                    })
-            materiale_json = json.dumps(materiale, ensure_ascii=False)
-
-        # Construire JSON detalii pe zi (doar randuri cu macar un camp completat)
-        detalii_json = None
-        detalii_proiect_ids = []
-        if tip_activitate in ('saptamanala', 'lunara') and det_data_list:
-            detalii_curate = []
-            for i, d_str in enumerate(det_data_list):
-                d_str = (d_str or '').strip()
-                if not d_str:
-                    continue
-                proi_str = det_proiect_list[i] if i < len(det_proiect_list) else ''
-                text = (det_text_list[i] if i < len(det_text_list) else '').strip()
-                ore_str = (det_ore_list[i] if i < len(det_ore_list) else '').strip()
-                # Sare peste randuri complet goale (dar pastreaza data ca placeholder)
-                if not text and not ore_str and not proi_str:
-                    continue
-                item = {'data': d_str}
-                if proi_str:
-                    try:
-                        item['proiect_id'] = int(proi_str)
-                        detalii_proiect_ids.append(item['proiect_id'])
-                    except (ValueError, TypeError):
-                        pass
-                if text:
-                    item['text'] = text[:500]
-                if ore_str:
-                    try:
-                        item['ore'] = float(ore_str)
-                    except (ValueError, TypeError):
-                        pass
-                detalii_curate.append(item)
-            if detalii_curate:
-                detalii_json = json.dumps(detalii_curate, ensure_ascii=False)
-
-        echipamente = request.form.get('echipamente_folosite', '').strip()
-
-        tenant_id_curent = tenant_id_for_new_record_or_403()
-        angajat_ids_de_validat = [angajat_id]
-        if supervisor_id:
-            angajat_ids_de_validat.append(supervisor_id)
-        angajat_ids_de_validat.extend(subordonati_ids_clean)
-        require_activity_inputs_same_tenant(
-            proiecte_ids_clean + detalii_proiect_ids,
-            angajat_ids=angajat_ids_de_validat,
-            tenant_id=tenant_id_curent,
+        rezultat = save_activity_from_form_data(
+            activity=activitate,
+            form_data=request.form,
+            current_user=current_user,
         )
-        bim_context = require_activity_bim_context_same_tenant(
-            santier_id=bim_santier_id,
-            cladire_id=bim_cladire_id,
-            nivel_id=bim_nivel_id,
-            zona_id=bim_zona_id,
-            spatiu_id=bim_spatiu_id,
-            element_bim_id=bim_element_id,
-            proiect_id=proiect_id,
-            tenant_id=tenant_id_curent,
-        )
-        if not bim_zona_id and bim_context.get('spatiu'):
-            bim_zona_id = getattr(bim_context['spatiu'], 'zona_id', None)
-
-        if activitate is None:
-            activitate = RaportActivitate()
-            db.session.add(activitate)
-
-        activitate.angajat_id = angajat_id
-        activitate.proiect_id = proiect_id
-        activitate.proiecte_ids = proiecte_json
-        activitate.element_bim_id = bim_element_id
-        activitate.spatiu_id = bim_spatiu_id
-        activitate.zona_id = bim_zona_id
-        activitate.data = data_val
-        activitate.data_sfarsit = data_sfarsit_val
-        activitate.tip_activitate = tip_activitate
-        activitate.supervisor_id = supervisor_id if supervisor_id != angajat_id else None
-        activitate.subordonati_ids = subordonati_json
-        activitate.ore_lucrate = ore_lucrate_val
-        activitate.status_executie = status_executie
-        activitate.tip_instalatie_id = tip_instalatie_id
-        activitate.categorie_activitate_id = categorie_id
-        activitate.zona_lucru = zona_lucru
-        activitate.activitate_principala = activitate_principala[:500]
-        activitate.activitate_detaliata = activitate_detaliata[:2000] if activitate_detaliata else None
-        activitate.materiale_folosite = materiale_json
-        activitate.echipamente_folosite = echipamente or None
-        activitate.cantitate_executata = Decimal(cantitate) if cantitate else None
-        activitate.unitate_masura = um or None
-        activitate.procent_realizare = min(100, max(0, procent)) if procent is not None else None
-        activitate.probleme_intampinate = probleme or None
-        activitate.solutii_aplicate = solutii or None
-        activitate.observatii = observatii or None
-        activitate.necesita_aprobare_tehnica = necesita_aprobare
-        activitate.include_sambata = include_sambata
-        activitate.include_duminica = include_duminica
-        activitate.detalii_pe_zi = detalii_json
-
-        # Auto-completare numar_saptamana / luna_an din tip si data inceput
-        activitate.calculeaza_perioada()
-
-        if actiune == 'trimite':
-            activitate.status = 'trimis'
-        elif activitate.status == 'respins':
-            activitate.status = 'draft'
-
-        db.session.commit()
-
-        if actiune == 'trimite':
-            flash('Activitatea a fost trimisa spre aprobare.', 'success')
-        else:
-            flash('Activitatea a fost salvata ca draft.', 'success')
-
-        if actiune == 'alta':
-            return redirect(url_for('activitati.adauga'))
-
-        if rapida:
-            return jsonify({'success': True, 'id': activitate.id})
-
-        return redirect(url_for('activitati.detaliu', id=activitate.id))
-
+    except ActivityValidationError as e:
+        flash(e.message, 'danger')
+        return redirect(request.url)
     except HTTPException:
         db.session.rollback()
         raise
@@ -449,6 +231,22 @@ def _salveaza_activitate(activitate, rapida=False):
         db.session.rollback()
         flash(f'Eroare la salvare: {str(e)}', 'danger')
         return redirect(request.url)
+
+    activitate = rezultat['activity']
+    actiune = rezultat['actiune']
+
+    if actiune == 'trimite':
+        flash('Activitatea a fost trimisa spre aprobare.', 'success')
+    else:
+        flash('Activitatea a fost salvata ca draft.', 'success')
+
+    if actiune == 'alta':
+        return redirect(url_for('activitati.adauga'))
+
+    if rapida:
+        return jsonify({'success': True, 'id': activitate.id})
+
+    return redirect(url_for('activitati.detaliu', id=activitate.id))
 
 
 @activitati_bp.route('/<int:id>/trimite', methods=['POST'])

@@ -8,6 +8,7 @@ comportament pe moduri (off/strict) si fail-closed pentru user fara tenant.
 from datetime import date
 
 import pytest
+from werkzeug.exceptions import HTTPException
 
 
 class _FakeUser:
@@ -150,6 +151,355 @@ def test_off_mode_pastreaza_vizibilitatea_legacy(app):
     proiecte_ids = {p.id for p in ctx['proiecte']}
     assert ids['proiect_a'] in proiecte_ids
     assert ids['proiect_b'] in proiecte_ids  # off => nefiltrat
+
+
+# ============================================================
+# S1.1B — save (create/edit) extraction
+# ============================================================
+
+def _form(data):
+    """Construieste un MultiDict similar request.form din dict-ul de test."""
+    from werkzeug.datastructures import MultiDict
+
+    md = MultiDict()
+    for k, v in data.items():
+        if isinstance(v, (list, tuple)):
+            for item in v:
+                md.add(k, str(item))
+        else:
+            md.add(k, str(v))
+    return md
+
+
+def test_save_creeaza_activitate_cu_campurile_corecte(app):
+    from services.activity_service import save_activity_from_form_data
+
+    ids = _seed(app)
+
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            rezultat = save_activity_from_form_data(
+                activity=None,
+                form_data=_form({
+                    'angajat_id': ids['ang_a'],
+                    'proiect_ids[]': [ids['proiect_a']],
+                    'data': '2026-02-10',
+                    'activitate_principala': 'TEST_S11A_SAVE_CREATE',
+                    'tip_activitate': 'zilnica',
+                    'actiune': 'draft',
+                }),
+                current_user=_FakeUser(),
+            )
+
+        act = rezultat['activity']
+        assert rezultat['actiune'] == 'draft'
+        assert act.id is not None
+        assert act.angajat_id == ids['ang_a']
+        assert act.proiect_id == ids['proiect_a']
+        assert act.activitate_principala == 'TEST_S11A_SAVE_CREATE'
+        assert act.data == date(2026, 2, 10)
+        assert act.tip_activitate == 'zilnica'
+        assert act.status == 'draft'
+
+        # Persistat in DB
+        from models import RaportActivitate
+        reincarcat = RaportActivitate.query.get(act.id)
+        assert reincarcat is not None
+        assert reincarcat.activitate_principala == 'TEST_S11A_SAVE_CREATE'
+
+
+def test_save_editeaza_activitate_existenta(app):
+    from services.activity_service import save_activity_from_form_data
+    from models import RaportActivitate
+
+    ids = _seed(app)
+
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            creat = save_activity_from_form_data(
+                activity=None,
+                form_data=_form({
+                    'angajat_id': ids['ang_a'],
+                    'proiect_ids[]': [ids['proiect_a']],
+                    'data': '2026-02-10',
+                    'activitate_principala': 'TEST_S11A_SAVE_EDIT_ORIG',
+                    'actiune': 'draft',
+                }),
+                current_user=_FakeUser(),
+            )['activity']
+            orig_id = creat.id
+
+            existing = RaportActivitate.query.get(orig_id)
+            editat = save_activity_from_form_data(
+                activity=existing,
+                form_data=_form({
+                    'angajat_id': ids['ang_a'],
+                    'proiect_ids[]': [ids['proiect_a']],
+                    'data': '2026-02-11',
+                    'activitate_principala': 'TEST_S11A_SAVE_EDIT_NOU',
+                    'actiune': 'draft',
+                }),
+                current_user=_FakeUser(),
+            )['activity']
+
+        assert editat.id == orig_id  # acelasi rand, update nu insert
+        assert editat.activitate_principala == 'TEST_S11A_SAVE_EDIT_NOU'
+        assert editat.data == date(2026, 2, 11)
+
+
+def test_save_actiune_trimite_seteaza_status_trimis(app):
+    from services.activity_service import save_activity_from_form_data
+
+    ids = _seed(app)
+
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            act = save_activity_from_form_data(
+                activity=None,
+                form_data=_form({
+                    'angajat_id': ids['ang_a'],
+                    'proiect_ids[]': [ids['proiect_a']],
+                    'data': '2026-02-10',
+                    'activitate_principala': 'TEST_S11A_SAVE_TRIMITE',
+                    'actiune': 'trimite',
+                }),
+                current_user=_FakeUser(),
+            )['activity']
+
+        assert act.status == 'trimis'
+
+
+def test_save_respins_revine_la_draft(app):
+    from services.activity_service import save_activity_from_form_data
+    from models import RaportActivitate, db
+
+    ids = _seed(app)
+
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        respinsa = RaportActivitate(
+            angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+            data=date(2026, 2, 9), tip_activitate='zilnica',
+            activitate_principala='TEST_S11A_SAVE_RESPINS', status='respins',
+        )
+        db.session.add(respinsa)
+        db.session.commit()
+        respinsa_id = respinsa.id
+
+        with app.test_request_context('/'):
+            existing = RaportActivitate.query.get(respinsa_id)
+            editat = save_activity_from_form_data(
+                activity=existing,
+                form_data=_form({
+                    'angajat_id': ids['ang_a'],
+                    'proiect_ids[]': [ids['proiect_a']],
+                    'data': '2026-02-09',
+                    'activitate_principala': 'TEST_S11A_SAVE_RESPINS',
+                    'actiune': 'draft',
+                }),
+                current_user=_FakeUser(),
+            )['activity']
+
+        assert editat.status == 'draft'
+
+
+def test_save_supervisor_egal_cu_angajat_este_curatat(app):
+    from services.activity_service import save_activity_from_form_data
+
+    ids = _seed(app)
+
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            act = save_activity_from_form_data(
+                activity=None,
+                form_data=_form({
+                    'angajat_id': ids['ang_a'],
+                    'proiect_ids[]': [ids['proiect_a']],
+                    'supervisor_id': ids['ang_a'],
+                    'data': '2026-02-10',
+                    'activitate_principala': 'TEST_S11A_SAVE_SUPERVISOR',
+                    'actiune': 'draft',
+                }),
+                current_user=_FakeUser(),
+            )['activity']
+
+        assert act.supervisor_id is None
+
+
+def test_save_nu_creeaza_sau_modifica_pontaj(app):
+    from services.activity_service import save_activity_from_form_data
+    from models import Pontaj
+
+    ids = _seed(app)
+
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pontaje_inainte = Pontaj.query.count()
+        with app.test_request_context('/'):
+            save_activity_from_form_data(
+                activity=None,
+                form_data=_form({
+                    'angajat_id': ids['ang_a'],
+                    'proiect_ids[]': [ids['proiect_a']],
+                    'data': '2026-02-10',
+                    'activitate_principala': 'TEST_S11A_SAVE_NOPONTAJ',
+                    'actiune': 'draft',
+                }),
+                current_user=_FakeUser(),
+            )
+        assert Pontaj.query.count() == pontaje_inainte
+
+
+def test_save_proiect_lipsa_ridica_validation_error(app):
+    from services.activity_service import (
+        save_activity_from_form_data, ActivityValidationError,
+    )
+
+    ids = _seed(app)
+
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            with pytest.raises(ActivityValidationError):
+                save_activity_from_form_data(
+                    activity=None,
+                    form_data=_form({
+                        'angajat_id': ids['ang_a'],
+                        'data': '2026-02-10',
+                        'activitate_principala': 'TEST_S11A_SAVE_NOPROJ',
+                        'actiune': 'draft',
+                    }),
+                    current_user=_FakeUser(),
+                )
+
+
+def test_save_proiect_strain_respins_inainte_de_mutatie(app):
+    from services.activity_service import save_activity_from_form_data
+    from models import RaportActivitate
+
+    ids = _seed(app)
+
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        inainte = RaportActivitate.query.filter_by(proiect_id=ids['proiect_b']).count()
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            with pytest.raises(HTTPException) as exc:
+                save_activity_from_form_data(
+                    activity=None,
+                    form_data=_form({
+                        'angajat_id': ids['ang_a'],
+                        'proiect_ids[]': [ids['proiect_b']],  # proiect din tenant B
+                        'data': '2026-02-10',
+                        'activitate_principala': 'TEST_S11A_SAVE_FOREIGNPRJ',
+                        'actiune': 'draft',
+                    }),
+                    current_user=_FakeUser(rol='manager', tenant_id=ids['tenant_a']),
+                )
+        assert exc.value.code == 404
+        # Fara mutatie partiala
+        assert RaportActivitate.query.filter_by(proiect_id=ids['proiect_b']).count() == inainte
+
+
+def test_save_angajat_strain_respins(app):
+    from services.activity_service import save_activity_from_form_data
+
+    ids = _seed(app)
+
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            with pytest.raises(HTTPException) as exc:
+                save_activity_from_form_data(
+                    activity=None,
+                    form_data=_form({
+                        'angajat_id': ids['ang_b'],  # angajat din tenant B
+                        'proiect_ids[]': [ids['proiect_a']],
+                        'data': '2026-02-10',
+                        'activitate_principala': 'TEST_S11A_SAVE_FOREIGNANG',
+                        'actiune': 'draft',
+                    }),
+                    current_user=_FakeUser(rol='manager', tenant_id=ids['tenant_a']),
+                )
+        assert exc.value.code == 404
+
+
+def test_save_context_bim_strain_respins(app):
+    from services.activity_service import save_activity_from_form_data
+
+    ids = _seed(app)
+
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            with pytest.raises(HTTPException) as exc:
+                save_activity_from_form_data(
+                    activity=None,
+                    form_data=_form({
+                        'angajat_id': ids['ang_a'],
+                        'proiect_ids[]': [ids['proiect_a']],
+                        'bim_santier_id': ids['site_b'],  # santier din tenant B
+                        'data': '2026-02-10',
+                        'activitate_principala': 'TEST_S11A_SAVE_FOREIGNBIM',
+                        'actiune': 'draft',
+                    }),
+                    current_user=_FakeUser(rol='manager', tenant_id=ids['tenant_a']),
+                )
+        assert exc.value.code == 404
+
+
+def test_save_strict_fara_tenant_fail_closed(app):
+    from services.activity_service import save_activity_from_form_data
+
+    ids = _seed(app)
+
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            with pytest.raises(HTTPException) as exc:
+                save_activity_from_form_data(
+                    activity=None,
+                    form_data=_form({
+                        'angajat_id': ids['ang_a'],
+                        'proiect_ids[]': [ids['proiect_a']],
+                        'data': '2026-02-10',
+                        'activitate_principala': 'TEST_S11A_SAVE_NOTENANT',
+                        'actiune': 'draft',
+                    }),
+                    current_user=_FakeUser(rol='manager'),
+                )
+        assert exc.value.code == 403
+
+
+def test_save_off_mode_accepta_proiect_indiferent_de_tenant(app):
+    from services.activity_service import save_activity_from_form_data
+
+    ids = _seed(app)
+
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            act = save_activity_from_form_data(
+                activity=None,
+                form_data=_form({
+                    'angajat_id': ids['ang_a'],
+                    'proiect_ids[]': [ids['proiect_b']],  # alt tenant, dar off => permis
+                    'data': '2026-02-10',
+                    'activitate_principala': 'TEST_S11A_SAVE_OFFLEGACY',
+                    'actiune': 'draft',
+                }),
+                current_user=_FakeUser(),
+            )['activity']
+        assert act.proiect_id == ids['proiect_b']
 
 
 # ============================================================
