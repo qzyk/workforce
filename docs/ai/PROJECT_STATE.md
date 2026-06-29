@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-S1.1A Activity Service Skeleton + Read/Form Context Extraction — VALIDATED
+S1.1B Activity Create/Edit Save Extraction — VALIDATED
 ```
 
 Canonical repository:
@@ -43,25 +43,25 @@ Do not merge, clean, delete, or copy from them.
 ## Current canonical branch
 
 ```text
-feat/s1.1a-activity-service-read-context
+feat/s1.1b-activity-save-extraction
 ```
 
 ## Current canonical HEAD
 
 ```text
-00b4fd1 S1.1A activity service read context extraction
+bc98a29 S1.1B activity save extraction
 ```
 
 ## Current test baseline
 
-S1.1A VALIDATED.
+S1.1B VALIDATED.
 
 ```text
-7 service tests passed (tests/unit/test_activity_service.py)
-49 targeted activity + tenant tests passed
+19 activity service tests passed (tests/unit/test_activity_service.py)
+61 targeted activity + tenant tests passed
 246 tenant tests passed
-39 regression tests passed (models_workforce + export_rapoarte_stil)
-11 smoke tests passed
+50 regression/smoke tests passed (models_workforce + export_rapoarte_stil + smoke)
+app import OK, 25 activitati routes
 ```
 
 ---
@@ -93,26 +93,31 @@ T1.C14 APPROVED. Tenant guard phase complete.
 
 ```text
 S1.1A Activity Service Skeleton + Read/Form Context Extraction
+S1.1B Activity Create/Edit Save Extraction
 ```
 
 Latest completed service extraction step:
 
 ```text
-S1.1A Activity Service Skeleton + Read/Form Context Extraction
+S1.1B Activity Create/Edit Save Extraction
 ```
 
-S1.1A summary:
+S1.1B summary:
 
 ```text
-- created services/activity_service.py
-- extracted low-risk activity panel/read/form-context logic
-- routes/activitati.py now delegates read/form context to activity_service
+- added save_activity_from_form_data() to services/activity_service.py
+- added ActivityValidationError
+- moved create/edit save parsing, validation, field assignment, JSON
+  serialization, BIM context validation, inline save status logic,
+  calculeaza_perioada(), and db commit into activity_service
+- routes/activitati.py keeps _salveaza_activitate as a thin HTTP wrapper
+- route behavior, flash messages, redirects, jsonify shape, approval
+  workflow, and exports remain unchanged
 - no schema changes
 - no migrations
-- no workflow changes
-- no export changes
-- no approval changes
-- no S1.1B/S1.1C/S1.1D started
+- no workflow route extraction
+- no export/report extraction
+- no S1.1C/S1.1D/S1.2 started
 ```
 
 ---
@@ -120,13 +125,13 @@ S1.1A summary:
 ## Current task
 
 ```text
-S1.1B No-Code Understanding / Collision Safety Gate
+S1.1C No-Code Understanding / Collision Safety Gate
 ```
 
-This is a read-only understanding/collision-safety gate for S1.1B (Activity
-Create/Edit Extraction). It produces an understanding report only.
+This is a read-only understanding/collision-safety gate for S1.1C (Activity
+Workflow Transitions extraction). It produces an understanding report only.
 
-S1.1B IMPLEMENTATION IS NOT YET AUTHORIZED. It may start only after this
+S1.1C IMPLEMENTATION IS NOT YET AUTHORIZED. It may start only after this
 no-code safety gate is reviewed and approved by Albert.
 
 ## Constraints for the S1.1x service extraction line (per D014)
@@ -143,7 +148,6 @@ no-code safety gate is reviewed and approved by Albert.
 ## Remaining activity extraction work (NOT authorized yet)
 
 ```text
-S1.1B Activity Create/Edit Extraction
 S1.1C Activity Workflow Transitions
 S1.1D Activity Reports/Exports Cleanup
 ```
@@ -153,7 +157,7 @@ S1.1D Activity Reports/Exports Cleanup
 ## Current repository posture
 
 Route-level tenant guard complete after T1.14.
-First activity service boundary in place after S1.1A.
+Activity service boundary covers read/form context (S1.1A) and create/edit save (S1.1B).
 
 Remaining accepted future categories:
 
