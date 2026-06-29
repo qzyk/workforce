@@ -424,6 +424,77 @@ def require_project_nested_inputs_same_tenant(project_id=None, employee_id=None,
         abort(404)
 
 
+def query_project_locations_for_tenant(project_id=None, tenant_id=None):
+    """Query tenant-safe pentru LocatieProiect prin tenant_id si Proiect."""
+    from models import LocatieProiect, Proiect
+
+    query = LocatieProiect.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query.filter_by(proiect_id=project_id) if project_id is not None else query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query.filter_by(proiect_id=project_id) if project_id is not None else query
+        if mod == MODE_OPTIONAL:
+            return query.filter_by(proiect_id=project_id) if project_id is not None else query
+        return query.filter(False)
+
+    proiect_scope = LocatieProiect.proiect.has(Proiect.tenant_id == tenant_curent)
+    direct_scope = and_(LocatieProiect.tenant_id == tenant_curent, proiect_scope)
+    inherited_scope = and_(LocatieProiect.tenant_id.is_(None), proiect_scope)
+    query = query.filter(or_(direct_scope, inherited_scope))
+    if project_id is not None:
+        query = query.filter(LocatieProiect.proiect_id == project_id)
+    return query
+
+
+def get_project_location_or_404(location_id, tenant_id=None):
+    """Returneaza LocatieProiect vizibila tenantului curent sau 404."""
+    from models import LocatieProiect
+
+    locatie = query_project_locations_for_tenant(tenant_id=tenant_id).filter(
+        LocatieProiect.id == location_id
+    ).first()
+    if locatie is None:
+        abort(404)
+    return locatie
+
+
+def ensure_project_location_same_tenant(location, tenant_id=None):
+    """Valideaza LocatieProiect prin tenant_id direct si proiect."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return location
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return location
+        if mod == MODE_OPTIONAL:
+            return location
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    proiect = getattr(location, 'proiect', None)
+    proiect_tenant = _coerce_tenant_id(getattr(proiect, 'tenant_id', None))
+    locatie_tenant = _coerce_tenant_id(getattr(location, 'tenant_id', None))
+
+    if proiect_tenant != tenant_curent:
+        raise TenantAccessDenied('Proiectul locatiei nu apartine tenantului curent.')
+    if locatie_tenant is not None and locatie_tenant != tenant_curent:
+        raise TenantAccessDenied('Locatia nu apartine tenantului curent.')
+    return location
+
+
+def require_project_location_same_tenant(location, tenant_id=None):
+    """Wrapper pentru rute: ascunde locatiile inaccesibile prin 404."""
+    try:
+        return ensure_project_location_same_tenant(location, tenant_id=tenant_id)
+    except TenantAccessDenied:
+        abort(404)
+
+
 def query_users_for_tenant(tenant_id=None, include_global=False):
     """Query tenant-safe pentru Utilizator."""
     from models import Utilizator
@@ -463,6 +534,111 @@ def require_user_same_tenant(user, tenant_id=None, include_global=False):
         tenant_id=tenant_id,
         include_global=include_global,
     )
+
+
+def query_api_tokens_for_tenant(tenant_id=None):
+    """Query tenant-safe pentru ApiToken prin tenant_id si owner."""
+    from models import ApiToken, Utilizator
+
+    query = ApiToken.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    return query.filter(
+        ApiToken.owner.has(Utilizator.tenant_id == tenant_curent),
+        or_(ApiToken.tenant_id == tenant_curent, ApiToken.tenant_id.is_(None)),
+    )
+
+
+def get_api_token_or_404(token_id, tenant_id=None):
+    """Returneaza ApiToken vizibil tenantului curent sau 404."""
+    from models import ApiToken
+
+    token = query_api_tokens_for_tenant(tenant_id=tenant_id).filter(
+        ApiToken.id == token_id
+    ).first()
+    if token is None:
+        abort(404)
+    return token
+
+
+def ensure_api_token_same_tenant(token, tenant_id=None):
+    """Valideaza ApiToken prin owner si tenant_id explicit."""
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return token
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return token
+        if mod == MODE_OPTIONAL:
+            return token
+        raise TenantAccessDenied('Tenant lipsa in strict mode.')
+
+    owner = getattr(token, 'owner', None)
+    owner_tenant = _coerce_tenant_id(getattr(owner, 'tenant_id', None))
+    token_tenant = _coerce_tenant_id(getattr(token, 'tenant_id', None))
+    if owner_tenant != tenant_curent:
+        raise TenantAccessDenied('Ownerul tokenului nu apartine tenantului curent.')
+    if token_tenant is not None and token_tenant != tenant_curent:
+        raise TenantAccessDenied('Tokenul nu apartine tenantului curent.')
+    return token
+
+
+def require_api_token_same_tenant(token, tenant_id=None):
+    """Wrapper pentru rute: ascunde tokenurile API inaccesibile."""
+    try:
+        return ensure_api_token_same_tenant(token, tenant_id=tenant_id)
+    except TenantAccessDenied:
+        abort(404)
+
+
+def query_audit_logs_for_tenant(tenant_id=None):
+    """Query tenant-safe pentru AuditLog prin tenant_id sau user."""
+    from models import AuditLog, Utilizator
+
+    query = AuditLog.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    return query.filter(or_(
+        AuditLog.tenant_id == tenant_curent,
+        and_(
+            AuditLog.tenant_id.is_(None),
+            AuditLog.user.has(Utilizator.tenant_id == tenant_curent),
+        ),
+    ))
+
+
+def get_audit_log_or_404(audit_id, tenant_id=None):
+    """Returneaza AuditLog vizibil tenantului curent sau 404."""
+    from models import AuditLog
+
+    audit = query_audit_logs_for_tenant(tenant_id=tenant_id).filter(
+        AuditLog.id == audit_id
+    ).first()
+    if audit is None:
+        abort(404)
+    return audit
 
 
 def query_notifications_for_tenant(tenant_id=None, include_global=False):
@@ -2433,6 +2609,185 @@ def require_bim_record_same_tenant(record, tenant_id=None):
         abort(404)
 
 
+def query_external_mappings_for_tenant(tenant_id=None):
+    """Query tenant-safe pentru ExternalMapping prin tenant_id sau tinta BIM."""
+    from models import (
+        Cladire, ElementBIM, ExternalMapping, IssueBIM, ModelBIM, Nivel,
+        Santier, Spatiu,
+    )
+
+    query = ExternalMapping.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    site_ids = query_sites_for_tenant(tenant_id=tenant_curent).with_entities(Santier.id)
+    building_ids = query_bim_buildings_for_tenant(
+        tenant_id=tenant_curent
+    ).with_entities(Cladire.id)
+    level_ids = query_bim_levels_for_tenant(tenant_id=tenant_curent).with_entities(Nivel.id)
+    space_ids = query_bim_spaces_for_tenant(tenant_id=tenant_curent).with_entities(Spatiu.id)
+    model_ids = query_bim_models_for_tenant(tenant_id=tenant_curent).with_entities(ModelBIM.id)
+    element_ids = query_bim_elements_for_tenant(
+        tenant_id=tenant_curent
+    ).with_entities(ElementBIM.id)
+    issue_ids = query_bim_issues_for_tenant(tenant_id=tenant_curent).with_entities(IssueBIM.id)
+
+    inherited_scope = or_(
+        and_(ExternalMapping.entity_type == 'santier', ExternalMapping.entity_id.in_(site_ids)),
+        and_(ExternalMapping.entity_type == 'cladire', ExternalMapping.entity_id.in_(building_ids)),
+        and_(ExternalMapping.entity_type == 'nivel', ExternalMapping.entity_id.in_(level_ids)),
+        and_(ExternalMapping.entity_type == 'spatiu', ExternalMapping.entity_id.in_(space_ids)),
+        and_(ExternalMapping.entity_type == 'model_bim', ExternalMapping.entity_id.in_(model_ids)),
+        and_(ExternalMapping.entity_type == 'element_bim', ExternalMapping.entity_id.in_(element_ids)),
+        and_(ExternalMapping.entity_type == 'issue_bim', ExternalMapping.entity_id.in_(issue_ids)),
+        and_(ExternalMapping.model_bim_id.isnot(None), ExternalMapping.model_bim_id.in_(model_ids)),
+    )
+    return query.filter(or_(
+        ExternalMapping.tenant_id == tenant_curent,
+        and_(ExternalMapping.tenant_id.is_(None), inherited_scope),
+    ))
+
+
+def get_external_mapping_or_404(mapping_id, tenant_id=None):
+    """Returneaza ExternalMapping vizibil tenantului curent sau 404."""
+    from models import ExternalMapping
+
+    mapping = query_external_mappings_for_tenant(tenant_id=tenant_id).filter(
+        ExternalMapping.id == mapping_id
+    ).first()
+    if mapping is None:
+        abort(404)
+    return mapping
+
+
+def query_sensors_for_tenant(tenant_id=None):
+    """Query tenant-safe pentru Senzor prin tenant_id sau owner BIM."""
+    from models import Cladire, ElementBIM, Senzor, Spatiu
+
+    query = Senzor.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query
+        if mod == MODE_OPTIONAL:
+            return query
+        return query.filter(False)
+
+    element_ids = query_bim_elements_for_tenant(
+        tenant_id=tenant_curent
+    ).with_entities(ElementBIM.id)
+    space_ids = query_bim_spaces_for_tenant(tenant_id=tenant_curent).with_entities(Spatiu.id)
+    building_ids = query_bim_buildings_for_tenant(
+        tenant_id=tenant_curent
+    ).with_entities(Cladire.id)
+
+    parent_scope = and_(
+        or_(Senzor.element_bim_id.is_(None), Senzor.element_bim_id.in_(element_ids)),
+        or_(Senzor.spatiu_id.is_(None), Senzor.spatiu_id.in_(space_ids)),
+        or_(Senzor.cladire_id.is_(None), Senzor.cladire_id.in_(building_ids)),
+        or_(
+            Senzor.element_bim_id.isnot(None),
+            Senzor.spatiu_id.isnot(None),
+            Senzor.cladire_id.isnot(None),
+        ),
+    )
+    return query.filter(or_(
+        and_(Senzor.tenant_id == tenant_curent, parent_scope),
+        and_(Senzor.tenant_id.is_(None), parent_scope),
+    ))
+
+
+def get_sensor_or_404(sensor_id, tenant_id=None):
+    """Returneaza Senzor vizibil tenantului curent sau 404."""
+    from models import Senzor
+
+    senzor = query_sensors_for_tenant(tenant_id=tenant_id).filter(
+        Senzor.id == sensor_id
+    ).first()
+    if senzor is None:
+        abort(404)
+    return senzor
+
+
+def query_sensor_readings_for_tenant(sensor_id=None, tenant_id=None):
+    """Query tenant-safe pentru SensorReading prin Senzor."""
+    from models import SensorReading, Senzor
+
+    query = SensorReading.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query.filter_by(senzor_id=sensor_id) if sensor_id is not None else query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query.filter_by(senzor_id=sensor_id) if sensor_id is not None else query
+        if mod == MODE_OPTIONAL:
+            return query.filter_by(senzor_id=sensor_id) if sensor_id is not None else query
+        return query.filter(False)
+
+    sensor_ids = query_sensors_for_tenant(tenant_id=tenant_curent).with_entities(Senzor.id)
+    query = query.filter(
+        SensorReading.senzor_id.in_(sensor_ids),
+        or_(SensorReading.tenant_id == tenant_curent, SensorReading.tenant_id.is_(None)),
+    )
+    if sensor_id is not None:
+        query = query.filter(SensorReading.senzor_id == sensor_id)
+    return query
+
+
+def query_sensor_alerts_for_tenant(sensor_id=None, tenant_id=None):
+    """Query tenant-safe pentru SensorAlert prin Senzor."""
+    from models import SensorAlert, Senzor
+
+    query = SensorAlert.query
+    mod = get_tenant_mode()
+    if mod == MODE_OFF:
+        return query.filter_by(senzor_id=sensor_id) if sensor_id is not None else query
+
+    tenant_curent = _resolve_tenant_id(tenant_id)
+    if tenant_curent is None:
+        if _current_user_is_super_admin():
+            return query.filter_by(senzor_id=sensor_id) if sensor_id is not None else query
+        if mod == MODE_OPTIONAL:
+            return query.filter_by(senzor_id=sensor_id) if sensor_id is not None else query
+        return query.filter(False)
+
+    sensor_ids = query_sensors_for_tenant(tenant_id=tenant_curent).with_entities(Senzor.id)
+    query = query.filter(
+        SensorAlert.senzor_id.in_(sensor_ids),
+        or_(SensorAlert.tenant_id == tenant_curent, SensorAlert.tenant_id.is_(None)),
+    )
+    if sensor_id is not None:
+        query = query.filter(SensorAlert.senzor_id == sensor_id)
+    return query
+
+
+def get_sensor_alert_or_404(alert_id, tenant_id=None):
+    """Returneaza SensorAlert vizibila tenantului curent sau 404."""
+    from models import SensorAlert
+
+    alerta = query_sensor_alerts_for_tenant(tenant_id=tenant_id).filter(
+        SensorAlert.id == alert_id
+    ).first()
+    if alerta is None:
+        abort(404)
+    return alerta
+
+
 def ensure_contract_inputs_same_tenant(proiect_id=None, contract_id=None, tenant_id=None):
     """Valideaza proiectul si contractul selectate in fluxurile contractuale."""
     mod = get_tenant_mode()
@@ -2535,8 +2890,9 @@ def _bim_site_scope_expr(tenant_id, include_global=False):
 def _bim_record_belongs_to_tenant(record, tenant_id):
     from models import (
         BIMCostItem, BIMModelVersion, BIMTaskSchedule, Cladire, ClashResult,
-        ClashRun, ElementBIM, IssueBIM, ModelBIM, Nivel, RuleViolation,
-        Santier, Spatiu, Zona,
+        ClashRun, ElementBIM, ExternalMapping, IssueBIM, ModelBIM, Nivel,
+        RuleViolation, Santier, SensorAlert, SensorReading, Senzor, Spatiu,
+        Zona,
     )
 
     direct_tenant = _coerce_tenant_id(getattr(record, 'tenant_id', None))
@@ -2591,6 +2947,30 @@ def _bim_record_belongs_to_tenant(record, tenant_id):
             (getattr(record, 'nivel_id', None), getattr(record, 'nivel', None)),
             (getattr(record, 'spatiu_id', None), getattr(record, 'spatiu', None)),
         ], tenant_id)
+
+    if isinstance(record, ExternalMapping):
+        mapping = query_external_mappings_for_tenant(tenant_id=tenant_id).filter(
+            ExternalMapping.id == record.id
+        ).first()
+        return mapping is not None
+
+    if isinstance(record, Senzor):
+        senzor = query_sensors_for_tenant(tenant_id=tenant_id).filter(
+            Senzor.id == record.id
+        ).first()
+        return senzor is not None
+
+    if isinstance(record, SensorReading):
+        reading = query_sensor_readings_for_tenant(tenant_id=tenant_id).filter(
+            SensorReading.id == record.id
+        ).first()
+        return reading is not None
+
+    if isinstance(record, SensorAlert):
+        alert = query_sensor_alerts_for_tenant(tenant_id=tenant_id).filter(
+            SensorAlert.id == record.id
+        ).first()
+        return alert is not None
 
     if isinstance(record, (BIMTaskSchedule, BIMCostItem)):
         return _bim_record_belongs_to_tenant(getattr(record, 'element', None), tenant_id)

@@ -20,11 +20,16 @@ from models import db, Senzor, SensorReading, SensorAlert
 # Current state
 # ====================================================
 
-def get_current_state_element(element_bim_id: int) -> dict:
+def get_current_state_element(element_bim_id: int, tenant_id: Optional[int] = None) -> dict:
     """
     Returneaza ultimele citiri ale tuturor senzorilor atasati la element.
     """
-    senzori = Senzor.query.filter_by(element_bim_id=element_bim_id, activ=True).all()
+    from services.security.tenant_access import query_sensors_for_tenant
+
+    senzori = query_sensors_for_tenant(tenant_id=tenant_id).filter_by(
+        element_bim_id=element_bim_id,
+        activ=True,
+    ).all()
     return {
         'element_bim_id': element_bim_id,
         'count_sensors': len(senzori),
@@ -32,8 +37,13 @@ def get_current_state_element(element_bim_id: int) -> dict:
     }
 
 
-def get_current_state_spatiu(spatiu_id: int) -> dict:
-    senzori = Senzor.query.filter_by(spatiu_id=spatiu_id, activ=True).all()
+def get_current_state_spatiu(spatiu_id: int, tenant_id: Optional[int] = None) -> dict:
+    from services.security.tenant_access import query_sensors_for_tenant
+
+    senzori = query_sensors_for_tenant(tenant_id=tenant_id).filter_by(
+        spatiu_id=spatiu_id,
+        activ=True,
+    ).all()
     return {
         'spatiu_id': spatiu_id,
         'count_sensors': len(senzori),
@@ -41,14 +51,29 @@ def get_current_state_spatiu(spatiu_id: int) -> dict:
     }
 
 
-def get_current_state_cladire(cladire_id: int) -> dict:
+def get_current_state_cladire(cladire_id: int, tenant_id: Optional[int] = None) -> dict:
     """Toate senzorii din cladire (direct + via spatii din cladire)."""
-    senzori_direct = Senzor.query.filter_by(cladire_id=cladire_id, activ=True).all()
+    from models import Nivel, Spatiu
+    from services.security.tenant_access import (
+        query_bim_levels_for_tenant,
+        query_bim_spaces_for_tenant,
+        query_sensors_for_tenant,
+    )
+
+    senzori_direct = query_sensors_for_tenant(tenant_id=tenant_id).filter_by(
+        cladire_id=cladire_id,
+        activ=True,
+    ).all()
     # + senzorii pe spatii din aceasta cladire
-    from models import Spatiu, Nivel
-    nivel_ids = [n.id for n in Nivel.query.filter_by(cladire_id=cladire_id).all()]
-    spatiu_ids = [s.id for s in Spatiu.query.filter(Spatiu.nivel_id.in_(nivel_ids)).all()]
-    senzori_pe_spatii = Senzor.query.filter(
+    nivel_ids = [
+        n.id for n in query_bim_levels_for_tenant(tenant_id=tenant_id)
+        .filter_by(cladire_id=cladire_id).all()
+    ]
+    spatiu_ids = [
+        s.id for s in query_bim_spaces_for_tenant(tenant_id=tenant_id)
+        .filter(Spatiu.nivel_id.in_(nivel_ids)).all()
+    ]
+    senzori_pe_spatii = query_sensors_for_tenant(tenant_id=tenant_id).filter(
         Senzor.spatiu_id.in_(spatiu_ids), Senzor.activ.is_(True)
     ).all() if spatiu_ids else []
     all_senzori = senzori_direct + senzori_pe_spatii
@@ -84,7 +109,8 @@ def get_history(senzor_id: int, *,
                 from_ts: Optional[datetime] = None,
                 to_ts: Optional[datetime] = None,
                 agg: str = 'raw',
-                limit: int = 5000) -> dict:
+                limit: int = 5000,
+                tenant_id: Optional[int] = None) -> dict:
     """
     Returneaza istoricul citirilor pentru un senzor.
 
@@ -100,8 +126,16 @@ def get_history(senzor_id: int, *,
     if to_ts is None:
         to_ts = datetime.utcnow()
 
-    base_q = SensorReading.query.filter(
-        SensorReading.senzor_id == senzor_id,
+    from services.security.tenant_access import (
+        get_sensor_or_404,
+        query_sensor_readings_for_tenant,
+    )
+
+    senzor = get_sensor_or_404(senzor_id, tenant_id=tenant_id)
+    base_q = query_sensor_readings_for_tenant(
+        sensor_id=senzor.id,
+        tenant_id=tenant_id,
+    ).filter(
         SensorReading.ts >= from_ts,
         SensorReading.ts <= to_ts,
     )
@@ -168,9 +202,10 @@ def get_active_alerts(*, senzor_id: Optional[int] = None,
                       tenant_id: Optional[int] = None,
                       limit: int = 200) -> list[SensorAlert]:
     """Returneaza alertele cu status='noua' sau 'confirmata'."""
-    q = SensorAlert.query.filter(SensorAlert.status.in_(['noua', 'confirmata']))
-    if senzor_id:
-        q = q.filter_by(senzor_id=senzor_id)
-    if tenant_id:
-        q = q.filter_by(tenant_id=tenant_id)
+    from services.security.tenant_access import query_sensor_alerts_for_tenant
+
+    q = query_sensor_alerts_for_tenant(
+        sensor_id=senzor_id,
+        tenant_id=tenant_id,
+    ).filter(SensorAlert.status.in_(['noua', 'confirmata']))
     return q.order_by(SensorAlert.data_alerta.desc()).limit(limit).all()

@@ -26,6 +26,7 @@ from flask import (
 from flask_login import login_required, current_user
 from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
+from tenant import MODE_OFF
 
 from models import (
     BIMModelVersion, BIMRule, RuleViolation, ClashRun, ClashResult,
@@ -58,6 +59,7 @@ from services import feature_flags as ff_svc
 from services import feature_flags
 from services import aps_viewer
 from services.security.tenant_access import (
+    get_api_token_or_404,
     get_bim_building_or_404,
     get_bim_element_or_404,
     get_gantt_plan_or_404,
@@ -66,9 +68,13 @@ from services.security.tenant_access import (
     get_bim_model_or_404,
     get_bim_model_version_or_404,
     get_bim_space_or_404,
+    get_sensor_alert_or_404,
+    get_sensor_or_404,
+    get_tenant_mode,
     get_or_404_for_tenant,
     get_project_or_404,
     get_site_or_404,
+    query_api_tokens_for_tenant,
     query_bim_buildings_for_tenant,
     query_bim_elements_for_tenant,
     query_bim_issues_for_tenant,
@@ -76,8 +82,11 @@ from services.security.tenant_access import (
     query_bim_model_versions_for_tenant,
     query_bim_models_for_tenant,
     query_bim_spaces_for_tenant,
+    query_external_mappings_for_tenant,
     query_for_tenant,
     query_gantt_plans_for_tenant,
+    query_sensor_alerts_for_tenant,
+    query_sensors_for_tenant,
     query_sites_for_tenant,
     require_bim_record_same_tenant,
     tenant_id_for_new_record_or_403,
@@ -100,6 +109,38 @@ def manager_or_admin(f):
             return redirect(url_for('bim.dashboard'))
         return f(*args, **kwargs)
     return decorated
+
+
+def _require_external_mapping_target(entity_type, entity_id, tenant_id=None):
+    """Valideaza tinta polymorphic pentru ExternalMapping in mod tenant-aware."""
+    if get_tenant_mode() == MODE_OFF:
+        return None
+    if entity_type == 'santier':
+        return get_site_or_404(entity_id, tenant_id=tenant_id)
+    if entity_type == 'cladire':
+        return get_bim_building_or_404(entity_id, tenant_id=tenant_id)
+    if entity_type == 'nivel':
+        return get_bim_level_or_404(entity_id, tenant_id=tenant_id)
+    if entity_type == 'spatiu':
+        return get_bim_space_or_404(entity_id, tenant_id=tenant_id)
+    if entity_type == 'element_bim':
+        return get_bim_element_or_404(entity_id, tenant_id=tenant_id)
+    if entity_type == 'issue_bim':
+        return get_bim_issue_or_404(entity_id, tenant_id=tenant_id)
+    if entity_type == 'model_bim':
+        return get_bim_model_or_404(entity_id, tenant_id=tenant_id)
+    abort(404)
+
+
+def _require_sensor_parent_scope(element_id=None, spatiu_id=None, cladire_id=None,
+                                 tenant_id=None):
+    """Valideaza parintii BIM optionali pentru un senzor."""
+    if element_id:
+        get_bim_element_or_404(element_id, tenant_id=tenant_id)
+    if spatiu_id:
+        get_bim_space_or_404(spatiu_id, tenant_id=tenant_id)
+    if cladire_id:
+        get_bim_building_or_404(cladire_id, tenant_id=tenant_id)
 
 
 def _ids_din_request(nume='ids'):
@@ -1044,7 +1085,10 @@ def api_external_mapping():
         eid = request.args.get('extern_id', '').strip()
         if not ss or not eid:
             return jsonify({'error': 'source_system + extern_id required'}), 400
-        mappings = ExternalMapping.query.filter_by(source_system=ss, extern_id=eid).all()
+        mappings = query_external_mappings_for_tenant().filter_by(
+            source_system=ss,
+            extern_id=eid,
+        ).all()
         return jsonify([{
             'id': m.id, 'entity_type': m.entity_type, 'entity_id': m.entity_id,
             'source_system': m.source_system, 'extern_id': m.extern_id,
@@ -1064,13 +1108,47 @@ def api_external_mapping():
         return jsonify({'error': 'entity_type, entity_id, source_system, extern_id required'}), 400
 
     try:
-        m = ExternalMapping.add_or_update(
-            entity_type=et, entity_id=int(eid),
-            source_system=ss, extern_id=extid,
-            metadata=data.get('metadata'),
-        )
+        entity_id = int(eid)
+        tenant_id = tenant_id_for_new_record_or_403()
+        _require_external_mapping_target(et, entity_id, tenant_id=tenant_id)
+        model_bim_id = None
+        model_bim_raw = data.get('model_bim_id') if hasattr(data, 'get') else None
+        if model_bim_raw not in (None, ''):
+            model_bim_id = int(model_bim_raw)
+        if model_bim_id:
+            get_bim_model_or_404(model_bim_id, tenant_id=tenant_id)
+
+        m = query_external_mappings_for_tenant().filter_by(
+            entity_type=et,
+            entity_id=entity_id,
+            source_system=ss,
+            extern_id=extid,
+        ).first()
+        if m is None:
+            m = ExternalMapping(
+                tenant_id=tenant_id,
+                entity_type=et,
+                entity_id=entity_id,
+                source_system=ss,
+                extern_id=extid,
+            )
+            db.session.add(m)
+        elif m.tenant_id is None and tenant_id is not None:
+            m.tenant_id = tenant_id
+        if model_bim_id:
+            m.model_bim_id = model_bim_id
+        if data.get('metadata') is not None:
+            metadata = data.get('metadata')
+            m.metadata_json = (
+                json.dumps(metadata, ensure_ascii=False)
+                if isinstance(metadata, dict)
+                else str(metadata)
+            )
+        m.last_synced_at = datetime.utcnow()
         db.session.commit()
         return jsonify({'id': m.id, 'created_or_updated': True})
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
@@ -1087,7 +1165,7 @@ def api_elemente_catalog():
     rezultat = []
     for e in elemente:
         # Lookup mapping-uri externe pentru acest element
-        mappings = ExternalMapping.query.filter_by(
+        mappings = query_external_mappings_for_tenant().filter_by(
             entity_type='element_bim', entity_id=e.id
         ).all()
         rezultat.append({
@@ -1800,7 +1878,7 @@ def sensors_lista():
     redir = _ensure_iot_enabled()
     if redir:
         return redir
-    senzori = Senzor.query.order_by(Senzor.cod).all()
+    senzori = query_sensors_for_tenant().order_by(Senzor.cod).all()
     return render_template('bim/sensors_lista.html',
                            senzori=senzori, tipuri=Senzor.TIPURI)
 
@@ -1817,6 +1895,11 @@ def sensor_nou():
     element_id = request.args.get('element_bim_id', type=int)
     spatiu_id = request.args.get('spatiu_id', type=int)
     cladire_id = request.args.get('cladire_id', type=int)
+    _require_sensor_parent_scope(
+        element_id=element_id,
+        spatiu_id=spatiu_id,
+        cladire_id=cladire_id,
+    )
 
     if request.method == 'POST':
         try:
@@ -1824,14 +1907,24 @@ def sensor_nou():
                 v = (v or '').strip()
                 return float(v) if v else None
 
+            tenant_id = tenant_id_for_new_record_or_403()
+            element_bim_id = request.form.get('element_bim_id', type=int)
+            spatiu_id_form = request.form.get('spatiu_id', type=int)
+            cladire_id_form = request.form.get('cladire_id', type=int)
+            _require_sensor_parent_scope(
+                element_id=element_bim_id,
+                spatiu_id=spatiu_id_form,
+                cladire_id=cladire_id_form,
+                tenant_id=tenant_id,
+            )
             senzor = iot_ingest_svc.create_senzor(
                 cod=request.form.get('cod', '').strip(),
                 nume=request.form.get('nume', '').strip(),
                 tip=request.form.get('tip', '').strip(),
                 unitate=request.form.get('unitate', '').strip() or None,
-                element_bim_id=request.form.get('element_bim_id', type=int),
-                spatiu_id=request.form.get('spatiu_id', type=int),
-                cladire_id=request.form.get('cladire_id', type=int),
+                element_bim_id=element_bim_id,
+                spatiu_id=spatiu_id_form,
+                cladire_id=cladire_id_form,
                 threshold_min=_opt_float(request.form.get('threshold_min')),
                 threshold_max=_opt_float(request.form.get('threshold_max')),
                 descriere=request.form.get('descriere', ''),
@@ -1839,9 +1932,12 @@ def sensor_nou():
                 model_hardware=request.form.get('model_hardware', ''),
                 serial=request.form.get('serial', ''),
                 user=current_user,
+                tenant_id=tenant_id,
             )
             flash(f'Senzor "{senzor.cod}" creat. API key (afisat o singura data): {senzor.api_key}', 'success')
             return redirect(url_for('bim.sensor_detaliu', sensor_id=senzor.id))
+        except HTTPException:
+            raise
         except ValueError as e:
             flash(str(e), 'danger')
         except Exception as e:
@@ -1863,10 +1959,10 @@ def sensor_detaliu(sensor_id):
     redir = _ensure_iot_enabled()
     if redir:
         return redir
-    senzor = Senzor.query.get_or_404(sensor_id)
+    senzor = get_sensor_or_404(sensor_id)
     agg = request.args.get('agg', '1h')  # default agg pe oră
     history = iot_query_svc.get_history(sensor_id, agg=agg)
-    alerts = (SensorAlert.query.filter_by(senzor_id=sensor_id)
+    alerts = (query_sensor_alerts_for_tenant(sensor_id=sensor_id)
               .order_by(SensorAlert.data_alerta.desc()).limit(50).all())
     return render_template('bim/sensor_detaliu.html',
                            senzor=senzor, history=history,
@@ -1877,7 +1973,7 @@ def sensor_detaliu(sensor_id):
 @login_required
 @manager_or_admin
 def sensor_rotate_key(sensor_id):
-    senzor = Senzor.query.get_or_404(sensor_id)
+    senzor = get_sensor_or_404(sensor_id)
     try:
         new_key = iot_ingest_svc.rotate_api_key(senzor)
         flash(f'Token rotat. Noul API key (afisat o singura data): {new_key}', 'warning')
@@ -1897,7 +1993,7 @@ def alerts_lista():
     if redir:
         return redir
     status = request.args.get('status', 'noua')
-    q = SensorAlert.query
+    q = query_sensor_alerts_for_tenant()
     if status:
         q = q.filter_by(status=status)
     alerts = q.order_by(SensorAlert.data_alerta.desc()).limit(500).all()
@@ -1909,7 +2005,7 @@ def alerts_lista():
 @login_required
 @manager_or_admin
 def alert_transition(alert_id):
-    alert = SensorAlert.query.get_or_404(alert_id)
+    alert = get_sensor_alert_or_404(alert_id)
     new_status = request.form.get('status', '').strip()
     try:
         iot_ingest_svc.transition_alert(alert, new_status, current_user)
@@ -1941,6 +2037,7 @@ def api_sensor_history(sensor_id):
     """JSON cu istoricul time-series (raw / 1h / 1d)."""
     if not ff_svc.is_enabled('bim-iot-sensors'):
         return jsonify({'enabled': False, 'data': []}), 200
+    get_sensor_or_404(sensor_id)
     agg = request.args.get('agg', '1h')
     from_str = request.args.get('from')
     to_str = request.args.get('to')
@@ -2333,7 +2430,7 @@ def tokens_lista():
     if not ff_svc.is_enabled('bim-public-api'):
         flash('API publica nu e activata pentru acest tenant.', 'info')
         return redirect(url_for('bim.dashboard'))
-    q = query_for_tenant(ApiToken)
+    q = query_api_tokens_for_tenant()
     if current_user.rol != 'admin':
         q = q.filter_by(owner_id=current_user.id)
     tokens = q.order_by(ApiToken.data_creare.desc()).all()
@@ -2374,7 +2471,7 @@ def token_nou():
 @bim_bp.route('/token/<int:token_id>/revoke', methods=['POST'])
 @login_required
 def token_revoke(token_id):
-    tok = get_or_404_for_tenant(ApiToken, token_id)
+    tok = get_api_token_or_404(token_id)
     if tok.owner_id != current_user.id and current_user.rol != 'admin':
         abort(403)
     tokens_svc.revoke_token(tok)
@@ -2524,7 +2621,10 @@ def api_v1_element_state(element_id):
     """Current state senzori pentru un element - protejat cu API token."""
     token_tenant_id = getattr(getattr(g, 'api_token', None), 'tenant_id', None)
     get_bim_element_or_404(element_id, tenant_id=token_tenant_id)
-    return jsonify(iot_query_svc.get_current_state_element(element_id))
+    return jsonify(iot_query_svc.get_current_state_element(
+        element_id,
+        tenant_id=token_tenant_id,
+    ))
 
 
 # ============================================================

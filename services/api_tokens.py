@@ -16,6 +16,8 @@ from flask import request, jsonify, g
 
 from models import db, ApiToken, Utilizator
 from services import audit as audit_svc
+from services.security.tenant_access import get_tenant_mode
+from tenant import MODE_OFF
 
 
 _logger = logging.getLogger(__name__)
@@ -27,6 +29,19 @@ _logger = logging.getLogger(__name__)
 
 def _generate_token() -> str:
     return secrets.token_hex(32)
+
+
+def _as_int(value) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _owner_activ(owner: Optional[Utilizator]) -> bool:
+    return bool(owner and getattr(owner, 'activ', False))
 
 
 def create_token(nume: str, owner_id: int, scopes: list[str], *,
@@ -43,12 +58,25 @@ def create_token(nume: str, owner_id: int, scopes: list[str], *,
         if s not in valid_scopes:
             raise ValueError(f'Scope invalid: {s}')
 
+    owner = db.session.get(Utilizator, owner_id)
+    if not _owner_activ(owner):
+        raise ValueError('Owner invalid sau inactiv pentru API token')
+
+    owner_tenant_id = _as_int(getattr(owner, 'tenant_id', None))
+    token_tenant_id = _as_int(tenant_id)
+    if get_tenant_mode() != MODE_OFF:
+        if token_tenant_id is not None and owner_tenant_id is not None:
+            if token_tenant_id != owner_tenant_id:
+                raise ValueError('Ownerul si tokenul apartin unor tenanturi diferite')
+        if token_tenant_id is None:
+            token_tenant_id = owner_tenant_id
+
     expires_at = None
     if expires_days is not None and expires_days > 0:
         expires_at = datetime.utcnow() + timedelta(days=expires_days)
 
     tok = ApiToken(
-        tenant_id=tenant_id,
+        tenant_id=token_tenant_id,
         token=_generate_token(),
         nume=nume.strip()[:150],
         descriere=(descriere or '').strip() or None,
@@ -94,6 +122,17 @@ def authenticate_token(token: str) -> Optional[ApiToken]:
         return None
     if tok.is_expired:
         return None
+    owner = getattr(tok, 'owner', None)
+    if not _owner_activ(owner):
+        return None
+    if get_tenant_mode() != MODE_OFF:
+        token_tenant_id = _as_int(getattr(tok, 'tenant_id', None))
+        owner_tenant_id = _as_int(getattr(owner, 'tenant_id', None))
+        if token_tenant_id is not None and owner_tenant_id is not None:
+            if token_tenant_id != owner_tenant_id:
+                return None
+        if token_tenant_id is None and owner_tenant_id is None:
+            return None
     # Update last_used (best-effort, nu blocam la eroare)
     try:
         tok.last_used_at = datetime.utcnow()

@@ -28,10 +28,16 @@ from flask import (
 )
 from flask_login import login_required, current_user
 
-from models import db, Proiect, LocatieProiect
+from models import db, LocatieProiect
 from forms.locatie_forms import LocatieProiectForm
 import services.audit as audit_svc
 from services.geocoding import geocodeaza_adresa, is_configured as geocoding_configured
+from services.security.tenant_access import (
+    get_project_location_or_404,
+    get_project_or_404,
+    query_project_locations_for_tenant,
+    tenant_id_for_new_record_or_403,
+)
 
 
 locatii_bp = Blueprint('locatii', __name__)
@@ -54,11 +60,11 @@ def _wants_json() -> bool:
 @login_required
 def lista(proiect_id):
     """Lista locatii pentru un proiect. Dual format: HTML sau JSON."""
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     tip_filtru = (request.args.get('tip') or '').strip()
     status_filtru = (request.args.get('status') or '').strip()
 
-    query = LocatieProiect.query.filter_by(proiect_id=proiect.id)
+    query = query_project_locations_for_tenant(project_id=proiect.id)
     if tip_filtru:
         query = query.filter_by(tip=tip_filtru)
     if status_filtru:
@@ -88,7 +94,7 @@ def lista(proiect_id):
 @locatii_bp.route('/proiect/<int:proiect_id>/nou', methods=['GET', 'POST'])
 @login_required
 def nou(proiect_id):
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     form = LocatieProiectForm()
     if request.method == 'GET':
         form.status.data = 'activ'
@@ -96,7 +102,9 @@ def nou(proiect_id):
 
     if form.validate_on_submit():
         try:
+            tenant_id = tenant_id_for_new_record_or_403()
             l = LocatieProiect(
+                tenant_id=tenant_id,
                 proiect_id=proiect.id,
                 nume=form.nume.data.strip(),
                 descriere=form.descriere.data or None,
@@ -131,7 +139,7 @@ def nou(proiect_id):
             audit_svc.log_create('locatie_proiect', l.id, new_values={
                 'proiect_id': proiect.id, 'nume': l.nume, 'tip': l.tip,
                 'are_coordonate': l.are_coordonate,
-            })
+            }, tenant_id=tenant_id)
             db.session.commit()
             flash(f'Locatia "{l.nume}" a fost adaugata.', 'success')
             return redirect(url_for('locatii.lista', proiect_id=proiect.id))
@@ -147,7 +155,7 @@ def nou(proiect_id):
 @locatii_bp.route('/<int:id>/editeaza', methods=['GET', 'POST'])
 @login_required
 def editeaza(id):
-    l = LocatieProiect.query.get_or_404(id)
+    l = get_project_location_or_404(id)
     proiect = l.proiect
     form = LocatieProiectForm(obj=l)
     if request.method == 'GET':
@@ -180,7 +188,8 @@ def editeaza(id):
                 else:
                     flash('Geocodarea nu a returnat rezultate.', 'warning')
             audit_svc.log_update('locatie_proiect', l.id, before,
-                                 audit_svc.snapshot(l, audit_fields))
+                                 audit_svc.snapshot(l, audit_fields),
+                                 tenant_id=l.tenant_id)
             db.session.commit()
             flash('Locatia a fost actualizata.', 'success')
             return redirect(url_for('locatii.lista', proiect_id=proiect.id))
@@ -196,12 +205,12 @@ def editeaza(id):
 @locatii_bp.route('/<int:id>/sterge', methods=['POST'])
 @login_required
 def sterge(id):
-    l = LocatieProiect.query.get_or_404(id)
+    l = get_project_location_or_404(id)
     proiect_id = l.proiect_id
     try:
         audit_svc.log_delete('locatie_proiect', l.id, old_values={
             'nume': l.nume, 'tip': l.tip, 'proiect_id': proiect_id,
-        })
+        }, tenant_id=l.tenant_id)
         nume = l.nume
         db.session.delete(l)
         db.session.commit()
@@ -223,7 +232,7 @@ def within_bounds(proiect_id):
     GET /locatii/proiect/<id>/within-bounds?sw_lat=..&sw_lng=..&ne_lat=..&ne_lng=..
     Returneaza GeoJSON FeatureCollection cu locatiile din bbox.
     """
-    proiect = Proiect.query.get_or_404(proiect_id)
+    proiect = get_project_or_404(proiect_id)
     from decimal import InvalidOperation
     try:
         sw_lat = Decimal(request.args.get('sw_lat', '-90'))
@@ -233,8 +242,7 @@ def within_bounds(proiect_id):
     except (ValueError, TypeError, InvalidOperation):
         return jsonify({'error': 'bbox params invalide'}), 400
 
-    locatii = LocatieProiect.query.filter(
-        LocatieProiect.proiect_id == proiect.id,
+    locatii = query_project_locations_for_tenant(project_id=proiect.id).filter(
         LocatieProiect.latitudine.between(sw_lat, ne_lat),
         LocatieProiect.longitudine.between(sw_lng, ne_lng),
     ).all()

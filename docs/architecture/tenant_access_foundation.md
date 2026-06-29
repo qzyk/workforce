@@ -964,14 +964,91 @@ Ce ramane neprotejat dupa T1.12:
 
 Nu s-a adaugat migrare deoarece toate protectiile folosesc ownership existent (`Proiect`, `Angajat`, `Masina`, `Santier`, `GanttPlan`, `Contract`) si coloanele `tenant_id` deja existente acolo unde sunt disponibile. Nu s-au creat `project_service.py` sau `project_metrics_service.py` deoarece T1.12 este strict security/access-control; service extraction ar schimba boundary-ul de business si trebuie facuta ulterior.
 
-Urmatorul pas recomandat: `T1.C12 Final Tenant Guard Coverage Review`, apoi decizie intre `S1.1 Activity Service Extraction` si hardening separat pentru service boundaries ramase.
+Urmatorul pas recomandat: `T1.13 Locations / Audit / API Tokens Tenant Guard` pentru ultimele suprafete route-level inainte de service extraction.
 
-## Urmatoarele integrari recomandate dupa T1.12
+## T1.13 Locations / Audit / API Tokens Tenant Guard
 
-1. `T1.C12 Final Tenant Guard Coverage Review` pentru audit final de acoperire rute/helperi/teste.
+T1.13 inchide rutele tenant-adjacent ramase dupa T1.C12, fara schema changes, fara migrari si fara service extraction. Scope-ul este limitat la locatii proiect, audit query helpers, API tokens, ExternalMapping si IoT/Digital Twin route guards.
+
+Helpers adaugate:
+
+- `query_project_locations_for_tenant()`
+- `get_project_location_or_404()`
+- `ensure_project_location_same_tenant()` / `require_project_location_same_tenant()`
+- `query_api_tokens_for_tenant()`
+- `get_api_token_or_404()`
+- `ensure_api_token_same_tenant()` / `require_api_token_same_tenant()`
+- `query_audit_logs_for_tenant()`
+- `get_audit_log_or_404()`
+- `query_external_mappings_for_tenant()`
+- `get_external_mapping_or_404()`
+- `query_sensors_for_tenant()`
+- `get_sensor_or_404()`
+- `query_sensor_readings_for_tenant()`
+- `query_sensor_alerts_for_tenant()`
+- `get_sensor_alert_or_404()`
+
+Ownership paths:
+
+| Model / zona | Ownership |
+|---|---|
+| `LocatieProiect` | `LocatieProiect.tenant_id` si `LocatieProiect -> Proiect -> tenant_id`; daca ambele exista, ambele trebuie sa fie compatibile. |
+| `ApiToken` | `ApiToken.tenant_id` si `ApiToken -> Utilizator -> tenant_id`; ownerul trebuie sa fie activ si compatibil cu tenantul tokenului. |
+| `AuditLog` | `AuditLog.tenant_id`; fallback legacy doar prin `AuditLog -> Utilizator -> tenant_id`. |
+| `ExternalMapping` | `ExternalMapping.tenant_id` sau tinta BIM suportata (`Santier`, `Cladire`, `Nivel`, `Spatiu`, `ModelBIM`, `ElementBIM`, `IssueBIM`). Tipurile polymorphic fara helper raman fail-closed in tenant-aware routes. |
+| `Senzor` | `Senzor.tenant_id` si owner BIM (`ElementBIM`, `Spatiu`, `Cladire`); randurile fara parent valid nu sunt globale. |
+| `SensorReading` / `SensorAlert` | `tenant_id` si `Senzor` vizibil tenantului curent. |
+
+Route groups protejate:
+
+- `routes/locatii.py` foloseste `get_project_or_404()`, `query_project_locations_for_tenant()` si `get_project_location_or_404()` pentru lista, create, edit, delete si bbox JSON;
+- create locatie seteaza `tenant_id` din tenantul curent cand modul este tenant-aware;
+- `routes/bim.py` scopa lista/revoke/create API tokens prin helperii API token;
+- `routes/bim.py` scopa lookup/upsert ExternalMapping si valideaza tinta inainte de update/create;
+- `routes/bim.py` scopa lista/detail/history/rotate-key pentru senzori si lista/tranzitie alerte;
+- API-ul public token-auth pentru current state IoT transmite tenantul tokenului catre `services/iot_query.py`.
+
+API token behavior:
+
+- lookup-ul dupa token string ramane raw, deoarece acesta este mecanismul de autentificare;
+- dupa lookup, tokenul expirat/inactiv este respins;
+- ownerul lipsa sau inactiv este respins;
+- in modurile tenant-aware, mismatch intre `ApiToken.tenant_id` si `Utilizator.tenant_id` esueaza inchis;
+- tokenurile fara tenant si fara owner tenant sunt respinse in tenant-aware modes.
+
+IoT si ExternalMapping behavior:
+
+- `services/iot_query.py` primeste parametru optional `tenant_id` si foloseste helperii T1.13 pentru senzori, citiri si alerte;
+- `services/iot_ingest.py` ramane token-auth pentru ingest si route-validated pentru creare/rotire senzori;
+- `ExternalMapping.add_or_update()` ramane helper legacy de model, dar ruta `/bim/api/external-mapping` foloseste upsert tenant-scoped in loc sa caute raw dupa cheia unica;
+- `zona` si `asset` in ExternalMapping nu au fost extinse in T1.13; in tenant-aware route POST ele raman fail-closed pana exista helper dedicat.
+
+Comportament pe moduri:
+
+- in `off`, query-urile helperilor revin la comportamentul legacy single-tenant;
+- in `optional`, userii cu `tenant_id` sunt scopati, iar userii fara tenant pastreaza comportamentul migration-friendly;
+- in `strict`, user normal fara tenant esueaza inchis pentru locatii, tokens, audit query, mappings, senzori si alerte;
+- super-adminul fara tenant ramane explicit si nefiltrat conform regulii centrale.
+
+Ce ramane neprotejat dupa T1.13:
+
+- `services/audit.py` ataseaza tenantul curent la write-uri, dar nu este inca un reporting/security boundary complet pentru citiri arbitrare;
+- `services/iot_ingest.py` autentifica ingest prin token de senzor si ramane boundary separat de ruta; T1.13 nu schimba acest protocol;
+- `ExternalMapping.find_entity()` si `ExternalMapping.add_or_update()` raman helperi legacy raw pentru apeluri interne validate;
+- data quality reporturile BIM pot continua sa ruleze ca suprafete manager/admin si nu au fost refacute in service boundary tenant-safe complet;
+- integritatea datelor istorice contaminate nu este reparata; helperii doar le ascund in tenant-aware modes.
+
+Nu s-a adaugat migrare deoarece modelele implicate au deja `tenant_id` direct sau owneri existenti (`Proiect`, `Utilizator`, `Santier`/BIM hierarchy). Nu s-au creat `audit_service.py`, `token_service.py`, `iot_service.py` sau alte service extractii noi; T1.13 este strict security/access-control.
+
+Urmatorul pas recomandat: `T1.C13 Tenant Guard Checkpoint`, apoi `S1.1 Activity Service Extraction` daca testele si diff-ul raman curate. Daca IoT/ExternalMapping vor fi apelate direct din joburi/API noi, alternativa este `T1.13B IoT / ExternalMapping Service Boundary Hardening`.
+
+## Urmatoarele integrari recomandate dupa T1.13
+
+1. `T1.C13 Tenant Guard Checkpoint` pentru verificarea finala rute/helperi/teste dupa T1.13.
 2. `S1.1 Activity Service Extraction` daca prioritatea devine separarea boundary-ului de activitati dupa stabilizarea guard-urilor.
-3. `T1.11B Admin/Notification Service Boundary Hardening` daca serviciile de admin/notificari/realtime/presence vor fi apelate direct din afara rutelor.
-4. `T1.9B Reporting Service Boundary Hardening` daca generatoarele de rapoarte vor fi apelate direct din afara rutelor.
-5. `T1.8B Gantt Service Boundary Hardening` daca serviciile Gantt vor fi apelate direct din afara rutelor.
-6. `T1.7B BIM Service Boundary Hardening` daca serviciile BIM vor fi apelate direct din afara rutelor.
-7. `T1.5B Contract Service Boundary Hardening` daca serviciile contractuale vor fi apelate direct din afara rutelor.
+3. `T1.13B IoT / ExternalMapping Service Boundary Hardening` daca serviciile IoT/mapping vor fi apelate direct din afara rutelor validate.
+4. `T1.11B Admin/Notification Service Boundary Hardening` daca serviciile de admin/notificari/realtime/presence vor fi apelate direct din afara rutelor.
+5. `T1.9B Reporting Service Boundary Hardening` daca generatoarele de rapoarte vor fi apelate direct din afara rutelor.
+6. `T1.8B Gantt Service Boundary Hardening` daca serviciile Gantt vor fi apelate direct din afara rutelor.
+7. `T1.7B BIM Service Boundary Hardening` daca serviciile BIM vor fi apelate direct din afara rutelor.
+8. `T1.5B Contract Service Boundary Hardening` daca serviciile contractuale vor fi apelate direct din afara rutelor.
