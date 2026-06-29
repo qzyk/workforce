@@ -21,6 +21,7 @@ from services.security.tenant_access import (
     tenant_id_for_new_record_or_403,
 )
 from services.timesheet_service import (
+    approve_timesheet,
     calculate_timesheet_hours,
     check_timesheet_duplicate,
     create_multiple_timesheets_from_form_data,
@@ -30,6 +31,8 @@ from services.timesheet_service import (
     get_timesheet_approval_context,
     get_timesheet_calendar_context,
     get_timesheet_list_context,
+    reject_timesheet,
+    submit_timesheet_for_approval,
     update_timesheet_from_form_data,
 )
 
@@ -309,10 +312,14 @@ def aproba(id):
         return redirect(url_for('pontaje.lista'))
 
     pontaj = get_timesheet_or_404(id)
-    pontaj.status = 'aprobat'
-    pontaj.aprobat_de = current_user.id
-    pontaj.data_aprobare = datetime.utcnow()
-    db.session.commit()
+    try:
+        approve_timesheet(timesheet=pontaj, current_user=current_user)
+    except HTTPException:
+        db.session.rollback()
+        raise
+    except Exception:
+        db.session.rollback()
+        raise
     flash('Pontajul a fost aprobat!', 'success')
 
     next_url = request.form.get('next', url_for('pontaje.aprobare'))
@@ -331,11 +338,15 @@ def respinge(id):
         return redirect(url_for('pontaje.lista'))
 
     pontaj = get_timesheet_or_404(id)
-    pontaj.status = 'respins'
-    pontaj.motiv_respingere = request.form.get('motiv', '')
-    pontaj.aprobat_de = current_user.id
-    pontaj.data_aprobare = datetime.utcnow()
-    db.session.commit()
+    motiv = request.form.get('motiv', '')
+    try:
+        reject_timesheet(timesheet=pontaj, current_user=current_user, reason=motiv)
+    except HTTPException:
+        db.session.rollback()
+        raise
+    except Exception:
+        db.session.rollback()
+        raise
     flash('Pontajul a fost respins.', 'warning')
 
     next_url = request.form.get('next', url_for('pontaje.aprobare'))
@@ -395,9 +406,16 @@ def aproba_multiplu():
 @login_required
 def trimite(id):
     pontaj = get_timesheet_or_404(id)
-    if pontaj.status == 'draft':
-        pontaj.status = 'trimis'
-        db.session.commit()
+    try:
+        rezultat = submit_timesheet_for_approval(timesheet=pontaj)
+    except HTTPException:
+        db.session.rollback()
+        raise
+    except Exception:
+        db.session.rollback()
+        raise
+
+    if rezultat['submitted']:
         flash('Pontajul a fost trimis spre aprobare.', 'info')
     return redirect(url_for('pontaje.lista'))
 

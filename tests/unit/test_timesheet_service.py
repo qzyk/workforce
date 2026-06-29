@@ -932,6 +932,161 @@ def test_bulk_create_face_un_singur_commit(app, monkeypatch):
 
 
 # ============================================================
+# S1.2C1 — workflow single Pontaj (HTTP-free)
+# ============================================================
+
+def test_submit_timesheet_for_approval_draft_devine_trimis(app):
+    from services.timesheet_service import submit_timesheet_for_approval
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 6, 1), status='draft')
+        pontaj = Pontaj.query.get(pid)
+        with app.test_request_context('/'):
+            rezultat = submit_timesheet_for_approval(timesheet=pontaj)
+
+        assert rezultat['submitted'] is True
+        assert rezultat['changed'] is True
+        assert Pontaj.query.get(pid).status == 'trimis'
+
+
+def test_submit_timesheet_for_approval_non_draft_noop_fara_commit(app, monkeypatch):
+    from services.timesheet_service import submit_timesheet_for_approval
+    from models import Pontaj, db
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 6, 2), status='aprobat')
+        pontaj = Pontaj.query.get(pid)
+        calls = []
+
+        def counted_commit():
+            calls.append(True)
+
+        monkeypatch.setattr(db.session, 'commit', counted_commit)
+        with app.test_request_context('/'):
+            rezultat = submit_timesheet_for_approval(timesheet=pontaj)
+
+        assert rezultat['submitted'] is False
+        assert rezultat['changed'] is False
+        assert pontaj.status == 'aprobat'
+        assert calls == []
+
+
+def test_approve_timesheet_seteaza_status_autor_data(app):
+    from services.timesheet_service import approve_timesheet
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 6, 3), status='trimis')
+        pontaj = Pontaj.query.get(pid)
+        with app.test_request_context('/'):
+            rezultat = approve_timesheet(timesheet=pontaj, current_user=_FakeUser(user_id=903))
+
+        assert rezultat['approved'] is True
+        assert pontaj.status == 'aprobat'
+        assert pontaj.aprobat_de == 903
+        assert pontaj.data_aprobare is not None
+
+
+def test_reject_timesheet_seteaza_status_motiv_autor_data(app):
+    from services.timesheet_service import reject_timesheet
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 6, 4), status='trimis')
+        pontaj = Pontaj.query.get(pid)
+        with app.test_request_context('/'):
+            rezultat = reject_timesheet(
+                timesheet=pontaj,
+                current_user=_FakeUser(user_id=904),
+                reason='Lipsa semnatura',
+            )
+
+        assert rezultat['rejected'] is True
+        assert pontaj.status == 'respins'
+        assert pontaj.motiv_respingere == 'Lipsa semnatura'
+        assert pontaj.aprobat_de == 904
+        assert pontaj.data_aprobare is not None
+
+
+def test_reject_timesheet_pastreaza_motiv_gol_exact(app):
+    from services.timesheet_service import reject_timesheet
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 6, 5), status='trimis')
+        pontaj = Pontaj.query.get(pid)
+        with app.test_request_context('/'):
+            reject_timesheet(
+                timesheet=pontaj,
+                current_user=_FakeUser(user_id=905),
+                reason='',
+            )
+
+        assert pontaj.status == 'respins'
+        assert pontaj.motiv_respingere == ''
+
+
+def test_single_workflow_nu_modifica_datele_de_pontaj(app):
+    from services.timesheet_service import approve_timesheet
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 6, 6), status='trimis')
+        pontaj = Pontaj.query.get(pid)
+        pontaj.ora_start = '07:00'
+        pontaj.ora_sfarsit = '15:30'
+        pontaj.ore_lucrate = 8
+        pontaj.observatii = 'TEST_S12A_WORKFLOW_FIELDS'
+        with app.test_request_context('/'):
+            approve_timesheet(timesheet=pontaj, current_user=_FakeUser(user_id=906))
+
+        assert pontaj.angajat_id == ids['ang_a']
+        assert pontaj.proiect_id == ids['proiect_a']
+        assert pontaj.data == date(2026, 6, 6)
+        assert pontaj.ora_start == '07:00'
+        assert pontaj.ora_sfarsit == '15:30'
+        assert float(pontaj.ore_lucrate) == 8
+        assert pontaj.observatii == 'TEST_S12A_WORKFLOW_FIELDS'
+
+
+def test_single_workflow_helpers_fara_query_brut(app):
+    """Guard: helperii S1.2C1 nu introduc query brut tenant-owned."""
+    import inspect
+    import services.timesheet_service as svc
+
+    for fn_name in ('submit_timesheet_for_approval',
+                    'approve_timesheet',
+                    'reject_timesheet'):
+        sursa = inspect.getsource(getattr(svc, fn_name))
+        assert 'Pontaj.query.' not in sursa, fn_name
+        assert 'Angajat.query.' not in sursa, fn_name
+        assert 'Proiect.query.' not in sursa, fn_name
+        assert 'RaportActivitate.query.' not in sursa, fn_name
+        assert 'create_timesheet_from_form_data' not in sursa, fn_name
+        assert 'update_timesheet_from_form_data' not in sursa, fn_name
+        assert 'create_multiple_timesheets_from_form_data' not in sursa, fn_name
+
+
+# ============================================================
 # Fixture data
 # ============================================================
 

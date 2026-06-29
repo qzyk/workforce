@@ -17,9 +17,14 @@ S1.2B1 adauga DOAR salvarea single create/edit:
 S1.2B2 adauga DOAR salvarea bulk create:
   * adauga_multiplu POST bulk-save.
 
-NU contine si nu trebuie sa contina in S1.2B2 (raman in rute, extrase ulterior
-in S1.2C/D):
-  * tranzitiile de workflow (aproba/respinge/trimite/aproba_multiplu);
+S1.2C1 adauga DOAR workflow-ul single Pontaj:
+  * trimite;
+  * aproba;
+  * respinge.
+
+NU contine si nu trebuie sa contina in S1.2C1 (raman in rute, extrase ulterior
+in S1.2C2/D):
+  * workflow-ul bulk (aproba_multiplu);
   * export/import (export_lunar, import_excel, template_import).
 
 Toate query-urile pe date operationale tenant-owned folosesc helperii din
@@ -379,6 +384,51 @@ def create_multiple_timesheets_from_form_data(*, form_data, current_user,
         'created_timesheets': created_timesheets,
         'action': values['actiune'],
     }
+
+
+# ============================================================
+# S1.2C1 - workflow single Pontaj (HTTP-free)
+# ============================================================
+
+def submit_timesheet_for_approval(*, timesheet):
+    """Tranzitie draft -> trimis pentru un Pontaj deja incarcat tenant-safe.
+
+    Ruta pastreaza `get_timesheet_or_404(id)`, flash si redirect. Daca pontajul
+    nu este in `draft`, comportamentul ramane no-op fara commit.
+    """
+    if timesheet.status != 'draft':
+        return {'timesheet': timesheet, 'changed': False, 'submitted': False}
+
+    timesheet.status = 'trimis'
+    db.session.commit()
+    return {'timesheet': timesheet, 'changed': True, 'submitted': True}
+
+
+def approve_timesheet(*, timesheet, current_user):
+    """Aproba un Pontaj deja incarcat tenant-safe.
+
+    Pastreaza comportamentul existent: fara preconditie de status, seteaza
+    statusul, utilizatorul aprobator si data aprobarii, apoi face commit.
+    """
+    timesheet.status = 'aprobat'
+    timesheet.aprobat_de = getattr(current_user, 'id', None)
+    timesheet.data_aprobare = datetime.utcnow()
+    db.session.commit()
+    return {'timesheet': timesheet, 'changed': True, 'approved': True}
+
+
+def reject_timesheet(*, timesheet, current_user, reason):
+    """Respinge un Pontaj deja incarcat tenant-safe.
+
+    `reason` este citit in ruta din formular si este salvat exact asa cum vine,
+    inclusiv sir gol, ca in comportamentul existent.
+    """
+    timesheet.status = 'respins'
+    timesheet.motiv_respingere = reason
+    timesheet.aprobat_de = getattr(current_user, 'id', None)
+    timesheet.data_aprobare = datetime.utcnow()
+    db.session.commit()
+    return {'timesheet': timesheet, 'changed': True, 'rejected': True}
 
 
 # ============================================================
