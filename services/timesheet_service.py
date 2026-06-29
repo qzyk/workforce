@@ -4,15 +4,19 @@ EDIFICO WORKFORCE - Service layer pentru pontaje / timesheet (S1.2A).
 Primul boundary de serviciu pentru domeniul Pontaj. Conform deciziei D015,
 logica de timesheet traieste intr-un fisier NOU, separat de activity_service.
 
-S1.2A extrage DOAR:
+S1.2A extrage:
   * calculul pur de ore (calculate_timesheet_hours);
   * contextul de citire/listare tenant-safe pentru rutele GET/AJAX low-risk
     (lista, situatie zilnica, calendar angajat, aprobare GET, angajati pe
     proiect, verificare duplicat).
 
-NU contine si nu trebuie sa contina in S1.2A (raman in rute, extrase ulterior
-in S1.2B/C/D):
-  * salvarea create/edit (adauga, adauga_multiplu, editeaza POST);
+S1.2B1 adauga DOAR salvarea single create/edit:
+  * adauga POST valid-save;
+  * editeaza POST valid-save.
+
+NU contine si nu trebuie sa contina in S1.2B1 (raman in rute, extrase ulterior
+in S1.2B2/C/D):
+  * salvarea bulk (adauga_multiplu POST);
   * tranzitiile de workflow (aproba/respinge/trimite/aproba_multiplu);
   * export/import (export_lunar, import_excel, template_import).
 
@@ -21,7 +25,8 @@ services/security/tenant_access.py. SarbatoareLegala este catalog global
 (non-tenant) si ramane query direct, identic cu rutele de dinainte.
 
 Serviciul este HTTP-free: fara flash/redirect/render_template/jsonify/request/
-send_file. S1.2A este READ-ONLY: nu muteaza nimic si nu face commit/rollback.
+send_file. Pentru write-urile S1.2B1, serviciul face commit; ruta face rollback
+pe exceptii si pastreaza comportamentul HTTP vizibil.
 """
 
 import calendar
@@ -32,6 +37,8 @@ from services.security.tenant_access import (
     get_project_or_404,
     query_for_tenant,
     query_timesheets_for_tenant,
+    require_timesheet_inputs_same_tenant,
+    tenant_id_for_new_record_or_403,
 )
 
 
@@ -111,6 +118,149 @@ def calculate_timesheet_hours(*, ora_start, ora_sfarsit, tip_zi, data_pontaj=Non
         'ore_supl_100': round(ore_supl_100, 2),
         'tip_zi': tip_zi
     }
+
+
+# ============================================================
+# S1.2B1 - salvare single create/edit (HTTP-free)
+# ============================================================
+
+def _field_data(form_data, name, default=None):
+    """Citeste valoarea unui camp dintr-un PontajForm validat sau obiect similar."""
+    if hasattr(form_data, name):
+        field = getattr(form_data, name)
+        return getattr(field, 'data', field)
+    if hasattr(form_data, 'get'):
+        return form_data.get(name, default)
+    return default
+
+
+def _as_date(value):
+    if isinstance(value, date):
+        return value
+    if value:
+        return datetime.strptime(str(value), '%Y-%m-%d').date()
+    return value
+
+
+def _timesheet_values_from_form_data(form_data):
+    data_pontaj = _as_date(_field_data(form_data, 'data'))
+    tip_zi = _field_data(form_data, 'tip_zi') or 'lucratoare'
+    return {
+        'angajat_id': _field_data(form_data, 'angajat_id'),
+        'proiect_id': _field_data(form_data, 'proiect_id'),
+        'data': data_pontaj,
+        'ora_start': _field_data(form_data, 'ora_start'),
+        'ora_sfarsit': _field_data(form_data, 'ora_sfarsit'),
+        'tip_zi': tip_zi,
+        'observatii': _field_data(form_data, 'observatii') or '',
+        'actiune': _field_data(form_data, 'actiune') or 'draft',
+    }
+
+
+def _tenant_id_for_timesheet_write(tenant_id):
+    if tenant_id is not None:
+        return tenant_id
+    return tenant_id_for_new_record_or_403()
+
+
+def _validate_timesheet_inputs(values, *, tenant_id=None):
+    tenant_id_curent = _tenant_id_for_timesheet_write(tenant_id)
+    require_timesheet_inputs_same_tenant(
+        proiect_id=values['proiect_id'],
+        angajat_id=values['angajat_id'],
+        tenant_id=tenant_id_curent,
+    )
+    return tenant_id_curent
+
+
+def _find_timesheet_duplicate(*, employee_id, date_value, exclude_timesheet_id=None,
+                              tenant_id=None):
+    query = query_timesheets_for_tenant(tenant_id=tenant_id).filter_by(
+        angajat_id=employee_id,
+        data=date_value,
+    )
+    if exclude_timesheet_id:
+        query = query.filter(Pontaj.id != exclude_timesheet_id)
+    return query.first()
+
+
+def _apply_timesheet_values(pontaj, values):
+    result = calculate_timesheet_hours(
+        ora_start=values['ora_start'],
+        ora_sfarsit=values['ora_sfarsit'],
+        tip_zi=values['tip_zi'],
+        data_pontaj=values['data'],
+    )
+    pontaj.angajat_id = values['angajat_id']
+    pontaj.proiect_id = values['proiect_id']
+    pontaj.data = values['data']
+    pontaj.ora_start = values['ora_start']
+    pontaj.ora_sfarsit = values['ora_sfarsit']
+    pontaj.ore_lucrate = result['ore_lucrate']
+    pontaj.ore_normale = result['ore_normale']
+    pontaj.ore_suplimentare_50 = result['ore_supl_50']
+    pontaj.ore_suplimentare_100 = result['ore_supl_100']
+    pontaj.tip_zi = result['tip_zi']
+    pontaj.observatii = values['observatii']
+    return result
+
+
+def create_timesheet_from_form_data(*, form_data, current_user, tenant_id=None):
+    """Creeaza un Pontaj single din PontajForm validat.
+
+    Ruta ramane responsabila pentru PontajForm, validate_on_submit(), flash,
+    render si redirect. Serviciul pastreaza tenant validation, duplicate check,
+    calcul ore, asignare campuri si commit. La duplicat nu muteaza si nu comite.
+    """
+    values = _timesheet_values_from_form_data(form_data)
+    tenant_id_curent = _validate_timesheet_inputs(values, tenant_id=tenant_id)
+
+    duplicate = _find_timesheet_duplicate(
+        employee_id=values['angajat_id'],
+        date_value=values['data'],
+        tenant_id=tenant_id_curent,
+    )
+    if duplicate:
+        return {'timesheet': duplicate, 'created': False, 'duplicate': True,
+                'action': values['actiune']}
+
+    status = 'trimis' if values['actiune'] == 'trimite' else 'draft'
+    pontaj = Pontaj(status=status, introdus_de=getattr(current_user, 'id', None))
+    _apply_timesheet_values(pontaj, values)
+    db.session.add(pontaj)
+    db.session.commit()
+    return {'timesheet': pontaj, 'created': True, 'duplicate': False,
+            'action': values['actiune']}
+
+
+def update_timesheet_from_form_data(*, timesheet, form_data, current_user=None,
+                                    tenant_id=None):
+    """Actualizeaza un Pontaj single existent din PontajForm validat.
+
+    Nu incarca obiectul dupa ID; ruta pastreaza `get_timesheet_or_404(id)`.
+    Statusul se schimba doar pentru actiune == 'trimite'; altfel ramane exact
+    statusul curent (draft/respins), ca in ruta veche.
+    """
+    values = _timesheet_values_from_form_data(form_data)
+    tenant_id_curent = _validate_timesheet_inputs(values, tenant_id=tenant_id)
+
+    duplicate = _find_timesheet_duplicate(
+        employee_id=values['angajat_id'],
+        date_value=values['data'],
+        exclude_timesheet_id=timesheet.id,
+        tenant_id=tenant_id_curent,
+    )
+    if duplicate:
+        return {'timesheet': timesheet, 'duplicate_timesheet': duplicate,
+                'updated': False, 'duplicate': True, 'action': values['actiune']}
+
+    _apply_timesheet_values(timesheet, values)
+    if values['actiune'] == 'trimite':
+        timesheet.status = 'trimis'
+
+    db.session.commit()
+    return {'timesheet': timesheet, 'updated': True, 'duplicate': False,
+            'action': values['actiune']}
 
 
 # ============================================================

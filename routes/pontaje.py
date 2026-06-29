@@ -8,6 +8,7 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort
 from flask_login import login_required, current_user
+from werkzeug.exceptions import HTTPException
 from models import db, Pontaj, Angajat, Proiect, SarbatoareLegala
 from forms.pontaje_forms import PontajForm
 from services.security.tenant_access import (
@@ -22,11 +23,13 @@ from services.security.tenant_access import (
 from services.timesheet_service import (
     calculate_timesheet_hours,
     check_timesheet_duplicate,
+    create_timesheet_from_form_data,
     get_daily_timesheet_rows,
     get_project_employees_for_timesheet,
     get_timesheet_approval_context,
     get_timesheet_calendar_context,
     get_timesheet_list_context,
+    update_timesheet_from_form_data,
 )
 
 pontaje_bp = Blueprint('pontaje', __name__)
@@ -113,41 +116,23 @@ def adauga():
             )
 
     if form.validate_on_submit():
-        data_pontaj = form.data.data
-        tip_zi = form.tip_zi.data
+        try:
+            rezultat = create_timesheet_from_form_data(
+                form_data=form,
+                current_user=current_user,
+            )
+        except HTTPException:
+            db.session.rollback()
+            raise
+        except Exception:
+            db.session.rollback()
+            raise
 
-        # Verificare duplicat
-        exista = query_timesheets_for_tenant().filter_by(
-            angajat_id=form.angajat_id.data,
-            data=data_pontaj
-        ).first()
-        if exista:
+        if rezultat['duplicate']:
             flash('Exista deja un pontaj pentru acest angajat in aceasta zi!', 'danger')
             return render_template('pontaje/formular_individual.html', form=form)
 
-        # Calcul ore
-        result = calculate_hours(form.ora_start.data, form.ora_sfarsit.data, tip_zi, data_pontaj)
-
-        status = 'trimis' if form.actiune.data == 'trimite' else 'draft'
-
-        pontaj = Pontaj(
-            angajat_id=form.angajat_id.data,
-            proiect_id=form.proiect_id.data,
-            data=data_pontaj,
-            ora_start=form.ora_start.data,
-            ora_sfarsit=form.ora_sfarsit.data,
-            ore_lucrate=result['ore_lucrate'],
-            ore_normale=result['ore_normale'],
-            ore_suplimentare_50=result['ore_supl_50'],
-            ore_suplimentare_100=result['ore_supl_100'],
-            tip_zi=result['tip_zi'],
-            status=status,
-            observatii=form.observatii.data or '',
-            introdus_de=current_user.id
-        )
-        db.session.add(pontaj)
-        db.session.commit()
-
+        status = rezultat['timesheet'].status
         if status == 'trimis':
             flash('Pontajul a fost inregistrat si trimis spre aprobare!', 'success')
         else:
@@ -479,42 +464,22 @@ def editeaza(id):
             )
 
     if form.validate_on_submit():
-        data_pontaj = form.data.data
-        tip_zi = form.tip_zi.data
-        require_timesheet_inputs_same_tenant(
-            proiect_id=form.proiect_id.data,
-            angajat_id=form.angajat_id.data,
-            tenant_id=tenant_id_for_new_record_or_403(),
-        )
+        try:
+            rezultat = update_timesheet_from_form_data(
+                timesheet=pontaj,
+                form_data=form,
+                current_user=current_user,
+            )
+        except HTTPException:
+            db.session.rollback()
+            raise
+        except Exception:
+            db.session.rollback()
+            raise
 
-        # Verificare duplicat (exclud pontajul curent)
-        exista = query_timesheets_for_tenant().filter(
-            Pontaj.angajat_id == form.angajat_id.data,
-            Pontaj.data == data_pontaj,
-            Pontaj.id != pontaj.id
-        ).first()
-        if exista:
+        if rezultat['duplicate']:
             flash('Exista deja un pontaj pentru acest angajat in aceasta zi!', 'danger')
             return render_template('pontaje/formular_individual.html', form=form, pontaj=pontaj)
-
-        result = calculate_hours(form.ora_start.data, form.ora_sfarsit.data, tip_zi, data_pontaj)
-
-        pontaj.angajat_id = form.angajat_id.data
-        pontaj.proiect_id = form.proiect_id.data
-        pontaj.data = data_pontaj
-        pontaj.ora_start = form.ora_start.data
-        pontaj.ora_sfarsit = form.ora_sfarsit.data
-        pontaj.ore_lucrate = result['ore_lucrate']
-        pontaj.ore_normale = result['ore_normale']
-        pontaj.ore_suplimentare_50 = result['ore_supl_50']
-        pontaj.ore_suplimentare_100 = result['ore_supl_100']
-        pontaj.tip_zi = result['tip_zi']
-        pontaj.observatii = form.observatii.data or ''
-
-        if form.actiune.data == 'trimite':
-            pontaj.status = 'trimis'
-
-        db.session.commit()
         flash('Pontajul a fost actualizat!', 'success')
         return redirect(url_for('pontaje.lista'))
 

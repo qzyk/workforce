@@ -11,6 +11,34 @@ import pytest
 from werkzeug.exceptions import HTTPException
 
 
+class _FakeUser:
+    def __init__(self, user_id=777):
+        self.id = user_id
+
+
+class _Field:
+    def __init__(self, data):
+        self.data = data
+
+
+def _form_pontaj(*, angajat_id, proiect_id, data_pontaj, ora_start='08:00',
+                 ora_sfarsit='16:00', tip_zi='lucratoare', observatii='',
+                 actiune='draft'):
+    class _Form:
+        pass
+
+    form = _Form()
+    form.angajat_id = _Field(angajat_id)
+    form.proiect_id = _Field(proiect_id)
+    form.data = _Field(data_pontaj)
+    form.ora_start = _Field(ora_start)
+    form.ora_sfarsit = _Field(ora_sfarsit)
+    form.tip_zi = _Field(tip_zi)
+    form.observatii = _Field(observatii)
+    form.actiune = _Field(actiune)
+    return form
+
+
 @pytest.fixture(autouse=True)
 def curata_s12a(app):
     _curata(app)
@@ -237,6 +265,349 @@ def test_read_helpers_fara_query_brut(app):
         assert 'Pontaj.query.' not in sursa, fn_name
         assert 'Angajat.query.' not in sursa, fn_name
         assert 'Proiect.query.' not in sursa, fn_name
+
+
+# ============================================================
+# S1.2B1 — save single create/edit (HTTP-free, tenant-safe)
+# ============================================================
+
+def test_create_single_pontaj_cu_campurile_corecte(app):
+    from services.timesheet_service import create_timesheet_from_form_data
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            rezultat = create_timesheet_from_form_data(
+                form_data=_form_pontaj(
+                    angajat_id=ids['ang_a'],
+                    proiect_id=ids['proiect_a'],
+                    data_pontaj=date(2026, 4, 10),
+                    observatii='TEST_S12A_CREATE',
+                ),
+                current_user=_FakeUser(user_id=901),
+            )
+
+        pontaj = Pontaj.query.get(rezultat['timesheet'].id)
+        assert rezultat['created'] is True
+        assert rezultat['duplicate'] is False
+        assert pontaj.angajat_id == ids['ang_a']
+        assert pontaj.proiect_id == ids['proiect_a']
+        assert pontaj.data == date(2026, 4, 10)
+        assert pontaj.ora_start == '08:00'
+        assert pontaj.ora_sfarsit == '16:00'
+        assert float(pontaj.ore_lucrate) == 7.5
+        assert float(pontaj.ore_normale) == 7.5
+        assert float(pontaj.ore_suplimentare_50) == 0
+        assert float(pontaj.ore_suplimentare_100) == 0
+        assert pontaj.tip_zi == 'lucratoare'
+        assert pontaj.status == 'draft'
+        assert pontaj.observatii == 'TEST_S12A_CREATE'
+        assert pontaj.introdus_de == 901
+
+
+def test_create_single_pontaj_status_trimis(app):
+    from services.timesheet_service import create_timesheet_from_form_data
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            rezultat = create_timesheet_from_form_data(
+                form_data=_form_pontaj(
+                    angajat_id=ids['ang_a'],
+                    proiect_id=ids['proiect_a'],
+                    data_pontaj=date(2026, 4, 11),
+                    observatii='TEST_S12A_CREATE_TRIMIS',
+                    actiune='trimite',
+                ),
+                current_user=_FakeUser(),
+            )
+
+        assert rezultat['timesheet'].status == 'trimis'
+
+
+def test_create_single_pontaj_duplicat_nu_muteaza(app):
+    from services.timesheet_service import create_timesheet_from_form_data
+    from models import Pontaj
+
+    ids = _seed(app)
+    zi = date(2026, 4, 12)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'], data=zi)
+        inainte = Pontaj.query.filter_by(angajat_id=ids['ang_a'], data=zi).count()
+        with app.test_request_context('/'):
+            rezultat = create_timesheet_from_form_data(
+                form_data=_form_pontaj(
+                    angajat_id=ids['ang_a'],
+                    proiect_id=ids['proiect_a'],
+                    data_pontaj=zi,
+                    observatii='TEST_S12A_DUP_CREATE',
+                ),
+                current_user=_FakeUser(),
+            )
+        dupa = Pontaj.query.filter_by(angajat_id=ids['ang_a'], data=zi).count()
+
+        assert rezultat['duplicate'] is True
+        assert rezultat['created'] is False
+        assert dupa == inainte
+
+
+def test_create_single_respinge_angajat_sau_proiect_strain(app):
+    from services.timesheet_service import create_timesheet_from_form_data
+    from models import Pontaj
+    from flask import g
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            g.tenant_override = ids['tenant_a']
+            with pytest.raises(HTTPException) as exc_proiect:
+                create_timesheet_from_form_data(
+                    form_data=_form_pontaj(
+                        angajat_id=ids['ang_a'],
+                        proiect_id=ids['proiect_b'],
+                        data_pontaj=date(2026, 4, 13),
+                        observatii='TEST_S12A_FOREIGN_PROJECT',
+                    ),
+                    current_user=_FakeUser(),
+                )
+            with pytest.raises(HTTPException) as exc_angajat:
+                create_timesheet_from_form_data(
+                    form_data=_form_pontaj(
+                        angajat_id=ids['ang_b'],
+                        proiect_id=ids['proiect_a'],
+                        data_pontaj=date(2026, 4, 14),
+                        observatii='TEST_S12A_FOREIGN_EMPLOYEE',
+                    ),
+                    current_user=_FakeUser(),
+                )
+
+        assert exc_proiect.value.code == 404
+        assert exc_angajat.value.code == 404
+        assert Pontaj.query.filter(Pontaj.observatii.like('TEST_S12A_FOREIGN%')).count() == 0
+
+
+def test_create_single_strict_fara_tenant_fail_closed(app):
+    from services.timesheet_service import create_timesheet_from_form_data
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            with pytest.raises(HTTPException) as exc:
+                create_timesheet_from_form_data(
+                    form_data=_form_pontaj(
+                        angajat_id=ids['ang_a'],
+                        proiect_id=ids['proiect_a'],
+                        data_pontaj=date(2026, 4, 15),
+                        observatii='TEST_S12A_STRICT_NO_TENANT',
+                    ),
+                    current_user=_FakeUser(),
+                )
+
+        assert exc.value.code == 403
+        assert Pontaj.query.filter_by(observatii='TEST_S12A_STRICT_NO_TENANT').first() is None
+
+
+def test_update_single_pontaj_cu_campurile_corecte_si_status_pastrat(app):
+    from services.timesheet_service import update_timesheet_from_form_data
+    from models import Pontaj, db
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 4, 16), status='respins')
+        pontaj = Pontaj.query.get(pid)
+        pontaj.aprobat_de = 321
+        db.session.commit()
+
+        with app.test_request_context('/'):
+            rezultat = update_timesheet_from_form_data(
+                timesheet=pontaj,
+                form_data=_form_pontaj(
+                    angajat_id=ids['ang_a'],
+                    proiect_id=ids['proiect_a'],
+                    data_pontaj=date(2026, 4, 17),
+                    ora_start='07:00',
+                    ora_sfarsit='18:00',
+                    observatii='TEST_S12A_EDITED',
+                    actiune='draft',
+                ),
+                current_user=_FakeUser(),
+            )
+
+        assert rezultat['updated'] is True
+        assert rezultat['duplicate'] is False
+        assert pontaj.data == date(2026, 4, 17)
+        assert pontaj.ora_start == '07:00'
+        assert pontaj.ora_sfarsit == '18:00'
+        assert float(pontaj.ore_lucrate) == 10.5
+        assert float(pontaj.ore_normale) == 8
+        assert float(pontaj.ore_suplimentare_50) == 2
+        assert float(pontaj.ore_suplimentare_100) == 0.5
+        assert pontaj.observatii == 'TEST_S12A_EDITED'
+        assert pontaj.status == 'respins'
+        assert pontaj.aprobat_de == 321
+
+
+def test_update_single_pontaj_trimite_schimba_status(app):
+    from services.timesheet_service import update_timesheet_from_form_data
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 4, 18), status='draft')
+        pontaj = Pontaj.query.get(pid)
+        with app.test_request_context('/'):
+            update_timesheet_from_form_data(
+                timesheet=pontaj,
+                form_data=_form_pontaj(
+                    angajat_id=ids['ang_a'],
+                    proiect_id=ids['proiect_a'],
+                    data_pontaj=date(2026, 4, 18),
+                    observatii='TEST_S12A_EDIT_TRIMIS',
+                    actiune='trimite',
+                ),
+                current_user=_FakeUser(),
+            )
+
+        assert pontaj.status == 'trimis'
+
+
+def test_update_single_duplicate_exclude_pontaj_curent(app):
+    from services.timesheet_service import update_timesheet_from_form_data
+    from models import Pontaj
+
+    ids = _seed(app)
+    zi = date(2026, 4, 19)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'], data=zi)
+        pontaj = Pontaj.query.get(pid)
+        with app.test_request_context('/'):
+            rezultat = update_timesheet_from_form_data(
+                timesheet=pontaj,
+                form_data=_form_pontaj(
+                    angajat_id=ids['ang_a'],
+                    proiect_id=ids['proiect_a'],
+                    data_pontaj=zi,
+                    observatii='TEST_S12A_EDIT_SAME',
+                ),
+                current_user=_FakeUser(),
+            )
+
+        assert rezultat['duplicate'] is False
+        assert pontaj.observatii == 'TEST_S12A_EDIT_SAME'
+
+
+def test_update_single_duplicate_alt_pontaj_nu_muteaza(app):
+    from services.timesheet_service import update_timesheet_from_form_data
+    from models import Pontaj
+
+    ids = _seed(app)
+    zi_initiala = date(2026, 4, 20)
+    zi_duplicat = date(2026, 4, 21)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'], data=zi_initiala)
+        _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'], data=zi_duplicat)
+        pontaj = Pontaj.query.get(pid)
+        with app.test_request_context('/'):
+            rezultat = update_timesheet_from_form_data(
+                timesheet=pontaj,
+                form_data=_form_pontaj(
+                    angajat_id=ids['ang_a'],
+                    proiect_id=ids['proiect_a'],
+                    data_pontaj=zi_duplicat,
+                    observatii='TEST_S12A_EDIT_DUP',
+                ),
+                current_user=_FakeUser(),
+            )
+
+        assert rezultat['duplicate'] is True
+        assert rezultat['updated'] is False
+        assert pontaj.data == zi_initiala
+        assert pontaj.observatii == 'TEST_S12A'
+
+
+def test_update_single_respinge_angajat_sau_proiect_strain(app):
+    from services.timesheet_service import update_timesheet_from_form_data
+    from models import Pontaj
+    from flask import g
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 4, 22))
+        pontaj = Pontaj.query.get(pid)
+        with app.test_request_context('/'):
+            g.tenant_override = ids['tenant_a']
+            with pytest.raises(HTTPException) as exc_proiect:
+                update_timesheet_from_form_data(
+                    timesheet=pontaj,
+                    form_data=_form_pontaj(
+                        angajat_id=ids['ang_a'],
+                        proiect_id=ids['proiect_b'],
+                        data_pontaj=date(2026, 4, 23),
+                    ),
+                    current_user=_FakeUser(),
+                )
+            with pytest.raises(HTTPException) as exc_angajat:
+                update_timesheet_from_form_data(
+                    timesheet=pontaj,
+                    form_data=_form_pontaj(
+                        angajat_id=ids['ang_b'],
+                        proiect_id=ids['proiect_a'],
+                        data_pontaj=date(2026, 4, 23),
+                    ),
+                    current_user=_FakeUser(),
+                )
+
+        assert exc_proiect.value.code == 404
+        assert exc_angajat.value.code == 404
+        assert pontaj.data == date(2026, 4, 22)
+
+
+def test_update_target_strain_blocat_de_lookup_ruta(app):
+    from services.security.tenant_access import get_timesheet_or_404
+    from flask import g
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        pontaj_b = _pontaj(app, angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'],
+                           data=date(2026, 4, 24))
+        with app.test_request_context('/'):
+            g.tenant_override = ids['tenant_a']
+            with pytest.raises(HTTPException) as exc:
+                get_timesheet_or_404(pontaj_b)
+
+        assert exc.value.code == 404
+
+
+def test_save_helpers_fara_query_brut(app):
+    """Guard: helperii S1.2B1 nu introduc query brut tenant-owned."""
+    import inspect
+    import services.timesheet_service as svc
+
+    for fn_name in ('create_timesheet_from_form_data',
+                    'update_timesheet_from_form_data',
+                    '_find_timesheet_duplicate',
+                    '_validate_timesheet_inputs'):
+        sursa = inspect.getsource(getattr(svc, fn_name))
+        assert 'Pontaj.query.' not in sursa, fn_name
+        assert 'Angajat.query.' not in sursa, fn_name
+        assert 'Proiect.query.' not in sursa, fn_name
+        assert 'RaportActivitate.query.' not in sursa, fn_name
 
 
 # ============================================================
