@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-S1.1C Activity Workflow Transition Extraction — VALIDATED
+S1.1D Activity Reports / Exports Data Assembly Extraction — VALIDATED
 ```
 
 Canonical repository:
@@ -43,24 +43,24 @@ Do not merge, clean, delete, or copy from them.
 ## Current canonical branch
 
 ```text
-feat/s1.1c-activity-workflow-extraction
+feat/s1.1d-activity-report-export-extraction
 ```
 
 ## Current canonical HEAD
 
 ```text
-6188540 S1.1C activity workflow extraction
+1c854f6 S1.1D activity report export data extraction
 ```
 
 ## Current test baseline
 
-S1.1C VALIDATED.
+S1.1D VALIDATED.
 
 ```text
-32 activity service tests passed (tests/unit/test_activity_service.py)
-74 targeted activity + tenant tests passed
+40 activity service tests passed (tests/unit/test_activity_service.py)
+5 export layout regression tests passed (test_export_rapoarte_stil)
 246 tenant tests passed
-50 regression/smoke tests passed (models_workforce + export_rapoarte_stil + smoke)
+127 targeted/regression/smoke tests passed
 app import OK, 25 activitati routes
 ```
 
@@ -95,50 +95,56 @@ T1.C14 APPROVED. Tenant guard phase complete.
 S1.1A Activity Service Skeleton + Read/Form Context Extraction
 S1.1B Activity Create/Edit Save Extraction
 S1.1C Activity Workflow Transition Extraction
+S1.1D Activity Reports / Exports Data Assembly Extraction
 ```
 
 Latest completed service extraction step:
 
 ```text
-S1.1C Activity Workflow Transition Extraction
+S1.1D Activity Reports / Exports Data Assembly Extraction
 ```
 
-S1.1C summary:
+S1.1D summary:
 
 ```text
-- added submit_activity_for_approval() to services/activity_service.py
-- added approve_activity()
-- added reject_activity()
-- added bulk_transition_activities()
-- routes/activitati.py keeps trimite/aproba/respinge/aprobare_masa as thin
-  HTTP wrappers
-- route decorators, flash messages, redirects, status transitions, db commit
-  behavior, and tenant behavior were preserved
-- off-mode legacy bulk behavior was preserved
+- added get_activity_rows_for_period() to services/activity_service.py
+- added get_timesheet_hours_map_for_period()
+- added get_project_activity_report_data()
+- extracted tenant-safe data assembly from raport_saptamanal, raport_lunar,
+  raport_anual, raport_proiect
+- preserved T1.C14 monthly timesheet scoping via query_timesheets_for_tenant()
+- left export_edifico and export_edifico_preview in routes intentionally for
+  layout stability
+- left layout/styling helpers in routes intentionally
 - no schema changes
 - no migrations
-- no create/edit save changes
-- no read/form context changes
-- no report/export extraction
+- no template changes
+- no Excel/PDF/HTML layout changes
+- no file name changes
+- no save/workflow/read-context changes
 - no Pontaj/BIM/Contract/Gantt/HR/Fleet changes
-- no S1.1D/S1.2 started
+- no S1.2 started
 ```
+
+The S1.1 activity service boundary (S1.1A–S1.1D) is functionally complete and
+awaits the S1.C1 review.
 
 ---
 
 ## Current task
 
 ```text
-S1.1D No-Code Understanding / Collision Safety Gate
+S1.C1 Activity Service Extraction Review
 ```
 
-This is a read-only understanding/collision-safety gate for S1.1D (Activity
-Reports/Exports Cleanup). It produces an understanding report only.
+This is the review checkpoint over the completed S1.1 activity service boundary
+(S1.1A read/form context, S1.1B create/edit save, S1.1C workflow transitions,
+S1.1D report/export data assembly).
 
-S1.1D IMPLEMENTATION IS NOT YET AUTHORIZED. It may start only after this
-no-code safety gate is reviewed and approved by Albert.
+S1.2 TIMESHEET SERVICE EXTRACTION IS NOT YET AUTHORIZED. It may start only after
+S1.C1 reviews and approves the completed S1.1 activity service boundary.
 
-## Constraints for the S1.1x service extraction line (per D014)
+## Constraints for the S1.x service extraction line (per D014)
 
 - Extract activity behavior only.
 - No schema changes.
@@ -149,18 +155,23 @@ no-code safety gate is reviewed and approved by Albert.
 - No raw RaportActivitate/Pontaj/Proiect/Angajat/BIM lookups.
 - Add direct service-level tests.
 
-## Remaining activity extraction work (NOT authorized yet)
+## Remaining service extraction work (NOT authorized yet)
 
 ```text
-S1.1D Activity Reports/Exports Cleanup
+S1.C1 Activity Service Extraction Review (current)
+S1.2 Timesheet Service Extraction (after S1.C1 approval)
 ```
+
+Accepted deferral (documented in S1.1D): export_edifico / export_edifico_preview
+and their data helpers remain route-resident because those data helpers are
+co-called by layout helpers; they are already tenant-safe.
 
 ---
 
 ## Current repository posture
 
 Route-level tenant guard complete after T1.14.
-Activity service boundary covers read/form context (S1.1A), create/edit save (S1.1B), and workflow transitions (S1.1C).
+Activity service boundary covers read/form context (S1.1A), create/edit save (S1.1B), workflow transitions (S1.1C), and report/export data assembly (S1.1D).
 
 Remaining accepted future categories:
 

@@ -3,118 +3,126 @@
 Current authorized task:
 
 ```text
-S1.1D No-Code Understanding / Collision Safety Gate
+S1.C1 Activity Service Extraction Review
 ```
 
-This is a READ-ONLY understanding and collision-safety gate for the next
-extraction step (S1.1D Activity Reports/Exports Cleanup). It produces an
-understanding/collision-safety report only.
+This is a REVIEW checkpoint over the completed S1.1 activity service boundary
+(S1.1A–S1.1D). It is read-only: it produces a review verdict, not new feature
+code. A fix is allowed only if the review finds a CRITIC/MAJOR issue, and only
+within the activity service boundary already established.
 
-IMPORTANT: S1.1D IMPLEMENTATION IS NOT YET AUTHORIZED.
-S1.1D implementation may start only after this no-code safety gate is reviewed
-and approved by Albert.
+IMPORTANT: S1.2 TIMESHEET SERVICE EXTRACTION IS NOT YET AUTHORIZED.
+S1.2 may start only after S1.C1 reviews and approves the completed S1.1
+activity service boundary, and after a separate no-code safety gate is
+approved by Albert.
 
 Current canonical base commit:
 
 ```text
-6188540 S1.1C activity workflow extraction
+1c854f6 S1.1D activity report export data extraction
 ```
 
 Current canonical branch:
 
 ```text
-feat/s1.1c-activity-workflow-extraction
+feat/s1.1d-activity-report-export-extraction
 ```
 
 ---
 
-## Previous step (S1.1C) — VALIDATED
+## Previous step (S1.1D) — VALIDATED
 
 ```text
-S1.1C Activity Workflow Transition Extraction
+S1.1D Activity Reports / Exports Data Assembly Extraction
 ```
 
 Validated by Albert based on the completion report.
 
-S1.1C summary:
+S1.1D summary:
 
 ```text
-- added submit_activity_for_approval() to services/activity_service.py
-- added approve_activity()
-- added reject_activity()
-- added bulk_transition_activities()
-- routes/activitati.py keeps trimite/aproba/respinge/aprobare_masa as thin
-  HTTP wrappers
-- route decorators, flash messages, redirects, status transitions, db commit
-  behavior, and tenant behavior were preserved
-- off-mode legacy bulk behavior was preserved
-- no schema changes
-- no migrations
-- no create/edit save changes
-- no read/form context changes
-- no report/export extraction
+- added get_activity_rows_for_period() to services/activity_service.py
+- added get_timesheet_hours_map_for_period()
+- added get_project_activity_report_data()
+- extracted tenant-safe data assembly from raport_saptamanal, raport_lunar,
+  raport_anual, raport_proiect
+- preserved T1.C14 monthly timesheet scoping via query_timesheets_for_tenant()
+- left export_edifico and export_edifico_preview in routes intentionally for
+  layout stability
+- left layout/styling helpers in routes intentionally
+- no schema/migration/template/layout/file-name changes
+- no save/workflow/read-context changes
 - no Pontaj/BIM/Contract/Gantt/HR/Fleet changes
-- no S1.1D/S1.2 started
+- no S1.2 started
 ```
 
 Tests reported:
 
 ```text
-32 activity service tests passed
-74 targeted activity + tenant tests passed
+40 activity service tests passed
+5 export layout regression tests passed
 246 tenant tests passed
-50 regression/smoke tests passed
+127 targeted/regression/smoke tests passed
 app import and 25 activitati routes OK
 ```
 
 ---
 
-## Goal of the current gate (S1.1D no-code)
+## Completed S1.1 activity service boundary (subject of S1.C1)
 
-Prove understanding of the safe boundary for S1.1D BEFORE any code:
+```text
+S1.1A Activity Service Skeleton + Read/Form Context Extraction
+S1.1B Activity Create/Edit Save Extraction
+S1.1C Activity Workflow Transition Extraction
+S1.1D Activity Reports / Exports Data Assembly Extraction
+```
 
-1. Confirm canonical worktree state (clean, HEAD 6188540).
-2. Identify exactly which report/export read-side logic could move to
-   activity_service (data gathering for `raport_saptamanal`, `raport_lunar`,
-   `raport_anual`, `raport_proiect`, `export_edifico`, `export_edifico_preview`,
-   plus the API/calendar read endpoints if relevant).
-3. Draw a hard line: file/format generation (openpyxl/Excel/PDF layout) and the
-   HTTP response stay in the route; only tenant-safe data assembly is a candidate.
-4. Identify the no-touch functions (save, workflow, other domains).
-5. Produce a non-overlap / hunk-safety plan.
-6. List the files likely allowed for S1.1D.
-7. End by requiring Albert's explicit approval before coding.
+Service surface in services/activity_service.py:
 
-The gate must NOT modify code, tests, services, or routes.
+```text
+get_current_employee_for_user
+get_activity_panel_context
+get_activity_form_context
+save_activity_from_form_data (+ ActivityValidationError)
+submit_activity_for_approval
+approve_activity
+reject_activity
+bulk_transition_activities
+get_activity_rows_for_period
+get_timesheet_hours_map_for_period
+get_project_activity_report_data
+```
 
 ---
 
-## Scope of the eventual S1.1D (for reference only — not authorized yet)
+## Goal of S1.C1 (review)
 
-When approved, S1.1D will be a cleanup pass extracting only the tenant-safe
-report/export DATA-ASSEMBLY logic into `services/activity_service.py`, per D014,
-while leaving Excel/PDF generation and HTTP responses in the route. Export file
-layouts and formats must not change.
+Review the completed S1.1 activity service boundary for:
 
-- Extract activity behavior only.
-- No schema changes.
-- Preserve export layouts/formats and file names exactly.
-- MULTI_TENANT_MODE=off compatible.
-- Fail closed in strict mode.
-- Use tenant_access.py helpers.
-- No raw RaportActivitate/Pontaj/Proiect/Angajat/BIM lookups in new service code.
-- Add direct service-level tests.
+1. Tenant-safety coverage (off/optional/strict; foreign IDs 404; fail-closed;
+   T1.C14 monthly timesheet scoping preserved).
+2. Behavior preservation (routes still own HTTP; flash/redirect/jsonify/send_file/
+   templates/layout unchanged; statuses and workflows intact).
+3. Boundary consistency (no raw tenant-owned queries in new service code; helpers
+   from services/security/tenant_access.py reused).
+4. Test adequacy (direct service tests + regressions green).
+5. Accepted deferrals (export_edifico cluster left in routes — confirm acceptable).
+
+Output: APPROVED (→ authorize S1.2 planning) or BLOCKED with reason. Only a
+CRITIC/MAJOR finding justifies a code fix, scoped to the activity service
+boundary.
 
 ---
 
 ## Do not start
 
-Do not start implementation of:
+Do not start:
 
 ```text
-S1.1D Activity Reports/Exports Cleanup
 S1.2 Timesheet Service Extraction
+Timesheet service work of any kind
+BIM / Contract / Gantt service hardening
 ```
 
-The current authorized task is ONLY the S1.1D no-code understanding /
-collision-safety gate. Implementation requires a separate explicit approval.
+The current authorized task is ONLY S1.C1 (review). S1.2 requires S1.C1
+approval plus a separate explicit implementation approval.
