@@ -9,12 +9,11 @@ from decimal import Decimal
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort
 from flask_login import login_required, current_user
 from werkzeug.exceptions import HTTPException
-from models import db, Pontaj, Angajat, Proiect, SarbatoareLegala
+from models import db, Pontaj, Proiect, SarbatoareLegala
 from forms.pontaje_forms import PontajForm
 from services.security.tenant_access import (
     get_timesheet_or_404,
     query_for_tenant,
-    query_timesheets_for_tenant,
     require_timesheet_inputs_same_tenant,
     tenant_id_for_new_record_or_403,
 )
@@ -31,6 +30,7 @@ from services.timesheet_service import (
     get_timesheet_approval_context,
     get_timesheet_calendar_context,
     get_timesheet_list_context,
+    import_timesheets_from_rows,
     reject_timesheet,
     submit_timesheet_for_approval,
     update_timesheet_from_form_data,
@@ -788,90 +788,22 @@ def import_excel():
         flash('Eroare la citirea fisierului Excel.', 'danger')
         return redirect(url_for('pontaje.lista'))
 
-    count_ok = 0
-    count_err = 0
-    errors = []
+    # Procesarea randurilor (rezolvare angajat/proiect, parsare, duplicate,
+    # calcul ore, creare Pontaj, commit) sta in timesheet_service. Ruta pastreaza
+    # upload-ul, validarea extensiei, load_workbook, flash si redirect.
+    rows = list(ws.iter_rows(min_row=2, values_only=True))
+    try:
+        rezultat = import_timesheets_from_rows(rows=rows, current_user=current_user)
+    except HTTPException:
+        db.session.rollback()
+        raise
+    except Exception:
+        db.session.rollback()
+        raise
 
-    for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
-        if not row or not row[0]:
-            continue
-
-        try:
-            cnp = str(row[0]).strip()
-            cod_proiect = str(row[1]).strip()
-            data_str = str(row[2]).strip()
-            ora_start = str(row[3]).strip()
-            ora_sfarsit = str(row[4]).strip()
-            tip_zi = str(row[5]).strip() if row[5] else ''
-            obs = str(row[6]).strip() if len(row) > 6 and row[6] else ''
-
-            # Find angajat by CNP
-            angajat = query_for_tenant(Angajat).filter_by(cnp=cnp).first()
-            if not angajat:
-                errors.append(f'Rand {row_idx}: CNP {cnp} nu exista in sistem')
-                count_err += 1
-                continue
-
-            # Find proiect
-            proiect = query_for_tenant(Proiect).filter_by(cod_proiect=cod_proiect).first()
-            if not proiect:
-                errors.append(f'Rand {row_idx}: Proiect {cod_proiect} nu exista')
-                count_err += 1
-                continue
-
-            # Parse date
-            try:
-                if '.' in data_str:
-                    data_pontaj = datetime.strptime(data_str, '%d.%m.%Y').date()
-                else:
-                    data_pontaj = datetime.strptime(data_str, '%Y-%m-%d').date()
-            except ValueError:
-                errors.append(f'Rand {row_idx}: Format data invalid ({data_str})')
-                count_err += 1
-                continue
-
-            # Check duplicate
-            exista = query_timesheets_for_tenant().filter_by(
-                angajat_id=angajat.id,
-                data=data_pontaj,
-            ).first()
-            if exista:
-                errors.append(f'Rand {row_idx}: Duplicat - {angajat.nume_complet} are deja pontaj in {data_str}')
-                count_err += 1
-                continue
-
-            if not tip_zi:
-                tip_zi = _detect_tip_zi(data_pontaj)
-
-            result = calculate_hours(ora_start, ora_sfarsit, tip_zi, data_pontaj)
-
-            pontaj = Pontaj(
-                angajat_id=angajat.id,
-                proiect_id=proiect.id,
-                data=data_pontaj,
-                ora_start=ora_start,
-                ora_sfarsit=ora_sfarsit,
-                ore_lucrate=result['ore_lucrate'],
-                ore_normale=result['ore_normale'],
-                ore_suplimentare_50=result['ore_supl_50'],
-                ore_suplimentare_100=result['ore_supl_100'],
-                tip_zi=result['tip_zi'],
-                status='draft',
-                observatii=obs,
-                introdus_de=current_user.id
-            )
-            db.session.add(pontaj)
-            count_ok += 1
-
-        except Exception as e:
-            errors.append(f'Rand {row_idx}: Eroare - {str(e)}')
-            count_err += 1
-
-    db.session.commit()
-
-    if count_ok > 0:
-        flash(f'{count_ok} pontaje importate cu succes!', 'success')
-    if count_err > 0:
-        flash(f'{count_err} erori la import: ' + '; '.join(errors[:5]), 'warning')
+    if rezultat['count_ok'] > 0:
+        flash(f"{rezultat['count_ok']} pontaje importate cu succes!", 'success')
+    if rezultat['count_err'] > 0:
+        flash(f"{rezultat['count_err']} erori la import: " + '; '.join(rezultat['errors'][:5]), 'warning')
 
     return redirect(url_for('pontaje.lista'))

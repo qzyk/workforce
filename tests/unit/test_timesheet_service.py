@@ -1679,6 +1679,265 @@ def test_export_data_helper_read_only_si_fara_query_brut(app):
 
 
 # ============================================================
+# S1.2D2 — import Excel parsing/create (tenant-safe, partial-success)
+# ============================================================
+
+_IMP_CNP_A = '1900012000101'   # ang_a din _seed (tenant A)
+_IMP_CNP_B = '1900012000102'   # ang_b din _seed (tenant B)
+_IMP_COD_A = 'TEST-S12A-PRJ-A'
+_IMP_COD_B = 'TEST-S12A-PRJ-B'
+
+
+def _imp_row(cnp=_IMP_CNP_A, cod=_IMP_COD_A, data='06.04.2026',
+             ora_start='08:00', ora_sfarsit='16:00', tip_zi='lucratoare', obs=''):
+    return (cnp, cod, data, ora_start, ora_sfarsit, tip_zi, obs)
+
+
+def test_import_rand_valid_creeaza_pontaj_cu_campuri(app):
+    from models import Pontaj
+    from services.timesheet_service import import_timesheets_from_rows
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            rez = import_timesheets_from_rows(
+                rows=[_imp_row(obs='TEST_S12A note')], current_user=_FakeUser(user_id=555))
+        assert rez['count_ok'] == 1
+        assert rez['count_err'] == 0
+        p = Pontaj.query.filter_by(angajat_id=ids['ang_a'], data=date(2026, 4, 6)).first()
+        assert p is not None
+        assert p.proiect_id == ids['proiect_a']
+        assert p.ora_start == '08:00'
+        assert p.ora_sfarsit == '16:00'
+        assert p.status == 'draft'
+        assert p.observatii == 'TEST_S12A note'
+        assert p.introdus_de == 555
+
+
+def test_import_status_mereu_draft_si_fara_campuri_aprobare(app):
+    from models import Pontaj
+    from services.timesheet_service import import_timesheets_from_rows
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            import_timesheets_from_rows(rows=[_imp_row()], current_user=_FakeUser())
+        p = Pontaj.query.filter_by(angajat_id=ids['ang_a'], data=date(2026, 4, 6)).first()
+        assert p.status == 'draft'
+        assert p.aprobat_de is None
+        assert p.data_aprobare is None
+
+
+def test_import_parseaza_ambele_formate_de_data(app):
+    from models import Pontaj
+    from services.timesheet_service import import_timesheets_from_rows
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            rez = import_timesheets_from_rows(rows=[
+                _imp_row(data='06.04.2026'),       # dd.mm.yyyy
+                _imp_row(data='2026-04-07'),       # yyyy-mm-dd
+            ], current_user=_FakeUser())
+        assert rez['count_ok'] == 2
+        assert Pontaj.query.filter_by(angajat_id=ids['ang_a'], data=date(2026, 4, 6)).first()
+        assert Pontaj.query.filter_by(angajat_id=ids['ang_a'], data=date(2026, 4, 7)).first()
+
+
+def test_import_data_invalida_sare_randul(app):
+    from services.timesheet_service import import_timesheets_from_rows
+    _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            rez = import_timesheets_from_rows(
+                rows=[_imp_row(data='32.13.2026')], current_user=_FakeUser())
+        assert rez['count_ok'] == 0
+        assert rez['count_err'] == 1
+        assert 'Format data invalid' in rez['errors'][0]
+
+
+def test_import_angajat_inexistent_sare_randul(app):
+    from services.timesheet_service import import_timesheets_from_rows
+    _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            rez = import_timesheets_from_rows(
+                rows=[_imp_row(cnp='0000000000000')], current_user=_FakeUser())
+        assert rez['count_ok'] == 0
+        assert rez['count_err'] == 1
+        assert 'nu exista in sistem' in rez['errors'][0]
+
+
+def test_import_proiect_inexistent_sare_randul(app):
+    from services.timesheet_service import import_timesheets_from_rows
+    _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            rez = import_timesheets_from_rows(
+                rows=[_imp_row(cod='COD-INEXISTENT')], current_user=_FakeUser())
+        assert rez['count_ok'] == 0
+        assert rez['count_err'] == 1
+        assert 'nu exista' in rez['errors'][0]
+
+
+def test_import_strict_angajat_strain_skip_fara_abort(app):
+    from models import Pontaj
+    from services.timesheet_service import import_timesheets_from_rows
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            # CNP_B + COD_B apartin tenantului B; din tenant A trebuie sarite, NU abort
+            rez = import_timesheets_from_rows(
+                rows=[_imp_row(cnp=_IMP_CNP_B, cod=_IMP_COD_B)], current_user=_FakeUser())
+        assert rez['count_ok'] == 0
+        assert rez['count_err'] == 1
+        assert Pontaj.query.filter_by(angajat_id=ids['ang_b'], data=date(2026, 4, 6)).first() is None
+
+
+def test_import_duplicat_sare_randul(app):
+    from services.timesheet_service import import_timesheets_from_rows
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        _pontaj_export(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                       data=date(2026, 4, 6))
+        with app.test_request_context('/'):
+            rez = import_timesheets_from_rows(rows=[_imp_row()], current_user=_FakeUser())
+        assert rez['count_ok'] == 0
+        assert rez['count_err'] == 1
+        assert 'Duplicat' in rez['errors'][0]
+
+
+def test_import_partial_success_amesteca_bune_si_rele(app):
+    from models import Pontaj
+    from services.timesheet_service import import_timesheets_from_rows
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            rez = import_timesheets_from_rows(rows=[
+                _imp_row(data='06.04.2026'),                 # bun
+                _imp_row(cnp='0000000000000', data='07.04.2026'),  # angajat inexistent
+                _imp_row(data='08.04.2026'),                 # bun
+                _imp_row(data='bad-date'),                   # data invalida
+            ], current_user=_FakeUser())
+        assert rez['count_ok'] == 2
+        assert rez['count_err'] == 2
+        # randurile bune persista
+        assert Pontaj.query.filter_by(angajat_id=ids['ang_a'], data=date(2026, 4, 6)).first()
+        assert Pontaj.query.filter_by(angajat_id=ids['ang_a'], data=date(2026, 4, 8)).first()
+
+
+def test_import_strict_fara_tenant_creeaza_zero(app):
+    from models import Pontaj
+    from services.timesheet_service import import_timesheets_from_rows
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        inainte = Pontaj.query.count()
+        with app.test_request_context('/'):
+            # niciun tenant override -> query_for_tenant filter(False) -> nimic gasit
+            rez = import_timesheets_from_rows(rows=[_imp_row()], current_user=_FakeUser())
+        assert rez['count_ok'] == 0
+        assert Pontaj.query.count() == inainte
+
+
+def test_import_optional_cu_tenant_creeaza(app):
+    from services.timesheet_service import import_timesheets_from_rows
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'optional'
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            rez = import_timesheets_from_rows(rows=[_imp_row()], current_user=_FakeUser())
+        assert rez['count_ok'] == 1
+
+
+def test_import_off_mode_vede_ambii_tenanti(app):
+    from services.timesheet_service import import_timesheets_from_rows
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            rez = import_timesheets_from_rows(rows=[
+                _imp_row(cnp=_IMP_CNP_A, cod=_IMP_COD_A, data='06.04.2026'),
+                _imp_row(cnp=_IMP_CNP_B, cod=_IMP_COD_B, data='06.04.2026'),
+            ], current_user=_FakeUser())
+        assert rez['count_ok'] == 2  # off => ambii tenanti rezolva
+
+
+def test_import_rand_gol_sarit_silentios(app):
+    from services.timesheet_service import import_timesheets_from_rows
+    _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            rez = import_timesheets_from_rows(rows=[
+                (None, None, None, None, None, None, None),  # rand gol
+                _imp_row(),                                   # rand valid
+            ], current_user=_FakeUser())
+        assert rez['count_ok'] == 1
+        assert rez['count_err'] == 0  # randul gol nu e numarat ca eroare
+
+
+def test_import_rand_scurt_eroare_generica(app):
+    from services.timesheet_service import import_timesheets_from_rows
+    _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            rez = import_timesheets_from_rows(
+                rows=[(_IMP_CNP_A, _IMP_COD_A, '06.04.2026')],  # lipsesc ora_start/sfarsit
+                current_user=_FakeUser())
+        assert rez['count_ok'] == 0
+        assert rez['count_err'] == 1
+        assert 'Eroare' in rez['errors'][0]
+
+
+def test_import_tip_zi_si_observatii_din_coloane(app):
+    from models import Pontaj
+    from services.timesheet_service import import_timesheets_from_rows
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            import_timesheets_from_rows(
+                rows=[_imp_row(tip_zi='co', obs='concediu')], current_user=_FakeUser())
+        p = Pontaj.query.filter_by(angajat_id=ids['ang_a'], data=date(2026, 4, 6)).first()
+        assert p.tip_zi == 'co'
+        assert p.observatii == 'concediu'
+
+
+def test_import_helper_un_singur_commit_si_fara_query_brut(app):
+    """Guard: import helper face un singur commit, fara query brut tenant-owned,
+    fara validatorii care ar transforma skip-ul in abort(404)."""
+    import inspect
+    import services.timesheet_service as svc
+
+    sursa = inspect.getsource(svc.import_timesheets_from_rows)
+    # exact un commit, dupa bucla
+    assert sursa.count('db.session.commit') == 1
+    # fara query brut tenant-owned
+    assert 'Pontaj.query' not in sursa
+    assert 'Angajat.query' not in sursa
+    assert 'Proiect.query' not in sursa
+    assert 'RaportActivitate.query' not in sursa
+    # foloseste helperii tenant-safe
+    assert 'query_for_tenant' in sursa
+    assert 'query_timesheets_for_tenant' in sursa
+    # NU foloseste validatorii care ar face abort in loc de skip
+    assert 'require_timesheet_inputs_same_tenant' not in sursa
+    assert 'tenant_id_for_new_record_or_403' not in sursa
+
+
+# ============================================================
 # Fixture data
 # ============================================================
 
@@ -1750,7 +2009,16 @@ def _curata(app):
     from models import Angajat, AngajatProiect, Pontaj, Proiect, Tenant, db
     with app.app_context():
         app.config['MULTI_TENANT_MODE'] = 'off'
-        for p in Pontaj.query.filter(Pontaj.observatii.like('TEST_S12A%')).all():
+        # ID-urile S12A pentru a curata si pontajele de import (cu observatii arbitrare)
+        ang_ids = [a.id for a in Angajat.query.filter(Angajat.nume.like('S12A-%')).all()]
+        prj_ids = [p.id for p in Proiect.query.filter(
+            Proiect.cod_proiect.like('TEST-S12A-%')).all()]
+        pontaje = Pontaj.query.filter(Pontaj.observatii.like('TEST_S12A%')).all()
+        if ang_ids:
+            pontaje += Pontaj.query.filter(Pontaj.angajat_id.in_(ang_ids)).all()
+        if prj_ids:
+            pontaje += Pontaj.query.filter(Pontaj.proiect_id.in_(prj_ids)).all()
+        for p in {pp.id: pp for pp in pontaje}.values():
             db.session.delete(p)
         for ap in AngajatProiect.query.filter(
             AngajatProiect.functie_pe_proiect == 'TEST_S12A'

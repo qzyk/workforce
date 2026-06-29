@@ -873,3 +873,136 @@ def build_monthly_timesheet_export_data(*, month, year, project_id=0, tenant_id=
         'sarbatori': sarbatori,
         'proiect_export': proiect_export,
     }
+
+
+# ============================================================
+# Import Excel pontaje (mutating, tenant-safe)
+# ============================================================
+
+def _detect_import_tip_zi(data_pontaj):
+    """Detecteaza tipul zilei la import (identic cu _detect_tip_zi din ruta).
+
+    SarbatoareLegala este catalog global (non-tenant).
+    """
+    if not data_pontaj:
+        return 'lucratoare'
+    if SarbatoareLegala.query.filter_by(data=data_pontaj).first():
+        return 'sarbatoare_legala'
+    dow = data_pontaj.weekday()
+    if dow == 5:
+        return 'sambata'
+    if dow == 6:
+        return 'duminica'
+    return 'lucratoare'
+
+
+def import_timesheets_from_rows(*, rows, current_user, tenant_id=None):
+    """Proceseaza randuri de import Excel si creeaza Pontaje (ruta import_excel).
+
+    S1.2D2 extrage logica de domeniu din routes/pontaje.py::import_excel: rezolvare
+    tenant-safe angajat/proiect, parsare data, duplicate check, detectare tip_zi,
+    calcul ore si creare Pontaj. Ruta pastreaza upload-ul, validarea extensiei,
+    load_workbook, flash si redirect.
+
+    `rows` este o lista de tuple, exact cum produce
+    ws.iter_rows(min_row=2, values_only=True). Coloane pozitionale:
+    [0]=CNP, [1]=cod_proiect, [2]=data, [3]=ora_start, [4]=ora_sfarsit,
+    [5]=tip_zi (optional), [6]=observatii (optional). Numerotarea randurilor
+    incepe la 2, ca in ruta originala.
+
+    Tenant-safe identic cu ruta: angajatul si proiectul sunt cautati prin
+    query_for_tenant (id strain -> negasit -> rand sarit, NICIODATA abort);
+    duplicatul prin query_timesheets_for_tenant. NU foloseste validatorii de
+    tenant pentru create/edit (cei care ridica 404), pentru ca acelea ar
+    transforma skip-ul per rand intr-un abort(404).
+
+    Partial-success pastrat exact: randurile valide se creeaza, cele invalide /
+    duplicate / straine se sar, erorile per-rand sunt prinse si numarate, iar la
+    final se face UN SINGUR commit. Randurile goale se sar silentios si nu sunt
+    numarate ca erori. Returneaza {count_ok, count_err, errors}.
+    """
+    count_ok = 0
+    count_err = 0
+    errors = []
+
+    for row_idx, row in enumerate(rows, 2):
+        if not row or not row[0]:
+            continue
+
+        try:
+            cnp = str(row[0]).strip()
+            cod_proiect = str(row[1]).strip()
+            data_str = str(row[2]).strip()
+            ora_start = str(row[3]).strip()
+            ora_sfarsit = str(row[4]).strip()
+            tip_zi = str(row[5]).strip() if row[5] else ''
+            obs = str(row[6]).strip() if len(row) > 6 and row[6] else ''
+
+            # Find angajat by CNP (tenant-safe; strain -> negasit -> skip)
+            angajat = query_for_tenant(Angajat, tenant_id=tenant_id).filter_by(cnp=cnp).first()
+            if not angajat:
+                errors.append(f'Rand {row_idx}: CNP {cnp} nu exista in sistem')
+                count_err += 1
+                continue
+
+            # Find proiect (tenant-safe; strain -> negasit -> skip)
+            proiect = query_for_tenant(Proiect, tenant_id=tenant_id).filter_by(
+                cod_proiect=cod_proiect).first()
+            if not proiect:
+                errors.append(f'Rand {row_idx}: Proiect {cod_proiect} nu exista')
+                count_err += 1
+                continue
+
+            # Parse date
+            try:
+                if '.' in data_str:
+                    data_pontaj = datetime.strptime(data_str, '%d.%m.%Y').date()
+                else:
+                    data_pontaj = datetime.strptime(data_str, '%Y-%m-%d').date()
+            except ValueError:
+                errors.append(f'Rand {row_idx}: Format data invalid ({data_str})')
+                count_err += 1
+                continue
+
+            # Check duplicate (tenant-scoped)
+            exista = query_timesheets_for_tenant(tenant_id=tenant_id).filter_by(
+                angajat_id=angajat.id,
+                data=data_pontaj,
+            ).first()
+            if exista:
+                errors.append(f'Rand {row_idx}: Duplicat - {angajat.nume_complet} are deja pontaj in {data_str}')
+                count_err += 1
+                continue
+
+            if not tip_zi:
+                tip_zi = _detect_import_tip_zi(data_pontaj)
+
+            result = calculate_timesheet_hours(
+                ora_start=ora_start, ora_sfarsit=ora_sfarsit,
+                tip_zi=tip_zi, data_pontaj=data_pontaj,
+            )
+
+            pontaj = Pontaj(
+                angajat_id=angajat.id,
+                proiect_id=proiect.id,
+                data=data_pontaj,
+                ora_start=ora_start,
+                ora_sfarsit=ora_sfarsit,
+                ore_lucrate=result['ore_lucrate'],
+                ore_normale=result['ore_normale'],
+                ore_suplimentare_50=result['ore_supl_50'],
+                ore_suplimentare_100=result['ore_supl_100'],
+                tip_zi=result['tip_zi'],
+                status='draft',
+                observatii=obs,
+                introdus_de=getattr(current_user, 'id', None),
+            )
+            db.session.add(pontaj)
+            count_ok += 1
+
+        except Exception as e:
+            errors.append(f'Rand {row_idx}: Eroare - {str(e)}')
+            count_err += 1
+
+    db.session.commit()
+    return {'count_ok': count_ok, 'count_err': count_err, 'errors': errors}
