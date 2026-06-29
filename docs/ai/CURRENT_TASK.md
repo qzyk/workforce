@@ -3,56 +3,61 @@
 Current authorized task:
 
 ```text
-S1.2C2 No-Code Understanding / Collision Safety Gate
+S1.2D No-Code Understanding / Collision Safety Gate
 ```
 
-This is a READ-ONLY understanding and collision-safety gate for the bulk
-workflow extraction slice (aproba_multiplu) after S1.2C1. It produces an
-understanding/collision-safety report only.
+This is a READ-ONLY understanding and collision-safety gate for the export/import
+extraction slice after S1.2C2. It produces an understanding/collision-safety
+report only.
 
-IMPORTANT: S1.2C2 IMPLEMENTATION IS NOT YET AUTHORIZED.
-S1.2C2 implementation may start only after this no-code safety gate is reviewed
+IMPORTANT: S1.2D IMPLEMENTATION IS NOT YET AUTHORIZED.
+S1.2D implementation may start only after this no-code safety gate is reviewed
 and approved by Albert.
 
 Current canonical base commit:
 
 ```text
-d1bde5f4d6e53aa8a0b17a99aaf8e2bfd1e48a45 S1.2C1 timesheet single workflow extraction
+a3f621e S1.2C2 timesheet bulk workflow extraction
 ```
 
 Current canonical branch:
 
 ```text
-feat/s1.2c1-timesheet-single-workflow-extraction
+feat/s1.2c2-timesheet-bulk-workflow-extraction
 ```
 
 ---
 
-## Previous completed step (S1.2C1) — VALIDATED
+## Previous completed step (S1.2C2) — VALIDATED
 
 ```text
-S1.2C1 Timesheet Single Workflow Extraction
+S1.2C2 Timesheet Bulk Workflow Extraction
 ```
 
-Verdict: COMPLETE. The three single-Pontaj workflow functions (trimite, aproba,
-respinge) were extracted from routes/pontaje.py into services/timesheet_service.py
-without touching bulk workflow, export/import, or any other domain.
+Verdict: COMPLETE. The bulk Pontaj workflow function (aproba_multiplu) was
+extracted from routes/pontaje.py into services/timesheet_service.py without
+touching single workflow, save/create/edit, read/list/context, delete, or
+export/import logic.
 
-S1.2C1 recorded results:
+S1.2C2 recorded results:
 
 ```text
-- submit_timesheet_for_approval() added to services/timesheet_service.py
-- approve_timesheet() added to services/timesheet_service.py
-- reject_timesheet() added to services/timesheet_service.py
-- trimite POST delegates to submit_timesheet_for_approval()
-- aproba POST delegates to approve_timesheet()
-- respinge POST delegates to reject_timesheet()
+- bulk_approve_timesheets() added to services/timesheet_service.py
+- aproba_multiplu POST delegates to bulk_approve_timesheets()
+- get_tenant_mode removed from routes/pontaje.py imports (no longer used there)
 - service is HTTP-free; service commits, route rollbacks on exception
-- submit_timesheet_for_approval no-ops without commit if status != 'draft'
-- reject_timesheet preserves empty reason string exactly
-- no data fields (ore_lucrate, ora_start, ora_sfarsit, observatii) modified
-- raw-query guard test added and passes
-- aproba_multiplu bulk workflow untouched (target of S1.2C2)
+- off-mode legacy branch preserved: Pontaj.query.get isolated, documented,
+  tested (T1.4 pattern)
+- tenant-aware fail-all validation preserved: abort(404) before any mutation
+- status == 'trimis' filter preserved
+- status mutation, aprobat_de, data_aprobare preserved
+- one db.session.commit() after the loop
+- count computation preserved
+- flash message and redirect unchanged
+- single workflow (trimite/aproba/respinge) untouched
+- save/create/edit untouched
+- read/list/context untouched
+- delete route untouched
 - export/import untouched
 - services/activity_service.py untouched
 - routes/activitati.py untouched
@@ -61,56 +66,34 @@ S1.2C1 recorded results:
 - templates untouched
 ```
 
-S1.2C1 validation:
+S1.2C2 validation:
 
 ```text
 py_compile passed
-tests/unit/test_timesheet_service.py: 43 passed (36 prior + 7 new)
-unit + integration (490 tests): 490 passed
+tests/unit/test_timesheet_service.py: 59 passed (43 prior + 16 new S1.2C2)
+unit + integration (529 tests): 529 passed
+Flask app smoke (pontaje routes): ok 18
 git diff --check clean
 ```
 
 ---
 
-## Goal of the current gate (S1.2C2 no-code)
+## Goal of the current gate (S1.2D no-code)
 
-Prove understanding of the safe boundary for S1.2C2 BEFORE any code:
+Prove understanding of the safe boundary for S1.2D BEFORE any code:
 
-1. Confirm canonical worktree state (clean, HEAD d1bde5f).
-2. Review aproba_multiplu in routes/pontaje.py — identify all logical branches:
-   - off-mode legacy branch (Pontaj.query.get raw — T1.4 pattern)
-   - strict/optional tenant branch
-   - fail-all-or-nothing semantics
-   - commit-once after loop
-   - count flash
-3. Map no-touch surfaces: single workflow (S1.2C1 done), single save, bulk create,
-   read/list context, export/import, templates, models, migrations,
-   activity service, activity routes, other domains.
-4. Preserve the service-commit / route-rollback convention (S1.2B/C1).
-5. Produce a non-overlap / hunk-safety plan for aproba_multiplu only.
-6. List the files likely allowed for S1.2C2.
-7. End by requiring Albert's explicit approval before coding.
+1. Confirm canonical worktree state (clean, HEAD a3f621e).
+2. Review export_lunar, template_import, import_excel in routes/pontaje.py.
+3. Identify what is safe vs risky for extraction.
+4. Map no-touch surfaces: all extracted workflow/save/read functions.
+5. Produce a non-overlap / hunk-safety plan.
+6. End by requiring Albert's explicit approval before coding.
+
+Note: export_edifico/export_edifico_preview were already accepted as deferred
+in D015 (layout-sensitive, already tenant-safe). S1.2D concerns only
+pontaje export/import.
 
 The gate must NOT modify code, tests, services, or routes.
-
----
-
-## Scope of the eventual S1.2C2 (for reference only — not authorized yet)
-
-When approved, S1.2C2 may extract only aproba_multiplu bulk workflow logic from
-routes/pontaje.py into services/timesheet_service.py, per D014 + D015:
-
-- Extract timesheet behavior only.
-- Use services/timesheet_service.py (NOT activity_service.py).
-- No schema changes.
-- Preserve fail-all-or-nothing semantics, commit-once after loop, count flash.
-- Preserve off-mode legacy branch (Pontaj.query.get guarded by mode check).
-- MULTI_TENANT_MODE=off compatible.
-- Fail closed in strict mode.
-- Use services/security/tenant_access.py timesheet helpers.
-- Preserve the S1.2B service-commit / route-rollback convention.
-- Add direct service-level tests.
-- Do not start S1.2D export/import extraction.
 
 ---
 
@@ -119,8 +102,8 @@ routes/pontaje.py into services/timesheet_service.py, per D014 + D015:
 Do not start implementation of:
 
 ```text
-S1.2C2 Timesheet Bulk Workflow Extraction
+S1.2D Timesheet Export/Import Extraction
 ```
 
-The current authorized task is ONLY the S1.2C2 no-code understanding /
+The current authorized task is ONLY the S1.2D no-code understanding /
 collision-safety gate. Implementation requires a separate explicit approval.
