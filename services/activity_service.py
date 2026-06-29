@@ -36,16 +36,18 @@ from decimal import Decimal
 from flask import abort
 
 from models import (
-    db, Angajat, Proiect, TipInstalatie, CategorieActivitate,
+    db, Angajat, Proiect, Pontaj, TipInstalatie, CategorieActivitate,
     RaportActivitate, Santier, Cladire, ElementBIM, SarbatoareLegala,
 )
 from services.security.tenant_access import (
     get_activity_or_404,
+    get_project_or_404,
     get_tenant_mode,
     query_activities_for_tenant,
     query_bim_buildings_for_tenant,
     query_bim_elements_for_tenant,
     query_sites_for_tenant,
+    query_timesheets_for_tenant,
     query_for_tenant,
     require_activity_inputs_same_tenant,
     require_activity_bim_context_same_tenant,
@@ -642,3 +644,51 @@ def bulk_transition_activities(*, activity_ids, action, current_user,
     db.session.commit()
 
     return {'ok': True, 'count': count, 'action': action}
+
+
+# ============================================================
+# S1.1D — asamblare date pentru rapoarte/exporturi (tenant-safe)
+# ============================================================
+# Doar adunarea datelor tenant-safe; constructia workbook-ului/PDF-ului,
+# template-urile si send_file raman in ruta (layout neschimbat).
+
+def get_activity_rows_for_period(*, start_date, end_date, tenant_id=None):
+    """Activitatile tenant-safe dintr-un interval [start_date, end_date].
+
+    Ordonate identic cu rapoartele saptamanal/lunar/anual
+    (angajat_id, apoi data). Returneaza o lista de RaportActivitate.
+    """
+    return query_activities_for_tenant(tenant_id=tenant_id).filter(
+        RaportActivitate.data >= start_date,
+        RaportActivitate.data <= end_date,
+    ).order_by(RaportActivitate.angajat_id, RaportActivitate.data).all()
+
+
+def get_timesheet_hours_map_for_period(*, start_date, end_date, tenant_id=None):
+    """Map (angajat_id, data_iso) -> ore_lucrate pentru un interval, tenant-safe.
+
+    Pastreaza fix-ul T1.C14: pontajele sunt citite prin query_timesheets_for_tenant(),
+    niciodata prin Pontaj.query brut, ca sa nu scurga ore din alt tenant in raportul
+    lunar. Returneaza un dict simplu, gata de folosit la randarea workbook-ului.
+    """
+    pontaje = query_timesheets_for_tenant(tenant_id=tenant_id).filter(
+        Pontaj.data >= start_date, Pontaj.data <= end_date
+    ).all()
+    pontaj_map = {}
+    for p in pontaje:
+        pontaj_map[(p.angajat_id, p.data.isoformat())] = float(p.ore_lucrate) if p.ore_lucrate else 0
+    return pontaj_map
+
+
+def get_project_activity_report_data(*, project_id, tenant_id=None):
+    """Proiectul validat tenant-safe + activitatile lui (pentru raportul pe proiect).
+
+    Proiectul este obtinut prin get_project_or_404 (id strain -> 404). Activitatile
+    sunt citite tenant-safe, ordonate descrescator dupa data (identic cu ruta).
+    Returneaza {'proiect': <Proiect>, 'activitati': [<RaportActivitate>, ...]}.
+    """
+    proiect = get_project_or_404(project_id, tenant_id=tenant_id)
+    activitati = query_activities_for_tenant(tenant_id=tenant_id).filter_by(
+        proiect_id=project_id
+    ).order_by(RaportActivitate.data.desc()).all()
+    return {'proiect': proiect, 'activitati': activitati}

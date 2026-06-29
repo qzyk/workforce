@@ -22,9 +22,7 @@ from models import (
 )
 from services.security.tenant_access import (
     get_activity_or_404,
-    get_project_or_404,
     query_activities_for_tenant,
-    query_timesheets_for_tenant,
     query_for_tenant,
 )
 from services.activity_service import (
@@ -33,7 +31,10 @@ from services.activity_service import (
     bulk_transition_activities,
     get_activity_form_context,
     get_activity_panel_context,
+    get_activity_rows_for_period,
     get_current_employee_for_user,
+    get_project_activity_report_data,
+    get_timesheet_hours_map_for_period,
     reject_activity,
     save_activity_from_form_data,
     submit_activity_for_approval,
@@ -553,10 +554,7 @@ def raport_saptamanal():
     sapt = request.args.get('saptamana', today.isocalendar()[1], type=int)
     luni, duminica = _get_saptamana_bounds(an, sapt)
 
-    activitati = query_activities_for_tenant().filter(
-        RaportActivitate.data >= luni,
-        RaportActivitate.data <= duminica,
-    ).order_by(RaportActivitate.angajat_id, RaportActivitate.data).all()
+    activitati = get_activity_rows_for_period(start_date=luni, end_date=duminica)
 
     wb = Workbook()
     thin_border = Border(
@@ -700,18 +698,10 @@ def raport_lunar():
     luni_ro = ['', 'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
                'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie']
 
-    activitati = query_activities_for_tenant().filter(
-        RaportActivitate.data >= prima_zi,
-        RaportActivitate.data <= ultima_zi,
-    ).order_by(RaportActivitate.angajat_id, RaportActivitate.data).all()
+    activitati = get_activity_rows_for_period(start_date=prima_zi, end_date=ultima_zi)
 
     # Pontaje din aceeasi perioada — tenant-safe pentru a nu scurge ore din alt tenant
-    pontaje = query_timesheets_for_tenant().filter(
-        Pontaj.data >= prima_zi, Pontaj.data <= ultima_zi
-    ).all()
-    pontaj_map = {}
-    for p in pontaje:
-        pontaj_map[(p.angajat_id, p.data.isoformat())] = float(p.ore_lucrate) if p.ore_lucrate else 0
+    pontaj_map = get_timesheet_hours_map_for_period(start_date=prima_zi, end_date=ultima_zi)
 
     wb = Workbook()
     thin_border = Border(
@@ -880,10 +870,7 @@ def raport_anual():
     prima_zi = date(an, 1, 1)
     ultima_zi = date(an, 12, 31)
 
-    activitati = query_activities_for_tenant().filter(
-        RaportActivitate.data >= prima_zi,
-        RaportActivitate.data <= ultima_zi,
-    ).order_by(RaportActivitate.angajat_id, RaportActivitate.data).all()
+    activitati = get_activity_rows_for_period(start_date=prima_zi, end_date=ultima_zi)
 
     wb = Workbook()
     thin_border = Border(
@@ -1041,14 +1028,11 @@ def raport_proiect():
         flash('Selectati un proiect.', 'warning')
         return redirect(url_for('activitati.panou'))
 
-    proiect = get_project_or_404(proiect_id)
-    activitati = query_activities_for_tenant().filter_by(proiect_id=proiect_id).order_by(
-        RaportActivitate.data.desc()
-    ).all()
+    date_raport = get_project_activity_report_data(project_id=proiect_id)
 
     return render_template('activitati/raport_proiect.html',
-        proiect=proiect,
-        activitati=activitati,
+        proiect=date_raport['proiect'],
+        activitati=date_raport['activitati'],
     )
 
 

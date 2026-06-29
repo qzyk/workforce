@@ -753,6 +753,152 @@ def test_workflow_nu_creeaza_sau_modifica_pontaj(app):
 
 
 # ============================================================
+# S1.1D — report/export data assembly
+# ============================================================
+
+def test_weekly_report_data_doar_tenant_curent(app):
+    from services.activity_service import get_activity_rows_for_period
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        a_a = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='trimis', principala='TEST_S11A_RPT_WA')
+        a_b = _act(app, angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'],
+                   status='trimis', principala='TEST_S11A_RPT_WB')
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            rows = get_activity_rows_for_period(
+                start_date=date(2026, 2, 23), end_date=date(2026, 3, 8),
+            )
+        row_ids = {r.id for r in rows}
+        assert a_a in row_ids
+        assert a_b not in row_ids
+
+
+def test_annual_report_data_doar_tenant_curent(app):
+    from services.activity_service import get_activity_rows_for_period
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        a_a = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='trimis', principala='TEST_S11A_RPT_YA')
+        a_b = _act(app, angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'],
+                   status='trimis', principala='TEST_S11A_RPT_YB')
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            rows = get_activity_rows_for_period(
+                start_date=date(2026, 1, 1), end_date=date(2026, 12, 31),
+            )
+        row_ids = {r.id for r in rows}
+        assert a_a in row_ids
+        assert a_b not in row_ids
+
+
+def test_monthly_timesheet_map_tenant_scoped_T1C14(app):
+    """Map-ul de ore lunare nu include pontaje din alt tenant (fix T1.C14)."""
+    from services.activity_service import get_timesheet_hours_map_for_period
+    from models import Pontaj, db
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        pa = Pontaj(angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                    data=date(2026, 3, 2), ore_lucrate=8, observatii='TEST_S11D')
+        pb = Pontaj(angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'],
+                    data=date(2026, 3, 2), ore_lucrate=7, observatii='TEST_S11D')
+        db.session.add_all([pa, pb])
+        db.session.commit()
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            m = get_timesheet_hours_map_for_period(
+                start_date=date(2026, 3, 1), end_date=date(2026, 3, 31),
+            )
+        assert (ids['ang_a'], '2026-03-02') in m
+        assert (ids['ang_b'], '2026-03-02') not in m  # alt tenant exclus
+
+
+def test_project_report_data_proiect_strain_404(app):
+    from services.activity_service import get_project_activity_report_data
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            with pytest.raises(HTTPException) as exc:
+                get_project_activity_report_data(project_id=ids['proiect_b'])
+        assert exc.value.code == 404
+
+
+def test_project_report_data_doar_activitati_tenant(app):
+    from services.activity_service import get_project_activity_report_data
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        a_a = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='trimis', principala='TEST_S11A_RPT_PA')
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            data_raport = get_project_activity_report_data(project_id=ids['proiect_a'])
+        assert data_raport['proiect'].id == ids['proiect_a']
+        assert a_a in {r.id for r in data_raport['activitati']}
+
+
+def test_report_data_off_mode_vede_ambii_tenanti(app):
+    from services.activity_service import get_activity_rows_for_period
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        a_a = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='trimis', principala='TEST_S11A_RPT_OFFA')
+        a_b = _act(app, angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'],
+                   status='trimis', principala='TEST_S11A_RPT_OFFB')
+        with app.test_request_context('/'):
+            rows = get_activity_rows_for_period(
+                start_date=date(2026, 1, 1), end_date=date(2026, 12, 31),
+            )
+        row_ids = {r.id for r in rows}
+        assert a_a in row_ids
+        assert a_b in row_ids  # off => nefiltrat
+
+
+def test_report_data_strict_fara_tenant_fail_closed(app):
+    from services.activity_service import get_activity_rows_for_period
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+             status='trimis', principala='TEST_S11A_RPT_NOTEN')
+        with app.test_request_context('/'):
+            rows = get_activity_rows_for_period(
+                start_date=date(2026, 1, 1), end_date=date(2026, 12, 31),
+            )
+        assert rows == []  # fail closed
+
+
+def test_monthly_timesheet_helper_nu_foloseste_pontaj_query_brut(app):
+    """Guard: serviciul de raport lunar nu reintroduce Pontaj.query brut (T1.C14)."""
+    import inspect
+    from services.activity_service import get_timesheet_hours_map_for_period
+
+    sursa = inspect.getsource(get_timesheet_hours_map_for_period)
+    # Forma bruta a anti-pattern-ului (acces direct la .query.) nu apare in cod;
+    # mentiunea din docstring ('Pontaj.query brut') nu are punct dupa 'query'.
+    assert 'Pontaj.query.' not in sursa
+    assert 'query_timesheets_for_tenant' in sursa
+
+
+# ============================================================
 # Fixture data
 # ============================================================
 
@@ -815,7 +961,7 @@ def _seed(app):
 
 def _curata(app):
     from models import (
-        Angajat, Proiect, RaportActivitate, Santier, Tenant, db,
+        Angajat, Pontaj, Proiect, RaportActivitate, Santier, Tenant, db,
     )
 
     with app.app_context():
@@ -824,6 +970,8 @@ def _curata(app):
             RaportActivitate.activitate_principala.like('TEST_S11A_%')
         ).all():
             db.session.delete(act)
+        for pontaj in Pontaj.query.filter(Pontaj.observatii.like('TEST_S11D%')).all():
+            db.session.delete(pontaj)
         for site in Santier.query.filter(Santier.cod.like('TEST-S11A-%')).all():
             db.session.delete(site)
         for ang in Angajat.query.filter(Angajat.nume.like('S11A-%')).all():
