@@ -22,9 +22,11 @@ S1.2C1 adauga DOAR workflow-ul single Pontaj:
   * aproba;
   * respinge.
 
-NU contine si nu trebuie sa contina in S1.2C1 (raman in rute, extrase ulterior
-in S1.2C2/D):
-  * workflow-ul bulk (aproba_multiplu);
+S1.2C2 adauga DOAR workflow-ul bulk Pontaj:
+  * aproba_multiplu.
+
+NU contine si nu trebuie sa contina in S1.2C2 (raman in rute, extrase ulterior
+in S1.2D):
   * export/import (export_lunar, import_excel, template_import).
 
 Toate query-urile pe date operationale tenant-owned folosesc helperii din
@@ -39,9 +41,12 @@ pe exceptii si pastreaza comportamentul HTTP vizibil.
 import calendar
 from datetime import datetime, date
 
+from werkzeug.exceptions import abort
+
 from models import db, Pontaj, Angajat, Proiect, AngajatProiect, SarbatoareLegala
 from services.security.tenant_access import (
     get_project_or_404,
+    get_tenant_mode,
     query_for_tenant,
     query_timesheets_for_tenant,
     require_timesheet_inputs_same_tenant,
@@ -429,6 +434,59 @@ def reject_timesheet(*, timesheet, current_user, reason):
     timesheet.data_aprobare = datetime.utcnow()
     db.session.commit()
     return {'timesheet': timesheet, 'changed': True, 'rejected': True}
+
+
+# ============================================================
+# S1.2C2 - workflow bulk Pontaj (HTTP-free)
+# ============================================================
+
+def bulk_approve_timesheets(*, ids, current_user, tenant_id=None):
+    """Aproba in masa Pontajele trimise, selectate prin lista de ID-uri.
+
+    S1.2C2 extrage logica de domeniu din routes/pontaje.py::aproba_multiplu.
+
+    Ramura off-mode: query direct prin id (T1.4 legacy, identic cu aproba_masa
+    din activitati). Permis EXCLUSIV in aceasta ramura izolata.
+    Skipuieste silentios IDs lipsa si pontaje non-trimis.
+
+    Ramura tenant-aware: valideaza TOATE ID-urile inainte de orice mutatie
+    (fail-all). ID-uri lipsa sau din alt tenant duc la abort(404) fara nicio
+    scriere in baza de date.
+
+    Returneaza {'approved_count': int, 'timesheets': list[Pontaj]}.
+    """
+    if get_tenant_mode() == 'off':
+        # Ramura legacy off-mode: query direct prin id permis (T1.4 pattern).
+        # ValueError propagat ca in ruta originala daca pid_str nu e numeric.
+        pontaje = []
+        for pid_str in ids:
+            pontaj = Pontaj.query.get(int(pid_str))
+            if pontaj and pontaj.status == 'trimis':
+                pontaje.append(pontaj)
+    else:
+        try:
+            ids_int = [int(pid_str) for pid_str in ids]
+        except (TypeError, ValueError):
+            ids_int = []
+        ids_int = [pid for pid in ids_int if pid > 0]
+        if len(ids_int) != len(ids) or not ids_int:
+            abort(404)
+        pontaje = query_timesheets_for_tenant(tenant_id=tenant_id).filter(
+            Pontaj.id.in_(ids_int)
+        ).all()
+        if len({p.id for p in pontaje}) != len(set(ids_int)):
+            abort(404)
+        pontaje = [p for p in pontaje if p.status == 'trimis']
+
+    count = 0
+    for pontaj in pontaje:
+        pontaj.status = 'aprobat'
+        pontaj.aprobat_de = current_user.id
+        pontaj.data_aprobare = datetime.utcnow()
+        count += 1
+
+    db.session.commit()
+    return {'approved_count': count, 'timesheets': pontaje}
 
 
 # ============================================================

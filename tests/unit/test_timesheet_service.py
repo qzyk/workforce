@@ -1087,6 +1087,373 @@ def test_single_workflow_helpers_fara_query_brut(app):
 
 
 # ============================================================
+# S1.2C2 — workflow bulk Pontaj (HTTP-free)
+# ============================================================
+
+def test_bulk_approve_aproba_doar_trimis(app):
+    """Aproba numai pontajele cu status trimis; le sare pe celelalte."""
+    from services.timesheet_service import bulk_approve_timesheets
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid_trimis = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                             data=date(2026, 7, 1), status='trimis')
+        pid_draft = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                            data=date(2026, 7, 2), status='draft')
+        pid_aprobat = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                              data=date(2026, 7, 3), status='aprobat')
+        with app.test_request_context('/'):
+            rezultat = bulk_approve_timesheets(
+                ids=[str(pid_trimis), str(pid_draft), str(pid_aprobat)],
+                current_user=_FakeUser(user_id=1001),
+            )
+
+        assert rezultat['approved_count'] == 1
+        assert Pontaj.query.get(pid_trimis).status == 'aprobat'
+        assert Pontaj.query.get(pid_draft).status == 'draft'
+        assert Pontaj.query.get(pid_aprobat).status == 'aprobat'
+
+
+def test_bulk_approve_seteaza_status_aprobat(app):
+    from services.timesheet_service import bulk_approve_timesheets
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 7, 4), status='trimis')
+        with app.test_request_context('/'):
+            bulk_approve_timesheets(ids=[str(pid)], current_user=_FakeUser(user_id=1002))
+
+        assert Pontaj.query.get(pid).status == 'aprobat'
+
+
+def test_bulk_approve_seteaza_aprobat_de(app):
+    from services.timesheet_service import bulk_approve_timesheets
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 7, 5), status='trimis')
+        with app.test_request_context('/'):
+            bulk_approve_timesheets(ids=[str(pid)], current_user=_FakeUser(user_id=1003))
+
+        assert Pontaj.query.get(pid).aprobat_de == 1003
+
+
+def test_bulk_approve_seteaza_data_aprobare(app):
+    from services.timesheet_service import bulk_approve_timesheets
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 7, 6), status='trimis')
+        with app.test_request_context('/'):
+            bulk_approve_timesheets(ids=[str(pid)], current_user=_FakeUser(user_id=1004))
+
+        assert Pontaj.query.get(pid).data_aprobare is not None
+
+
+def test_bulk_approve_returneaza_count_corect(app):
+    from services.timesheet_service import bulk_approve_timesheets
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid1 = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                       data=date(2026, 7, 7), status='trimis')
+        pid2 = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                       data=date(2026, 7, 8), status='trimis')
+        pid3 = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                       data=date(2026, 7, 9), status='draft')
+        with app.test_request_context('/'):
+            rezultat = bulk_approve_timesheets(
+                ids=[str(pid1), str(pid2), str(pid3)],
+                current_user=_FakeUser(user_id=1005),
+            )
+
+        assert rezultat['approved_count'] == 2
+
+
+def test_bulk_approve_tenant_aware_ids_foreign_abort(app):
+    """ID din alt tenant -> abort(404) inainte de orice mutatie."""
+    from services.timesheet_service import bulk_approve_timesheets
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'optional'
+        pid_a = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                        data=date(2026, 7, 10), status='trimis')
+        pid_b = _pontaj(app, angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'],
+                        data=date(2026, 7, 10), status='trimis')
+
+        from flask_login import AnonymousUserMixin
+        import flask_login
+
+        class _UserCuTenant:
+            id = 1006
+            tenant_id = ids['tenant_a']
+            is_authenticated = True
+            is_active = True
+            is_anonymous = False
+            def get_id(self): return str(self.id)
+
+        u = _UserCuTenant()
+        with app.test_request_context('/'):
+            flask_login.login_user(u)
+            with pytest.raises(HTTPException) as exc_info:
+                bulk_approve_timesheets(
+                    ids=[str(pid_a), str(pid_b)],
+                    current_user=u,
+                )
+            assert exc_info.value.code == 404
+
+        assert Pontaj.query.get(pid_a).status == 'trimis'
+        assert Pontaj.query.get(pid_b).status == 'trimis'
+
+
+def test_bulk_approve_tenant_aware_ids_lipsa_abort(app):
+    """ID inexistent -> abort(404) inainte de orice mutatie."""
+    from services.timesheet_service import bulk_approve_timesheets
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'optional'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 7, 11), status='trimis')
+
+        import flask_login
+
+        class _UserCuTenant:
+            id = 1007
+            tenant_id = ids['tenant_a']
+            is_authenticated = True
+            is_active = True
+            is_anonymous = False
+            def get_id(self): return str(self.id)
+
+        u = _UserCuTenant()
+        with app.test_request_context('/'):
+            flask_login.login_user(u)
+            with pytest.raises(HTTPException) as exc_info:
+                bulk_approve_timesheets(
+                    ids=[str(pid), '99999999'],
+                    current_user=u,
+                )
+            assert exc_info.value.code == 404
+
+        assert Pontaj.query.get(pid).status == 'trimis'
+
+
+def test_bulk_approve_tenant_aware_lista_goala_abort(app):
+    """Lista goala -> abort(404)."""
+    from services.timesheet_service import bulk_approve_timesheets
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'optional'
+
+        import flask_login
+
+        class _UserCuTenant:
+            id = 1008
+            tenant_id = ids['tenant_a']
+            is_authenticated = True
+            is_active = True
+            is_anonymous = False
+            def get_id(self): return str(self.id)
+
+        u = _UserCuTenant()
+        with app.test_request_context('/'):
+            flask_login.login_user(u)
+            with pytest.raises(HTTPException) as exc_info:
+                bulk_approve_timesheets(ids=[], current_user=u)
+            assert exc_info.value.code == 404
+
+
+def test_bulk_approve_strict_no_tenant_fail_closed(app):
+    """Strict mode fara tenant -> abort(404) fail-closed."""
+    from services.timesheet_service import bulk_approve_timesheets
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 7, 12), status='trimis')
+
+        import flask_login
+
+        class _UserFaraTenant:
+            id = 1009
+            tenant_id = None
+            is_authenticated = True
+            is_active = True
+            is_anonymous = False
+            def get_id(self): return str(self.id)
+
+        u = _UserFaraTenant()
+        with app.test_request_context('/'):
+            flask_login.login_user(u)
+            with pytest.raises(HTTPException):
+                bulk_approve_timesheets(ids=[str(pid)], current_user=u)
+
+
+def test_bulk_approve_off_mode_skip_ids_lipsa(app):
+    """Off mode: ID lipsa e sarit silentios, nu aborteaza."""
+    from services.timesheet_service import bulk_approve_timesheets
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 7, 13), status='trimis')
+        with app.test_request_context('/'):
+            rezultat = bulk_approve_timesheets(
+                ids=[str(pid), '99999999'],
+                current_user=_FakeUser(user_id=1010),
+            )
+
+        assert rezultat['approved_count'] == 1
+
+
+def test_bulk_approve_off_mode_skip_non_trimis(app):
+    """Off mode: pontaj cu status diferit de trimis e sarit silentios."""
+    from services.timesheet_service import bulk_approve_timesheets
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      data=date(2026, 7, 14), status='draft')
+        with app.test_request_context('/'):
+            rezultat = bulk_approve_timesheets(
+                ids=[str(pid)],
+                current_user=_FakeUser(user_id=1011),
+            )
+
+        assert rezultat['approved_count'] == 0
+        assert Pontaj.query.get(pid).status == 'draft'
+
+
+def test_bulk_approve_off_mode_valueerror_pe_id_non_numeric(app):
+    """Off mode: int(pid_str) propaga ValueError pe ID non-numeric (comportament original)."""
+    from services.timesheet_service import bulk_approve_timesheets
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            with pytest.raises(ValueError):
+                bulk_approve_timesheets(
+                    ids=['nu-e-numeric'],
+                    current_user=_FakeUser(user_id=1012),
+                )
+
+
+def test_bulk_approve_face_un_singur_commit(app, monkeypatch):
+    """Un singur db.session.commit() dupa intregul loop."""
+    from services.timesheet_service import bulk_approve_timesheets
+    from models import db
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid1 = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                       data=date(2026, 7, 15), status='trimis')
+        pid2 = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                       data=date(2026, 7, 16), status='trimis')
+        calls = []
+        monkeypatch.setattr(db.session, 'commit', lambda: calls.append(True))
+        with app.test_request_context('/'):
+            bulk_approve_timesheets(
+                ids=[str(pid1), str(pid2)],
+                current_user=_FakeUser(user_id=1013),
+            )
+
+        assert len(calls) == 1
+
+
+def test_bulk_approve_nu_muta_partial_pe_tenant_fail(app):
+    """Validare tenant esueaza -> nicio mutatie partial (fail-all)."""
+    from services.timesheet_service import bulk_approve_timesheets
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'optional'
+        pid_a = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                        data=date(2026, 7, 17), status='trimis')
+        pid_b = _pontaj(app, angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'],
+                        data=date(2026, 7, 17), status='trimis')
+
+        import flask_login
+
+        class _UserCuTenant:
+            id = 1014
+            tenant_id = ids['tenant_a']
+            is_authenticated = True
+            is_active = True
+            is_anonymous = False
+            def get_id(self): return str(self.id)
+
+        u = _UserCuTenant()
+        with app.test_request_context('/'):
+            flask_login.login_user(u)
+            try:
+                bulk_approve_timesheets(ids=[str(pid_a), str(pid_b)], current_user=u)
+            except HTTPException:
+                pass
+
+        assert Pontaj.query.get(pid_a).status == 'trimis'
+        assert Pontaj.query.get(pid_b).status == 'trimis'
+
+
+def test_bulk_approve_nu_modifica_campuri_de_date(app):
+    """Campurile de pontaj (ore_lucrate, proiect_id, angajat_id, data) nu sunt modificate."""
+    from services.timesheet_service import bulk_approve_timesheets
+    from models import Pontaj
+
+    ids = _seed(app)
+    pid = _pontaj(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                  data=date(2026, 7, 18), status='trimis', ore_lucrate=7)
+
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            bulk_approve_timesheets(ids=[str(pid)], current_user=_FakeUser(user_id=1015))
+
+        p = Pontaj.query.get(pid)
+        assert float(p.ore_lucrate) == 7
+        assert p.angajat_id == ids['ang_a']
+        assert p.proiect_id == ids['proiect_a']
+        assert p.data == date(2026, 7, 18)
+        assert p.status == 'aprobat'
+
+
+def test_bulk_approve_helpers_fara_query_brut(app):
+    """Guard: bulk_approve_timesheets nu introduce query brut tenant-owned in afara ramurii off-mode."""
+    import inspect
+    import services.timesheet_service as svc
+
+    sursa = inspect.getsource(svc.bulk_approve_timesheets)
+    assert 'Angajat.query.' not in sursa
+    assert 'Proiect.query.' not in sursa
+    assert 'RaportActivitate.query.' not in sursa
+    # Pontaj.query.get este permis EXACT O DATA, in ramura off-mode izolata (T1.4 pattern)
+    assert sursa.count('Pontaj.query.get') == 1
+
+
+# ============================================================
 # Fixture data
 # ============================================================
 

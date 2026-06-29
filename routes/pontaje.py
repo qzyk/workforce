@@ -13,7 +13,6 @@ from models import db, Pontaj, Angajat, Proiect, SarbatoareLegala
 from forms.pontaje_forms import PontajForm
 from services.security.tenant_access import (
     get_project_or_404,
-    get_tenant_mode,
     get_timesheet_or_404,
     query_for_tenant,
     query_timesheets_for_tenant,
@@ -22,6 +21,7 @@ from services.security.tenant_access import (
 )
 from services.timesheet_service import (
     approve_timesheet,
+    bulk_approve_timesheets,
     calculate_timesheet_hours,
     check_timesheet_duplicate,
     create_multiple_timesheets_from_form_data,
@@ -365,36 +365,16 @@ def aproba_multiplu():
         return redirect(url_for('pontaje.lista'))
 
     ids = request.form.getlist('pontaj_ids')
-    count = 0
-    if get_tenant_mode() == 'off':
-        pontaje = []
-        for pid_str in ids:
-            pontaj = Pontaj.query.get(int(pid_str))
-            if pontaj and pontaj.status == 'trimis':
-                pontaje.append(pontaj)
-    else:
-        try:
-            ids_int = [int(pid_str) for pid_str in ids]
-        except (TypeError, ValueError):
-            ids_int = []
-        ids_int = [pid for pid in ids_int if pid > 0]
-        if len(ids_int) != len(ids) or not ids_int:
-            abort(404)
-        pontaje = query_timesheets_for_tenant().filter(
-            Pontaj.id.in_(ids_int)
-        ).all()
-        if len({p.id for p in pontaje}) != len(set(ids_int)):
-            abort(404)
-        pontaje = [p for p in pontaje if p.status == 'trimis']
+    try:
+        rezultat = bulk_approve_timesheets(ids=ids, current_user=current_user)
+    except HTTPException:
+        db.session.rollback()
+        raise
+    except Exception:
+        db.session.rollback()
+        raise
 
-    for pontaj in pontaje:
-        pontaj.status = 'aprobat'
-        pontaj.aprobat_de = current_user.id
-        pontaj.data_aprobare = datetime.utcnow()
-        count += 1
-
-    db.session.commit()
-    flash(f'{count} pontaje aprobate cu succes!', 'success')
+    flash(f"{rezultat['approved_count']} pontaje aprobate cu succes!", 'success')
     return redirect(url_for('pontaje.aprobare'))
 
 
