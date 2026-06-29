@@ -3,99 +3,108 @@
 Current authorized task:
 
 ```text
-S1.2 No-Code Understanding / Collision Safety Gate
+S1.2B No-Code Understanding / Collision Safety Gate
 ```
 
 This is a READ-ONLY understanding and collision-safety gate for the next
-extraction step (S1.2 Timesheet Service Extraction). It produces an
-understanding/collision-safety report only.
+timesheet extraction slice after S1.2A. It produces an understanding/collision-
+safety report only.
 
-IMPORTANT: S1.2 IMPLEMENTATION IS NOT YET AUTHORIZED.
-S1.2 implementation may start only after this no-code safety gate is reviewed
+IMPORTANT: S1.2B IMPLEMENTATION IS NOT YET AUTHORIZED.
+S1.2B implementation may start only after this no-code safety gate is reviewed
 and approved by Albert.
 
 Current canonical base commit:
 
 ```text
-f840eb7 Update AI coordination state after S1.1D
+a7b243c S1.2A timesheet service read context extraction
 ```
 
 Current canonical branch:
 
 ```text
-feat/s1.1d-activity-report-export-extraction
+feat/s1.2a-timesheet-service-read-context
 ```
 
 ---
 
-## Previous checkpoint (S1.C1) — APPROVED
+## Previous completed step (S1.2A) — VALIDATED
 
 ```text
-S1.C1 Activity Service Extraction Review
+S1.2A Timesheet Service Skeleton + Read/List Context Extraction
 ```
 
-Verdict: APPROVED. No P0/P1 blockers. The S1.1 activity service boundary
-(S1.1A–S1.1D) is accepted as a coherent activity-domain service boundary;
-tenant safety and existing behavior preserved; tests sufficient to prepare S1.2.
+Verdict: COMPLETE. The timesheet service read/list/context boundary was created
+without starting save, workflow, export, or import extraction.
 
-Findings recorded (see DECISIONS_LOG D015):
+S1.2A recorded results:
 
 ```text
-- P0: none
-- P1: none
-- P2: standardize commit/rollback ownership convention during/around S1.2
-- P2: S1.2 timesheet must use a NEW file services/timesheet_service.py
-- P3: export_edifico/export_edifico_preview intentionally deferred in routes
-- P3: sterge (activity delete) unextracted and acceptable
+- services/timesheet_service.py created
+- low-risk Pontaj read/list/context logic extracted
+- calculate_hours behavior preserved through timesheet service boundary
+- routes/pontaje.py touched only imports, calculate_hours, lista,
+  angajati_proiect, verificare_duplicat, situatie_zilnica, calendar_view,
+  aprobare
+- services/activity_service.py untouched
+- routes/activitati.py untouched
+- models.py untouched
+- migrations untouched
+- templates untouched
+- no create/edit Pontaj save extraction started
+- no workflow extraction started
+- no export/import extraction started
+- no S1.2B/S1.2C/S1.2D started
 ```
 
-Completed S1.1 activity service boundary:
+S1.2A validation:
 
 ```text
-S1.1A Activity Service Skeleton + Read/Form Context Extraction
-S1.1B Activity Create/Edit Save Extraction
-S1.1C Activity Workflow Transition Extraction
-S1.1D Activity Reports / Exports Data Assembly Extraction
+44 targeted Pontaj/timesheet tests passed:
+- tests/unit/test_timesheet_service.py
+- tests/unit/test_tenant_access_timesheets.py
+- tests/integration/test_tenant_access_timesheet_routes.py
 ```
 
 ---
 
-## Goal of the current gate (S1.2 no-code)
+## Goal of the current gate (S1.2B no-code)
 
-Prove understanding of the safe boundary for S1.2 BEFORE any code:
+Prove understanding of the safe boundary for S1.2B BEFORE any code:
 
-1. Confirm canonical worktree state (clean, HEAD f840eb7).
-2. Identify the timesheet (Pontaj) routes/logic in routes/pontaje.py that are
-   candidates for extraction into a NEW services/timesheet_service.py.
-3. Identify the no-touch surfaces (activity service, other domains, layout,
-   imports).
-4. Map the existing tenant-safe timesheet helpers already used
-   (query_timesheets_for_tenant, get_timesheet_or_404,
-   require_timesheet_inputs_same_tenant, etc.) so S1.2 reuses them.
-5. Decide the commit/rollback convention to standardize (D015 P2).
-6. Produce a non-overlap / hunk-safety plan.
-7. List the files likely allowed for S1.2.
+1. Confirm canonical worktree state (clean, HEAD a7b243c).
+2. Review the S1.2A service boundary in services/timesheet_service.py.
+3. Identify only create/edit Pontaj save logic that may be considered for
+   S1.2B extraction.
+4. Map no-touch surfaces: workflow, export/import, templates, models,
+   migrations, activity service, activity routes, and other domains.
+5. Decide the commit/rollback convention for save extraction (D015 P2).
+6. Produce a non-overlap / hunk-safety plan for adauga, adauga_multiplu,
+   and editeaza save paths.
+7. List the files likely allowed for S1.2B.
 8. End by requiring Albert's explicit approval before coding.
 
 The gate must NOT modify code, tests, services, or routes.
 
 ---
 
-## Scope of the eventual S1.2 (for reference only — not authorized yet)
+## Scope of the eventual S1.2B (for reference only — not authorized yet)
 
-When approved, S1.2 will extract timesheet (Pontaj) domain logic from
-routes/pontaje.py into a NEW file services/timesheet_service.py, per D014 + D015:
+When approved, S1.2B may extract only create/edit Pontaj save logic from
+routes/pontaje.py into services/timesheet_service.py, per D014 + D015:
 
 - Extract timesheet behavior only.
-- New file: services/timesheet_service.py (NOT activity_service.py).
+- Use services/timesheet_service.py (NOT activity_service.py).
 - No schema changes.
-- Preserve workflows, statuses, exports, and layouts.
+- Preserve workflows, statuses, exports, imports, and layouts.
 - MULTI_TENANT_MODE=off compatible.
 - Fail closed in strict mode.
 - Use services/security/tenant_access.py timesheet helpers.
 - No raw Pontaj/Proiect/Angajat/BIM lookups in new service code.
 - Standardize the commit/rollback ownership convention (D015 P2).
 - Add direct service-level tests.
+- Do not start S1.2C workflow extraction.
+- Do not start S1.2D export/import extraction.
 
 ---
 
@@ -104,10 +113,8 @@ routes/pontaje.py into a NEW file services/timesheet_service.py, per D014 + D015
 Do not start implementation of:
 
 ```text
-S1.2 Timesheet Service Extraction
+S1.2B Timesheet Create/Edit Save Extraction
 ```
 
-Do not create services/timesheet_service.py yet.
-
-The current authorized task is ONLY the S1.2 no-code understanding /
+The current authorized task is ONLY the S1.2B no-code understanding /
 collision-safety gate. Implementation requires a separate explicit approval.

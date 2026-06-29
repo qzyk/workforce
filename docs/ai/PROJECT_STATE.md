@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-S1.C1 Activity Service Extraction Review — APPROVED
+S1.2A Timesheet Service Skeleton + Read/List Context Extraction
 ```
 
 Canonical repository:
@@ -43,25 +43,24 @@ Do not merge, clean, delete, or copy from them.
 ## Current canonical branch
 
 ```text
-feat/s1.1d-activity-report-export-extraction
+feat/s1.2a-timesheet-service-read-context
 ```
 
 ## Current canonical HEAD
 
 ```text
-1c854f6 S1.1D activity report export data extraction
+a7b243c S1.2A timesheet service read context extraction
 ```
 
 ## Current test baseline
 
-S1.1D VALIDATED.
+S1.2A VALIDATED.
 
 ```text
-40 activity service tests passed (tests/unit/test_activity_service.py)
-5 export layout regression tests passed (test_export_rapoarte_stil)
-246 tenant tests passed
-127 targeted/regression/smoke tests passed
-app import OK, 25 activitati routes
+44 targeted Pontaj/timesheet tests passed:
+- tests/unit/test_timesheet_service.py
+- tests/unit/test_tenant_access_timesheets.py
+- tests/integration/test_tenant_access_timesheet_routes.py
 ```
 
 ---
@@ -96,38 +95,39 @@ S1.1A Activity Service Skeleton + Read/Form Context Extraction
 S1.1B Activity Create/Edit Save Extraction
 S1.1C Activity Workflow Transition Extraction
 S1.1D Activity Reports / Exports Data Assembly Extraction
+S1.2A Timesheet Service Skeleton + Read/List Context Extraction
 ```
 
 Latest completed service extraction step:
 
 ```text
-S1.1D Activity Reports / Exports Data Assembly Extraction
+S1.2A Timesheet Service Skeleton + Read/List Context Extraction
 ```
 
-S1.1D summary:
+S1.2A summary:
 
 ```text
-- added get_activity_rows_for_period() to services/activity_service.py
-- added get_timesheet_hours_map_for_period()
-- added get_project_activity_report_data()
-- extracted tenant-safe data assembly from raport_saptamanal, raport_lunar,
-  raport_anual, raport_proiect
-- preserved T1.C14 monthly timesheet scoping via query_timesheets_for_tenant()
-- left export_edifico and export_edifico_preview in routes intentionally for
-  layout stability
-- left layout/styling helpers in routes intentionally
+- created services/timesheet_service.py
+- extracted low-risk read/list/context Pontaj logic
+- preserved calculate_hours behavior through the timesheet service boundary
+- routes/pontaje.py touched only approved read/list/context areas:
+  imports, calculate_hours, lista, angajati_proiect, verificare_duplicat,
+  situatie_zilnica, calendar_view, aprobare
+- services/activity_service.py untouched
+- routes/activitati.py untouched
+- models.py untouched
 - no schema changes
 - no migrations
 - no template changes
-- no Excel/PDF/HTML layout changes
-- no file name changes
-- no save/workflow/read-context changes
-- no Pontaj/BIM/Contract/Gantt/HR/Fleet changes
-- no S1.2 started
+- no create/edit Pontaj save extraction started
+- no workflow extraction started
+- no export/import extraction started
+- no S1.2B/S1.2C/S1.2D started
 ```
 
 The S1.1 activity service boundary (S1.1A–S1.1D) is complete and APPROVED by the
 S1.C1 review (no P0/P1 blockers).
+The S1.2A timesheet service read/list/context boundary is complete and validated.
 
 ---
 
@@ -153,14 +153,14 @@ S1.C1 findings (see DECISIONS_LOG D015):
 ## Current task
 
 ```text
-S1.2 No-Code Understanding / Collision Safety Gate
+S1.2B No-Code Understanding / Collision Safety Gate
 ```
 
-Read-only understanding/collision-safety gate for S1.2 Timesheet Service
-Extraction. Produces an understanding report only.
+Read-only understanding/collision-safety gate for the next Pontaj/timesheet
+service extraction slice after S1.2A. Produces an understanding report only.
 
-S1.2 IMPLEMENTATION IS NOT YET AUTHORIZED. It may start only after this no-code
-safety gate is reviewed and approved by Albert.
+S1.2B IMPLEMENTATION IS NOT YET AUTHORIZED. It may start only after this
+no-code safety gate is reviewed and approved by Albert.
 
 ## Constraints for the S1.x service extraction line (per D014 + D015)
 
@@ -177,8 +177,10 @@ safety gate is reviewed and approved by Albert.
 ## Remaining service extraction work (NOT authorized yet)
 
 ```text
-S1.2 No-Code Understanding / Collision Safety Gate (current)
-S1.2 Timesheet Service Extraction (after the gate is approved)
+S1.2B No-Code Understanding / Collision Safety Gate (current)
+S1.2B Timesheet Create/Edit Save Extraction (after the gate is approved)
+S1.2C Timesheet Workflow Extraction
+S1.2D Timesheet Export/Import Extraction
 ```
 
 Accepted deferral (D015): export_edifico / export_edifico_preview and their data
@@ -191,6 +193,9 @@ helpers; they are already tenant-safe.
 
 Route-level tenant guard complete after T1.14.
 Activity service boundary covers read/form context (S1.1A), create/edit save (S1.1B), workflow transitions (S1.1C), and report/export data assembly (S1.1D).
+Timesheet service boundary now covers read/list/context and pure hour
+calculation only (S1.2A). Timesheet save, workflow, export, and import logic
+remain intentionally route-resident until later approved slices.
 
 Remaining accepted future categories:
 
