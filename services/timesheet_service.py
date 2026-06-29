@@ -807,3 +807,69 @@ def check_timesheet_duplicate(*, employee_id, date_value, exclude_timesheet_id=N
             'status': existing.status,
         }
     return {'exists': False}
+
+
+# ============================================================
+# Asamblare date export lunar (read-only)
+# ============================================================
+
+def build_monthly_timesheet_export_data(*, month, year, project_id=0, tenant_id=None):
+    """Asambleaza datele tenant-safe pentru exportul Excel lunar (ruta export_lunar).
+
+    S1.2D1 extrage DOAR partea de query/grupare/asamblare date din
+    routes/pontaje.py::export_lunar. Construirea workbook-ului (foi, stiluri,
+    formule, send_file, nume fisier) ramane integral in ruta.
+
+    Tenant-safe: pontajele sunt vazute prin query_timesheets_for_tenant(); un
+    project_id strain este respins prin get_project_or_404 (-> 404). SarbatoareLegala
+    este catalog global (non-tenant), interogat la fel ca in ruta. Read-only:
+    nu adauga, nu muteaza, nu face commit.
+
+    Returneaza un dict cu cheile asteptate de ruta pentru layout:
+    pontaje, angajat_data, sorted_angajati, sarbatori, proiect_export.
+    """
+    query = query_timesheets_for_tenant(tenant_id=tenant_id).filter(
+        db.extract('month', Pontaj.data) == month,
+        db.extract('year', Pontaj.data) == year
+    )
+    proiect_export = None
+    if project_id:
+        proiect_export = get_project_or_404(project_id, tenant_id=tenant_id)
+        query = query.filter(Pontaj.proiect_id == project_id)
+
+    pontaje = query.all()
+
+    # Grupare pe angajat (identic cu ruta veche)
+    angajat_data = {}
+    for p in pontaje:
+        if p.angajat_id not in angajat_data:
+            angajat_data[p.angajat_id] = {
+                'angajat': p.angajat,
+                'zile': {},
+                'total_ore': 0,
+                'ore_normale': 0,
+                'ore_supl_50': 0,
+                'ore_supl_100': 0
+            }
+        ad = angajat_data[p.angajat_id]
+        ad['zile'][p.data.day] = p
+        ad['total_ore'] += float(p.ore_lucrate or 0)
+        ad['ore_normale'] += float(p.ore_normale or 0)
+        ad['ore_supl_50'] += float(p.ore_suplimentare_50 or 0)
+        ad['ore_supl_100'] += float(p.ore_suplimentare_100 or 0)
+
+    # Sarbatori legale ale lunii (catalog global)
+    sarbatori = {s.data.day for s in SarbatoareLegala.query.filter(
+        db.extract('month', SarbatoareLegala.data) == month,
+        db.extract('year', SarbatoareLegala.data) == year
+    ).all()}
+
+    sorted_angajati = sorted(angajat_data.values(), key=lambda x: x['angajat'].nume_complet)
+
+    return {
+        'pontaje': pontaje,
+        'angajat_data': angajat_data,
+        'sorted_angajati': sorted_angajati,
+        'sarbatori': sarbatori,
+        'proiect_export': proiect_export,
+    }

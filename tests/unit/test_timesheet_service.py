@@ -1454,6 +1454,231 @@ def test_bulk_approve_helpers_fara_query_brut(app):
 
 
 # ============================================================
+# S1.2D1 — asamblare date export lunar (read-only, tenant-safe)
+# ============================================================
+
+def _pontaj_export(app, *, angajat_id, proiect_id, data, ore_lucrate=8,
+                   ore_normale=8, ore_supl_50=0, ore_supl_100=0,
+                   tip_zi='lucratoare', status='draft', observatii='TEST_S12A'):
+    from models import Pontaj, db
+    with app.app_context():
+        p = Pontaj(angajat_id=angajat_id, proiect_id=proiect_id, data=data,
+                   ore_lucrate=ore_lucrate, ore_normale=ore_normale,
+                   ore_suplimentare_50=ore_supl_50, ore_suplimentare_100=ore_supl_100,
+                   tip_zi=tip_zi, status=status, observatii=observatii)
+        db.session.add(p)
+        db.session.commit()
+        return p.id
+
+
+def test_export_data_doar_tenant_curent(app):
+    from services.timesheet_service import build_monthly_timesheet_export_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        pa = _pontaj_export(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                            data=date(2026, 4, 6))
+        pb = _pontaj_export(app, angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'],
+                            data=date(2026, 4, 6))
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            rezultat = build_monthly_timesheet_export_data(month=4, year=2026)
+        vazute = {p.id for p in rezultat['pontaje']}
+        assert pa in vazute
+        assert pb not in vazute  # pontaj din tenant strain nu apare
+
+
+def test_export_data_filtreaza_luna_si_anul(app):
+    from services.timesheet_service import build_monthly_timesheet_export_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        p_apr = _pontaj_export(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                               data=date(2026, 4, 6))
+        p_mai = _pontaj_export(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                               data=date(2026, 5, 6))
+        p_an_vechi = _pontaj_export(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                                    data=date(2025, 4, 6))
+        with app.test_request_context('/'):
+            rezultat = build_monthly_timesheet_export_data(month=4, year=2026)
+        vazute = {p.id for p in rezultat['pontaje']}
+        assert vazute == {p_apr}  # doar aprilie 2026
+        assert p_mai not in vazute
+        assert p_an_vechi not in vazute
+
+
+def test_export_data_filtru_proiect_si_proiect_export(app):
+    from services.timesheet_service import build_monthly_timesheet_export_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        p_a = _pontaj_export(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                             data=date(2026, 4, 6))
+        p_b = _pontaj_export(app, angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'],
+                             data=date(2026, 4, 6))
+        with app.test_request_context('/'):
+            rezultat = build_monthly_timesheet_export_data(
+                month=4, year=2026, project_id=ids['proiect_a'])
+        vazute = {p.id for p in rezultat['pontaje']}
+        assert vazute == {p_a}  # doar proiectul cerut
+        assert p_b not in vazute
+        assert rezultat['proiect_export'] is not None
+        assert rezultat['proiect_export'].id == ids['proiect_a']
+
+
+def test_export_data_proiect_strain_404(app):
+    from services.timesheet_service import build_monthly_timesheet_export_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            with pytest.raises(HTTPException) as exc:
+                build_monthly_timesheet_export_data(
+                    month=4, year=2026, project_id=ids['proiect_b'])
+        assert exc.value.code == 404  # proiect din tenant strain -> 404
+
+
+def test_export_data_proiect_export_none_fara_filtru(app):
+    from services.timesheet_service import build_monthly_timesheet_export_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            rezultat = build_monthly_timesheet_export_data(month=4, year=2026)
+        assert rezultat['proiect_export'] is None  # project_id=0 -> fara filtru
+
+
+def test_export_data_sarbatori_zile(app):
+    from models import SarbatoareLegala, db
+    from services.timesheet_service import build_monthly_timesheet_export_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        sl = SarbatoareLegala(data=date(2026, 4, 10), denumire='TEST_S12A_SL', an=2026)
+        db.session.add(sl)
+        db.session.commit()
+        sl_id = sl.id
+        try:
+            with app.test_request_context('/'):
+                rezultat = build_monthly_timesheet_export_data(month=4, year=2026)
+            assert 10 in rezultat['sarbatori']  # ziua de sarbatoare e in set
+            assert 11 not in rezultat['sarbatori']
+        finally:
+            sl_again = db.session.get(SarbatoareLegala, sl_id)
+            if sl_again:
+                db.session.delete(sl_again)
+                db.session.commit()
+
+
+def test_export_data_grupare_pe_angajat(app):
+    from services.timesheet_service import build_monthly_timesheet_export_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        _pontaj_export(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                       data=date(2026, 4, 6))
+        _pontaj_export(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                       data=date(2026, 4, 7))
+        _pontaj_export(app, angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'],
+                       data=date(2026, 4, 6))
+        with app.test_request_context('/'):
+            rezultat = build_monthly_timesheet_export_data(month=4, year=2026)
+        ad = rezultat['angajat_data']
+        assert set(ad.keys()) == {ids['ang_a'], ids['ang_b']}
+        # ang_a are doua zile in map (6 si 7)
+        assert set(ad[ids['ang_a']]['zile'].keys()) == {6, 7}
+        assert set(ad[ids['ang_b']]['zile'].keys()) == {6}
+
+
+def test_export_data_sortare_dupa_nume_complet(app):
+    from services.timesheet_service import build_monthly_timesheet_export_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        # inseram B inainte de A; rezultatul trebuie sortat A, B dupa nume_complet
+        _pontaj_export(app, angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'],
+                       data=date(2026, 4, 6))
+        _pontaj_export(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                       data=date(2026, 4, 6))
+        with app.test_request_context('/'):
+            rezultat = build_monthly_timesheet_export_data(month=4, year=2026)
+        nume = [ad['angajat'].nume_complet for ad in rezultat['sorted_angajati']]
+        assert nume == sorted(nume)
+        assert nume[0] == 'S12A-A Test'
+        assert nume[1] == 'S12A-B Test'
+
+
+def test_export_data_totaluri_corecte(app):
+    from services.timesheet_service import build_monthly_timesheet_export_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        _pontaj_export(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                       data=date(2026, 4, 6), ore_lucrate=10, ore_normale=8,
+                       ore_supl_50=2, ore_supl_100=0)
+        _pontaj_export(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                       data=date(2026, 4, 7), ore_lucrate=9, ore_normale=8,
+                       ore_supl_50=0, ore_supl_100=1)
+        with app.test_request_context('/'):
+            rezultat = build_monthly_timesheet_export_data(month=4, year=2026)
+        ad = rezultat['angajat_data'][ids['ang_a']]
+        assert ad['total_ore'] == 19
+        assert ad['ore_normale'] == 16
+        assert ad['ore_supl_50'] == 2
+        assert ad['ore_supl_100'] == 1
+
+
+def test_export_data_absente_pastrate_in_pontaje(app):
+    from services.timesheet_service import build_monthly_timesheet_export_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        pid = _pontaj_export(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                             data=date(2026, 4, 6), tip_zi='co')
+        with app.test_request_context('/'):
+            rezultat = build_monthly_timesheet_export_data(month=4, year=2026)
+        # datele de absenta (tip_zi) raman accesibile in lista pontaje pentru foaia Absente
+        co = next(p for p in rezultat['pontaje'] if p.id == pid)
+        assert co.tip_zi == 'co'
+
+
+def test_export_data_nu_muteaza(app):
+    from models import Pontaj
+    from services.timesheet_service import build_monthly_timesheet_export_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        _pontaj_export(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                       data=date(2026, 4, 6))
+        inainte = Pontaj.query.count()
+        with app.test_request_context('/'):
+            build_monthly_timesheet_export_data(month=4, year=2026)
+        assert Pontaj.query.count() == inainte  # niciun rand nou
+
+
+def test_export_data_helper_read_only_si_fara_query_brut(app):
+    """Guard: helperul de export e read-only si nu introduce query brut tenant-owned."""
+    import inspect
+    import services.timesheet_service as svc
+
+    sursa = inspect.getsource(svc.build_monthly_timesheet_export_data)
+    # read-only: fara mutatii / commit / rollback
+    assert 'db.session.add' not in sursa
+    assert 'db.session.commit' not in sursa
+    assert 'db.session.rollback' not in sursa
+    # fara query brut tenant-owned
+    assert 'Pontaj.query' not in sursa
+    assert 'Angajat.query' not in sursa
+    assert 'Proiect.query' not in sursa
+    assert 'RaportActivitate.query' not in sursa
+    # SarbatoareLegala este catalog global permis
+    assert 'SarbatoareLegala.query' in sursa
+
+
+# ============================================================
 # Fixture data
 # ============================================================
 

@@ -12,7 +12,6 @@ from werkzeug.exceptions import HTTPException
 from models import db, Pontaj, Angajat, Proiect, SarbatoareLegala
 from forms.pontaje_forms import PontajForm
 from services.security.tenant_access import (
-    get_project_or_404,
     get_timesheet_or_404,
     query_for_tenant,
     query_timesheets_for_tenant,
@@ -21,6 +20,7 @@ from services.security.tenant_access import (
 )
 from services.timesheet_service import (
     approve_timesheet,
+    build_monthly_timesheet_export_data,
     bulk_approve_timesheets,
     calculate_timesheet_hours,
     check_timesheet_duplicate,
@@ -487,36 +487,15 @@ def export_lunar():
     month_names = ['', 'Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie',
                    'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie']
 
-    # Get pontaje
-    query = query_timesheets_for_tenant().filter(
-        db.extract('month', Pontaj.data) == luna,
-        db.extract('year', Pontaj.data) == anul
+    # Asamblarea datelor tenant-safe (query/grupare/sarbatori) sta in serviciu.
+    # Ruta pastreaza integral constructia workbook-ului si send_file.
+    export_data = build_monthly_timesheet_export_data(
+        month=luna, year=anul, project_id=proiect_id,
     )
-    proiect_export = None
-    if proiect_id:
-        proiect_export = get_project_or_404(proiect_id)
-        query = query.filter(Pontaj.proiect_id == proiect_id)
-
-    pontaje = query.all()
-
-    # Group by angajat
-    angajat_data = {}
-    for p in pontaje:
-        if p.angajat_id not in angajat_data:
-            angajat_data[p.angajat_id] = {
-                'angajat': p.angajat,
-                'zile': {},
-                'total_ore': 0,
-                'ore_normale': 0,
-                'ore_supl_50': 0,
-                'ore_supl_100': 0
-            }
-        ad = angajat_data[p.angajat_id]
-        ad['zile'][p.data.day] = p
-        ad['total_ore'] += float(p.ore_lucrate or 0)
-        ad['ore_normale'] += float(p.ore_normale or 0)
-        ad['ore_supl_50'] += float(p.ore_suplimentare_50 or 0)
-        ad['ore_supl_100'] += float(p.ore_suplimentare_100 or 0)
+    pontaje = export_data['pontaje']
+    sorted_angajati = export_data['sorted_angajati']
+    sarbatori = export_data['sarbatori']
+    proiect_export = export_data['proiect_export']
 
     wb = Workbook()
     header_font = Font(bold=True, color='FFFFFF', size=10)
@@ -527,12 +506,6 @@ def export_lunar():
         left=Side(style='thin'), right=Side(style='thin'),
         top=Side(style='thin'), bottom=Side(style='thin')
     )
-
-    # Sarbatori luna
-    sarbatori = {s.data.day for s in SarbatoareLegala.query.filter(
-        db.extract('month', SarbatoareLegala.data) == luna,
-        db.extract('year', SarbatoareLegala.data) == anul
-    ).all()}
 
     # --- Sheet 1: Foaie Colectiva ---
     ws1 = wb.active
@@ -581,7 +554,6 @@ def export_lunar():
 
     # Data rows
     row_idx = row_h + 1
-    sorted_angajati = sorted(angajat_data.values(), key=lambda x: x['angajat'].nume_complet)
     for idx, ad in enumerate(sorted_angajati, 1):
         ws1.cell(row=row_idx, column=1, value=idx).border = thin_border
         ws1.cell(row=row_idx, column=1).alignment = Alignment(horizontal='center')
