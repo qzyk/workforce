@@ -3,43 +3,60 @@
 Current authorized task:
 
 ```text
-T1.C14 Final Tenant Guard Review
+S1.1 Activity Service Extraction
 ```
 
-Note: T1.14 Activity BIM Context Tenant Guard was completed.
-Commit: 818c90d T1.14 activity BIM context tenant guard
-Branch: feat/t1.14-activity-bim-context-tenant-guard
+Note: T1.C14 Final Tenant Guard Review APPROVED.
+Fix commit: 7329cd7 T1.C14 fix: raport_lunar pontaje tenant-safe
+246 tenant tests passed.
+
+T1.C14 finding fixed:
+  routes/activitati.py:1116 — Pontaj.query raw in raport_lunar()
+  replaced with query_timesheets_for_tenant()
 
 Current canonical base commit:
 
 ```text
-818c90d T1.14 activity BIM context tenant guard
+7329cd7 T1.C14 fix: raport_lunar pontaje tenant-safe
 ```
 
-Expected branch name:
+Expected branch name for S1.1:
 
 ```text
-feat/t1.c14-final-tenant-guard-review
+feat/s1.1-activity-service-extraction
 ```
 
 ---
 
-## Goal
+## T1.C14 — APPROVED
 
-Final adversarial review of the full T1.x tenant guard stack (T1.1–T1.14) before approving S1.1.
+All 7 review lenses passed. Tenant guard stack T1.1–T1.14 is clean.
 
-Read-only review. No new implementation unless a CRITIC/MAJOR finding requires a fix.
+One MAJOR finding was fixed:
+- `routes/activitati.py raport_lunar()` leaked cross-tenant Pontaj in Excel export.
+- Fixed by replacing raw `Pontaj.query.filter` with `query_timesheets_for_tenant()`.
 
-Review lenses:
-1. Coverage: all route-level raw queries protected?
-2. Consistency: all modules use `services/security/tenant_access.py` helpers?
-3. Mode integrity: `MULTI_TENANT_MODE=off` preserves legacy behavior?
-4. Fail-closed: `strict` mode fails correctly for users without tenant?
-5. Foreign ID leak: foreign tenant IDs return 404?
-6. Super-admin scope: global access explicit and not leaking?
-7. Activity BIM context (T1.14): dropdowns, filters, and aggregates all scoped?
+Accepted limitations (pre-existing, out of T1.x scope):
+- Pontaj without direct tenant_id — owned through Proiect/Angajat, indirect scoping correct.
+- AngajatProiect — scoped via proiect/angajat validated objects.
+- BIMComment — owned through validated issue.
+- Services not yet independent security boundaries — route-validated only.
 
-If T1.C14 verdict is APPROVED, next task is S1.1 Activity Service Extraction.
+---
+
+## S1.1 Goal
+
+Extract activity behavior into a dedicated service without schema changes.
+
+Per D014 constraints:
+- Extract activity behavior only.
+- Avoid schema changes.
+- Preserve workflows and statuses.
+- Keep MULTI_TENANT_MODE=off compatible.
+- Fail closed in strict mode.
+- Use tenant_access.py helpers.
+- Avoid raw RaportActivitate, Pontaj, Proiect, Angajat, or BIM context lookups.
+- Add direct service-level tests.
 
 ---
 

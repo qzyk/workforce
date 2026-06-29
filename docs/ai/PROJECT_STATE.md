@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-T1.14 Activity BIM Context Tenant Guard (completed)
+T1.C14 Final Tenant Guard Review — APPROVED
 ```
 
 Canonical repository:
@@ -49,17 +49,16 @@ feat/t1.14-activity-bim-context-tenant-guard
 ## Current canonical HEAD
 
 ```text
-818c90d T1.14 activity BIM context tenant guard
+7329cd7 T1.C14 fix: raport_lunar pontaje tenant-safe
 ```
 
 ## Current test baseline
 
-T1.14 completed. Test baseline from T1.C13 (T1.14 test results to be confirmed by T1.C14):
+T1.C14 APPROVED.
 
 ```text
-229+ tenant tests passed (T1.C13 baseline)
-63 location/API-token/audit/IoT regression tests passed
-T1.14 added: activity BIM context + BIM element aggregation tests
+246 tenant tests passed
+T1.C14 fix: raport_lunar() now uses query_timesheets_for_tenant()
 ```
 
 ---
@@ -88,16 +87,21 @@ T1.14 activity BIM context tenant guard
 ## Current task
 
 ```text
-T1.C14 Final Tenant Guard Review
-```
-
-Review the complete T1.1–T1.14 stack before approving S1.1.
-
-## Next phase only if T1.C14 is APPROVED
-
-```text
 S1.1 Activity Service Extraction
 ```
+
+T1.C14 APPROVED. Tenant guard phase complete.
+
+## Constraints for S1.1 (per D014)
+
+- Extract activity behavior only.
+- No schema changes.
+- Preserve workflows and statuses.
+- MULTI_TENANT_MODE=off compatible.
+- Fail closed in strict mode.
+- Use tenant_access.py helpers.
+- No raw RaportActivitate/Pontaj/Proiect/Angajat/BIM lookups.
+- Add direct service-level tests.
 
 ---
 
