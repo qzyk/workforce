@@ -3,221 +3,108 @@
 Current authorized task:
 
 ```text
-S1.1 Activity Service Extraction
+S1.1B No-Code Understanding / Collision Safety Gate
 ```
 
-Note: T1.C14 Final Tenant Guard Review APPROVED.
-Fix commit: 7329cd7 T1.C14 fix: raport_lunar pontaje tenant-safe
-246 tenant tests passed.
+This is a READ-ONLY understanding and collision-safety gate for the next
+extraction step (S1.1B Activity Create/Edit Extraction). It produces an
+understanding/collision-safety report only.
 
-T1.C14 finding fixed:
-  routes/activitati.py:1116 — Pontaj.query raw in raport_lunar()
-  replaced with query_timesheets_for_tenant()
+IMPORTANT: S1.1B IMPLEMENTATION IS NOT YET AUTHORIZED.
+S1.1B implementation may start only after this no-code safety gate is reviewed
+and approved by Albert.
 
 Current canonical base commit:
 
 ```text
-7329cd7 T1.C14 fix: raport_lunar pontaje tenant-safe
+00b4fd1 S1.1A activity service read context extraction
 ```
 
-Expected branch name for S1.1:
+Current canonical branch:
 
 ```text
-feat/s1.1-activity-service-extraction
+feat/s1.1a-activity-service-read-context
 ```
 
 ---
 
-## T1.C14 — APPROVED
+## Previous step (S1.1A) — VALIDATED
 
-All 7 review lenses passed. Tenant guard stack T1.1–T1.14 is clean.
+```text
+S1.1A Activity Service Skeleton + Read/Form Context Extraction
+```
 
-One MAJOR finding was fixed:
-- `routes/activitati.py raport_lunar()` leaked cross-tenant Pontaj in Excel export.
-- Fixed by replacing raw `Pontaj.query.filter` with `query_timesheets_for_tenant()`.
+Validated by Albert based on the completion report.
 
-Accepted limitations (pre-existing, out of T1.x scope):
-- Pontaj without direct tenant_id — owned through Proiect/Angajat, indirect scoping correct.
-- AngajatProiect — scoped via proiect/angajat validated objects.
-- BIMComment — owned through validated issue.
-- Services not yet independent security boundaries — route-validated only.
+S1.1A summary:
+
+```text
+- created services/activity_service.py
+- extracted low-risk activity panel/read/form-context logic
+- routes/activitati.py now delegates read/form context to activity_service
+- no schema changes
+- no migrations
+- no workflow changes
+- no export changes
+- no approval changes
+- no S1.1B/S1.1C/S1.1D started
+```
+
+Tests reported:
+
+```text
+7 service tests passed
+49 targeted tests passed
+246 tenant tests passed
+39 regression tests passed
+11 smoke tests passed
+```
 
 ---
 
-## S1.1 Goal
+## Goal of the current gate (S1.1B no-code)
 
-Extract activity behavior into a dedicated service without schema changes.
+Prove understanding of the safe boundary for S1.1B BEFORE any code:
 
-Per D014 constraints:
+1. Confirm canonical worktree state (clean, HEAD 00b4fd1).
+2. Identify exactly which create/edit save logic would move to activity_service.
+3. Identify the no-touch functions (workflow transitions, exports).
+4. Produce a non-overlap / hunk-safety plan.
+5. List the files likely allowed for S1.1B.
+6. End by requiring Albert's explicit approval before coding.
+
+The gate must NOT modify code, tests, services, or routes.
+
+---
+
+## Scope of the eventual S1.1B (for reference only — not authorized yet)
+
+When approved, S1.1B will extract activity create/edit save behavior
+(`_salveaza_activitate`) into `services/activity_service.py`, per D014:
+
 - Extract activity behavior only.
-- Avoid schema changes.
+- No schema changes.
 - Preserve workflows and statuses.
-- Keep MULTI_TENANT_MODE=off compatible.
+- MULTI_TENANT_MODE=off compatible.
 - Fail closed in strict mode.
-- Use tenant_access.py helpers.
-- Avoid raw RaportActivitate, Pontaj, Proiect, Angajat, or BIM context lookups.
+- Use tenant_access.py helpers
+  (require_activity_inputs_same_tenant, require_activity_bim_context_same_tenant,
+   tenant_id_for_new_record_or_403).
+- No raw RaportActivitate/Pontaj/Proiect/Angajat/BIM lookups.
 - Add direct service-level tests.
-
----
-
-## Previous task (T1.14) — completed
-
-T1.14 Goal was:
-
----
-
-## Blocker found by T1.C13
-
-T1.C13 found:
-
-```text
-routes/activitati.py still exposes raw BIM context IDs/dropdowns.
-routes/bim.py still aggregates RaportActivitate and Pontaj by raw element_bim_id.
-```
-
-Known risky patterns:
-
-```text
-Santier.query
-Cladire.query
-Nivel.query
-Zona.query
-Spatiu.query.get()
-ElementBIM.query
-RaportActivitate.query.filter_by(element_bim_id=...)
-Pontaj.query.filter_by(element_bim_id=...)
-```
-
----
-
-## Files expected to change
-
-Allowed files for T1.14 should be limited to:
-
-```text
-services/security/tenant_access.py
-routes/activitati.py
-routes/bim.py
-tests/unit/test_tenant_access_activity_bim_context.py
-tests/integration/test_tenant_access_activity_bim_context_routes.py
-docs/architecture/tenant_access_foundation.md
-```
-
-Do not touch unrelated domains.
-
----
-
-## Required behavior
-
-`MULTI_TENANT_MODE=off`:
-
-```text
-Preserve legacy behavior.
-```
-
-`MULTI_TENANT_MODE=optional`:
-
-```text
-Tenant users see only same-tenant BIM context options.
-Foreign BIM IDs are rejected before mutation.
-No-tenant users remain migration-friendly where foundation rules allow.
-```
-
-`MULTI_TENANT_MODE=strict`:
-
-```text
-Normal users without tenant fail closed.
-Foreign BIM context IDs return 404.
-Super-admin without tenant remains explicit/global where existing foundation allows.
-```
-
----
-
-## Required tests
-
-Add deterministic two-tenant tests for:
-
-1. Activity dropdown/filter scoping.
-2. Activity create/edit blocking foreign `element_bim_id`.
-3. Activity create/edit blocking foreign `spatiu_id`.
-4. Mixed tenant BIM context rejection.
-5. Derived zone from `Spatiu` using tenant-safe lookup.
-6. BIM element detail excluding foreign contaminated `RaportActivitate`.
-7. BIM element detail excluding foreign contaminated `Pontaj`.
-8. API activity/count endpoint excluding foreign rows.
-
----
-
-## Required commands
-
-Use:
-
-```bash
-PY=/Library/Frameworks/Python.framework/Versions/3.14/bin/python3
-```
-
-Run syntax checks:
-
-```bash
-$PY -m py_compile \
-  services/security/tenant_access.py \
-  routes/activitati.py \
-  routes/bim.py \
-  tests/unit/test_tenant_access_activity_bim_context.py \
-  tests/integration/test_tenant_access_activity_bim_context_routes.py
-```
-
-Run targeted tests:
-
-```bash
-$PY -m pytest \
-  tests/unit/test_tenant_access_activity_bim_context.py \
-  tests/integration/test_tenant_access_activity_bim_context_routes.py -q
-```
-
-Run full tenant suite:
-
-```bash
-$PY -m pytest tests/unit/test_tenant_access*.py tests/integration/test_tenant_access_*_routes.py -q
-```
-
-Run existing activity/BIM regressions if present:
-
-```bash
-$PY -m pytest \
-  tests/unit/test_activitati*.py \
-  tests/integration/test_activitati*.py \
-  tests/unit/test_bim*.py \
-  tests/integration/test_bim*.py -q
-```
-
-Run:
-
-```bash
-git diff --check
-```
-
----
-
-## Commit rule
-
-If tests pass and only allowed files changed:
-
-```bash
-git commit -m "T1.14 activity BIM context tenant guard"
-```
 
 ---
 
 ## Do not start
 
-Do not start:
+Do not start implementation of:
 
 ```text
-S1.1 Activity Service Extraction
+S1.1B Activity Create/Edit Extraction
+S1.1C Activity Workflow Transitions
+S1.1D Activity Reports/Exports Cleanup
 S1.2 Timesheet Service Extraction
-T1.7B BIM Service Boundary Hardening
-T1.9B Reporting Service Boundary Hardening
 ```
 
-This task is only T1.14.
+The current authorized task is ONLY the S1.1B no-code understanding /
+collision-safety gate. Implementation requires a separate explicit approval.

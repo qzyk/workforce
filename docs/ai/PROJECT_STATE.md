@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-T1.C14 Final Tenant Guard Review — APPROVED
+S1.1A Activity Service Skeleton + Read/Form Context Extraction — VALIDATED
 ```
 
 Canonical repository:
@@ -43,22 +43,25 @@ Do not merge, clean, delete, or copy from them.
 ## Current canonical branch
 
 ```text
-feat/t1.14-activity-bim-context-tenant-guard
+feat/s1.1a-activity-service-read-context
 ```
 
 ## Current canonical HEAD
 
 ```text
-7329cd7 T1.C14 fix: raport_lunar pontaje tenant-safe
+00b4fd1 S1.1A activity service read context extraction
 ```
 
 ## Current test baseline
 
-T1.C14 APPROVED.
+S1.1A VALIDATED.
 
 ```text
+7 service tests passed (tests/unit/test_activity_service.py)
+49 targeted activity + tenant tests passed
 246 tenant tests passed
-T1.C14 fix: raport_lunar() now uses query_timesheets_for_tenant()
+39 regression tests passed (models_workforce + export_rapoarte_stil)
+11 smoke tests passed
 ```
 
 ---
@@ -82,17 +85,51 @@ T1.13 locations audit api tokens tenant guard
 T1.14 activity BIM context tenant guard
 ```
 
+T1.C14 APPROVED. Tenant guard phase complete.
+
+---
+
+## Completed service extraction steps
+
+```text
+S1.1A Activity Service Skeleton + Read/Form Context Extraction
+```
+
+Latest completed service extraction step:
+
+```text
+S1.1A Activity Service Skeleton + Read/Form Context Extraction
+```
+
+S1.1A summary:
+
+```text
+- created services/activity_service.py
+- extracted low-risk activity panel/read/form-context logic
+- routes/activitati.py now delegates read/form context to activity_service
+- no schema changes
+- no migrations
+- no workflow changes
+- no export changes
+- no approval changes
+- no S1.1B/S1.1C/S1.1D started
+```
+
 ---
 
 ## Current task
 
 ```text
-S1.1 Activity Service Extraction
+S1.1B No-Code Understanding / Collision Safety Gate
 ```
 
-T1.C14 APPROVED. Tenant guard phase complete.
+This is a read-only understanding/collision-safety gate for S1.1B (Activity
+Create/Edit Extraction). It produces an understanding report only.
 
-## Constraints for S1.1 (per D014)
+S1.1B IMPLEMENTATION IS NOT YET AUTHORIZED. It may start only after this
+no-code safety gate is reviewed and approved by Albert.
+
+## Constraints for the S1.1x service extraction line (per D014)
 
 - Extract activity behavior only.
 - No schema changes.
@@ -103,11 +140,20 @@ T1.C14 APPROVED. Tenant guard phase complete.
 - No raw RaportActivitate/Pontaj/Proiect/Angajat/BIM lookups.
 - Add direct service-level tests.
 
+## Remaining activity extraction work (NOT authorized yet)
+
+```text
+S1.1B Activity Create/Edit Extraction
+S1.1C Activity Workflow Transitions
+S1.1D Activity Reports/Exports Cleanup
+```
+
 ---
 
 ## Current repository posture
 
 Route-level tenant guard complete after T1.14.
+First activity service boundary in place after S1.1A.
 
 Remaining accepted future categories:
 
