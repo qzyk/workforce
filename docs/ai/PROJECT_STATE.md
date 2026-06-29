@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-S1.1D Activity Reports / Exports Data Assembly Extraction — VALIDATED
+S1.C1 Activity Service Extraction Review — APPROVED
 ```
 
 Canonical repository:
@@ -126,45 +126,64 @@ S1.1D summary:
 - no S1.2 started
 ```
 
-The S1.1 activity service boundary (S1.1A–S1.1D) is functionally complete and
-awaits the S1.C1 review.
+The S1.1 activity service boundary (S1.1A–S1.1D) is complete and APPROVED by the
+S1.C1 review (no P0/P1 blockers).
+
+---
+
+## Review checkpoints
+
+```text
+S1.C1 Activity Service Extraction Review — APPROVED (no P0/P1)
+```
+
+S1.C1 findings (see DECISIONS_LOG D015):
+
+```text
+- P2: standardize the commit/rollback ownership convention during/around S1.2
+      (service currently commits, route wrapper owns rollback)
+- P2: S1.2 timesheet must use a NEW file services/timesheet_service.py,
+      not services/activity_service.py
+- P3: export_edifico/export_edifico_preview intentionally deferred in routes
+- P3: sterge (activity delete) unextracted and acceptable
+```
 
 ---
 
 ## Current task
 
 ```text
-S1.C1 Activity Service Extraction Review
+S1.2 No-Code Understanding / Collision Safety Gate
 ```
 
-This is the review checkpoint over the completed S1.1 activity service boundary
-(S1.1A read/form context, S1.1B create/edit save, S1.1C workflow transitions,
-S1.1D report/export data assembly).
+Read-only understanding/collision-safety gate for S1.2 Timesheet Service
+Extraction. Produces an understanding report only.
 
-S1.2 TIMESHEET SERVICE EXTRACTION IS NOT YET AUTHORIZED. It may start only after
-S1.C1 reviews and approves the completed S1.1 activity service boundary.
+S1.2 IMPLEMENTATION IS NOT YET AUTHORIZED. It may start only after this no-code
+safety gate is reviewed and approved by Albert.
 
-## Constraints for the S1.x service extraction line (per D014)
+## Constraints for the S1.x service extraction line (per D014 + D015)
 
-- Extract activity behavior only.
+- Extract one domain's behavior only.
 - No schema changes.
 - Preserve workflows and statuses.
 - MULTI_TENANT_MODE=off compatible.
 - Fail closed in strict mode.
 - Use tenant_access.py helpers.
-- No raw RaportActivitate/Pontaj/Proiect/Angajat/BIM lookups.
+- No raw RaportActivitate/Pontaj/Proiect/Angajat/BIM lookups in new service code.
 - Add direct service-level tests.
+- S1.2 timesheet logic goes in a NEW services/timesheet_service.py (D015).
 
 ## Remaining service extraction work (NOT authorized yet)
 
 ```text
-S1.C1 Activity Service Extraction Review (current)
-S1.2 Timesheet Service Extraction (after S1.C1 approval)
+S1.2 No-Code Understanding / Collision Safety Gate (current)
+S1.2 Timesheet Service Extraction (after the gate is approved)
 ```
 
-Accepted deferral (documented in S1.1D): export_edifico / export_edifico_preview
-and their data helpers remain route-resident because those data helpers are
-co-called by layout helpers; they are already tenant-safe.
+Accepted deferral (D015): export_edifico / export_edifico_preview and their data
+helpers remain route-resident because those data helpers are co-called by layout
+helpers; they are already tenant-safe.
 
 ---
 

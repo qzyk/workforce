@@ -3,23 +3,21 @@
 Current authorized task:
 
 ```text
-S1.C1 Activity Service Extraction Review
+S1.2 No-Code Understanding / Collision Safety Gate
 ```
 
-This is a REVIEW checkpoint over the completed S1.1 activity service boundary
-(S1.1A–S1.1D). It is read-only: it produces a review verdict, not new feature
-code. A fix is allowed only if the review finds a CRITIC/MAJOR issue, and only
-within the activity service boundary already established.
+This is a READ-ONLY understanding and collision-safety gate for the next
+extraction step (S1.2 Timesheet Service Extraction). It produces an
+understanding/collision-safety report only.
 
-IMPORTANT: S1.2 TIMESHEET SERVICE EXTRACTION IS NOT YET AUTHORIZED.
-S1.2 may start only after S1.C1 reviews and approves the completed S1.1
-activity service boundary, and after a separate no-code safety gate is
-approved by Albert.
+IMPORTANT: S1.2 IMPLEMENTATION IS NOT YET AUTHORIZED.
+S1.2 implementation may start only after this no-code safety gate is reviewed
+and approved by Albert.
 
 Current canonical base commit:
 
 ```text
-1c854f6 S1.1D activity report export data extraction
+f840eb7 Update AI coordination state after S1.1D
 ```
 
 Current canonical branch:
@@ -30,45 +28,28 @@ feat/s1.1d-activity-report-export-extraction
 
 ---
 
-## Previous step (S1.1D) — VALIDATED
+## Previous checkpoint (S1.C1) — APPROVED
 
 ```text
-S1.1D Activity Reports / Exports Data Assembly Extraction
+S1.C1 Activity Service Extraction Review
 ```
 
-Validated by Albert based on the completion report.
+Verdict: APPROVED. No P0/P1 blockers. The S1.1 activity service boundary
+(S1.1A–S1.1D) is accepted as a coherent activity-domain service boundary;
+tenant safety and existing behavior preserved; tests sufficient to prepare S1.2.
 
-S1.1D summary:
+Findings recorded (see DECISIONS_LOG D015):
 
 ```text
-- added get_activity_rows_for_period() to services/activity_service.py
-- added get_timesheet_hours_map_for_period()
-- added get_project_activity_report_data()
-- extracted tenant-safe data assembly from raport_saptamanal, raport_lunar,
-  raport_anual, raport_proiect
-- preserved T1.C14 monthly timesheet scoping via query_timesheets_for_tenant()
-- left export_edifico and export_edifico_preview in routes intentionally for
-  layout stability
-- left layout/styling helpers in routes intentionally
-- no schema/migration/template/layout/file-name changes
-- no save/workflow/read-context changes
-- no Pontaj/BIM/Contract/Gantt/HR/Fleet changes
-- no S1.2 started
+- P0: none
+- P1: none
+- P2: standardize commit/rollback ownership convention during/around S1.2
+- P2: S1.2 timesheet must use a NEW file services/timesheet_service.py
+- P3: export_edifico/export_edifico_preview intentionally deferred in routes
+- P3: sterge (activity delete) unextracted and acceptable
 ```
 
-Tests reported:
-
-```text
-40 activity service tests passed
-5 export layout regression tests passed
-246 tenant tests passed
-127 targeted/regression/smoke tests passed
-app import and 25 activitati routes OK
-```
-
----
-
-## Completed S1.1 activity service boundary (subject of S1.C1)
+Completed S1.1 activity service boundary:
 
 ```text
 S1.1A Activity Service Skeleton + Read/Form Context Extraction
@@ -77,52 +58,56 @@ S1.1C Activity Workflow Transition Extraction
 S1.1D Activity Reports / Exports Data Assembly Extraction
 ```
 
-Service surface in services/activity_service.py:
+---
 
-```text
-get_current_employee_for_user
-get_activity_panel_context
-get_activity_form_context
-save_activity_from_form_data (+ ActivityValidationError)
-submit_activity_for_approval
-approve_activity
-reject_activity
-bulk_transition_activities
-get_activity_rows_for_period
-get_timesheet_hours_map_for_period
-get_project_activity_report_data
-```
+## Goal of the current gate (S1.2 no-code)
+
+Prove understanding of the safe boundary for S1.2 BEFORE any code:
+
+1. Confirm canonical worktree state (clean, HEAD f840eb7).
+2. Identify the timesheet (Pontaj) routes/logic in routes/pontaje.py that are
+   candidates for extraction into a NEW services/timesheet_service.py.
+3. Identify the no-touch surfaces (activity service, other domains, layout,
+   imports).
+4. Map the existing tenant-safe timesheet helpers already used
+   (query_timesheets_for_tenant, get_timesheet_or_404,
+   require_timesheet_inputs_same_tenant, etc.) so S1.2 reuses them.
+5. Decide the commit/rollback convention to standardize (D015 P2).
+6. Produce a non-overlap / hunk-safety plan.
+7. List the files likely allowed for S1.2.
+8. End by requiring Albert's explicit approval before coding.
+
+The gate must NOT modify code, tests, services, or routes.
 
 ---
 
-## Goal of S1.C1 (review)
+## Scope of the eventual S1.2 (for reference only — not authorized yet)
 
-Review the completed S1.1 activity service boundary for:
+When approved, S1.2 will extract timesheet (Pontaj) domain logic from
+routes/pontaje.py into a NEW file services/timesheet_service.py, per D014 + D015:
 
-1. Tenant-safety coverage (off/optional/strict; foreign IDs 404; fail-closed;
-   T1.C14 monthly timesheet scoping preserved).
-2. Behavior preservation (routes still own HTTP; flash/redirect/jsonify/send_file/
-   templates/layout unchanged; statuses and workflows intact).
-3. Boundary consistency (no raw tenant-owned queries in new service code; helpers
-   from services/security/tenant_access.py reused).
-4. Test adequacy (direct service tests + regressions green).
-5. Accepted deferrals (export_edifico cluster left in routes — confirm acceptable).
-
-Output: APPROVED (→ authorize S1.2 planning) or BLOCKED with reason. Only a
-CRITIC/MAJOR finding justifies a code fix, scoped to the activity service
-boundary.
+- Extract timesheet behavior only.
+- New file: services/timesheet_service.py (NOT activity_service.py).
+- No schema changes.
+- Preserve workflows, statuses, exports, and layouts.
+- MULTI_TENANT_MODE=off compatible.
+- Fail closed in strict mode.
+- Use services/security/tenant_access.py timesheet helpers.
+- No raw Pontaj/Proiect/Angajat/BIM lookups in new service code.
+- Standardize the commit/rollback ownership convention (D015 P2).
+- Add direct service-level tests.
 
 ---
 
 ## Do not start
 
-Do not start:
+Do not start implementation of:
 
 ```text
 S1.2 Timesheet Service Extraction
-Timesheet service work of any kind
-BIM / Contract / Gantt service hardening
 ```
 
-The current authorized task is ONLY S1.C1 (review). S1.2 requires S1.C1
-approval plus a separate explicit implementation approval.
+Do not create services/timesheet_service.py yet.
+
+The current authorized task is ONLY the S1.2 no-code understanding /
+collision-safety gate. Implementation requires a separate explicit approval.
