@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-S1.2B1 Timesheet Single Create/Edit Save Extraction
+S1.2B2 Timesheet Bulk Create Save Extraction
 ```
 
 Canonical repository:
@@ -43,22 +43,23 @@ Do not merge, clean, delete, or copy from them.
 ## Current canonical branch
 
 ```text
-feat/s1.2b1-timesheet-single-save-extraction
+feat/s1.2b2-timesheet-bulk-save-extraction
 ```
 
 ## Current canonical HEAD
 
 ```text
-9ae225ca7ec85dc6e38f92e1db4a8cae4fb2bf71 S1.2B1 timesheet single save extraction
+12933c59bbc755a933368824565f927b64726b1c S1.2B2 timesheet bulk save extraction
 ```
 
 ## Current test baseline
 
-S1.2B1 VALIDATED.
+S1.2B2 VALIDATED.
 
 ```text
 py_compile passed
-targeted timesheet suite: 56 passed
+tests/unit/test_timesheet_service.py: 36 passed
+targeted timesheet suite: 65 passed
 full tenant suite: 246 passed
 activity boundary regression: 45 passed
 Flask app import smoke: ok 18
@@ -99,35 +100,38 @@ S1.1C Activity Workflow Transition Extraction
 S1.1D Activity Reports / Exports Data Assembly Extraction
 S1.2A Timesheet Service Skeleton + Read/List Context Extraction
 S1.2B1 Timesheet Single Create/Edit Save Extraction
+S1.2B2 Timesheet Bulk Create Save Extraction
 ```
 
 Latest completed service extraction step:
 
 ```text
-S1.2B1 Timesheet Single Create/Edit Save Extraction
+S1.2B2 Timesheet Bulk Create Save Extraction
 ```
 
-S1.2B1 summary:
+S1.2B2 summary:
 
 ```text
-- single Pontaj create/edit save logic extracted to services/timesheet_service.py
-- added create_timesheet_from_form_data()
-- added update_timesheet_from_form_data()
-- adauga valid POST save branch delegates to timesheet service
-- editeaza valid POST save branch delegates to timesheet service
-- duplicate handling remains tenant-scoped and route-compatible
-- foreign employee/project validation preserved
+- bulk Pontaj create save logic extracted to services/timesheet_service.py
+- added create_multiple_timesheets_from_form_data()
+- adauga_multiplu POST bulk save branch delegates to timesheet service
+- adauga_multiplu GET behavior unchanged
+- duplicate skipping preserved
+- count_ok / count_skip behavior preserved as created_count / skipped_count
+- zero-selected 0/0 behavior preserved
+- tenant validation happens before mutation
+- mixed/foreign selected employees fail before mutation
 - strict mode fail-closed behavior preserved
 - off mode legacy behavior preserved
-- create status behavior preserved
-- edit status behavior preserved:
-  action trimite -> trimis
-  otherwise existing status preserved
+- status behavior preserved:
+  actiune=trimite -> trimis
+  otherwise draft
 - service remains HTTP-free
-- successful single create/edit saves commit in service
+- service commits once after the loop
 - route keeps flash/redirect/render/rollback behavior
-- no adauga_multiplu extraction started
+- no single save changes
 - no workflow extraction started
+- no delete extraction started
 - no export/import extraction started
 - no S1.2C/S1.2D started
 - services/activity_service.py untouched
@@ -141,6 +145,7 @@ The S1.1 activity service boundary (S1.1A–S1.1D) is complete and APPROVED by t
 S1.C1 review (no P0/P1 blockers).
 The S1.2A timesheet service read/list/context boundary is complete and validated.
 The S1.2B1 timesheet single create/edit save boundary is complete and validated.
+The S1.2B2 timesheet bulk create save boundary is complete and validated.
 
 ---
 
@@ -166,13 +171,13 @@ S1.C1 findings (see DECISIONS_LOG D015):
 ## Current task
 
 ```text
-S1.2B2 No-Code Understanding / Collision Safety Gate
+S1.2C No-Code Understanding / Collision Safety Gate
 ```
 
 Read-only understanding/collision-safety gate for the next Pontaj/timesheet
-service extraction slice after S1.2B1. Produces an understanding report only.
+service extraction slice after S1.2B2. Produces an understanding report only.
 
-S1.2B2 IMPLEMENTATION IS NOT YET AUTHORIZED. It may start only after this
+S1.2C IMPLEMENTATION IS NOT YET AUTHORIZED. It may start only after this
 no-code safety gate is reviewed and approved by Albert.
 
 ## Constraints for the S1.x service extraction line (per D014 + D015)
@@ -190,9 +195,8 @@ no-code safety gate is reviewed and approved by Albert.
 ## Remaining service extraction work (NOT authorized yet)
 
 ```text
-S1.2B2 No-Code Understanding / Collision Safety Gate (current)
-S1.2B2 Timesheet Bulk Create Save Extraction (after the gate is approved)
-S1.2C Timesheet Workflow Extraction
+S1.2C No-Code Understanding / Collision Safety Gate (current)
+S1.2C Timesheet Workflow Extraction (after the gate is approved)
 S1.2D Timesheet Export/Import Extraction
 ```
 
@@ -207,9 +211,9 @@ helpers; they are already tenant-safe.
 Route-level tenant guard complete after T1.14.
 Activity service boundary covers read/form context (S1.1A), create/edit save (S1.1B), workflow transitions (S1.1C), and report/export data assembly (S1.1D).
 Timesheet service boundary now covers read/list/context and pure hour
-calculation (S1.2A), plus single Pontaj create/edit saves (S1.2B1).
-Bulk Pontaj create, workflow, export, and import logic remain intentionally
-route-resident until later approved slices.
+calculation (S1.2A), single Pontaj create/edit saves (S1.2B1), and bulk
+Pontaj create saves (S1.2B2). Workflow, export, and import logic remain
+intentionally route-resident until later approved slices.
 
 Remaining accepted future categories:
 
