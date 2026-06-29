@@ -8,7 +8,7 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort
 from flask_login import login_required, current_user
-from models import db, Pontaj, Angajat, Proiect, AngajatProiect, SarbatoareLegala
+from models import db, Pontaj, Angajat, Proiect, SarbatoareLegala
 from forms.pontaje_forms import PontajForm
 from services.security.tenant_access import (
     get_project_or_404,
@@ -19,6 +19,15 @@ from services.security.tenant_access import (
     require_timesheet_inputs_same_tenant,
     tenant_id_for_new_record_or_403,
 )
+from services.timesheet_service import (
+    calculate_timesheet_hours,
+    check_timesheet_duplicate,
+    get_daily_timesheet_rows,
+    get_project_employees_for_timesheet,
+    get_timesheet_approval_context,
+    get_timesheet_calendar_context,
+    get_timesheet_list_context,
+)
 
 pontaje_bp = Blueprint('pontaje', __name__)
 
@@ -28,75 +37,15 @@ pontaje_bp = Blueprint('pontaje', __name__)
 # ============================================================
 
 def calculate_hours(ora_start, ora_sfarsit, tip_zi, data_pontaj=None):
+    """Calculeaza orele lucrate conform legislatiei constructiilor.
+
+    Wrapper subtire peste timesheet_service.calculate_timesheet_hours, pastrat
+    pentru compatibilitatea apelantilor existenti din ruta.
     """
-    Calculeaza orele lucrate conform legislatiei constructiilor.
-    Returneaza dict cu ore_lucrate, ore_normale, ore_supl_50, ore_supl_100.
-    """
-    try:
-        h1, m1 = map(int, ora_start.split(':'))
-        h2, m2 = map(int, ora_sfarsit.split(':'))
-    except (ValueError, AttributeError):
-        return {'ore_lucrate': 0, 'ore_normale': 0, 'ore_supl_50': 0, 'ore_supl_100': 0}
-
-    total_min = (h2 * 60 + m2) - (h1 * 60 + m1)
-    if total_min <= 0:
-        total_min += 24 * 60  # tura de noapte
-
-    # Limita 12h/zi
-    if total_min > 12 * 60:
-        total_min = 12 * 60
-
-    # Pauza masa 30 min dedusa daca > 6h
-    if total_min > 6 * 60:
-        total_min -= 30
-
-    ore_lucrate = round(total_min / 60, 2)
-
-    # Detectie sarbatoare legala
-    is_sarbatoare = False
-    if data_pontaj:
-        is_sarbatoare = SarbatoareLegala.query.filter_by(data=data_pontaj).first() is not None
-
-    # Detectie tip zi automat din data
-    if data_pontaj and tip_zi == 'lucratoare':
-        dow = data_pontaj.weekday()  # 0=Lu, 5=Sa, 6=Du
-        if is_sarbatoare:
-            tip_zi = 'sarbatoare_legala'
-        elif dow == 5:
-            tip_zi = 'sambata'
-        elif dow == 6:
-            tip_zi = 'duminica'
-
-    # Calcul ore
-    ore_normale = 0
-    ore_supl_50 = 0
-    ore_supl_100 = 0
-
-    if tip_zi in ('duminica', 'sarbatoare_legala'):
-        # Toate orele sunt 100%
-        ore_supl_100 = ore_lucrate
-    elif tip_zi == 'sambata':
-        # Toate orele sambata sunt 50%
-        ore_supl_50 = ore_lucrate
-    elif tip_zi in ('co', 'cm', 'invoiere'):
-        # Tipuri speciale - nu se calculeaza ore suplimentare
-        ore_normale = ore_lucrate
-    else:
-        # Zi lucratoare normala
-        ore_normale = min(8, ore_lucrate)
-        extra = max(0, ore_lucrate - 8)
-        if extra > 0:
-            # Ore 8-10 = 50%, ore > 10 = 100%
-            ore_supl_50 = min(2, extra)
-            ore_supl_100 = max(0, extra - 2)
-
-    return {
-        'ore_lucrate': ore_lucrate,
-        'ore_normale': round(ore_normale, 2),
-        'ore_supl_50': round(ore_supl_50, 2),
-        'ore_supl_100': round(ore_supl_100, 2),
-        'tip_zi': tip_zi
-    }
+    return calculate_timesheet_hours(
+        ora_start=ora_start, ora_sfarsit=ora_sfarsit,
+        tip_zi=tip_zi, data_pontaj=data_pontaj,
+    )
 
 
 def _detect_tip_zi(data_pontaj):
@@ -129,89 +78,18 @@ def _form_int(name, default=0):
 @login_required
 def lista():
     today = date.today()
-    luna = request.args.get('luna', today.month, type=int)
-    anul = request.args.get('anul', today.year, type=int)
-
-    # Statistici azi
-    total_angajati_activi = query_for_tenant(Angajat).filter_by(status='activ').count()
-    pontaje_azi = query_timesheets_for_tenant().filter_by(data=today).count()
-    pontaje_de_aprobat = query_timesheets_for_tenant().filter_by(status='trimis').count()
-
-    # Calendar lunar - date per zi
-    _, days_in_month = calendar.monthrange(anul, luna)
-    calendar_data = []
-    for day in range(1, days_in_month + 1):
-        d = date(anul, luna, day)
-        nr_pontaje = query_timesheets_for_tenant().filter_by(data=d).count()
-        is_sarb = SarbatoareLegala.query.filter_by(data=d).first()
-        dow = d.weekday()
-
-        if dow >= 5 or is_sarb:
-            tip = 'weekend' if dow >= 5 else 'sarbatoare'
-        elif d > today:
-            tip = 'viitor'
-        elif nr_pontaje == 0:
-            tip = 'zero'
-        else:
-            pct = (nr_pontaje / total_angajati_activi * 100) if total_angajati_activi > 0 else 0
-            if pct >= 80:
-                tip = 'plin'
-            elif pct >= 50:
-                tip = 'bun'
-            elif pct >= 20:
-                tip = 'mediu'
-            else:
-                tip = 'slab'
-
-        calendar_data.append({
-            'zi': day,
-            'data': d,
-            'dow': dow,
-            'nr_pontaje': nr_pontaje,
-            'tip': tip,
-            'is_today': d == today
-        })
-
-    # Pontaje recente (cu filtre)
-    data_filtru = request.args.get('data', '')
-    proiect_id = request.args.get('proiect_id', '')
-    angajat_id = request.args.get('angajat_id', '')
-    status_filtru = request.args.get('status', '')
-
-    query = query_timesheets_for_tenant()
-    if data_filtru:
-        query = query.filter(Pontaj.data == datetime.strptime(data_filtru, '%Y-%m-%d').date())
-    if proiect_id:
-        query = query.filter(Pontaj.proiect_id == int(proiect_id))
-    if angajat_id:
-        query = query.filter(Pontaj.angajat_id == int(angajat_id))
-    if status_filtru:
-        query = query.filter(Pontaj.status == status_filtru)
-
-    pontaje = query.order_by(Pontaj.data.desc(), Pontaj.id.desc()).limit(100).all()
-
-    proiecte = query_for_tenant(Proiect).filter(Proiect.status.in_(['activ', 'planificat'])).order_by(Proiect.cod_proiect).all()
-    angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(Angajat.nume).all()
-
-    # First day padding
-    first_dow = date(anul, luna, 1).weekday()  # 0=Luni
-
-    return render_template('pontaje/panou.html',
-                           pontaje=pontaje,
-                           proiecte=proiecte,
-                           angajati=angajati,
-                           calendar_data=calendar_data,
-                           first_dow=first_dow,
-                           luna=luna,
-                           anul=anul,
-                           today=today,
-                           total_angajati_activi=total_angajati_activi,
-                           pontaje_azi=pontaje_azi,
-                           pontaje_de_aprobat=pontaje_de_aprobat,
-                           data_filtru=data_filtru,
-                           proiect_id_filtru=proiect_id,
-                           angajat_id_filtru=angajat_id,
-                           status_filtru=status_filtru)
+    # Filtrele vin din query string; contextul (read-only, tenant-safe) este
+    # construit in timesheet_service. Ruta ramane responsabila doar de HTTP.
+    filters = {
+        'luna': request.args.get('luna', today.month, type=int),
+        'anul': request.args.get('anul', today.year, type=int),
+        'data': request.args.get('data', ''),
+        'proiect_id': request.args.get('proiect_id', ''),
+        'angajat_id': request.args.get('angajat_id', ''),
+        'status': request.args.get('status', ''),
+    }
+    context = get_timesheet_list_context(filters=filters)
+    return render_template('pontaje/panou.html', **context)
 
 
 # ============================================================
@@ -358,32 +236,7 @@ def adauga_multiplu():
 @login_required
 def angajati_proiect(proiect_id):
     """Returneaza angajatii activi pe un proiect (AJAX)."""
-    get_project_or_404(proiect_id)
-    asocieri = AngajatProiect.query.filter(
-        AngajatProiect.proiect_id == proiect_id,
-        (AngajatProiect.data_sfarsit.is_(None)) | (AngajatProiect.data_sfarsit >= date.today())
-    ).all()
-
-    angajat_ids = [ap.angajat_id for ap in asocieri]
-    angajati_vizibili = set()
-    if angajat_ids:
-        angajati_vizibili = {
-            a.id for a in query_for_tenant(Angajat).filter(Angajat.id.in_(angajat_ids)).all()
-        }
-
-    result = []
-    for ap in asocieri:
-        if ap.angajat_id not in angajati_vizibili:
-            continue
-        a = ap.angajat
-        result.append({
-            'id': a.id,
-            'nume_complet': a.nume_complet,
-            'functie': ap.functie_pe_proiect or a.functie,
-            'poza': a.poza_profil or '',
-        })
-
-    return jsonify(result)
+    return jsonify(get_project_employees_for_timesheet(project_id=proiect_id))
 
 
 # ============================================================
@@ -430,22 +283,11 @@ def verificare_duplicat():
     except ValueError:
         return jsonify({'exists': False})
 
-    if query_for_tenant(Angajat).filter_by(id=angajat_id).first() is None:
-        return jsonify({'exists': False})
-
-    query = query_timesheets_for_tenant().filter_by(angajat_id=angajat_id, data=data_pontaj)
-    if pontaj_id:
-        query = query.filter(Pontaj.id != pontaj_id)
-
-    existing = query.first()
-    if existing:
-        return jsonify({
-            'exists': True,
-            'proiect': existing.proiect.cod_proiect if existing.proiect else '-',
-            'ore': float(existing.ore_lucrate) if existing.ore_lucrate else 0,
-            'status': existing.status
-        })
-    return jsonify({'exists': False})
+    return jsonify(check_timesheet_duplicate(
+        employee_id=angajat_id,
+        date_value=data_pontaj,
+        exclude_timesheet_id=pontaj_id or None,
+    ))
 
 
 # ============================================================
@@ -465,19 +307,7 @@ def situatie_zilnica():
     except ValueError:
         return jsonify([])
 
-    pontaje = query_timesheets_for_tenant().filter_by(data=data_pontaj).order_by(Pontaj.angajat_id).all()
-    result = []
-    for p in pontaje:
-        result.append({
-            'angajat': p.angajat.nume_complet if p.angajat else '-',
-            'proiect': p.proiect.cod_proiect if p.proiect else '-',
-            'ora_start': p.ora_start or '-',
-            'ora_sfarsit': p.ora_sfarsit or '-',
-            'ore_lucrate': float(p.ore_lucrate) if p.ore_lucrate else 0,
-            'tip_zi': p.tip_zi or '-',
-            'status': p.status or '-'
-        })
-    return jsonify(result)
+    return jsonify(get_daily_timesheet_rows(date_value=data_pontaj))
 
 
 # ============================================================
@@ -492,80 +322,8 @@ def calendar_view():
     luna = request.args.get('luna', date.today().month, type=int)
     anul = request.args.get('anul', date.today().year, type=int)
 
-    angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(Angajat.nume).all()
-
-    angajat = None
-    calendar_data = []
-    stats = {'ore_normale': 0, 'ore_supl_50': 0, 'ore_supl_100': 0,
-             'zile_lucrate': 0, 'zile_co': 0, 'zile_cm': 0, 'total_ore': 0}
-
-    if angajat_id:
-        angajat = query_for_tenant(Angajat).filter_by(id=angajat_id).first()
-        _, days_in_month = calendar.monthrange(anul, luna)
-        first_dow = date(anul, luna, 1).weekday()
-
-        pontaje_luna = query_timesheets_for_tenant().filter(
-            Pontaj.angajat_id == angajat_id,
-            db.extract('month', Pontaj.data) == luna,
-            db.extract('year', Pontaj.data) == anul
-        ).all()
-
-        pontaje_dict = {p.data: p for p in pontaje_luna}
-
-        for day in range(1, days_in_month + 1):
-            d = date(anul, luna, day)
-            p = pontaje_dict.get(d)
-            is_sarb = SarbatoareLegala.query.filter_by(data=d).first()
-            dow = d.weekday()
-
-            if p:
-                if p.tip_zi == 'co':
-                    tip = 'co'
-                    stats['zile_co'] += 1
-                elif p.tip_zi == 'cm':
-                    tip = 'cm'
-                    stats['zile_cm'] += 1
-                elif p.tip_zi == 'invoiere':
-                    tip = 'invoiere'
-                else:
-                    tip = 'prezent'
-                    stats['zile_lucrate'] += 1
-                stats['ore_normale'] += float(p.ore_normale or 0)
-                stats['ore_supl_50'] += float(p.ore_suplimentare_50 or 0)
-                stats['ore_supl_100'] += float(p.ore_suplimentare_100 or 0)
-                stats['total_ore'] += float(p.ore_lucrate or 0)
-            elif is_sarb:
-                tip = 'sarbatoare'
-            elif dow >= 5:
-                tip = 'weekend'
-            elif d > date.today():
-                tip = 'viitor'
-            else:
-                tip = 'absent'
-
-            calendar_data.append({
-                'zi': day,
-                'data': d,
-                'dow': dow,
-                'tip': tip,
-                'pontaj': p,
-                'is_today': d == date.today()
-            })
-
-        stats['ore_normale'] = round(stats['ore_normale'], 2)
-        stats['ore_supl_50'] = round(stats['ore_supl_50'], 2)
-        stats['ore_supl_100'] = round(stats['ore_supl_100'], 2)
-        stats['total_ore'] = round(stats['total_ore'], 2)
-
-    return render_template('pontaje/calendar_angajat.html',
-                           angajati=angajati,
-                           angajat=angajat,
-                           angajat_id=angajat_id,
-                           calendar_data=calendar_data,
-                           first_dow=date(anul, luna, 1).weekday() if angajat_id else 0,
-                           stats=stats,
-                           luna=luna,
-                           anul=anul)
+    context = get_timesheet_calendar_context(angajat_id=angajat_id, luna=luna, anul=anul)
+    return render_template('pontaje/calendar_angajat.html', **context)
 
 
 # ============================================================
@@ -579,37 +337,14 @@ def aprobare():
         flash('Nu aveti permisiunea de a accesa aceasta pagina.', 'danger')
         return redirect(url_for('pontaje.lista'))
 
-    proiect_id = request.args.get('proiect_id', '', type=str)
-    angajat_id = request.args.get('angajat_id', '', type=str)
-    data_start = request.args.get('data_start', '')
-    data_sfarsit = request.args.get('data_sfarsit', '')
-
-    query = query_timesheets_for_tenant().filter_by(status='trimis')
-
-    if proiect_id:
-        query = query.filter(Pontaj.proiect_id == int(proiect_id))
-    if angajat_id:
-        query = query.filter(Pontaj.angajat_id == int(angajat_id))
-    if data_start:
-        query = query.filter(Pontaj.data >= datetime.strptime(data_start, '%Y-%m-%d').date())
-    if data_sfarsit:
-        query = query.filter(Pontaj.data <= datetime.strptime(data_sfarsit, '%Y-%m-%d').date())
-
-    pontaje = query.order_by(Pontaj.data.desc()).all()
-
-    proiecte = query_for_tenant(Proiect).filter(
-        Proiect.status.in_(['activ', 'planificat'])
-    ).order_by(Proiect.cod_proiect).all()
-    angajati = query_for_tenant(Angajat).filter_by(status='activ').order_by(Angajat.nume).all()
-
-    return render_template('pontaje/aprobare.html',
-                           pontaje=pontaje,
-                           proiecte=proiecte,
-                           angajati=angajati,
-                           proiect_id_filtru=proiect_id,
-                           angajat_id_filtru=angajat_id,
-                           data_start=data_start,
-                           data_sfarsit=data_sfarsit)
+    filters = {
+        'proiect_id': request.args.get('proiect_id', '', type=str),
+        'angajat_id': request.args.get('angajat_id', '', type=str),
+        'data_start': request.args.get('data_start', ''),
+        'data_sfarsit': request.args.get('data_sfarsit', ''),
+    }
+    context = get_timesheet_approval_context(filters=filters)
+    return render_template('pontaje/aprobare.html', **context)
 
 
 # ============================================================
