@@ -12,12 +12,13 @@ from werkzeug.exceptions import HTTPException
 
 
 class _FakeUser:
-    """Utilizator minimal pentru apelurile de context (read-only)."""
+    """Utilizator minimal pentru apelurile de context (read-only) si workflow."""
 
-    def __init__(self, rol='manager', email=None, tenant_id=None):
+    def __init__(self, rol='manager', email=None, tenant_id=None, user_id=None):
         self.rol = rol
         self.email = email
         self.tenant_id = tenant_id
+        self.id = user_id
         self.is_authenticated = True
         self.is_admin = (rol == 'admin')
 
@@ -500,6 +501,255 @@ def test_save_off_mode_accepta_proiect_indiferent_de_tenant(app):
                 current_user=_FakeUser(),
             )['activity']
         assert act.proiect_id == ids['proiect_b']
+
+
+# ============================================================
+# S1.1C — workflow transitions
+# ============================================================
+
+def _act(app, *, angajat_id, proiect_id, status='trimis', principala='TEST_S11A_WF'):
+    """Creeaza o activitate de test cu statusul dat; returneaza id-ul."""
+    from models import RaportActivitate, db
+
+    a = RaportActivitate(
+        angajat_id=angajat_id, proiect_id=proiect_id,
+        data=date(2026, 3, 1), tip_activitate='zilnica',
+        activitate_principala=principala, status=status,
+    )
+    db.session.add(a)
+    db.session.commit()
+    return a.id
+
+
+def test_submit_draft_devine_trimis(app):
+    from services.activity_service import submit_activity_for_approval
+    from models import RaportActivitate
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        aid = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='draft', principala='TEST_S11A_WF_SUBMIT')
+        with app.test_request_context('/'):
+            rezultat = submit_activity_for_approval(activity_id=aid)
+        assert rezultat['ok'] is True
+        assert RaportActivitate.query.get(aid).status == 'trimis'
+
+
+def test_submit_non_draft_nu_muteaza(app):
+    from services.activity_service import submit_activity_for_approval
+    from models import RaportActivitate
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        aid = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='aprobat', principala='TEST_S11A_WF_NONDRAFT')
+        with app.test_request_context('/'):
+            rezultat = submit_activity_for_approval(activity_id=aid)
+        assert rezultat['ok'] is False
+        assert RaportActivitate.query.get(aid).status == 'aprobat'  # neschimbat
+
+
+def test_approve_seteaza_status_autor_data(app):
+    from services.activity_service import approve_activity
+    from models import RaportActivitate
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        aid = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='trimis', principala='TEST_S11A_WF_APPROVE')
+        with app.test_request_context('/'):
+            approve_activity(activity_id=aid, approver_user=_FakeUser(user_id=999))
+        a = RaportActivitate.query.get(aid)
+        assert a.status == 'aprobat'
+        assert a.aprobat_de_id == 999
+        assert a.data_aprobare is not None
+
+
+def test_reject_motiv_implicit(app):
+    from services.activity_service import reject_activity
+    from models import RaportActivitate
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        aid = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='trimis', principala='TEST_S11A_WF_REJ_DEF')
+        with app.test_request_context('/'):
+            reject_activity(activity_id=aid, reason='')
+        a = RaportActivitate.query.get(aid)
+        assert a.status == 'respins'
+        assert a.motiv_respingere == 'Fara motiv specificat'
+
+
+def test_reject_pastreaza_motivul_dat(app):
+    from services.activity_service import reject_activity
+    from models import RaportActivitate
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        aid = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='trimis', principala='TEST_S11A_WF_REJ_MOTIV')
+        with app.test_request_context('/'):
+            reject_activity(activity_id=aid, reason='Lipsa documente')
+        assert RaportActivitate.query.get(aid).motiv_respingere == 'Lipsa documente'
+
+
+def test_approve_id_strain_404_inainte_de_mutatie(app):
+    from services.activity_service import approve_activity
+    from models import RaportActivitate
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        aid_b = _act(app, angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'],
+                     status='trimis', principala='TEST_S11A_WF_FOREIGN')
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            with pytest.raises(HTTPException) as exc:
+                approve_activity(activity_id=aid_b, approver_user=_FakeUser(user_id=999))
+        assert exc.value.code == 404
+        assert RaportActivitate.query.get(aid_b).status == 'trimis'  # nemutat
+
+
+def test_workflow_strict_fara_tenant_fail_closed(app):
+    from services.activity_service import submit_activity_for_approval
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        aid = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='draft', principala='TEST_S11A_WF_NOTENANT')
+        with app.test_request_context('/'):
+            with pytest.raises(HTTPException) as exc:
+                submit_activity_for_approval(activity_id=aid)
+        assert exc.value.code == 404
+
+
+def test_bulk_approve_doar_id_uri_vizibile(app):
+    from services.activity_service import bulk_transition_activities
+    from models import RaportActivitate
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        a1 = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                  status='trimis', principala='TEST_S11A_WF_BULK1')
+        a2 = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                  status='trimis', principala='TEST_S11A_WF_BULK2')
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            rezultat = bulk_transition_activities(
+                activity_ids=[str(a1), str(a2)], action='aproba',
+                current_user=_FakeUser(user_id=999),
+            )
+        assert rezultat['count'] == 2
+        assert RaportActivitate.query.get(a1).status == 'aprobat'
+        assert RaportActivitate.query.get(a2).status == 'aprobat'
+
+
+def test_bulk_mixt_tenant_abort_fara_mutatie_partiala(app):
+    from services.activity_service import bulk_transition_activities
+    from models import RaportActivitate
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        a_a = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='trimis', principala='TEST_S11A_WF_MIXA')
+        a_b = _act(app, angajat_id=ids['ang_b'], proiect_id=ids['proiect_b'],
+                   status='trimis', principala='TEST_S11A_WF_MIXB')
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            with pytest.raises(HTTPException) as exc:
+                bulk_transition_activities(
+                    activity_ids=[str(a_a), str(a_b)], action='aproba',
+                    current_user=_FakeUser(user_id=999),
+                )
+        assert exc.value.code == 404
+        # Fara mutatie partiala: activitatea tenantului A ramane trimis
+        assert RaportActivitate.query.get(a_a).status == 'trimis'
+
+
+def test_bulk_reject_motiv_implicit_in_masa(app):
+    from services.activity_service import bulk_transition_activities
+    from models import RaportActivitate
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        aid = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='trimis', principala='TEST_S11A_WF_BULKREJ')
+        with app.test_request_context('/'):
+            from flask import g
+            g.tenant_override = ids['tenant_a']
+            bulk_transition_activities(
+                activity_ids=[str(aid)], action='respinge',
+                current_user=_FakeUser(user_id=999), rejection_reason=None,
+            )
+        a = RaportActivitate.query.get(aid)
+        assert a.status == 'respins'
+        assert a.motiv_respingere == 'Respins in masa'
+
+
+def test_bulk_off_mode_skip_missing_si_non_trimis(app):
+    from services.activity_service import bulk_transition_activities
+    from models import RaportActivitate
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        trimis = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                      status='trimis', principala='TEST_S11A_WF_OFFOK')
+        draft = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                     status='draft', principala='TEST_S11A_WF_OFFDRAFT')
+        with app.test_request_context('/'):
+            rezultat = bulk_transition_activities(
+                activity_ids=[str(trimis), str(draft), '99999999'],
+                action='aproba', current_user=_FakeUser(user_id=999),
+            )
+        assert rezultat['count'] == 1  # doar cel 'trimis'
+        assert RaportActivitate.query.get(trimis).status == 'aprobat'
+        assert RaportActivitate.query.get(draft).status == 'draft'  # neatins
+
+
+def test_bulk_actiune_necunoscuta_tratata_ca_respingere(app):
+    from services.activity_service import bulk_transition_activities
+    from models import RaportActivitate
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        aid = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='trimis', principala='TEST_S11A_WF_UNKNOWN')
+        with app.test_request_context('/'):
+            rezultat = bulk_transition_activities(
+                activity_ids=[str(aid)], action='altceva',
+                current_user=_FakeUser(user_id=999),
+            )
+        assert rezultat['count'] == 1
+        assert RaportActivitate.query.get(aid).status == 'respins'  # else => respingere
+
+
+def test_workflow_nu_creeaza_sau_modifica_pontaj(app):
+    from services.activity_service import approve_activity
+    from models import Pontaj
+
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        aid = _act(app, angajat_id=ids['ang_a'], proiect_id=ids['proiect_a'],
+                   status='trimis', principala='TEST_S11A_WF_NOPONTAJ')
+        pontaje_inainte = Pontaj.query.count()
+        with app.test_request_context('/'):
+            approve_activity(activity_id=aid, approver_user=_FakeUser(user_id=999))
+        assert Pontaj.query.count() == pontaje_inainte
 
 
 # ============================================================

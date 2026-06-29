@@ -4,13 +4,13 @@ Blueprint: /activitati
 """
 
 import os
-from datetime import datetime, date, timedelta
+from datetime import date, timedelta
 from functools import wraps
 from io import BytesIO
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
-    flash, jsonify, send_file, current_app, abort
+    flash, jsonify, send_file, current_app
 )
 from flask_login import login_required, current_user
 from werkzeug.exceptions import HTTPException
@@ -23,17 +23,20 @@ from models import (
 from services.security.tenant_access import (
     get_activity_or_404,
     get_project_or_404,
-    get_tenant_mode,
     query_activities_for_tenant,
     query_timesheets_for_tenant,
     query_for_tenant,
 )
 from services.activity_service import (
     ActivityValidationError,
+    approve_activity,
+    bulk_transition_activities,
     get_activity_form_context,
     get_activity_panel_context,
     get_current_employee_for_user,
+    reject_activity,
     save_activity_from_form_data,
+    submit_activity_for_approval,
 )
 
 activitati_bp = Blueprint('activitati', __name__, url_prefix='/activitati')
@@ -253,13 +256,11 @@ def _salveaza_activitate(activitate, rapida=False):
 @login_required
 def trimite(id):
     """Schimba status draft -> trimis."""
-    activitate = get_activity_or_404(id)
-    if activitate.status != 'draft':
-        flash('Doar activitatile draft pot fi trimise.', 'warning')
-    else:
-        activitate.status = 'trimis'
-        db.session.commit()
+    rezultat = submit_activity_for_approval(activity_id=id)
+    if rezultat['ok']:
         flash('Activitatea a fost trimisa spre aprobare.', 'success')
+    else:
+        flash('Doar activitatile draft pot fi trimise.', 'warning')
     return redirect(url_for('activitati.detaliu', id=id))
 
 
@@ -268,11 +269,7 @@ def trimite(id):
 @manager_or_admin
 def aproba(id):
     """Aprobare activitate (manager/admin)."""
-    activitate = get_activity_or_404(id)
-    activitate.status = 'aprobat'
-    activitate.aprobat_de_id = current_user.id
-    activitate.data_aprobare = datetime.utcnow()
-    db.session.commit()
+    approve_activity(activity_id=id, approver_user=current_user)
     flash('Activitatea a fost aprobata.', 'success')
     return redirect(url_for('activitati.detaliu', id=id))
 
@@ -282,11 +279,8 @@ def aproba(id):
 @manager_or_admin
 def respinge(id):
     """Respingere activitate cu motiv."""
-    activitate = get_activity_or_404(id)
     motiv = request.form.get('motiv_respingere', '').strip()
-    activitate.status = 'respins'
-    activitate.motiv_respingere = motiv or 'Fara motiv specificat'
-    db.session.commit()
+    reject_activity(activity_id=id, reason=motiv)
     flash('Activitatea a fost respinsa.', 'warning')
     return redirect(url_for('activitati.detaliu', id=id))
 
@@ -413,42 +407,13 @@ def aprobare_masa():
     actiune = request.form.get('actiune', 'aproba')  # aproba / respinge
     motiv = request.form.get('motiv_respingere', '').strip()
 
-    count = 0
-    if get_tenant_mode() == 'off':
-        activitati = []
-        for aid in ids:
-            try:
-                a = RaportActivitate.query.get(int(aid))
-                if a and a.status == 'trimis':
-                    activitati.append(a)
-            except (ValueError, TypeError):
-                continue
-    else:
-        try:
-            ids_int = [int(aid) for aid in ids]
-        except (ValueError, TypeError):
-            ids_int = []
-        ids_int = [aid for aid in ids_int if aid > 0]
-        if len(ids_int) != len(ids) or not ids_int:
-            abort(404)
-        activitati = query_activities_for_tenant().filter(
-            RaportActivitate.id.in_(ids_int)
-        ).all()
-        if len({a.id for a in activitati}) != len(set(ids_int)):
-            abort(404)
-        activitati = [a for a in activitati if a.status == 'trimis']
-
-    for a in activitati:
-        if actiune == 'aproba':
-            a.status = 'aprobat'
-            a.aprobat_de_id = current_user.id
-            a.data_aprobare = datetime.utcnow()
-        else:
-            a.status = 'respins'
-            a.motiv_respingere = motiv or 'Respins in masa'
-        count += 1
-
-    db.session.commit()
+    rezultat = bulk_transition_activities(
+        activity_ids=ids,
+        action=actiune,
+        current_user=current_user,
+        rejection_reason=motiv,
+    )
+    count = rezultat['count']
 
     if actiune == 'aproba':
         flash(f'{count} activitati aprobate.', 'success')

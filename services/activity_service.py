@@ -33,11 +33,15 @@ import json
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 
+from flask import abort
+
 from models import (
     db, Angajat, Proiect, TipInstalatie, CategorieActivitate,
     RaportActivitate, Santier, Cladire, ElementBIM, SarbatoareLegala,
 )
 from services.security.tenant_access import (
+    get_activity_or_404,
+    get_tenant_mode,
     query_activities_for_tenant,
     query_bim_buildings_for_tenant,
     query_bim_elements_for_tenant,
@@ -535,3 +539,106 @@ def save_activity_from_form_data(*, activity=None, form_data, current_user=None,
     db.session.commit()
 
     return {'activity': activity, 'actiune': actiune}
+
+
+# ============================================================
+# S1.1C — tranzitii de workflow (status)
+# ============================================================
+
+def submit_activity_for_approval(*, activity_id, tenant_id=None):
+    """Tranzitie draft -> trimis pentru o activitate (tenant-safe).
+
+    Mutat din routes/activitati.py::trimite. ID strain -> 404 (prin helper).
+    Daca statusul nu este 'draft' nu muteaza nimic si nu face commit.
+
+    Returneaza {'ok': bool, 'activity': <RaportActivitate>}: 'ok' True cand
+    tranzitia a avut loc, False cand activitatea nu era in 'draft'.
+    """
+    activitate = get_activity_or_404(activity_id, tenant_id=tenant_id)
+    if activitate.status != 'draft':
+        return {'ok': False, 'activity': activitate}
+    activitate.status = 'trimis'
+    db.session.commit()
+    return {'ok': True, 'activity': activitate}
+
+
+def approve_activity(*, activity_id, approver_user, tenant_id=None):
+    """Aproba o activitate (tenant-safe). Mutat din routes/activitati.py::aproba.
+
+    Fara preconditie de status (comportament existent). Seteaza status, autorul
+    aprobarii si data aprobarii. ID strain -> 404 inainte de mutatie.
+    """
+    activitate = get_activity_or_404(activity_id, tenant_id=tenant_id)
+    activitate.status = 'aprobat'
+    activitate.aprobat_de_id = approver_user.id
+    activitate.data_aprobare = datetime.utcnow()
+    db.session.commit()
+    return {'ok': True, 'activity': activitate}
+
+
+def reject_activity(*, activity_id, reason, tenant_id=None):
+    """Respinge o activitate cu motiv (tenant-safe).
+
+    Mutat din routes/activitati.py::respinge. `reason` este motivul deja citit
+    din formular; daca este gol se aplica 'Fara motiv specificat' (identic cu
+    comportamentul existent). ID strain -> 404 inainte de mutatie.
+    """
+    activitate = get_activity_or_404(activity_id, tenant_id=tenant_id)
+    activitate.status = 'respins'
+    activitate.motiv_respingere = reason or 'Fara motiv specificat'
+    db.session.commit()
+    return {'ok': True, 'activity': activitate}
+
+
+def bulk_transition_activities(*, activity_ids, action, current_user,
+                               rejection_reason=None, tenant_id=None):
+    """Aprobare/respingere in masa (tenant-safe). Mutat din aprobare_masa.
+
+    Pastreaza identic:
+    - ramura off-mode legacy (RaportActivitate.query.get brut per id, skip silentios);
+    - ramura tenant-aware: valideaza TOATE id-urile inainte de orice mutatie
+      (abort 404 la id invalid/strain/lipsa), apoi pastreaza doar 'trimis';
+    - orice actiune diferita de 'aproba' este tratata ca respingere (else),
+      ca in codul existent;
+    - un singur commit dupa bucla.
+
+    Returneaza {'ok': True, 'count': int, 'action': str}.
+    """
+    if get_tenant_mode() == 'off':
+        activitati = []
+        for aid in activity_ids:
+            try:
+                a = RaportActivitate.query.get(int(aid))
+                if a and a.status == 'trimis':
+                    activitati.append(a)
+            except (ValueError, TypeError):
+                continue
+    else:
+        try:
+            ids_int = [int(aid) for aid in activity_ids]
+        except (ValueError, TypeError):
+            ids_int = []
+        ids_int = [aid for aid in ids_int if aid > 0]
+        if len(ids_int) != len(activity_ids) or not ids_int:
+            abort(404)
+        activitati = query_activities_for_tenant(tenant_id=tenant_id).filter(
+            RaportActivitate.id.in_(ids_int)
+        ).all()
+        if len({a.id for a in activitati}) != len(set(ids_int)):
+            abort(404)
+        activitati = [a for a in activitati if a.status == 'trimis']
+
+    count = 0
+    for a in activitati:
+        if action == 'aproba':
+            a.status = 'aprobat'
+            a.aprobat_de_id = current_user.id
+            a.data_aprobare = datetime.utcnow()
+        else:
+            a.status = 'respins'
+            a.motiv_respingere = rejection_reason or 'Respins in masa'
+        count += 1
+
+    db.session.commit()
+
+    return {'ok': True, 'count': count, 'action': action}
