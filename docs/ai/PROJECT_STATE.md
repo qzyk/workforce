@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-S1.4A Project Details Context Extraction
+S1.C4 Project Details Context Extraction Review — APPROVED
 ```
 
 Canonical repository:
@@ -111,12 +111,14 @@ S1.3B Project Create/Edit/Status Save Extraction
 S1.C3 Project Service Extraction Review — APPROVED
 S1.4 Project Details / Cross-Domain Context No-Code Gate — APPROVED
 S1.4A Project Details Context Extraction
+S1.C4 Project Details Context Extraction Review — APPROVED
 ```
 
 Latest completed service extraction step:
 
 ```text
 S1.4A Project Details Context Extraction
+(reviewed and APPROVED by S1.C4)
 ```
 
 S1.2D2 summary:
@@ -316,7 +318,8 @@ The S1.2 timesheet service boundary (S1.2A–S1.2D2) is complete and APPROVED by
 The S1.3 Project Service no-code gate is APPROVED; S1.3A (project read/list + financial data assembly) is complete and validated in the new services/project_service.py.
 The S1.3B project create/edit/status save boundary (create_project_from_form_data / update_project_from_form_data / change_project_status) is complete and validated.
 The S1.3 Project Service boundary (S1.3A + S1.3B) is complete and APPROVED by the S1.C3 review (no P0/P1 blockers; see DECISIONS_LOG D017).
-The S1.4 Project Details no-code gate is APPROVED; S1.4A (detalii read-only context, get_project_detail_context) is complete and validated. hub remains deferred. The S1.4A boundary is awaiting the S1.C4 review.
+The S1.4 Project Details no-code gate is APPROVED; S1.4A (detalii read-only context, get_project_detail_context) is complete and validated. hub remains deferred.
+The S1.4A Project Details context boundary is APPROVED by the S1.C4 review (no P0/P1 blockers; see DECISIONS_LOG D018).
 
 Approved S1.2 boundary (S1.C2 / D016):
 
@@ -350,6 +353,7 @@ Accepted deferrals / notes (S1.C2, P3/informational — cleanup NOT authorized):
 S1.C1 Activity Service Extraction Review — APPROVED (no P0/P1)
 S1.C2 Timesheet Service Extraction Review — APPROVED (no P0/P1)
 S1.C3 Project Service Extraction Review — APPROVED (no P0/P1)
+S1.C4 Project Details Context Extraction Review — APPROVED (no P0/P1)
 ```
 
 S1.C1 findings (see DECISIONS_LOG D015):
@@ -385,21 +389,35 @@ S1.C3 findings (see DECISIONS_LOG D017):
 - Next Project surface (detalii/hub cross-domain) must start with an S1.4 no-code gate
 ```
 
+S1.C4 findings (see DECISIONS_LOG D018):
+
+```text
+- No P0/P1 blockers. S1.4A Project Details Context Extraction APPROVED.
+- hub byte-identical to BASE (untouched, deferred); detalii route keeps
+  get_project_or_404 / request.args / render_template
+- ore_per_angajat aggregate accepted (tenant-scoped via query_timesheets_for_tenant subquery)
+- P3: route financial wrappers (_get_total_ore etc.) now dead code; removal NOT authorized
+- Next Project surface (hub cross-domain aggregator) must start with an S1.5 no-code gate
+```
+
 ---
 
 ## Current task
 
 ```text
-S1.C4 Project Details Context Extraction Review
+S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate
 ```
 
-Review / no-code validation of the completed S1.4A Project Details context
-boundary (get_project_detail_context + the thin detalii route). Produces a review
-report only.
+Read-only understanding / collision-safety gate for the Project `hub` route (the
+360 cross-domain aggregator in routes/proiecte.py). Produces a no-code report only.
 
-NO NEW IMPLEMENTATION IS AUTHORIZED. S1.C4 reviews the boundary and, if there are
-no P0/P1 blockers, approves S1.4A and recommends the next architectural step.
-hub remains untouched and deferred.
+S1.5 IMPLEMENTATION IS NOT AUTHORIZED. hub extraction or aggregator implementation
+may start only after this no-code gate is reviewed and approved by Albert.
+
+Alternative future options (only if Albert chooses a different sequence):
+Contract/Commercial Service no-code gate, Gantt Service no-code gate, or an
+S1.x Service Boundary Hardening Gate. The current authorized task is the S1.5
+Project hub cross-domain no-code gate.
 
 ## Constraints for the S1.x service extraction line (per D014 + D015)
 
@@ -416,17 +434,17 @@ hub remains untouched and deferred.
 ## Next recommended work
 
 ```text
-S1.C4 Project Details Context Extraction Review (current authorized task — review/no-code)
+S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate (current authorized task — no-code)
 ```
 
-S1.4A (detalii read-only context extraction) is complete and validated. It must be
-reviewed by S1.C4 before any further Project work. hub remains deferred.
+S1.4A (detalii read-only context extraction) is complete and APPROVED by S1.C4
+(D018). The last large Project surface is `hub` — heavily cross-domain — which
+must begin with the S1.5 no-code gate, NOT implementation.
 
 Remaining / deferred Project work (each its own future gate if/when authorized):
 
 ```text
-detalii context — extracted in S1.4A (awaiting S1.C4 review)
-hub (360 cross-domain aggregator) — deferred (separate Cross-Domain Aggregator gate)
+hub (360 cross-domain aggregator) — S1.5 no-code gate (current)
 nested resource routes (utilaje/resurse/documente/santier/angajat assignment) — deferred
 reports/export (raport, export_excel) — deferred
 Contract / Commercial / Gantt extraction — deferred to later domain-specific gates
@@ -467,12 +485,12 @@ locatie split; service-commit / route-rollback applies to the mutating saves; th
 invalid-status path stays a route-owned JSON 400. The S1.3 Project Service
 extraction (S1.3A + S1.3B) is complete and APPROVED by S1.C3 (D017). The detalii
 read-only context assembly is now in the service too (S1.4A,
-get_project_detail_context); the detalii route keeps get_project_or_404 /
-request.args / render_template. hub and the remaining cross-domain project routes
-(nested resources, raport, export_excel) remain route-resident pending later
-gates. The next authorized task is the S1.C4 Project Details Context Extraction
-Review (review/no-code; no implementation until S1.C4 approves and Albert
-authorizes the next step).
+get_project_detail_context, APPROVED by S1.C4 / D018); the detalii route keeps
+get_project_or_404 / request.args / render_template. hub and the remaining
+cross-domain project routes (nested resources, raport, export_excel) remain
+route-resident pending later gates. The next authorized task is the S1.5 Project
+Hub / Cross-Domain Aggregator no-code gate (hub; no implementation until reviewed
+and approved by Albert).
 
 Remaining accepted future categories:
 

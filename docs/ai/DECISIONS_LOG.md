@@ -326,3 +326,43 @@ Decisions recorded:
 
 S1.4 implementation is NOT authorized by this decision. It requires an S1.4
 no-code safety gate reviewed and approved by Albert.
+
+---
+
+## D018 — S1.C4 Project Details Context Extraction Review outcome
+
+S1.C4 reviewed the completed S1.4A Project Details context extraction (detalii
+read-only context assembly into services/project_service.py) and concluded:
+
+```text
+S1.4A Project Details Context Extraction — APPROVED. No P0/P1 blockers.
+get_project_detail_context() is a coherent, additive, HTTP-free, read-only,
+tenant-safe Project-details context helper; detalii behavior preserved.
+```
+
+Decisions recorded:
+
+- **Approved helper.** `get_project_detail_context()` is the approved Project
+  details context helper in `services/project_service.py` (read-only, HTTP-free,
+  additive; S1.3A/S1.3B helper bodies unchanged).
+- **Route ownership.** `routes/proiecte.py::detalii` keeps `get_project_or_404(id)`,
+  `request.args` (luna/anul), `render_template('proiecte/detalii.html', ...)`, and
+  HTTP behavior. The service returns plain data only.
+- **hub remained untouched and is explicitly deferred** (byte-identical to BASE).
+  hub must not be absorbed into project_service without a separate S1.5 no-code gate.
+- **Tenant safety.** The `ore_per_angajat` `db.session.query` aggregate is accepted
+  ONLY because it is tenant-scoped through the `query_timesheets_for_tenant()`
+  subquery (preserved exactly). No raw `Proiect/Pontaj/Angajat/RaportActivitate/
+  Document.query` introduced in the service.
+- **P3 / informational (cleanup NOT authorized):** the route financial wrappers
+  `_get_total_ore` / `_calculeaza_cost_manopera` / `_get_ore_saptamanale` /
+  `_get_cost_lunar` appear to be dead code now that `detalii` calls the S1.3A
+  service helpers via `get_project_detail_context()` — do NOT remove without
+  separate approval. `docs/audits/` absent; CLAUDE.md roadmap stale (docs/ai +
+  git authoritative).
+- **Next Project surface must start with a no-code gate.** `hub` (the Project 360
+  cross-domain aggregator) must begin with an S1.5 no-code understanding /
+  collision-safety gate reviewed and approved by Albert — NOT direct implementation.
+
+S1.5 implementation is NOT authorized by this decision. It requires an S1.5
+no-code safety gate reviewed and approved by Albert.
