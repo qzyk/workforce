@@ -3,82 +3,89 @@
 Current authorized task:
 
 ```text
-S1.2D2 No-Code Understanding / Collision Safety Gate
+S1.C2 Timesheet Service Extraction Review
 ```
 
-This is a READ-ONLY understanding and collision-safety gate for the import_excel
-parsing/create extraction slice after S1.2D1. It produces an understanding /
-collision-safety report only.
+This is a REVIEW / NO-CODE validation task.
 
-IMPORTANT: S1.2D2 IMPLEMENTATION IS NOT YET AUTHORIZED.
-S1.2D2 implementation may start only after this no-code safety gate is reviewed
-and approved by Albert.
+NO NEW IMPLEMENTATION IS AUTHORIZED.
+
+S1.C2 reviews the completed S1.2 timesheet service boundary after:
+
+```text
+S1.2A  Timesheet Service Skeleton + Read/List Context Extraction
+S1.2B1 Timesheet Single Create/Edit Save Extraction
+S1.2B2 Timesheet Bulk Create Save Extraction
+S1.2C1 Timesheet Single Workflow Extraction
+S1.2C2 Timesheet Bulk Workflow Extraction
+S1.2D1 Timesheet Monthly Export Data Assembly Extraction
+S1.2D2 Timesheet Import Excel Parsing/Create Extraction
+```
 
 Current canonical base commit:
 
 ```text
-fc73246 S1.2D1 timesheet export data extraction
+0a7da26 S1.2D2 timesheet import excel extraction
 ```
 
 Current canonical branch:
 
 ```text
-feat/s1.2d1-timesheet-export-data-extraction
+feat/s1.2d2-timesheet-import-excel-extraction
 ```
 
 ---
 
-## Previous completed step (S1.2D1) — VALIDATED
+## Previous completed step (S1.2D2) — VALIDATED
 
 ```text
-S1.2D1 Timesheet Monthly Export Data Assembly Extraction
+S1.2D2 Timesheet Import Excel Parsing/Create Extraction
 ```
 
-Verdict: COMPLETE. The monthly Pontaj export data assembly was extracted from
-routes/pontaje.py::export_lunar into services/timesheet_service.py
-(build_monthly_timesheet_export_data) without touching the workbook layout,
-send_file, filename/MIME behavior, template_import, import_excel, or any
-save/workflow/read/delete logic.
+Verdict: COMPLETE. The import_excel row-processing/create logic was extracted from
+routes/pontaje.py into services/timesheet_service.py (import_timesheets_from_rows
++ _detect_import_tip_zi) without touching export_lunar, template_import,
+save/create/edit, workflow, read/list/context, or delete logic.
 
-S1.2D1 recorded results:
+S1.2D2 recorded results:
 
 ```text
-- build_monthly_timesheet_export_data() added to services/timesheet_service.py
-- export_lunar delegates tenant-scoped query, month/year filter, project filter,
-  per-employee grouping/totals, holiday day-set, and sorted employees to service
-- export_lunar still owns: request.args reading, workbook creation, sheet
-  names/order, styles, fills, borders, merged cells, formulas, widths, freeze
-  panes, auto_filter, date/day order, filename, MIME type, send_file
-- export helper is read-only and HTTP-free
-- no db.session.add/commit/rollback in export helper
-- query_timesheets_for_tenant preserved
-- get_project_or_404 behavior preserved for foreign project 404
-- SarbatoareLegala.query allowed as global catalog behavior
+- import_timesheets_from_rows() added to services/timesheet_service.py
+- _detect_import_tip_zi() added to services/timesheet_service.py
+- import_excel delegates row-processing/create to the timesheet service
+- route still owns request.files, .xlsx extension validation, load_workbook,
+  wb.active selection, flash, redirect, and the HTTP boundary
+- expected columns preserved (CNP, cod_proiect, data, ora_start, ora_sfarsit,
+  tip_zi, observatii)
+- string coercion preserved; empty rows skipped silently (not counted as errors)
+- bad rows counted as errors; missing/foreign employee/project rows skipped
+- foreign employee/project skipped via query_for_tenant() (NEVER abort)
+- duplicate rows skipped via query_timesheets_for_tenant()
+- date parsing preserved (dd.mm.yyyy and yyyy-mm-dd)
+- imported rows preserve status='draft'; approval/workflow fields untouched
+- partial-success preserved; ONE final commit after the row loop
+- NO tenant_id_for_new_record_or_403() and NO require_timesheet_inputs_same_tenant()
+  introduced in the import path (would convert skip into abort(404))
 - no raw Pontaj/Angajat/Proiect/RaportActivitate.query introduced in service
-- get_project_or_404 removed from routes/pontaje.py imports (now only in service)
-- template_import untouched
-- import_excel untouched
-- no S1.2D2 started
-- services/activity_service.py untouched
-- routes/activitati.py untouched
-- models.py untouched
-- migrations untouched
-- templates untouched
+- SarbatoareLegala.query allowed only as global catalog for tip_zi detection
+- route rollback wrapper added without changing per-row skip behavior
+- export_lunar / build_monthly_timesheet_export_data / template_import untouched
+- save/create/edit / workflow / read/list/context / sterge untouched
+- services/activity_service.py / routes/activitati.py untouched
+- models.py / migrations / templates untouched
 ```
 
-S1.2D1 validation:
+S1.2D2 validation:
 
 ```text
-service unit tests (test_timesheet_service.py): 71 passed (59 prior + 12 new)
-targeted suite (service + tenant_access_timesheets + integration routes): 100 passed
-export-layout regression (test_export_rapoarte_stil.py): 5 passed
-activity boundary (test_activity_service.py): 40 passed
-Flask app smoke (pontaje routes): ok 18
-full suite (tests/unit + tests/integration): 1117 passed, 39 skipped, 4 warnings
-git diff --check clean
+service unit tests (test_timesheet_service.py): 87 passed (71 prior + 16 new)
+full suite (tests/unit + tests/integration): 1133 passed, 39 skipped, 4 warnings
+full suite was run BEFORE commit
+worktree clean after commit; git diff --check clean
+only allowed files changed
 ```
 
-Files changed in fc73246:
+Files changed in 0a7da26:
 
 ```text
 routes/pontaje.py
@@ -86,57 +93,59 @@ services/timesheet_service.py
 tests/unit/test_timesheet_service.py
 ```
 
----
-
-## Goal of the current gate (S1.2D2 no-code)
-
-Prove understanding of the safe boundary for the import_excel extraction BEFORE
-any code:
-
-1. Confirm canonical worktree state (clean, HEAD fc73246).
-2. Understand import_excel upload / parsing / current row handling.
-3. Understand the expected Excel columns.
-4. Understand duplicate skip/error behavior.
-5. Understand tenant-safe employee/project resolution
-   (query_for_tenant(Angajat), query_for_tenant(Proiect),
-   query_timesheets_for_tenant() duplicate check).
-6. Understand partial-success semantics (per-row try/except, count_ok/count_err).
-7. Understand the single db.session.commit() behavior at the end of the loop.
-8. Understand the current lack of an outer rollback wrapper.
-9. Propose a safe extraction boundary for the import row-processing/create logic
-   into services/timesheet_service.py.
-10. Preserve route-owned upload handling, .xlsx validation, workbook read, flash,
-    and redirect behavior.
-11. Produce a report only — no code.
-
-The gate must NOT modify code, tests, services, or routes.
-
----
-
-## No-touch boundaries for the S1.2D2 gate
+Test-cleanup robustness note (S1.2D2):
 
 ```text
-- do not touch export_lunar (read only for context)
-- do not touch workbook layout
-- do not touch send_file
-- do not touch template_import unless the gate determines no extraction
-- do not touch save/create/edit routes
-- do not touch workflow routes
-- do not touch sterge
-- do not touch activity files (service/routes/tests)
-- do not touch models / migrations / templates
-- do not touch other route domains
+- tests/unit/test_timesheet_service.py fixture _curata was hardened to also delete
+  Pontaj rows attached to S12A employees/projects, not only rows with observatii
+  like 'TEST_S12A%'.
+- Reason: import-created Pontaj rows may have arbitrary observatii (empty string,
+  'concediu', etc.), so the previous cleanup filter could leave orphan Pontaj rows
+  before the test employees/projects were deleted.
+- Test-cleanup robustness change only; behavior-preserving and validated by the full suite.
+```
+
+---
+
+## Goal of the current task (S1.C2 review)
+
+Review the completed S1.2 timesheet service boundary (NO code):
+
+```text
+1. Review services/timesheet_service.py as a complete Pontaj/timesheet service boundary.
+2. Verify routes/pontaje.py delegates the intended slices (read/list/context,
+   save/create/edit, single+bulk workflow, monthly export data, import rows).
+3. Verify tenant safety was preserved across off / optional / strict modes.
+4. Verify no raw tenant-owned queries (Pontaj/Angajat/Proiect/RaportActivitate.query)
+   were introduced in the service (SarbatoareLegala.query global catalog is allowed).
+5. Verify save / workflow / import / export behavior was preserved.
+6. Verify the service-commit / route-rollback convention is consistent.
+7. Verify tests are sufficient.
+8. Identify any P0/P1 blockers.
+9. If no P0/P1 blockers, approve S1.2 and recommend the next architectural step.
+10. Produce a report only — no code.
+```
+
+---
+
+## No-touch boundaries for the S1.C2 review
+
+```text
+- do not modify code
+- do not modify tests
+- do not modify routes
+- do not modify services
+- do not modify models / migrations / templates
+- do not start S1.3
+- do not start any new service extraction
+- do not touch activity service / routes
+- do not alter completed S1.2 helpers
 ```
 
 ---
 
 ## Do not start
 
-Do not start implementation of:
-
-```text
-S1.2D2 Import Excel Parsing/Create Extraction
-```
-
-The current authorized task is ONLY the S1.2D2 no-code understanding /
-collision-safety gate. Implementation requires a separate explicit approval.
+Do not start any new implementation. The current authorized task is ONLY the
+S1.C2 review (report only). Any follow-up implementation requires a separate
+explicit approval from Albert.
