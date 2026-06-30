@@ -77,6 +77,94 @@ def test_optional_fara_tenant_ramane_permisiv(authenticated_client, app):
     assert b'TA-CONTRACT-B' in raspuns.data
 
 
+def test_strict_lista_numara_doar_acte_aditionale_same_tenant(
+    authenticated_client, app, admin_user
+):
+    ids = _creeaza_date(app)
+    _creeaza_copii_contract_corupti(app, ids)
+    _seteaza_tenant_user(app, admin_user.id, ids['tenant_a'])
+    app.config['MULTI_TENANT_MODE'] = 'strict'
+
+    raspuns = authenticated_client.get('/contracte/')
+    body = raspuns.get_data(as_text=True)
+
+    assert raspuns.status_code == 200
+    assert 'TA-CONTRACT-A' in body
+    assert '+1 acte aditionale' in body
+    assert '+2 acte aditionale' not in body
+    assert 'TA-CONTRACT-ADD-FOREIGN' not in body
+
+
+def test_strict_detalii_ascunde_acte_aditionale_straine(
+    authenticated_client, app, admin_user
+):
+    ids = _creeaza_date(app)
+    _creeaza_copii_contract_corupti(app, ids)
+    _seteaza_tenant_user(app, admin_user.id, ids['tenant_a'])
+    app.config['MULTI_TENANT_MODE'] = 'strict'
+
+    raspuns = authenticated_client.get(f'/contracte/{ids["contract_a"]}')
+    body = raspuns.get_data(as_text=True)
+
+    assert raspuns.status_code == 200
+    assert 'TA-CONTRACT-ADD-A' in body
+    assert 'TA-CONTRACT-ADD-FOREIGN' not in body
+
+
+def test_strict_detalii_ascunde_program_oferta_si_pozitii_straine(
+    authenticated_client, app, admin_user
+):
+    ids = _creeaza_date(app)
+    _creeaza_copii_contract_corupti(app, ids)
+    _seteaza_tenant_user(app, admin_user.id, ids['tenant_a'])
+    app.config['MULTI_TENANT_MODE'] = 'strict'
+
+    raspuns = authenticated_client.get(f'/contracte/{ids["contract_a"]}')
+    body = raspuns.get_data(as_text=True)
+
+    assert raspuns.status_code == 200
+    assert 'TA-PROG-A' in body
+    assert 'TA-PROG-FOREIGN-LINK' not in body
+    assert '777777.00 RON' not in body
+    assert '<td>1</td>' in body
+    assert '<td>2</td>' not in body
+
+
+def test_optional_cu_tenant_detalii_ascunde_copii_contract_straini(
+    authenticated_client, app, admin_user
+):
+    ids = _creeaza_date(app)
+    _creeaza_copii_contract_corupti(app, ids)
+    _seteaza_tenant_user(app, admin_user.id, ids['tenant_a'])
+    app.config['MULTI_TENANT_MODE'] = 'optional'
+
+    raspuns = authenticated_client.get(f'/contracte/{ids["contract_a"]}')
+    body = raspuns.get_data(as_text=True)
+
+    assert raspuns.status_code == 200
+    assert 'TA-CONTRACT-ADD-A' in body
+    assert 'TA-CONTRACT-ADD-FOREIGN' not in body
+    assert 'TA-PROG-FOREIGN-LINK' not in body
+    assert '777777.00 RON' not in body
+
+
+def test_mode_off_detalii_pastreaza_copiii_legacy_nefiltrati(
+    authenticated_client, app
+):
+    ids = _creeaza_date(app)
+    _creeaza_copii_contract_corupti(app, ids)
+    app.config['MULTI_TENANT_MODE'] = 'off'
+
+    raspuns = authenticated_client.get(f'/contracte/{ids["contract_a"]}')
+    body = raspuns.get_data(as_text=True)
+
+    assert raspuns.status_code == 200
+    assert 'TA-CONTRACT-ADD-FOREIGN' in body
+    assert 'TA-PROG-FOREIGN-LINK' in body
+    assert '777777.00 RON' in body
+    assert '<td>2</td>' in body
+
+
 def test_strict_blocheaza_contract_strain_detalii_edit_delete(
     authenticated_client, app, admin_user
 ):
@@ -646,6 +734,48 @@ def _creeaza_date(app):
             'link_task_b': link_task_b.id,
             'link_cantitate_b': link_cantitate_b.id,
         }
+
+
+def _creeaza_copii_contract_corupti(app, ids):
+    from models import db
+
+    with app.app_context():
+        act_aditional_a = _contract(
+            ids['tenant_a'], ids['proiect_a'], 'TA-CONTRACT-ADD-A'
+        )
+        act_aditional_a.parinte_contract_id = ids['contract_a']
+
+        act_aditional_strain = _contract(
+            ids['tenant_b'], ids['proiect_b'], 'TA-CONTRACT-ADD-FOREIGN'
+        )
+        act_aditional_strain.parinte_contract_id = ids['contract_a']
+
+        program_strain = _program(
+            ids['tenant_b'],
+            ids['proiect_b'],
+            ids['contract_a'],
+            'TA-PROG-FOREIGN-LINK',
+        )
+        program_strain.versiune = 2
+
+        oferta_straina = _oferta(
+            ids['tenant_b'], ids['contract_a'], ids['proiect_b']
+        )
+        oferta_straina.versiune = 2
+        oferta_straina.valoare_totala = Decimal('777777')
+
+        pozitie_straina = _pozitie(
+            ids['tenant_b'], ids['oferta_a'], ids['proiect_b'], 'TA-BOQ-FOREIGN-IN-A'
+        )
+
+        db.session.add_all([
+            act_aditional_a,
+            act_aditional_strain,
+            program_strain,
+            oferta_straina,
+            pozitie_straina,
+        ])
+        db.session.commit()
 
 
 def _contract(tenant_id, proiect_id, nr):

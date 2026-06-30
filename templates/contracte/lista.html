@@ -93,9 +93,10 @@
                        style="font-weight: 600; color: var(--primary); text-decoration: none;">
                         {{ c.nr_contract }}
                     </a>
-                    {% if c.acte_aditionale.count() > 0 %}
+                    {% set acte_count = acte_aditionale_count_by_contract_id.get(c.id, 0) %}
+                    {% if acte_count > 0 %}
                     <span class="badge" style="background: var(--bg-elevated); margin-left: 6px; font-size: 0.7rem;">
-                        +{{ c.acte_aditionale.count() }} {{ _('acte aditionale') }}
+                        +{{ acte_count }} {{ _('acte aditionale') }}
                     </span>
                     {% endif %}
                 </td>

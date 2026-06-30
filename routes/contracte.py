@@ -128,6 +128,32 @@ def _contracte_vizibile():
     return query_contracts_for_tenant().order_by(Contract.nr_contract).all()
 
 
+def _numar_acte_aditionale_vizibile(contract_ids):
+    """Numar acte aditionale tenant-safe pentru lista contractelor."""
+    if not contract_ids:
+        return {}
+    rows = query_contracts_for_tenant().with_entities(
+        Contract.parinte_contract_id,
+        db.func.count(Contract.id),
+    ).filter(
+        Contract.parinte_contract_id.in_(contract_ids)
+    ).group_by(Contract.parinte_contract_id).all()
+    return {contract_id: count for contract_id, count in rows}
+
+
+def _numar_pozitii_vizibile(oferta_ids):
+    """Numar pozitii BoQ tenant-safe pentru ofertele afisate."""
+    if not oferta_ids:
+        return {}
+    rows = query_for_tenant(PozitieBoQ).with_entities(
+        PozitieBoQ.oferta_id,
+        db.func.count(PozitieBoQ.id),
+    ).filter(
+        PozitieBoQ.oferta_id.in_(oferta_ids)
+    ).group_by(PozitieBoQ.oferta_id).all()
+    return {oferta_id: count for oferta_id, count in rows}
+
+
 def _responsabili_termen_vizibili():
     """Utilizatori activi vizibili tenantului curent pentru responsabil termen."""
     return query_for_tenant(Utilizator).filter_by(activ=True).order_by(
@@ -270,6 +296,9 @@ def lista():
     # Doar contractele principale in lista; actele aditionale apar sub fiecare
     query = query.filter(Contract.parinte_contract_id.is_(None))
     contracte = query.order_by(Contract.data_semnare.desc()).all()
+    acte_aditionale_count_by_contract_id = _numar_acte_aditionale_vizibile(
+        [c.id for c in contracte]
+    )
 
     # Statistici simple pentru sidebar de filtre
     total_activ = query_contracts_for_tenant().filter_by(
@@ -294,6 +323,7 @@ def lista():
         total_activ=total_activ,
         total_finalizat=total_finalizat,
         total_suspendat=total_suspendat,
+        acte_aditionale_count_by_contract_id=acte_aditionale_count_by_contract_id,
         statuses=Contract.STATUSES,
     )
 
@@ -304,7 +334,9 @@ def detalii(id):
     """Detalii contract + acte aditionale + termene + PV-uri asociate."""
     c = get_contract_or_404(id)
     # Acte aditionale (sortate dupa data semnare)
-    acte = c.acte_aditionale.order_by(Contract.data_semnare).all()
+    acte = query_contracts_for_tenant().filter_by(
+        parinte_contract_id=c.id
+    ).order_by(Contract.data_semnare).all()
     # Termene (sortate dupa data_scadenta)
     termene = query_for_tenant(TermenContract).filter_by(contract_id=c.id).order_by(
         TermenContract.data_scadenta
@@ -313,12 +345,23 @@ def detalii(id):
     pv_list = query_for_tenant(ProcesVerbal).filter_by(contract_id=c.id).order_by(
         ProcesVerbal.data_emitere.desc()
     ).all()
+    programe_referinta = query_for_tenant(ProgramReferinta).filter_by(
+        contract_id=c.id
+    ).order_by(ProgramReferinta.versiune).all()
+    oferte = query_for_tenant(OfertaContract).filter_by(
+        contract_id=c.id
+    ).order_by(OfertaContract.versiune).all()
+    pozitii_count_by_oferta_id = _numar_pozitii_vizibile([o.id for o in oferte])
+
     return render_template(
         'contracte/detalii.html',
         contract=c,
         acte_aditionale=acte,
         termene=termene,
         pv_list=pv_list,
+        programe_referinta=programe_referinta,
+        oferte=oferte,
+        pozitii_count_by_oferta_id=pozitii_count_by_oferta_id,
         pv_tipuri=ProcesVerbal.TIPURI,
     )
 

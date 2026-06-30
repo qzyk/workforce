@@ -217,7 +217,7 @@
 <!-- Programe de referinta -->
 <div class="card-panel">
     <div class="card-panel-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3><i class="fa-solid fa-diagram-project"></i> {{ _('Programe de referinta') }} ({{ contract.programe_referinta.count() }})</h3>
+        <h3><i class="fa-solid fa-diagram-project"></i> {{ _('Programe de referinta') }} ({{ programe_referinta|length }})</h3>
         {% if feature_enabled('controale-contract-import-msproject') %}
         <a href="{{ url_for('contracte.program_import', contract_id=contract.id) }}" class="btn btn-sm btn-outline">
             <i class="fa-solid fa-file-import"></i> {{ _('Import MS Project') }}
@@ -225,8 +225,7 @@
         {% endif %}
     </div>
     <div class="card-panel-body">
-        {% set programe = contract.programe_referinta.order_by('versiune').all() %}
-        {% if programe %}
+        {% if programe_referinta %}
         <table class="table" style="width: 100%;">
             <thead>
                 <tr><th>{{ _('Versiune') }}</th><th>{{ _('Denumire') }}</th>
@@ -234,7 +233,7 @@
                     <th>{{ _('Status') }}</th><th>{{ _('Actiuni') }}</th></tr>
             </thead>
             <tbody>
-                {% for p in programe %}
+                {% for p in programe_referinta %}
                 <tr>
                     <td><strong>v{{ p.versiune }}</strong></td>
                     <td><a href="{{ url_for('contracte.program_detalii', program_id=p.id) }}">{{ p.denumire }}</a></td>
@@ -261,13 +260,12 @@
 <!-- Oferte tehnico-economice -->
 <div class="card-panel">
     <div class="card-panel-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3><i class="fa-solid fa-file-invoice-dollar"></i> {{ _('Oferte tehnico-economice') }} ({{ contract.oferte.count() }})</h3>
+        <h3><i class="fa-solid fa-file-invoice-dollar"></i> {{ _('Oferte tehnico-economice') }} ({{ oferte|length }})</h3>
         <a href="{{ url_for('contracte.oferta_import', contract_id=contract.id) }}" class="btn btn-sm btn-outline">
             <i class="fa-solid fa-file-import"></i> {{ _('Import oferta (eDevize / Excel)') }}
         </a>
     </div>
     <div class="card-panel-body">
-        {% set oferte = contract.oferte.order_by('versiune').all() %}
         {% if oferte %}
         <table class="table" style="width: 100%;">
             <thead>
@@ -284,7 +282,7 @@
                         {% if o.valoare_totala %}{{ '%.2f'|format(o.valoare_totala) }} RON{% else %}-{% endif %}
                     </td>
                     <td><code style="font-size: 0.78rem;">{{ o.sursa_import }}</code></td>
-                    <td>{{ o.pozitii.count() }}</td>
+                    <td>{{ pozitii_count_by_oferta_id.get(o.id, 0) }}</td>
                     <td style="white-space: nowrap;">
                         <a href="{{ url_for('contracte.oferta_detalii', oferta_id=o.id) }}" class="btn btn-sm btn-outline" title="{{ _('Detalii') }}"><i class="fa-solid fa-eye"></i></a>
                         <a href="{{ url_for('contracte.oferta_cantitati', oferta_id=o.id) }}" class="btn btn-sm btn-outline" title="{{ _('Cantitati lunare') }}"><i class="fa-solid fa-table-cells"></i></a>
