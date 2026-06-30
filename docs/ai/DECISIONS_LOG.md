@@ -366,3 +366,55 @@ Decisions recorded:
 
 S1.5 implementation is NOT authorized by this decision. It requires an S1.5
 no-code safety gate reviewed and approved by Albert.
+
+---
+
+## D019 — S1.5 Project Hub / Cross-Domain Aggregator Gate outcome
+
+S1.5 reviewed the Project Hub / Cross-Domain Aggregator surface in
+`routes/proiecte.py` and concluded:
+
+```text
+S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate — COMPLETED.
+No P0/P1 blockers.
+hub should remain route-resident.
+S1.5 implementation should NOT be prepared.
+```
+
+Decisions recorded:
+
+- **hub is read-only and tenant-guarded.** It uses `get_project_or_404(id)` and
+  tenant-safe query helpers before rendering the Project 360 / hub view. It has
+  no raw-query risk identified by the S1.5 gate, mutates nothing, commits
+  nothing, and `_safe` fails closed to default/empty values.
+- **hub is route-owned.** It is a cross-domain navigation/presentation
+  aggregator, not Project-owned service logic. It combines Contract,
+  Commercial / `SituatieLunara`, Gantt, BIM, Location, Fleet, HR, Documents,
+  feature flags, `url_for`, `parcurs`, and `next_idx`.
+- **Do not absorb hub into `services/project_service.py`.** The approved Project
+  service boundary remains Project-owned: read/list context, manager list /
+  filtering / sorting / stats, financial data assembly, create/edit/status save
+  logic, and `get_project_detail_context()`.
+- **Do not create a cross-domain aggregator service now.** A separate
+  `project_hub_service` or cross-domain aggregator service is premature.
+- **Project service extraction is complete for Project-owned surfaces.** The
+  completed Project stack is S1.3A read/list + financial data assembly, S1.3B
+  create/edit/status save, and S1.4A `detalii` context.
+- **Accepted Project route-resident deferrals (do not treat as bugs):**
+  - hub remains route-resident;
+  - nested resource routes remain route-resident;
+  - `raport` / `export_excel` remain route-resident;
+  - dead financial wrappers from S1.C4 are P3 cleanup only and removal is not
+    authorized.
+- **Testing posture.** hub test coverage is smoke-level only, acceptable while
+  hub remains route-resident. Deeper hub tests are required only if extraction
+  is reconsidered.
+- **Next domain should start with a no-code gate.** Recommended next task:
+
+```text
+Contract / Commercial Service No-Code Gate
+```
+
+Contract / Commercial implementation is NOT authorized by this decision. It
+requires a no-code understanding / collision-safety gate reviewed and approved
+by Albert.

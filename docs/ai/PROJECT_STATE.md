@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-S1.C4 Project Details Context Extraction Review — APPROVED
+S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate — COMPLETED
 ```
 
 Canonical repository:
@@ -46,17 +46,27 @@ Do not merge, clean, delete, or copy from them.
 feat/s1.4a-project-details-context-extraction
 ```
 
-## Current canonical HEAD
+## Current canonical code boundary
 
 ```text
 4c15b01 S1.4A project details context extraction
 ```
 
-## Current test baseline
-
-S1.4A VALIDATED.
+Latest coordination state:
 
 ```text
+S1.5 determined that Project hub should remain route-resident.
+```
+
+## Current test / gate baseline
+
+S1.5 gate completed. The canonical code boundary remains S1.4A.
+
+```text
+S1.5 gate py_compile routes/proiecte.py services/project_service.py: OK
+S1.5 gate project targeted suite: 80 passed
+S1.5 gate cross-domain regression suite: 150 passed
+S1.5 gate Flask project route smoke: ok 27 proiecte.* routes
 project service unit tests (tests/unit/test_project_service.py): 45 passed (34 prior + 11 new S1.4A)
 project targeted suite (service + project route/nested/hub/locations): 80 passed
 cross-domain regression (timesheet routes + activity + timesheet service): 150 passed
@@ -112,13 +122,13 @@ S1.C3 Project Service Extraction Review — APPROVED
 S1.4 Project Details / Cross-Domain Context No-Code Gate — APPROVED
 S1.4A Project Details Context Extraction
 S1.C4 Project Details Context Extraction Review — APPROVED
+S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate — COMPLETED / HUB ROUTE-RESIDENT
 ```
 
-Latest completed service extraction step:
+Latest gate checkpoint:
 
 ```text
-S1.4A Project Details Context Extraction
-(reviewed and APPROVED by S1.C4)
+S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate — COMPLETED / DECISION: KEEP ROUTE-RESIDENT
 ```
 
 S1.2D2 summary:
@@ -320,6 +330,49 @@ The S1.3B project create/edit/status save boundary (create_project_from_form_dat
 The S1.3 Project Service boundary (S1.3A + S1.3B) is complete and APPROVED by the S1.C3 review (no P0/P1 blockers; see DECISIONS_LOG D017).
 The S1.4 Project Details no-code gate is APPROVED; S1.4A (detalii read-only context, get_project_detail_context) is complete and validated. hub remains deferred.
 The S1.4A Project Details context boundary is APPROVED by the S1.C4 review (no P0/P1 blockers; see DECISIONS_LOG D018).
+The S1.5 Project Hub / Cross-Domain Aggregator no-code gate is complete. It
+decided that hub should remain route-resident and that S1.5 implementation
+should NOT be prepared. The Project service extraction line is effectively
+complete for Project-owned surfaces after S1.3A, S1.3B, and S1.4A.
+
+Approved Project service boundary:
+
+```text
+services/project_service.py owns Project-owned service logic:
+- project read/list context
+- project manager list / filtering / sorting / stats
+- financial total hours / labor cost / weekly hours / monthly costs
+- create/edit/status save logic
+- detalii context through get_project_detail_context()
+```
+
+Route-owned / deferred Project surfaces:
+
+```text
+routes/proiecte.py keeps:
+- hub cross-domain aggregator
+- decorators
+- request / render_template / flash / redirect / jsonify
+- feature flags
+- url_for / parcurs / next_idx
+- nested resource routes
+- raport/export_excel
+- route/form global query behaviors intentionally preserved
+- dead financial wrappers remain P3 cleanup only, removal not authorized
+```
+
+S1.5 hub decision:
+
+```text
+- hub is not Project-owned enough for services/project_service.py
+- hub combines Contract, Commercial, Gantt, BIM, Location, Fleet, HR,
+  Documents, feature flags, and navigation
+- hub remains route-resident
+- no S1.5 implementation next
+- no project_hub_service implementation next
+- separate cross-domain aggregator service is premature
+- deeper hub tests are only required if extraction is reconsidered
+```
 
 Approved S1.2 boundary (S1.C2 / D016):
 
@@ -354,6 +407,7 @@ S1.C1 Activity Service Extraction Review — APPROVED (no P0/P1)
 S1.C2 Timesheet Service Extraction Review — APPROVED (no P0/P1)
 S1.C3 Project Service Extraction Review — APPROVED (no P0/P1)
 S1.C4 Project Details Context Extraction Review — APPROVED (no P0/P1)
+S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate — COMPLETED / HUB ROUTE-RESIDENT
 ```
 
 S1.C1 findings (see DECISIONS_LOG D015):
@@ -400,24 +454,37 @@ S1.C4 findings (see DECISIONS_LOG D018):
 - Next Project surface (hub cross-domain aggregator) must start with an S1.5 no-code gate
 ```
 
+S1.5 findings (see DECISIONS_LOG D019):
+
+```text
+- No P0/P1 blockers. hub is read-only, tenant-guarded, and mutates/commits nothing.
+- hub uses get_project_or_404(id), tenant-safe query helpers, feature flag checks,
+  and url_for/parcurs/next_idx route-owned presentation logic.
+- hub is a cross-domain navigation/presentation aggregator, not Project-owned service logic.
+- services/project_service.py must not absorb hub.
+- separate cross-domain aggregator service is premature.
+- S1.5 implementation should NOT be prepared; hub remains route-resident.
+- Project service extraction line is effectively complete for Project-owned surfaces.
+```
+
 ---
 
 ## Current task
 
 ```text
-S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate
+Contract / Commercial Service No-Code Understanding / Collision Safety Gate
 ```
 
-Read-only understanding / collision-safety gate for the Project `hub` route (the
-360 cross-domain aggregator in routes/proiecte.py). Produces a no-code report only.
+Read-only understanding / collision-safety gate for the Contract / Commercial
+service boundary after Project-owned extraction is effectively complete. Produces
+a no-code report only.
 
-S1.5 IMPLEMENTATION IS NOT AUTHORIZED. hub extraction or aggregator implementation
-may start only after this no-code gate is reviewed and approved by Albert.
+Contract / Commercial implementation is NOT authorized. Contract / Commercial
+extraction may start only after this no-code gate is reviewed and approved by
+Albert.
 
-Alternative future options (only if Albert chooses a different sequence):
-Contract/Commercial Service no-code gate, Gantt Service no-code gate, or an
-S1.x Service Boundary Hardening Gate. The current authorized task is the S1.5
-Project hub cross-domain no-code gate.
+The previous completed gate was S1.5 Project Hub / Cross-Domain Aggregator
+No-Code Gate — COMPLETED, decision: keep hub route-resident.
 
 ## Constraints for the S1.x service extraction line (per D014 + D015)
 
@@ -434,20 +501,26 @@ Project hub cross-domain no-code gate.
 ## Next recommended work
 
 ```text
-S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate (current authorized task — no-code)
+Contract / Commercial Service No-Code Understanding / Collision Safety Gate
 ```
 
-S1.4A (detalii read-only context extraction) is complete and APPROVED by S1.C4
-(D018). The last large Project surface is `hub` — heavily cross-domain — which
-must begin with the S1.5 no-code gate, NOT implementation.
+This is a read-only gate. No Contract / Commercial implementation is authorized.
 
 Remaining / deferred Project work (each its own future gate if/when authorized):
 
 ```text
-hub (360 cross-domain aggregator) — S1.5 no-code gate (current)
+hub (360 cross-domain aggregator) — route-resident by S1.5 decision
 nested resource routes (utilaje/resurse/documente/santier/angajat assignment) — deferred
 reports/export (raport, export_excel) — deferred
 Contract / Commercial / Gantt extraction — deferred to later domain-specific gates
+```
+
+Alternative future options:
+
+```text
+Gantt Service No-Code Gate
+S1.x Service Boundary Hardening Gate
+Project hub deep-test/hardening only if Albert explicitly wants to revisit hub
 ```
 
 template_import remains route-resident because it is static workbook layout with
