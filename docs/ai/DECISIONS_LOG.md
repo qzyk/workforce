@@ -615,3 +615,88 @@ T1.5D scope:
 
 Contract Core service extraction may resume only after T1.5D is completed,
 tested, and reviewed by Albert.
+
+---
+
+## D023 — T1.5D Contract List/Detail Render-Time Child Tenant Guard Review outcome
+
+T1.5D implemented the narrow Contract list/detail render-time child tenant guard
+in:
+
+```text
+2fb137f T1.5D contract render child tenant guard
+```
+
+The T1.5D review concluded:
+
+```text
+T1.5D Review — Contract List/Detail Render-Time Child Tenant Guard Review
+APPROVED
+P0: none
+P1: none
+```
+
+Decisions recorded:
+
+- **Original P1 fixed.** The render-time lazy child tenant-safety blockers found
+  by the Contract Core Read/List/Detail gate are fixed.
+- **Contract list protected.** Addendum counts for `contracte/lista.html` are
+  now computed explicitly through tenant-scoped route context before render.
+- **Contract detail protected.** Detail child collections/counts are now
+  computed explicitly through tenant-scoped route context before render for
+  addenda, `ProgramReferinta`, `OfertaContract`, and `PozitieBoQ` counts.
+- **Flagged template lazy access removed.** The implementation removed direct
+  template lazy access for:
+  - `c.acte_aditionale.count()`
+  - `contract.programe_referinta`
+  - `contract.oferte`
+  - `o.pozitii.count()`
+- **Tenant modes verified.** Strict mode hides/counts only same-tenant children;
+  optional mode with tenant hides foreign child rows; off mode preserves legacy
+  unfiltered behavior through existing tenant helper semantics.
+- **No broad extraction occurred.** No `services/contract_service.py` was
+  created, no Contract Service implementation was started, and no Commercial /
+  SituatieLunara implementation was started.
+- **No unrelated surfaces changed.** No schema, model, form, service, Project
+  service, Project hub, Gantt, BIM, Activity, Timesheet, static, or frontend
+  changes occurred.
+- **Tests passed.** T1.5D review validation included:
+
+```text
+py_compile routes/contracte.py tests/integration/test_tenant_access_contract_routes.py: OK
+contract route tests: 27 passed
+contract baseline: 50 passed
+broad tenant regression: 256 passed
+project regression: 60 passed
+activity/timesheet regression: 150 passed
+Flask smoke: ok 365
+full suite: 1188 passed, 39 skipped, 4 warnings
+```
+
+Remaining review note:
+
+```text
+P3 only: existing c.acte_aditionale.count() in routes/contracte.py::sterge
+remains outside T1.5D scope and is not a blocker for list/detail render-path
+safety.
+```
+
+Contract Core service extraction may resume only through a post-fix no-code gate
+reviewed and approved by Albert. Direct Contract Service implementation is not
+authorized by this decision. Commercial / SituatieLunara implementation is not
+authorized by this decision.
+
+Next recommended authorized task:
+
+```text
+Contract Core Read/List/Detail Post-T1.5D Service Boundary Re-Gate
+```
+
+That next gate is read-only and should decide whether the first safe
+implementation slice should be C1A Contract Core List Context Extraction, C1B
+Contract Core Detail Context Extraction, a C1A/C1B split sequence, or additional
+no-code/test hardening. It must not create `services/contract_service.py`; must
+not start create/edit/delete extraction; and must defer terms/milestones,
+Commercial/SituatieLunara, Oferta/BoQ, Claims/Revendicari, PV/export/reporting,
+Gantt, BIM, Activity, Timesheet, schema, migrations, templates, frontend, and
+route URL changes.

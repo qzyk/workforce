@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-Contract Core Read/List/Detail Service No-Code Gate — COMPLETED / NOT APPROVED FOR EXTRACTION DUE TO P1
+T1.5D Review — Contract List/Detail Render-Time Child Tenant Guard APPROVED
 ```
 
 Canonical repository:
@@ -49,6 +49,12 @@ feat/s1.4a-project-details-context-extraction
 ## Current canonical tenant-fix code boundary
 
 ```text
+2fb137f T1.5D contract render child tenant guard
+```
+
+## Previous tenant-fix boundary
+
+```text
 b519d51 T1.5C contract term responsible tenant guard
 ```
 
@@ -61,16 +67,26 @@ b519d51 T1.5C contract term responsible tenant guard
 Latest coordination state:
 
 ```text
-Contract Core Read/List/Detail extraction is blocked by render-time child
-tenant-safety P1 issues.
+T1.5D closed the Contract Core render-time child tenant-safety P1 blockers.
+Contract Core service extraction is still not directly authorized.
+The next step is a post-fix no-code service boundary re-gate.
 ```
 
 ## Current test / gate baseline
 
-T1.5C review approved the narrow tenant/input hardening fix. The Project-owned
+T1.5D review approved the render-time child tenant-safety fix. The Project-owned
 service boundary remains S1.4A.
 
 ```text
+T1.5D review py_compile routes/contracte.py
+tests/integration/test_tenant_access_contract_routes.py: OK
+T1.5D contract route tests: 27 passed
+T1.5D contract baseline: 50 passed
+T1.5D broad tenant regression: 256 passed
+T1.5D project regression: 60 passed
+T1.5D activity/timesheet regression: 150 passed
+T1.5D Flask smoke: ok 365
+T1.5D full suite: 1188 passed, 39 skipped, 4 warnings
 T1.5C review py_compile forms/contract_forms.py routes/contracte.py
 tests/integration/test_tenant_access_contract_routes.py: OK
 T1.5C contract route tests: 22 passed
@@ -155,12 +171,33 @@ Contract / Commercial Service No-Code Gate — COMPLETED / NOT APPROVED FOR EXTR
 T1.5C Contract Form/Input Tenant Guard Hardening
 T1.5C Review — Contract Form/Input Tenant Guard Hardening APPROVED
 Contract Core Read/List/Detail Service No-Code Gate — COMPLETED / NOT APPROVED FOR EXTRACTION DUE TO P1
+T1.5D Contract List/Detail Render-Time Child Tenant Guard
+T1.5D Review — Contract List/Detail Render-Time Child Tenant Guard APPROVED
 ```
 
 Latest gate checkpoint:
 
 ```text
-Contract Core Read/List/Detail Service No-Code Gate — COMPLETED / NOT APPROVED FOR EXTRACTION DUE TO P1
+T1.5D Review — Contract List/Detail Render-Time Child Tenant Guard APPROVED
+```
+
+T1.5D approved summary:
+
+```text
+- fixed contract list render-time addendum count lazy tenant risk
+- fixed contract detail render-time child lazy tenant risks for:
+  - addenda
+  - ProgramReferinta
+  - OfertaContract
+  - PozitieBoQ counts
+- templates now consume pre-scoped route context for flagged child data
+- strict mode child hiding/counting verified
+- optional mode with tenant child hiding verified
+- off mode legacy visibility verified
+- no service extraction
+- no schema/model/form/static/frontend changes
+- no Project service / Project hub changes
+- no Commercial / SituatieLunara changes
 ```
 
 Contract Core Read/List/Detail gate summary:
@@ -598,24 +635,41 @@ Contract Core Read/List/Detail findings (see DECISIONS_LOG D022):
 - Next authorized task is T1.5D Contract List/Detail Render-Time Child Tenant Guard.
 ```
 
+T1.5D Review findings (see DECISIONS_LOG D023):
+
+```text
+- P0 none.
+- P1 none.
+- 2fb137f T1.5D contract render child tenant guard reviewed and approved.
+- original render-time lazy child tenant-safety blockers are fixed.
+- contract list addendum counts are explicitly tenant-scoped before render.
+- contract detail child collections/counts are explicitly tenant-scoped before render.
+- flagged template lazy relationship access was removed for:
+  - c.acte_aditionale.count()
+  - contract.programe_referinta
+  - contract.oferte
+  - o.pozitii.count()
+- strict / optional-with-tenant / off behavior verified.
+- full suite passed: 1188 passed, 39 skipped, 4 warnings.
+- Contract Core service extraction may resume only through a post-fix no-code gate.
+```
+
 ---
 
 ## Current task
 
 ```text
-T1.5D Contract List/Detail Render-Time Child Tenant Guard
+Contract Core Read/List/Detail Post-T1.5D Service Boundary Re-Gate
 ```
 
-Narrow tenant-safety hardening for Contract list/detail render-time child
-queries. This is not service extraction.
+Read-only no-code gate for Contract core read/list/detail after T1.5D.
 
 Contract Service implementation is NOT authorized. Commercial / SituatieLunara
 implementation is NOT authorized. No `services/contract_service.py` may be
-created until T1.5D is fixed and reviewed.
+created until the post-fix gate is reviewed and approved.
 
-The previous completed gate was Contract Core Read/List/Detail Service No-Code
-Gate. It completed, but service extraction was not approved because it found P1
-render-time child tenant-safety blockers.
+The previous completed review was T1.5D Review. It approved the fix for
+Contract Core list/detail render-time child tenant-safety blockers.
 
 ## Constraints for the S1.x service extraction line (per D014 + D015)
 
@@ -632,21 +686,37 @@ render-time child tenant-safety blockers.
 ## Next recommended work
 
 ```text
-T1.5D Contract List/Detail Render-Time Child Tenant Guard
+Contract Core Read/List/Detail Post-T1.5D Service Boundary Re-Gate
 ```
 
-This is a narrow tenant-safety hardening task:
+This is a read-only no-code gate:
 
 ```text
-- tenant-scope render-time child collections/counts for contract list/detail
-- prevent template lazy relationship queries from bypassing tenant helpers
-- add tests proving cross-tenant child rows attached to a valid tenant-owned
-  parent are hidden
-- do not create services/contract_service.py
-- do not perform Contract Core service extraction
-- do not perform Commercial / SituatieLunara extraction
-- do not change schema/models
-- do not redesign templates
+- confirm original list/detail P1 blockers are closed
+- re-inspect contract lista and detalii after T1.5D
+- verify render-time child tenant leaks are gone
+- verify list/detail are now suitable candidates for HTTP-free read context extraction
+- decide the first safe implementation slice:
+  - C1A Contract Core List Context Extraction
+  - C1B Contract Core Detail Context Extraction
+  - C1A/C1B split sequence
+  - or more hardening before implementation
+- define exact allowed files for the first implementation slice
+- define exact no-touch surfaces
+- produce a no-code report only
+```
+
+Explicitly deferred until a future approved prompt:
+
+```text
+Contract Service implementation
+Contract create/edit/delete extraction
+Contract term/milestone extraction
+Commercial / SituatieLunara extraction
+Oferta / BoQ extraction
+Claims / Revendicari extraction
+PV/export/reporting extraction
+Gantt / BIM / Activity / Timesheet changes
 ```
 
 Remaining / deferred Project work (each its own future gate if/when authorized):
@@ -661,8 +731,8 @@ Contract / Commercial / Gantt extraction — deferred to later domain-specific g
 Alternative future options:
 
 ```text
-Contract Core List Context Extraction (only after T1.5D is fixed and reviewed)
-Contract Core Detail Context Extraction (only after T1.5D is fixed and reviewed)
+Contract Core List Context Extraction (only after post-T1.5D re-gate approval)
+Contract Core Detail Context Extraction (only after post-T1.5D re-gate approval)
 Contract Core C1A/C1B split
 Contract core create/edit/delete save extraction (deferred)
 Contract term/milestone extraction (deferred)
@@ -716,12 +786,16 @@ cross-domain project routes (nested resources, raport, export_excel) remain
 route-resident pending later gates. S1.5 decided hub remains route-resident, so
 Project service extraction is complete for Project-owned surfaces.
 
-Contract / Commercial is the next domain family, but extraction is still blocked.
-The previous responsible-user P1 is closed by b519d51 and approved by T1.5C
-Review. The Contract Core Read/List/Detail gate found new P1 render-time child
-tenant-safety blockers. Broad Contract / Commercial extraction is still not
-authorized. The next step is T1.5D Contract List/Detail Render-Time Child Tenant
-Guard.
+Contract / Commercial is the next domain family, but implementation is still not
+directly authorized. The responsible-user tenant/input P1 is closed by b519d51
+and approved by T1.5C Review. The Contract Core list/detail render-time child
+tenant-safety P1 is closed by 2fb137f and approved by T1.5D Review.
+Project service extraction remains complete for Project-owned surfaces.
+Contract Core service extraction may resume only through a post-fix
+Contract Core Read/List/Detail no-code re-gate that decides the exact
+C1A/C1B implementation split. Broad Contract / Commercial, Commercial /
+SituatieLunara, Oferta / BoQ, Claims / Revendicari, and PV/export/reporting
+extraction remain deferred.
 
 Remaining accepted future categories:
 
