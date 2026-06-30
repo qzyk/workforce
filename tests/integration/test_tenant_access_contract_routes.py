@@ -377,6 +377,132 @@ def test_strict_tarife_nu_expune_tariful_altui_tenant_si_salvare_scopeaza(
         assert tarif.tenant_id == ids['tenant_a']
 
 
+def test_strict_termen_form_responsabili_scopeaza_dropdown(
+    authenticated_client, app, admin_user
+):
+    ids = _creeaza_date(app)
+    useri = _creeaza_responsabili(app, ids['tenant_a'], ids['tenant_b'])
+    _seteaza_tenant_user(app, admin_user.id, ids['tenant_a'])
+    app.config['MULTI_TENANT_MODE'] = 'strict'
+
+    raspuns = authenticated_client.get(
+        f'/contracte/{ids["contract_a"]}/termen/nou'
+    )
+
+    assert raspuns.status_code == 200
+    assert b'RespA Vizibil' in raspuns.data
+    assert b'-- Niciun responsabil --' in raspuns.data
+    assert b'RespB Strain' not in raspuns.data
+    assert b'RespA Inactiv' not in raspuns.data
+    assert useri['resp_a'] != useri['resp_b']
+
+
+def test_mode_off_termen_form_pastreaza_responsabilii_legacy(
+    authenticated_client, app
+):
+    ids = _creeaza_date(app)
+    _creeaza_responsabili(app, ids['tenant_a'], ids['tenant_b'])
+    app.config['MULTI_TENANT_MODE'] = 'off'
+
+    raspuns = authenticated_client.get(
+        f'/contracte/{ids["contract_a"]}/termen/nou'
+    )
+
+    assert raspuns.status_code == 200
+    assert b'RespA Vizibil' in raspuns.data
+    assert b'RespB Strain' in raspuns.data
+    assert b'RespA Inactiv' not in raspuns.data
+
+
+def test_strict_termen_nou_resp_valid_si_fara_responsabil(
+    authenticated_client, app, admin_user
+):
+    ids = _creeaza_date(app)
+    useri = _creeaza_responsabili(app, ids['tenant_a'], ids['tenant_b'])
+    _seteaza_tenant_user(app, admin_user.id, ids['tenant_a'])
+    app.config['MULTI_TENANT_MODE'] = 'strict'
+
+    valid = authenticated_client.post(
+        f'/contracte/{ids["contract_a"]}/termen/nou',
+        data=_form_termen('TA-TERM-RESP-VALID', useri['resp_a']),
+        follow_redirects=False,
+    )
+    fara_responsabil = authenticated_client.post(
+        f'/contracte/{ids["contract_a"]}/termen/nou',
+        data=_form_termen('TA-TERM-RESP-NONE', 0),
+        follow_redirects=False,
+    )
+
+    assert valid.status_code in (302, 303)
+    assert fara_responsabil.status_code in (302, 303)
+    with app.app_context():
+        from models import TermenContract
+
+        termen_valid = TermenContract.query.filter_by(
+            denumire='TA-TERM-RESP-VALID'
+        ).one()
+        termen_none = TermenContract.query.filter_by(
+            denumire='TA-TERM-RESP-NONE'
+        ).one()
+        assert termen_valid.tenant_id == ids['tenant_a']
+        assert termen_valid.responsabil_id == useri['resp_a']
+        assert termen_none.tenant_id == ids['tenant_a']
+        assert termen_none.responsabil_id is None
+
+
+def test_strict_termen_nou_resp_strain_nu_creeaza(
+    authenticated_client, app, admin_user
+):
+    ids = _creeaza_date(app)
+    useri = _creeaza_responsabili(app, ids['tenant_a'], ids['tenant_b'])
+    _seteaza_tenant_user(app, admin_user.id, ids['tenant_a'])
+    app.config['MULTI_TENANT_MODE'] = 'strict'
+
+    raspuns = authenticated_client.post(
+        f'/contracte/{ids["contract_a"]}/termen/nou',
+        data=_form_termen('TA-TERM-RESP-STRAIN', useri['resp_b']),
+        follow_redirects=False,
+    )
+
+    assert raspuns.status_code == 200
+    with app.app_context():
+        from models import TermenContract
+
+        assert TermenContract.query.filter_by(
+            denumire='TA-TERM-RESP-STRAIN'
+        ).first() is None
+
+
+def test_strict_termen_editeaza_resp_strain_nu_actualizeaza(
+    authenticated_client, app, admin_user
+):
+    ids = _creeaza_date(app)
+    useri = _creeaza_responsabili(app, ids['tenant_a'], ids['tenant_b'])
+    _seteaza_tenant_user(app, admin_user.id, ids['tenant_a'])
+    app.config['MULTI_TENANT_MODE'] = 'strict'
+
+    with app.app_context():
+        from models import TermenContract, db
+
+        termen = db.session.get(TermenContract, ids['termen_a'])
+        termen.responsabil_id = useri['resp_a']
+        db.session.commit()
+
+    raspuns = authenticated_client.post(
+        f'/contracte/termen/{ids["termen_a"]}/editeaza',
+        data=_form_termen('TA-TERM-A-EDIT-STRAIN', useri['resp_b']),
+        follow_redirects=False,
+    )
+
+    assert raspuns.status_code == 200
+    with app.app_context():
+        from models import TermenContract, db
+
+        termen = db.session.get(TermenContract, ids['termen_a'])
+        assert termen.responsabil_id == useri['resp_a']
+        assert termen.denumire == 'TA-TERM-A'
+
+
 def _creeaza_date(app):
     from models import (
         db, Tenant, Proiect, Contract, TermenContract, ProgramReferinta,
@@ -504,6 +630,7 @@ def _creeaza_date(app):
             'proiect_b': proiect_b.id,
             'contract_a': contract_a.id,
             'contract_b': contract_b.id,
+            'termen_a': termen_a.id,
             'termen_b': termen_b.id,
             'program_b': program_b.id,
             'task_b': task_b.id,
@@ -685,6 +812,59 @@ def _form_contract(proiect_id, nr_contract):
     }
 
 
+def _form_termen(denumire, responsabil_id):
+    return {
+        'denumire': denumire,
+        'tip': 'executie',
+        'descriere': '',
+        'data_scadenta': '2026-05-01',
+        'data_realizare': '',
+        'zile_alerta_inainte': '7',
+        'status': 'planificat',
+        'responsabil_id': str(responsabil_id),
+    }
+
+
+def _creeaza_responsabili(app, tenant_a, tenant_b):
+    from models import db, Utilizator
+
+    with app.app_context():
+        resp_a = Utilizator(
+            tenant_id=tenant_a,
+            nume='RespA',
+            prenume='Vizibil',
+            email='ta-contract-resp-a@test.local',
+            rol='manager',
+            activ=True,
+        )
+        resp_a.set_password('test_pass_123')
+        resp_b = Utilizator(
+            tenant_id=tenant_b,
+            nume='RespB',
+            prenume='Strain',
+            email='ta-contract-resp-b@test.local',
+            rol='manager',
+            activ=True,
+        )
+        resp_b.set_password('test_pass_123')
+        resp_inactiv = Utilizator(
+            tenant_id=tenant_a,
+            nume='RespA',
+            prenume='Inactiv',
+            email='ta-contract-resp-inactiv@test.local',
+            rol='manager',
+            activ=False,
+        )
+        resp_inactiv.set_password('test_pass_123')
+        db.session.add_all([resp_a, resp_b, resp_inactiv])
+        db.session.commit()
+        return {
+            'resp_a': resp_a.id,
+            'resp_b': resp_b.id,
+            'resp_inactiv': resp_inactiv.id,
+        }
+
+
 def _seteaza_tenant_user(app, user_id, tenant_id):
     from models import db, Utilizator
 
@@ -747,6 +927,9 @@ def _curata_date(app):
         TaskProgram.query.filter(TaskProgram.cod_extern.like('TA-TASK-%')).delete()
         ProgramReferinta.query.filter(ProgramReferinta.denumire.like('TA-PROG-%')).delete()
         TermenContract.query.filter(TermenContract.denumire.like('TA-TERM-%')).delete()
+        Utilizator.query.filter(
+            Utilizator.email.like('ta-contract-resp-%@test.local')
+        ).delete(synchronize_session=False)
         Contract.query.filter(Contract.nr_contract.like('TA-CONTRACT%')).delete()
         Proiect.query.filter(Proiect.cod_proiect.like('TA-CONTRACT-PRJ-%')).delete()
         Tenant.query.filter(Tenant.cod.like('test-ta-contract-%')).delete()

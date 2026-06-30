@@ -128,6 +128,34 @@ def _contracte_vizibile():
     return query_contracts_for_tenant().order_by(Contract.nr_contract).all()
 
 
+def _responsabili_termen_vizibili():
+    """Utilizatori activi vizibili tenantului curent pentru responsabil termen."""
+    return query_for_tenant(Utilizator).filter_by(activ=True).order_by(
+        Utilizator.nume, Utilizator.prenume
+    ).all()
+
+
+def _responsabil_termen_id_validat(responsabil_id):
+    """Normalizeaza si valideaza tenant-safe responsabilul selectat."""
+    if not responsabil_id:
+        return None
+    try:
+        responsabil_id = int(responsabil_id)
+    except (TypeError, ValueError):
+        raise ValueError('Responsabilul selectat nu este valid.')
+
+    if responsabil_id == 0:
+        return None
+
+    responsabil = query_for_tenant(Utilizator).filter_by(
+        id=responsabil_id,
+        activ=True,
+    ).first()
+    if responsabil is None:
+        raise ValueError('Responsabilul selectat nu este disponibil pentru tenantul curent.')
+    return responsabil.id
+
+
 def _tenant_id_din_proiect(proiect_id):
     """Tenant pentru rand nou pornind din proiectul validat."""
     tenant_curent = tenant_id_for_new_record_or_403()
@@ -443,13 +471,11 @@ def sterge(id):
 @login_required
 def termen_nou(contract_id):
     c = get_contract_or_404(contract_id)
-    form = TermenContractForm()
+    form = TermenContractForm(responsabili=_responsabili_termen_vizibili())
     form.contract_id_hidden.data = c.id
     if form.validate_on_submit():
         try:
-            resp_id = form.responsabil_id.data or None
-            if resp_id == 0:
-                resp_id = None
+            resp_id = _responsabil_termen_id_validat(form.responsabil_id.data)
             t = TermenContract(
                 tenant_id=_tenant_id_din_contract(c),
                 contract_id=c.id,
@@ -486,7 +512,7 @@ def termen_nou(contract_id):
 def termen_editeaza(termen_id):
     t = get_termen_contract_or_404(termen_id)
     c = get_contract_or_404(t.contract_id)
-    form = TermenContractForm(obj=t)
+    form = TermenContractForm(obj=t, responsabili=_responsabili_termen_vizibili())
     if request.method == 'GET':
         form.termen_id.data = t.id
         form.contract_id_hidden.data = c.id
@@ -496,9 +522,7 @@ def termen_editeaza(termen_id):
             audit_fields = ['denumire', 'tip', 'data_scadenta', 'data_realizare',
                             'zile_alerta_inainte', 'status', 'responsabil_id']
             before = audit_svc.snapshot(t, audit_fields)
-            resp_id = form.responsabil_id.data or None
-            if resp_id == 0:
-                resp_id = None
+            resp_id = _responsabil_termen_id_validat(form.responsabil_id.data)
             t.denumire = form.denumire.data.strip()
             t.tip = form.tip.data
             t.descriere = form.descriere.data or None

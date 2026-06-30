@@ -20,6 +20,16 @@ from wtforms.validators import (
 )
 
 
+def _utilizatori_responsabili_vizibili(tenant_id=None):
+    """Utilizatori activi vizibili tenantului curent pentru termene contractuale."""
+    from models import Utilizator
+    from services.security.tenant_access import query_for_tenant
+
+    return query_for_tenant(Utilizator, tenant_id=tenant_id).filter(
+        Utilizator.activ == True
+    ).order_by(Utilizator.nume, Utilizator.prenume).all()
+
+
 # ============================================================
 # ContractForm
 # ============================================================
@@ -144,14 +154,14 @@ class TermenContractForm(FlaskForm):
     status = SelectField('Status', validators=[DataRequired()])
     responsabil_id = SelectField('Responsabil', coerce=int, validators=[Optional()])
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, responsabili=None, tenant_id=None, **kwargs):
         super().__init__(*args, **kwargs)
-        from models import TermenContract, Utilizator
+        from models import TermenContract
         self.tip.choices = TermenContract.TIPURI
         self.status.choices = TermenContract.STATUSES
-        useri = Utilizator.query.filter(Utilizator.activ == True).order_by(
-            Utilizator.nume, Utilizator.prenume
-        ).all()
+        useri = responsabili
+        if useri is None:
+            useri = _utilizatori_responsabili_vizibili(tenant_id=tenant_id)
         self.responsabil_id.choices = [(0, '-- Niciun responsabil --')] + [
             (u.id, u.get_full_name()) for u in useri
         ]
