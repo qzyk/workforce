@@ -13,9 +13,11 @@ face commit; ruta face rollback pe exceptii (conventia S1.x). Rutele cross-domen
 
 from datetime import date, timedelta
 
-from models import db, Proiect, Angajat, AngajatProiect, Pontaj, Utilizator
+from models import db, Proiect, Angajat, AngajatProiect, Pontaj, Document, Utilizator
 from services.security.tenant_access import (
+    query_employees_for_tenant,
     query_for_tenant,
+    query_legacy_documents_for_tenant,
     query_project_assignments_for_tenant,
     query_timesheets_for_tenant,
     query_users_for_tenant,
@@ -324,3 +326,89 @@ def change_project_status(*, project, new_status):
 
     db.session.commit()
     return {'success': True, 'status': new_status}
+
+
+# ============================================================
+# Context detaliu proiect (read-only, tenant-safe)
+# ============================================================
+
+def get_project_detail_context(*, project, month, year, tenant_id=None):
+    """Asambleaza contextul tenant-safe pentru pagina de detalii proiect (ruta detalii).
+
+    S1.4A extrage DOAR asamblarea read-only din routes/proiecte.py::detalii. Ruta
+    pastreaza get_project_or_404, argumentele de query (luna/anul) si randarea.
+    `project` este obiectul deja validat tenant-safe de ruta; serviciul nu face
+    lookup dupa ID si nu muteaza nimic.
+
+    Toate citirile trec prin helperii tenant-safe (asignari, angajati, pontaje,
+    documente legacy) si prin helperii financiari S1.3A. Agregatul ore_per_angajat
+    foloseste db.session.query dar este scopat prin subquery-ul tenant-safe
+    query_timesheets_for_tenant() (identic cu ruta veche), deci nu scurge ore din
+    alt tenant. Returneaza un dict cu cheile de context (fara proiect/luna/anul,
+    care raman in ruta).
+    """
+    pid = project.id
+
+    # Tab Echipa
+    angajati_asoc = query_project_assignments_for_tenant(
+        project_id=pid, tenant_id=tenant_id
+    ).order_by(
+        AngajatProiect.data_sfarsit.asc().nullsfirst(),
+        AngajatProiect.data_start.desc()
+    ).all()
+    angajati_activi = [a for a in angajati_asoc if not a.data_sfarsit]
+    angajati_disponibili = query_employees_for_tenant(tenant_id=tenant_id).filter_by(
+        status='activ'
+    ).order_by(Angajat.nume).all()
+
+    # Distributie functii pentru chart
+    dist_functii = {}
+    for ap in angajati_activi:
+        fn = ap.functie_pe_proiect or ap.angajat.functie or 'Necunoscut'
+        dist_functii[fn] = dist_functii.get(fn, 0) + 1
+
+    # Tab Pontaje (luna/anul)
+    pontaje = query_timesheets_for_tenant(tenant_id=tenant_id).filter(
+        Pontaj.proiect_id == pid,
+        db.extract('month', Pontaj.data) == month,
+        db.extract('year', Pontaj.data) == year
+    ).order_by(Pontaj.data.desc()).all()
+
+    total_ore = get_project_total_hours(pid, tenant_id=tenant_id)
+
+    # Ore per angajat (luna curenta) — agregat scopat prin subquery tenant-safe
+    pontaje_luna_ids = query_timesheets_for_tenant(tenant_id=tenant_id).filter(
+        Pontaj.proiect_id == pid,
+        db.extract('month', Pontaj.data) == month,
+        db.extract('year', Pontaj.data) == year
+    ).with_entities(Pontaj.id)
+    ore_per_angajat = db.session.query(
+        Angajat.nume, Angajat.prenume,
+        db.func.sum(Pontaj.ore_lucrate).label('total_ore')
+    ).join(Pontaj, Angajat.id == Pontaj.angajat_id).filter(
+        Pontaj.id.in_(pontaje_luna_ids)
+    ).group_by(Angajat.id).all()
+
+    # Ore saptamanale + Tab Financiar (helperi S1.3A)
+    ore_saptamanale = get_project_weekly_hours(pid, tenant_id=tenant_id)
+    cost_manopera = calculate_project_labor_cost(pid, tenant_id=tenant_id)
+    cost_lunar = get_project_monthly_costs(pid, tenant_id=tenant_id)
+
+    # Tab Documente (legacy, tenant-safe)
+    documente = query_legacy_documents_for_tenant(tenant_id=tenant_id).filter_by(
+        proiect_id=pid
+    ).order_by(Document.data_upload.desc()).all()
+
+    return {
+        'angajati_asoc': angajati_asoc,
+        'angajati_activi': angajati_activi,
+        'angajati_disponibili': angajati_disponibili,
+        'dist_functii': dist_functii,
+        'pontaje': pontaje,
+        'total_ore': total_ore,
+        'ore_per_angajat': ore_per_angajat,
+        'ore_saptamanale': ore_saptamanale,
+        'cost_manopera': cost_manopera,
+        'cost_lunar': cost_lunar,
+        'documente': documente,
+    }

@@ -22,12 +22,10 @@ from services.security.tenant_access import (
     query_bim_elements_for_tenant,
     query_bim_models_for_tenant,
     query_contracts_for_tenant,
-    query_employees_for_tenant,
     query_gantt_plans_for_tenant,
     query_gantt_wbs_nodes_for_tenant,
     query_sites_for_tenant,
     query_for_tenant,
-    query_legacy_documents_for_tenant,
     query_machines_for_tenant,
     query_project_assignments_for_tenant,
     query_project_consum_utilaj_for_tenant,
@@ -42,6 +40,7 @@ from services.project_service import (
     calculate_project_labor_cost,
     change_project_status,
     create_project_from_form_data,
+    get_project_detail_context,
     get_project_list_context,
     get_project_monthly_costs,
     get_project_total_hours,
@@ -141,78 +140,13 @@ def adauga():
 @login_required
 def detalii(id):
     proiect = get_project_or_404(id)
-
-    # Tab Echipa
-    angajati_asoc = query_project_assignments_for_tenant(project_id=id).order_by(
-        AngajatProiect.data_sfarsit.asc().nullsfirst(),
-        AngajatProiect.data_start.desc()
-    ).all()
-
-    # Activ = data_sfarsit IS NULL. Cand se dezaloca, set data_sfarsit = today,
-    # deci dispare imediat din "activi". Filter simplu si clar.
-    angajati_activi = [a for a in angajati_asoc if not a.data_sfarsit]
-    angajati_disponibili = query_employees_for_tenant().filter_by(
-        status='activ'
-    ).order_by(Angajat.nume).all()
-
-    # Distributie functii pentru chart
-    dist_functii = {}
-    for ap in angajati_activi:
-        fn = ap.functie_pe_proiect or ap.angajat.functie or 'Necunoscut'
-        dist_functii[fn] = dist_functii.get(fn, 0) + 1
-
-    # Tab Pontaje
+    # request.args (luna/anul) si render raman in ruta; asamblarea read-only a
+    # contextului (echipa, pontaje, financiar, documente) sta in project_service.
     luna = request.args.get('luna', date.today().month, type=int)
     anul = request.args.get('anul', date.today().year, type=int)
-
-    pontaje = query_timesheets_for_tenant().filter(
-        Pontaj.proiect_id == id,
-        db.extract('month', Pontaj.data) == luna,
-        db.extract('year', Pontaj.data) == anul
-    ).order_by(Pontaj.data.desc()).all()
-
-    total_ore = _get_total_ore(id)
-
-    # Ore per angajat (luna curenta)
-    pontaje_luna_ids = query_timesheets_for_tenant().filter(
-        Pontaj.proiect_id == id,
-        db.extract('month', Pontaj.data) == luna,
-        db.extract('year', Pontaj.data) == anul
-    ).with_entities(Pontaj.id)
-    ore_per_angajat = db.session.query(
-        Angajat.nume, Angajat.prenume,
-        db.func.sum(Pontaj.ore_lucrate).label('total_ore')
-    ).join(Pontaj, Angajat.id == Pontaj.angajat_id).filter(
-        Pontaj.id.in_(pontaje_luna_ids)
-    ).group_by(Angajat.id).all()
-
-    # Ore saptamanale (ultimele 12 saptamani)
-    ore_saptamanale = _get_ore_saptamanale(id)
-
-    # Tab Financiar
-    cost_manopera = _calculeaza_cost_manopera(id)
-    cost_lunar = _get_cost_lunar(id)
-
-    # Tab Documente
-    documente = query_legacy_documents_for_tenant().filter_by(proiect_id=id).order_by(
-        Document.data_upload.desc()
-    ).all()
-
+    context = get_project_detail_context(project=proiect, month=luna, year=anul)
     return render_template('proiecte/detalii.html',
-                           proiect=proiect,
-                           angajati_asoc=angajati_asoc,
-                           angajati_activi=angajati_activi,
-                           angajati_disponibili=angajati_disponibili,
-                           dist_functii=dist_functii,
-                           pontaje=pontaje,
-                           total_ore=total_ore,
-                           ore_per_angajat=ore_per_angajat,
-                           ore_saptamanale=ore_saptamanale,
-                           cost_manopera=cost_manopera,
-                           cost_lunar=cost_lunar,
-                           documente=documente,
-                           luna=luna,
-                           anul=anul)
+                           proiect=proiect, luna=luna, anul=anul, **context)
 
 
 # ============================================================

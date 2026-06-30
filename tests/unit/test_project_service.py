@@ -274,7 +274,8 @@ def test_service_http_free_si_read_only(app):
     # read-only: helperii de citire/financiari nu fac mutatii/commit
     for fn_name in ('get_project_list_context', 'get_project_managers',
                     'get_project_total_hours', 'calculate_project_labor_cost',
-                    'get_project_weekly_hours', 'get_project_monthly_costs'):
+                    'get_project_weekly_hours', 'get_project_monthly_costs',
+                    'get_project_detail_context'):
         s = inspect.getsource(getattr(svc, fn_name))
         assert 'db.session.add' not in s, fn_name
         assert 'db.session.delete' not in s, fn_name
@@ -294,9 +295,12 @@ def test_service_fara_query_brut_tenant_owned(app):
     assert 'Pontaj.query' not in sursa
     assert 'Angajat.query' not in sursa
     assert 'RaportActivitate.query' not in sursa
+    assert 'Document.query' not in sursa
     assert 'query_for_tenant' in sursa
     assert 'query_timesheets_for_tenant' in sursa
     assert 'query_project_assignments_for_tenant' in sursa
+    assert 'query_employees_for_tenant' in sursa
+    assert 'query_legacy_documents_for_tenant' in sursa
 
 
 # ============================================================
@@ -541,6 +545,212 @@ def test_mutating_helpers_un_singur_commit_si_fara_query_brut(app):
 
 
 # ============================================================
+# S1.4A — context detaliu proiect (read-only, tenant-safe)
+# ============================================================
+
+def _seed_detail(app):
+    from datetime import datetime
+    from models import (Angajat, AngajatProiect, Document, Pontaj, Proiect,
+                        Tenant, db)
+    with app.app_context():
+        ta = Tenant(cod='test-s13a-da', nume='Tenant S13A DA')
+        tb = Tenant(cod='test-s13a-db', nume='Tenant S13A DB')
+        db.session.add_all([ta, tb])
+        db.session.commit()
+
+        p_a = Proiect(tenant_id=ta.id, cod_proiect='S13A-DET-A', nume='S13A Det A',
+                      data_start=date(2026, 1, 1), status='activ')
+        p_b = Proiect(tenant_id=tb.id, cod_proiect='S13A-DET-B', nume='S13A Det B',
+                      data_start=date(2026, 1, 1), status='activ')
+        db.session.add_all([p_a, p_b])
+        db.session.commit()
+
+        a1 = Angajat(tenant_id=ta.id, nume='S13A-Det1', prenume='Unu', cnp='1950201010101',
+                     functie='ZidarBaza', data_angajare=date(2026, 1, 1), status='activ')
+        a2 = Angajat(tenant_id=ta.id, nume='S13A-Det2', prenume='Doi', cnp='1950201010102',
+                     functie='Dulgher', data_angajare=date(2026, 1, 1), status='activ')
+        a3 = Angajat(tenant_id=ta.id, nume='S13A-Det3', prenume='Trei', cnp='1950201010103',
+                     functie='', data_angajare=date(2026, 1, 1), status='activ')
+        a_inact = Angajat(tenant_id=ta.id, nume='S13A-DetInact', prenume='X', cnp='1950201010104',
+                          functie='Z', data_angajare=date(2026, 1, 1), status='inactiv')
+        a_b = Angajat(tenant_id=tb.id, nume='S13A-DetB', prenume='Strain', cnp='1950201010105',
+                      functie='Y', data_angajare=date(2026, 1, 1), status='activ')
+        db.session.add_all([a1, a2, a3, a_inact, a_b])
+        db.session.commit()
+
+        # Asignari: 3 active (functie din surse diferite) + 1 inactiva (data_sfarsit set)
+        db.session.add_all([
+            AngajatProiect(angajat_id=a1.id, proiect_id=p_a.id, tarif_negociat=50,
+                           functie_pe_proiect='SefEchipa'),                       # -> SefEchipa
+            AngajatProiect(angajat_id=a2.id, proiect_id=p_a.id, tarif_negociat=40,
+                           functie_pe_proiect=None),                              # -> functie 'Dulgher'
+            AngajatProiect(angajat_id=a3.id, proiect_id=p_a.id, tarif_negociat=30,
+                           functie_pe_proiect=None),                              # functie '' -> 'Necunoscut'
+            AngajatProiect(angajat_id=a1.id, proiect_id=p_a.id, tarif_negociat=99,
+                           functie_pe_proiect='Vechi', data_start=date(2025, 6, 1),
+                           data_sfarsit=date(2026, 1, 5)),  # inactiva (data_start diferit)
+        ])
+        # Pontaje: 2 in aprilie 2026 (a1) + 1 in mai (exclus) + 1 tenant B (exclus)
+        db.session.add_all([
+            Pontaj(angajat_id=a1.id, proiect_id=p_a.id, data=date(2026, 4, 6), ore_lucrate=8,
+                   observatii='TEST_S13A'),
+            Pontaj(angajat_id=a1.id, proiect_id=p_a.id, data=date(2026, 4, 7), ore_lucrate=4,
+                   observatii='TEST_S13A'),
+            Pontaj(angajat_id=a1.id, proiect_id=p_a.id, data=date(2026, 5, 6), ore_lucrate=9,
+                   observatii='TEST_S13A'),
+            Pontaj(angajat_id=a_b.id, proiect_id=p_b.id, data=date(2026, 4, 6), ore_lucrate=7,
+                   observatii='TEST_S13A'),
+        ])
+        # Documente: 2 pe p_a (data_upload diferita) + 1 tenant B
+        db.session.add_all([
+            Document(proiect_id=p_a.id, tip='alte', nume_document='DocVechi',
+                     data_upload=datetime(2026, 1, 1, 10, 0, 0)),
+            Document(proiect_id=p_a.id, tip='alte', nume_document='DocNou',
+                     data_upload=datetime(2026, 6, 1, 10, 0, 0)),
+            Document(proiect_id=p_b.id, tip='alte', nume_document='DocStrain',
+                     data_upload=datetime(2026, 6, 2, 10, 0, 0)),
+        ])
+        db.session.commit()
+
+        return {
+            'tenant_a': ta.id, 'tenant_b': tb.id,
+            'proiect_a': p_a.id, 'proiect_b': p_b.id,
+            'a1': a1.id, 'a2': a2.id, 'a3': a3.id, 'a_b': a_b.id,
+        }
+
+
+def _detail_ctx(app, ids, *, tenant, month=4, year=2026, mode='strict'):
+    from models import Proiect
+    from services.project_service import get_project_detail_context
+    with app.test_request_context('/'):
+        if mode == 'strict':
+            g.tenant_override = tenant
+        proiect = Proiect.query.get(ids['proiect_a'])
+        return get_project_detail_context(project=proiect, month=month, year=year)
+
+
+def test_detail_context_chei(app):
+    ids = _seed_detail(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        ctx = _detail_ctx(app, ids, tenant=ids['tenant_a'])
+        assert set(ctx.keys()) == {
+            'angajati_asoc', 'angajati_activi', 'angajati_disponibili',
+            'dist_functii', 'pontaje', 'total_ore', 'ore_per_angajat',
+            'ore_saptamanale', 'cost_manopera', 'cost_lunar', 'documente',
+        }
+
+
+def test_detail_team_tenant_scoped_si_activi(app):
+    ids = _seed_detail(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        ctx = _detail_ctx(app, ids, tenant=ids['tenant_a'])
+        # 4 asignari pe proiect_a (3 active + 1 inactiva)
+        assert len(ctx['angajati_asoc']) == 4
+        # activi = doar cele cu data_sfarsit IS NULL
+        assert all(a.data_sfarsit is None for a in ctx['angajati_activi'])
+        assert len(ctx['angajati_activi']) == 3
+
+
+def test_detail_team_ordering(app):
+    ids = _seed_detail(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        ctx = _detail_ctx(app, ids, tenant=ids['tenant_a'])
+        # ordonare: data_sfarsit asc nullsfirst, apoi data_start desc
+        # asignarea inactiva (data_sfarsit set) trebuie sa fie ultima
+        assert ctx['angajati_asoc'][-1].data_sfarsit is not None
+
+
+def test_detail_angajati_disponibili_tenant_safe_activi(app):
+    ids = _seed_detail(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        ctx = _detail_ctx(app, ids, tenant=ids['tenant_a'])
+        disp_ids = {a.id for a in ctx['angajati_disponibili']}
+        assert ids['a1'] in disp_ids
+        assert ids['a_b'] not in disp_ids                 # angajat tenant strain exclus
+        assert all(a.status == 'activ' for a in ctx['angajati_disponibili'])
+        # nume ordonat crescator
+        nume = [a.nume for a in ctx['angajati_disponibili']]
+        assert nume == sorted(nume)
+
+
+def test_detail_dist_functii_fallback(app):
+    ids = _seed_detail(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        ctx = _detail_ctx(app, ids, tenant=ids['tenant_a'])
+        # functie_pe_proiect -> 'SefEchipa'; angajat.functie -> 'Dulgher'; gol -> 'Necunoscut'
+        assert ctx['dist_functii'] == {'SefEchipa': 1, 'Dulgher': 1, 'Necunoscut': 1}
+
+
+def test_detail_pontaje_luna_an_tenant_si_ordine(app):
+    ids = _seed_detail(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        ctx = _detail_ctx(app, ids, tenant=ids['tenant_a'], month=4, year=2026)
+        date_list = [p.data for p in ctx['pontaje']]
+        assert date_list == [date(2026, 4, 7), date(2026, 4, 6)]  # desc, doar aprilie
+        assert all(p.proiect_id == ids['proiect_a'] for p in ctx['pontaje'])
+
+
+def test_detail_ore_per_angajat_agregat_tenant_safe(app):
+    ids = _seed_detail(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        ctx = _detail_ctx(app, ids, tenant=ids['tenant_a'], month=4, year=2026)
+        # a1: 8 + 4 = 12 ore in aprilie; tenant B / mai exclus
+        totaluri = {row[0]: float(row[2]) for row in ctx['ore_per_angajat']}
+        assert totaluri == {'S13A-Det1': 12.0}
+
+
+def test_detail_financiar_si_total_ore(app):
+    ids = _seed_detail(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        ctx = _detail_ctx(app, ids, tenant=ids['tenant_a'])
+        # total_ore = toate orele pe proiect (8 + 4 + 9 = 21; mai inclus aici)
+        assert ctx['total_ore'] == 21.0
+        assert len(ctx['ore_saptamanale']) == 12
+        assert len(ctx['cost_lunar']) == 6
+        assert isinstance(ctx['cost_manopera'], (int, float))
+
+
+def test_detail_documente_tenant_si_ordine(app):
+    ids = _seed_detail(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        ctx = _detail_ctx(app, ids, tenant=ids['tenant_a'])
+        nume = [d.nume_document for d in ctx['documente']]
+        assert nume == ['DocNou', 'DocVechi']     # desc dupa data_upload
+        assert 'DocStrain' not in nume            # document tenant strain exclus
+
+
+def test_detail_context_nu_muteaza(app):
+    from models import Pontaj, Document
+    ids = _seed_detail(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        pontaje_inainte = Pontaj.query.count()
+        doc_inainte = Document.query.count()
+        _detail_ctx(app, ids, tenant=ids['tenant_a'])
+        assert Pontaj.query.count() == pontaje_inainte
+        assert Document.query.count() == doc_inainte
+
+
+def test_detail_off_mode_vede_date(app):
+    ids = _seed_detail(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        ctx = _detail_ctx(app, ids, tenant=ids['tenant_a'], mode='off')
+        assert len(ctx['angajati_asoc']) == 4
+        # off mode: documentele proiectului sunt vizibile
+        assert {d.nume_document for d in ctx['documente']} == {'DocNou', 'DocVechi'}
+
+
+# ============================================================
 # Fixture data
 # ============================================================
 
@@ -596,7 +806,8 @@ def _seed(app):
 
 
 def _curata(app):
-    from models import Angajat, AngajatProiect, Pontaj, Proiect, Tenant, Utilizator, db
+    from models import (Angajat, AngajatProiect, Document, Pontaj, Proiect,
+                        Tenant, Utilizator, db)
     with app.app_context():
         app.config['MULTI_TENANT_MODE'] = 'off'
         prj_ids = [p.id for p in Proiect.query.filter(
@@ -608,6 +819,8 @@ def _curata(app):
             for ap in AngajatProiect.query.filter(
                 AngajatProiect.proiect_id.in_(prj_ids)).all():
                 db.session.delete(ap)
+            for doc in Document.query.filter(Document.proiect_id.in_(prj_ids)).all():
+                db.session.delete(doc)
         for proiect in Proiect.query.filter(Proiect.cod_proiect.like('S13%')).all():
             db.session.delete(proiect)
         for ang in Angajat.query.filter(Angajat.nume.like('S13A-%')).all():
