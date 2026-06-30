@@ -3,15 +3,15 @@
 Current authorized task:
 
 ```text
-Contract / Commercial Service No-Code Understanding / Collision Safety Gate
+T1.5C Contract Form/Input Tenant Guard Hardening
 ```
 
-This is a READ-ONLY gate. It produces a no-code understanding / collision-safety
-report only.
+This is a narrow tenant/input hardening task. It is NOT Contract Service
+extraction and it is NOT Commercial / SituatieLunara Service extraction.
 
-IMPORTANT: Contract / Commercial implementation is NOT authorized.
-Contract / Commercial extraction may start only after this no-code gate is
-reviewed and approved by Albert.
+IMPORTANT: Contract / Commercial service extraction is NOT authorized until the
+P1 tenant/input issue found by the Contract / Commercial no-code gate is fixed
+and reviewed by Albert.
 
 Current canonical base commit:
 
@@ -19,11 +19,12 @@ Current canonical base commit:
 4c15b01 S1.4A project details context extraction
 ```
 
-Latest coordination state after the previous gate:
+Latest coordination state after this docs update:
 
 ```text
-S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate — COMPLETED
-Decision: keep hub route-resident.
+Contract / Commercial Service No-Code Gate — COMPLETED.
+Service extraction blocked by P1 contract form/input tenant issue.
+Next authorized task: T1.5C Contract Form/Input Tenant Guard Hardening.
 ```
 
 Current canonical branch:
@@ -34,109 +35,113 @@ feat/s1.4a-project-details-context-extraction
 
 ---
 
-## Previous completed gate (S1.5) — COMPLETED
+## Previous completed gate — COMPLETED / NOT APPROVED FOR EXTRACTION
 
 ```text
-S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate
+Contract / Commercial Service No-Code Understanding / Collision Safety Gate
 ```
 
-Verdict: COMPLETED. hub remains route-resident. S1.5 implementation should NOT
-be prepared.
-
-S1.5 recorded outcome:
+Verdict:
 
 ```text
-- no P0 blockers
-- no P1 blockers
-- hub is read-only and tenant-guarded
-- hub uses tenant-safe query helpers
-- hub has no raw-query risk
-- hub mutates nothing
-- hub commits nothing
-- _safe fails closed to default/empty values
-- hub is a cross-domain navigation/presentation aggregator
-- hub is not Project-owned enough to move into services/project_service.py
-- services/project_service.py must not absorb hub
-- a separate cross-domain aggregator service is premature
-- Project service extraction line is effectively complete for Project-owned surfaces
+P0: none
+P1: present
+Contract / Commercial service extraction is NOT approved yet.
 ```
 
-S1.5 gate validation:
+Gate findings:
 
 ```text
-py_compile routes/proiecte.py services/project_service.py: OK
-project targeted suite: 80 passed
-cross-domain regression suite: 150 passed
-Flask smoke: ok 27 proiecte.* routes
-Last full suite from S1.4A: 1178 passed, 39 skipped, 4 warnings
+- routes/contracte.py has broad route-level tenant safety through T1.5 helpers.
+- no broad raw-query direct-access pattern was found in routes/contracte.py.
+- commercial/reporting services remain legacy functional services, not approved
+  direct tenant-safe boundaries.
+- Contract core, Commercial/Situatie, Oferta/BoQ, Claims, PV/export/reporting
+  extraction must remain deferred.
 ```
 
----
-
-## Current gate goal
-
-Prove understanding of the safe Contract / Commercial service boundary BEFORE
-any code:
+P1 blocker:
 
 ```text
-1. Understand current routes/contracte.py behavior.
-2. Understand existing tenant guards from T1.5.
-3. Understand contract create/edit/status/list/details behavior.
-4. Understand OfertaContract behavior.
-5. Understand Contract behavior.
-6. Understand Deviz / CantitateExecutata / SituatieLunara / monthly closing
-   interactions if present.
-7. Understand existing services/situatii.py.
-8. Understand existing services/evm.py interactions if relevant.
-9. Understand whether services/rapoarte_lucrari.py is commercial/reporting and
-   how it overlaps.
-10. Identify what is Contract-owned.
-11. Identify what is Commercial/SituatieLunara-owned.
-12. Identify what must remain route-owned.
-13. Identify collision risk with Project, Gantt, Activity, Timesheet, BIM, and
-    reporting.
-14. Decide the safest service boundary and split.
-15. Produce a no-code report only. Do not implement.
+TermenContractForm.responsabil_id is populated from raw Utilizator.query with
+all active users, and termen_nou / termen_editeaza can save responsabil_id
+without same-tenant validation.
+```
+
+Gate validation:
+
+```text
+py_compile routes/contracte.py services/situatii.py services/evm.py
+services/rapoarte_lucrari.py: OK
+contract/commercial suite: 139 passed
+project regression: 67 passed
+activity/timesheet regression: 150 passed
+Flask smoke equivalent: ok 365 routes
 ```
 
 ---
 
-## Initial scope for the current gate
+## Current task goal
+
+T1.5C must fix the P1 contract form/input tenant issue only:
 
 ```text
-- Contract / Commercial understanding only
-- no implementation
+1. Fix TermenContractForm.responsabil_id tenant leakage.
+2. Make responsabil_id choices tenant-safe.
+3. Validate responsabil_id belongs to the current tenant before saving in
+   termen_nou and termen_editeaza.
+4. Preserve existing form behavior and route behavior.
+5. Do not change schema.
+6. Do not change templates.
+7. Do not extract services.
+```
+
+Targeted tests should cover:
+
+```text
+- responsible dropdown tenant scoping
+- foreign responsible user rejected
+- create/edit term behavior preserved
+- strict/optional/off mode behavior where applicable
+```
+
+---
+
+## Initial scope for T1.5C
+
+Allowed files for implementation, if Albert explicitly approves T1.5C:
+
+```text
+forms/contract_forms.py
+routes/contracte.py only where necessary for termen_nou / termen_editeaza
+targeted tests only
+docs/ai only after implementation validation
+```
+
+---
+
+## No-touch boundaries for T1.5C
+
+```text
+- no services/contract_service.py
+- no services/situatii.py
+- no commercial/reporting service changes
 - no Project service changes
-- no hub changes
-- no Gantt implementation
-- no BIM implementation
-- no Activity / Timesheet changes
-- no schema changes
+- no Project hub changes
+- no Gantt/BIM/Activity/Timesheet changes
+- no models
 - no migrations
-- no templates / frontend changes
+- no templates/frontend/static
 - no route URL changes
-```
-
----
-
-## No-touch boundaries for the current gate
-
-```text
-- do not modify code, tests, routes, services, forms
-- do not modify models / migrations / templates / static / frontend
-- do not start Contract Service extraction
-- do not start Commercial / SituatieLunara extraction
-- do not start Gantt Service extraction
-- do not start hub extraction
-- do not start broad Project Service extraction
-- do not touch Activity or Timesheet services
+- no Contract / Commercial service extraction
 ```
 
 ---
 
 ## Do not start
 
-Do not start any implementation. The current authorized task is ONLY the
-Contract / Commercial Service no-code understanding / collision-safety gate
-(report only). Any follow-up implementation requires a separate explicit
-approval from Albert.
+Do not start Contract Service extraction. Do not start Commercial /
+SituatieLunara extraction. Do not create `services/contract_service.py`. Do not
+modify commercial/reporting services. The current authorized task is only the
+narrow T1.5C tenant/input hardening fix, and implementation still requires
+Albert's explicit next prompt.

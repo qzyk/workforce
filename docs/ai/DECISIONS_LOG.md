@@ -418,3 +418,70 @@ Contract / Commercial Service No-Code Gate
 Contract / Commercial implementation is NOT authorized by this decision. It
 requires a no-code understanding / collision-safety gate reviewed and approved
 by Albert.
+
+---
+
+## D020 — Contract / Commercial No-Code Gate outcome
+
+The Contract / Commercial Service No-Code Understanding / Collision Safety Gate
+reviewed `routes/contracte.py`, the existing contract/commercial services, tenant
+helpers, tests, and cross-domain collision risks.
+
+Gate outcome:
+
+```text
+Contract / Commercial Service No-Code Gate — COMPLETED.
+P0: none.
+P1: present.
+Contract / Commercial service extraction is NOT approved yet.
+```
+
+P1 blocker:
+
+- `forms/contract_forms.py::TermenContractForm.responsabil_id` currently
+  exposes all active users through raw `Utilizator.query`.
+- `routes/contracte.py::termen_nou` and `routes/contracte.py::termen_editeaza`
+  can save `responsabil_id` without same-tenant validation.
+- This can leak users and allow cross-tenant responsible assignment.
+
+Decisions recorded:
+
+- **Do not start Contract / Commercial service extraction yet.**
+- **Do not create `services/contract_service.py` yet.**
+- **Do not modify `services/situatii.py` or other commercial/reporting services
+  for extraction yet.**
+- **Next implementation must be narrow and P1-focused.**
+- The next authorized task is:
+
+```text
+T1.5C Contract Form/Input Tenant Guard Hardening
+```
+
+T1.5C scope:
+
+- fix tenant-safe `responsabil_id` choices;
+- prevent cross-tenant responsible assignment;
+- review related contract form dropdown leakage only if it fits the same small
+  tenant/input hardening scope;
+- no schema changes;
+- no templates;
+- no service extraction.
+
+Accepted findings / deferrals:
+
+- `routes/contracte.py` has broad route-level tenant safety through T1.5 helpers.
+- No broad raw-query direct-access pattern was found in `routes/contracte.py`.
+- Existing commercial/reporting services remain legacy functional services, not
+  approved direct tenant-safe service boundaries:
+  - `services/situatii.py`
+  - `services/centralizator.py`
+  - `services/rapoarte_lucrari.py`
+  - `services/evm.py`
+  - `services/deviz_pricing.py`
+  - `services/conflict_revendicare.py`
+  - `services/pv_generator.py`
+- Contract core, Commercial/Situatie, Oferta/BoQ, Claims, PV/export/reporting
+  extraction must remain deferred.
+
+Contract / Commercial service extraction may resume only after T1.5C is
+implemented, tested, and reviewed by Albert.

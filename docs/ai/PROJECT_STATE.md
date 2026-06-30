@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate — COMPLETED
+Contract / Commercial Service No-Code Gate — COMPLETED / NOT APPROVED FOR EXTRACTION DUE TO P1
 ```
 
 Canonical repository:
@@ -55,14 +55,21 @@ feat/s1.4a-project-details-context-extraction
 Latest coordination state:
 
 ```text
-S1.5 determined that Project hub should remain route-resident.
+Contract / Commercial service extraction is blocked by a P1 tenant/input issue.
 ```
 
 ## Current test / gate baseline
 
-S1.5 gate completed. The canonical code boundary remains S1.4A.
+Contract / Commercial no-code gate completed. The canonical code boundary
+remains S1.4A.
 
 ```text
+Contract / Commercial gate py_compile routes/contracte.py services/situatii.py
+services/evm.py services/rapoarte_lucrari.py: OK
+Contract / Commercial suite: 139 passed
+Project regression: 67 passed
+Activity/Timesheet regression: 150 passed
+Flask smoke equivalent: ok 365 routes
 S1.5 gate py_compile routes/proiecte.py services/project_service.py: OK
 S1.5 gate project targeted suite: 80 passed
 S1.5 gate cross-domain regression suite: 150 passed
@@ -123,12 +130,42 @@ S1.4 Project Details / Cross-Domain Context No-Code Gate — APPROVED
 S1.4A Project Details Context Extraction
 S1.C4 Project Details Context Extraction Review — APPROVED
 S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate — COMPLETED / HUB ROUTE-RESIDENT
+Contract / Commercial Service No-Code Gate — COMPLETED / NOT APPROVED FOR EXTRACTION DUE TO P1
 ```
 
 Latest gate checkpoint:
 
 ```text
-S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate — COMPLETED / DECISION: KEEP ROUTE-RESIDENT
+Contract / Commercial Service No-Code Understanding / Collision Safety Gate — COMPLETED / NOT APPROVED FOR EXTRACTION DUE TO P1
+```
+
+Contract / Commercial gate summary:
+
+```text
+- routes/contracte.py has broad route-level tenant safety through T1.5 helpers.
+- no broad raw-query direct-access pattern was found in routes/contracte.py.
+- commercial/reporting services exist but are not approved tenant-safe service
+  boundaries:
+  - services/situatii.py
+  - services/centralizator.py
+  - services/rapoarte_lucrari.py
+  - services/evm.py
+  - services/deviz_pricing.py
+  - services/conflict_revendicare.py
+  - services/pv_generator.py
+- Contract core, Commercial/Situatie, Oferta/BoQ, Claims, PV/export/reporting
+  must remain deferred.
+- broad Contract / Commercial extraction is not authorized.
+```
+
+P1 blocker:
+
+```text
+- TermenContractForm.responsabil_id dropdown uses raw Utilizator.query across
+  all active users.
+- termen_nou / termen_editeaza save responsabil_id without same-tenant validation.
+- This can leak users and allow cross-tenant responsible assignment.
+- Fix required before any Contract / Commercial service extraction.
 ```
 
 S1.2D2 summary:
@@ -472,19 +509,18 @@ S1.5 findings (see DECISIONS_LOG D019):
 ## Current task
 
 ```text
-Contract / Commercial Service No-Code Understanding / Collision Safety Gate
+T1.5C Contract Form/Input Tenant Guard Hardening
 ```
 
-Read-only understanding / collision-safety gate for the Contract / Commercial
-service boundary after Project-owned extraction is effectively complete. Produces
-a no-code report only.
+Narrow tenant/input hardening task for the P1 found by the Contract /
+Commercial no-code gate.
 
-Contract / Commercial implementation is NOT authorized. Contract / Commercial
-extraction may start only after this no-code gate is reviewed and approved by
-Albert.
+Contract / Commercial service extraction is NOT authorized. T1.5C is not
+Contract Service extraction and is not Commercial / SituatieLunara extraction.
 
-The previous completed gate was S1.5 Project Hub / Cross-Domain Aggregator
-No-Code Gate — COMPLETED, decision: keep hub route-resident.
+The previous completed gate was Contract / Commercial Service No-Code Gate —
+COMPLETED, but service extraction was not approved because of the P1 tenant/input
+issue.
 
 ## Constraints for the S1.x service extraction line (per D014 + D015)
 
@@ -501,10 +537,19 @@ No-Code Gate — COMPLETED, decision: keep hub route-resident.
 ## Next recommended work
 
 ```text
-Contract / Commercial Service No-Code Understanding / Collision Safety Gate
+T1.5C Contract Form/Input Tenant Guard Hardening
 ```
 
-This is a read-only gate. No Contract / Commercial implementation is authorized.
+This is a narrow P1-focused fix task:
+
+```text
+- fix tenant-safe responsabil_id choices
+- prevent cross-tenant responsible assignment
+- review related contract form dropdown leakage if it stays in the same small scope
+- no schema changes
+- no templates
+- no service extraction
+```
 
 Remaining / deferred Project work (each its own future gate if/when authorized):
 
@@ -518,6 +563,11 @@ Contract / Commercial / Gantt extraction — deferred to later domain-specific g
 Alternative future options:
 
 ```text
+Contract core read/list/detail service extraction (after T1.5C is fixed/reviewed)
+Contract core create/edit/delete save extraction (after T1.5C is fixed/reviewed)
+Commercial / SituatieLunara sub-gate
+Oferta / BoQ sub-gate
+PV/export/reporting sub-gate
 Gantt Service No-Code Gate
 S1.x Service Boundary Hardening Gate
 Project hub deep-test/hardening only if Albert explicitly wants to revisit hub
@@ -561,9 +611,12 @@ read-only context assembly is now in the service too (S1.4A,
 get_project_detail_context, APPROVED by S1.C4 / D018); the detalii route keeps
 get_project_or_404 / request.args / render_template. hub and the remaining
 cross-domain project routes (nested resources, raport, export_excel) remain
-route-resident pending later gates. The next authorized task is the S1.5 Project
-Hub / Cross-Domain Aggregator no-code gate (hub; no implementation until reviewed
-and approved by Albert).
+route-resident pending later gates. S1.5 decided hub remains route-resident, so
+Project service extraction is complete for Project-owned surfaces.
+
+Contract / Commercial is the next domain, but extraction is blocked by T1.5C
+hardening. Contract / Commercial service extraction may resume only after the
+P1 tenant/input issue is fixed and reviewed.
 
 Remaining accepted future categories:
 
