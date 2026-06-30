@@ -485,3 +485,72 @@ Accepted findings / deferrals:
 
 Contract / Commercial service extraction may resume only after T1.5C is
 implemented, tested, and reviewed by Albert.
+
+---
+
+## D021 — T1.5C Contract Form/Input Tenant Guard Review outcome
+
+T1.5C implemented the narrow Contract term responsible-user tenant/input hardening
+in:
+
+```text
+b519d51 T1.5C contract term responsible tenant guard
+```
+
+The T1.5C review concluded:
+
+```text
+T1.5C Review — Contract Form/Input Tenant Guard Hardening Review
+APPROVED
+P0: none
+P1: none
+```
+
+Decisions recorded:
+
+- **Original P1 fixed.** `TermenContractForm.responsabil_id` no longer exposes all
+  active users through raw `Utilizator.query`.
+- **Form choices are tenant-scoped.** Responsible-user dropdown choices are built
+  through tenant-safe `query_for_tenant(Utilizator)` behavior, inactive users
+  remain excluded, and the empty/no-responsible option is preserved.
+- **Route input validation added.** `routes/contracte.py::termen_nou` and
+  `routes/contracte.py::termen_editeaza` validate submitted `responsabil_id`
+  before save.
+- **Foreign responsible assignment is blocked.** A foreign tenant responsible
+  user cannot be persisted on `TermenContract.responsabil_id`; `responsabil_id=0`
+  still maps to `None`; valid same-tenant responsible assignment still works.
+- **No broad extraction occurred.** No schema, model, template, service
+  extraction, Project service, Project hub, or Contract / Commercial extraction
+  changes occurred.
+- **Tests passed.** T1.5C review validation included:
+
+```text
+py_compile forms/contract_forms.py routes/contracte.py
+tests/integration/test_tenant_access_contract_routes.py: OK
+contract route tests: 22 passed
+contract baseline: 45 passed
+broad tenant regression: 251 passed
+project regression: 60 passed
+activity/timesheet regression: 150 passed
+Flask smoke: ok 365
+full suite: 1183 passed, 39 skipped, 4 warnings
+```
+
+Contract / Commercial service extraction can resume only through a narrow
+no-code gate reviewed and approved by Albert. Direct Contract Service
+implementation is not authorized by this decision. Commercial / SituatieLunara
+implementation is not authorized by this decision.
+
+Next recommended authorized task:
+
+```text
+Contract Core Read/List/Detail Service No-Code Gate
+```
+
+That next gate is read-only and should focus only on `routes/contracte.py`
+Contract core read/list/detail surfaces (`lista`, `detalii`, and related
+context helpers). It must not create `services/contract_service.py`; must not
+start create/edit/delete extraction; and must defer terms/milestones,
+Commercial/SituatieLunara, Oferta/BoQ, Claims/Revendicari, PV/export/reporting,
+Gantt, BIM, Activity, Timesheet, schema, migrations, templates, frontend, and
+route URL changes.

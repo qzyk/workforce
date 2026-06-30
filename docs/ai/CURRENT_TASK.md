@@ -3,28 +3,29 @@
 Current authorized task:
 
 ```text
-T1.5C Contract Form/Input Tenant Guard Hardening
+Contract Core Read/List/Detail Service No-Code Gate
 ```
 
-This is a narrow tenant/input hardening task. It is NOT Contract Service
-extraction and it is NOT Commercial / SituatieLunara Service extraction.
+This is a read-only no-code understanding / collision-safety gate. It is NOT
+Contract Service implementation and it is NOT Commercial / SituatieLunara
+Service implementation.
 
-IMPORTANT: Contract / Commercial service extraction is NOT authorized until the
-P1 tenant/input issue found by the Contract / Commercial no-code gate is fixed
-and reviewed by Albert.
+IMPORTANT: no `services/contract_service.py` may be created until this gate is
+reviewed and approved by Albert. No Contract Core implementation is authorized
+yet.
 
 Current canonical base commit:
 
 ```text
-4c15b01 S1.4A project details context extraction
+b519d51 T1.5C contract term responsible tenant guard
 ```
 
 Latest coordination state after this docs update:
 
 ```text
-Contract / Commercial Service No-Code Gate — COMPLETED.
-Service extraction blocked by P1 contract form/input tenant issue.
-Next authorized task: T1.5C Contract Form/Input Tenant Guard Hardening.
+T1.5C Review — APPROVED.
+The Contract / Commercial P1 tenant/input blocker is closed.
+Next authorized task: Contract Core Read/List/Detail Service No-Code Gate.
 ```
 
 Current canonical branch:
@@ -35,97 +36,134 @@ feat/s1.4a-project-details-context-extraction
 
 ---
 
-## Previous completed gate — COMPLETED / NOT APPROVED FOR EXTRACTION
+## Previous completed review — APPROVED
 
 ```text
-Contract / Commercial Service No-Code Understanding / Collision Safety Gate
+T1.5C Review — Contract Form/Input Tenant Guard Hardening Review
 ```
 
 Verdict:
 
 ```text
+APPROVED
 P0: none
-P1: present
-Contract / Commercial service extraction is NOT approved yet.
+P1: none
 ```
 
-Gate findings:
+T1.5C fixed the original Contract / Commercial P1 blocker:
 
 ```text
-- routes/contracte.py has broad route-level tenant safety through T1.5 helpers.
-- no broad raw-query direct-access pattern was found in routes/contracte.py.
-- commercial/reporting services remain legacy functional services, not approved
-  direct tenant-safe boundaries.
-- Contract core, Commercial/Situatie, Oferta/BoQ, Claims, PV/export/reporting
-  extraction must remain deferred.
+- TermenContractForm.responsabil_id no longer uses raw all-active Utilizator.query.
+- responsible-user dropdown choices are tenant-scoped.
+- inactive users remain excluded.
+- the empty/no responsible option is preserved.
+- termen_nou validates submitted responsabil_id before save.
+- termen_editeaza validates submitted responsabil_id before save.
+- foreign responsible users cannot be persisted.
+- responsabil_id=0 still maps to None.
+- valid same-tenant responsible assignment still works.
+- strict mode excludes foreign users and rejects foreign POST.
+- off mode preserves legacy active-user visibility.
 ```
 
-P1 blocker:
+T1.5C implementation commit:
 
 ```text
-TermenContractForm.responsabil_id is populated from raw Utilizator.query with
-all active users, and termen_nou / termen_editeaza can save responsabil_id
-without same-tenant validation.
+b519d51 T1.5C contract term responsible tenant guard
 ```
 
-Gate validation:
-
-```text
-py_compile routes/contracte.py services/situatii.py services/evm.py
-services/rapoarte_lucrari.py: OK
-contract/commercial suite: 139 passed
-project regression: 67 passed
-activity/timesheet regression: 150 passed
-Flask smoke equivalent: ok 365 routes
-```
-
----
-
-## Current task goal
-
-T1.5C must fix the P1 contract form/input tenant issue only:
-
-```text
-1. Fix TermenContractForm.responsabil_id tenant leakage.
-2. Make responsabil_id choices tenant-safe.
-3. Validate responsabil_id belongs to the current tenant before saving in
-   termen_nou and termen_editeaza.
-4. Preserve existing form behavior and route behavior.
-5. Do not change schema.
-6. Do not change templates.
-7. Do not extract services.
-```
-
-Targeted tests should cover:
-
-```text
-- responsible dropdown tenant scoping
-- foreign responsible user rejected
-- create/edit term behavior preserved
-- strict/optional/off mode behavior where applicable
-```
-
----
-
-## Initial scope for T1.5C
-
-Allowed files for implementation, if Albert explicitly approves T1.5C:
+Files changed by T1.5C implementation:
 
 ```text
 forms/contract_forms.py
-routes/contracte.py only where necessary for termen_nou / termen_editeaza
-targeted tests only
-docs/ai only after implementation validation
+routes/contracte.py
+tests/integration/test_tenant_access_contract_routes.py
 ```
+
+T1.5C review validation:
+
+```text
+py_compile forms/contract_forms.py routes/contracte.py
+tests/integration/test_tenant_access_contract_routes.py: OK
+contract route tests: 22 passed
+contract baseline: 45 passed
+broad tenant regression: 251 passed
+project regression: 60 passed
+activity/timesheet regression: 150 passed
+Flask smoke: ok 365
+full suite: 1183 passed, 39 skipped, 4 warnings
+```
+
+No schema, model, template, service extraction, Project service, Project hub, or
+Contract / Commercial extraction changes occurred in T1.5C.
 
 ---
 
-## No-touch boundaries for T1.5C
+## Current gate goal
+
+The Contract Core Read/List/Detail Service No-Code Gate must inspect
+`routes/contracte.py` contract core read surfaces only.
+
+Focus only on:
 
 ```text
+- lista
+- detalii
+- read/list/detail context helpers
+```
+
+The gate must identify exact route-owned HTTP behavior:
+
+```text
+- request args
+- WTForms if relevant
+- flash/redirect if any
+- render_template
+- url_for
+- pagination/search/filter/sort behavior
+```
+
+The gate must identify exact model/query behavior:
+
+```text
+- Contract
+- Proiect
+- child context shown in detalii, if any
+- addenda / terms / PVs if displayed in detalii
+```
+
+The gate must verify tenant helper usage:
+
+```text
+- query_contracts_for_tenant
+- get_contract_or_404
+- related helper calls
+```
+
+The gate must decide whether a later implementation slice should be:
+
+```text
+- Contract core read/list context extraction
+- Contract detail context extraction
+- split A/B
+- or no implementation yet
+```
+
+The output must be a no-code report only.
+
+---
+
+## No-touch boundaries for the current gate
+
+```text
+- no implementation
 - no services/contract_service.py
-- no services/situatii.py
-- no commercial/reporting service changes
+- no Contract create/edit/delete extraction
+- no Contract term/milestone mutation or extraction
+- no Commercial / SituatieLunara extraction
+- no Oferta / BoQ extraction
+- no Claims / Revendicari extraction
+- no PV/export/reporting extraction
 - no Project service changes
 - no Project hub changes
 - no Gantt/BIM/Activity/Timesheet changes
@@ -133,15 +171,13 @@ docs/ai only after implementation validation
 - no migrations
 - no templates/frontend/static
 - no route URL changes
-- no Contract / Commercial service extraction
 ```
 
 ---
 
 ## Do not start
 
-Do not start Contract Service extraction. Do not start Commercial /
-SituatieLunara extraction. Do not create `services/contract_service.py`. Do not
-modify commercial/reporting services. The current authorized task is only the
-narrow T1.5C tenant/input hardening fix, and implementation still requires
-Albert's explicit next prompt.
+Do not start Contract Service implementation. Do not start Commercial /
+SituatieLunara implementation. Do not create `services/contract_service.py`.
+Do not modify commercial/reporting services. The current authorized task is only
+the Contract Core Read/List/Detail no-code gate.

@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-Contract / Commercial Service No-Code Gate — COMPLETED / NOT APPROVED FOR EXTRACTION DUE TO P1
+T1.5C Review — Contract Form/Input Tenant Guard Hardening APPROVED
 ```
 
 Canonical repository:
@@ -46,7 +46,13 @@ Do not merge, clean, delete, or copy from them.
 feat/s1.4a-project-details-context-extraction
 ```
 
-## Current canonical code boundary
+## Current canonical tenant-fix code boundary
+
+```text
+b519d51 T1.5C contract term responsible tenant guard
+```
+
+## Approved Project-owned code boundary
 
 ```text
 4c15b01 S1.4A project details context extraction
@@ -55,15 +61,24 @@ feat/s1.4a-project-details-context-extraction
 Latest coordination state:
 
 ```text
-Contract / Commercial service extraction is blocked by a P1 tenant/input issue.
+T1.5C closed the Contract / Commercial P1 tenant/input blocker.
 ```
 
 ## Current test / gate baseline
 
-Contract / Commercial no-code gate completed. The canonical code boundary
-remains S1.4A.
+T1.5C review approved the narrow tenant/input hardening fix. The Project-owned
+service boundary remains S1.4A.
 
 ```text
+T1.5C review py_compile forms/contract_forms.py routes/contracte.py
+tests/integration/test_tenant_access_contract_routes.py: OK
+T1.5C contract route tests: 22 passed
+T1.5C contract baseline: 45 passed
+T1.5C broad tenant regression: 251 passed
+T1.5C project regression: 60 passed
+T1.5C activity/timesheet regression: 150 passed
+T1.5C Flask smoke: ok 365
+T1.5C full suite: 1183 passed, 39 skipped, 4 warnings
 Contract / Commercial gate py_compile routes/contracte.py services/situatii.py
 services/evm.py services/rapoarte_lucrari.py: OK
 Contract / Commercial suite: 139 passed
@@ -131,12 +146,14 @@ S1.4A Project Details Context Extraction
 S1.C4 Project Details Context Extraction Review — APPROVED
 S1.5 Project Hub / Cross-Domain Aggregator No-Code Gate — COMPLETED / HUB ROUTE-RESIDENT
 Contract / Commercial Service No-Code Gate — COMPLETED / NOT APPROVED FOR EXTRACTION DUE TO P1
+T1.5C Contract Form/Input Tenant Guard Hardening
+T1.5C Review — Contract Form/Input Tenant Guard Hardening APPROVED
 ```
 
 Latest gate checkpoint:
 
 ```text
-Contract / Commercial Service No-Code Understanding / Collision Safety Gate — COMPLETED / NOT APPROVED FOR EXTRACTION DUE TO P1
+T1.5C Review — Contract Form/Input Tenant Guard Hardening APPROVED
 ```
 
 Contract / Commercial gate summary:
@@ -158,7 +175,7 @@ Contract / Commercial gate summary:
 - broad Contract / Commercial extraction is not authorized.
 ```
 
-P1 blocker:
+Original P1 blocker (closed by T1.5C / D021):
 
 ```text
 - TermenContractForm.responsabil_id dropdown uses raw Utilizator.query across
@@ -166,6 +183,23 @@ P1 blocker:
 - termen_nou / termen_editeaza save responsabil_id without same-tenant validation.
 - This can leak users and allow cross-tenant responsible assignment.
 - Fix required before any Contract / Commercial service extraction.
+```
+
+T1.5C approved summary:
+
+```text
+- b519d51 fixed TermenContractForm.responsabil_id dropdown tenant leakage.
+- termen_nou validates submitted responsabil_id before save.
+- termen_editeaza validates submitted responsabil_id before save.
+- foreign responsible-user assignment is blocked.
+- strict mode tenant safety verified.
+- off mode legacy active-user visibility verified.
+- valid same-tenant responsible assignment verified.
+- responsabil_id=0 / no-responsible value preserved.
+- inactive responsible users remain excluded.
+- no schema/model/template/service extraction changes.
+- no Project service / Project hub changes.
+- no Contract / Commercial service extraction started.
 ```
 
 S1.2D2 summary:
@@ -509,18 +543,17 @@ S1.5 findings (see DECISIONS_LOG D019):
 ## Current task
 
 ```text
-T1.5C Contract Form/Input Tenant Guard Hardening
+Contract Core Read/List/Detail Service No-Code Gate
 ```
 
-Narrow tenant/input hardening task for the P1 found by the Contract /
-Commercial no-code gate.
+Read-only no-code gate for the first possible Contract Core service slice.
 
-Contract / Commercial service extraction is NOT authorized. T1.5C is not
-Contract Service extraction and is not Commercial / SituatieLunara extraction.
+Contract Service implementation is NOT authorized. Commercial / SituatieLunara
+implementation is NOT authorized. No `services/contract_service.py` may be
+created until this gate is reviewed and approved by Albert.
 
-The previous completed gate was Contract / Commercial Service No-Code Gate —
-COMPLETED, but service extraction was not approved because of the P1 tenant/input
-issue.
+The previous completed review was T1.5C Review — APPROVED. The original
+Contract / Commercial P1 tenant/input blocker is closed.
 
 ## Constraints for the S1.x service extraction line (per D014 + D015)
 
@@ -537,18 +570,20 @@ issue.
 ## Next recommended work
 
 ```text
-T1.5C Contract Form/Input Tenant Guard Hardening
+Contract Core Read/List/Detail Service No-Code Gate
 ```
 
-This is a narrow P1-focused fix task:
+This is a no-code gate only:
 
 ```text
-- fix tenant-safe responsabil_id choices
-- prevent cross-tenant responsible assignment
-- review related contract form dropdown leakage if it stays in the same small scope
-- no schema changes
-- no templates
-- no service extraction
+- inspect routes/contracte.py contract core read surfaces
+- focus only on lista, detalii, and read/list/detail context helpers
+- identify what can later move into an HTTP-free services/contract_service.py
+- identify what must remain route-owned
+- identify what must be deferred
+- decide whether the first implementation slice should be read/list, detail,
+  split A/B, or no implementation yet
+- produce a no-code report only
 ```
 
 Remaining / deferred Project work (each its own future gate if/when authorized):
@@ -563,10 +598,12 @@ Contract / Commercial / Gantt extraction — deferred to later domain-specific g
 Alternative future options:
 
 ```text
-Contract core read/list/detail service extraction (after T1.5C is fixed/reviewed)
-Contract core create/edit/delete save extraction (after T1.5C is fixed/reviewed)
+Contract core read/list/detail service extraction (only after the no-code gate is approved)
+Contract core create/edit/delete save extraction (deferred)
+Contract term/milestone extraction (deferred)
 Commercial / SituatieLunara sub-gate
 Oferta / BoQ sub-gate
+Claims / Revendicari sub-gate
 PV/export/reporting sub-gate
 Gantt Service No-Code Gate
 S1.x Service Boundary Hardening Gate
@@ -614,9 +651,10 @@ cross-domain project routes (nested resources, raport, export_excel) remain
 route-resident pending later gates. S1.5 decided hub remains route-resident, so
 Project service extraction is complete for Project-owned surfaces.
 
-Contract / Commercial is the next domain, but extraction is blocked by T1.5C
-hardening. Contract / Commercial service extraction may resume only after the
-P1 tenant/input issue is fixed and reviewed.
+Contract / Commercial is the next domain. The previous Contract / Commercial P1
+blocker is now closed by b519d51 and approved by T1.5C Review. Broad Contract /
+Commercial extraction is still not authorized. The next step is a narrow
+Contract Core read/list/detail no-code gate.
 
 Remaining accepted future categories:
 
