@@ -276,3 +276,53 @@ Decisions recorded:
 
 S1.3 implementation is NOT authorized by this decision. It requires an S1.3
 no-code safety gate reviewed and approved by Albert.
+
+---
+
+## D017 — S1.C3 Project Service Extraction Review outcome
+
+S1.C3 reviewed the completed S1.3 Project Service boundary (S1.3A read/list +
+financial data assembly; S1.3B create/edit/status save) and concluded:
+
+```text
+S1.3 Project Service Extraction — APPROVED for the S1.3A/S1.3B boundary.
+No P0/P1 blockers.
+services/project_service.py is a coherent, HTTP-free Project service.
+Tenant safety and existing behavior preserved; tests sufficient.
+```
+
+Decisions recorded:
+
+- **Approved boundary.** `services/project_service.py` is the approved Project
+  service boundary for: manager list / list context; filtering / search / sort /
+  pagination / stats; financial total hours / labor cost / weekly hours / monthly
+  costs; create save; edit save; status transition. `routes/proiecte.py` remains
+  the HTTP/orchestration boundary (decorators, request args/form/json, ProiectForm
+  + validate_on_submit, _populeaza_manageri_form, auto cod_proiect GET pre-fill,
+  editeaza GET locatie split, render/flash/redirect/jsonify, invalid-status 400).
+- **Commit/rollback convention.** Read-only helpers stay read-only; mutating
+  helpers (`create_project_from_form_data`, `update_project_from_form_data`,
+  `change_project_status`) commit exactly once; the route owns rollback wrappers
+  on the mutating branches. Invalid `schimba_status` stays a non-exception JSON 400.
+- **Accepted route-resident deferrals (do not treat as bugs):**
+  - `detalii` cross-domain context remains route-resident.
+  - `hub` cross-domain aggregator remains route-resident.
+  - nested resource routes (utilaje / resurse / documente / santier links /
+    employee assignments) remain route-resident.
+  - `raport` / `export_excel` remain route-resident.
+  - Contract / Commercial / Gantt / BIM remain deferred to later domain gates.
+- **Pre-existing global queries preserved (P3, cleanup NOT authorized):**
+  - route auto-code `Proiect.query` global count (GET pre-fill).
+  - `ProiectForm.validate_cod_proiect` global `Proiect.query` uniqueness.
+  - `ProiectForm.__init__` global `Utilizator.query`, overridden by
+    `_populeaza_manageri_form`.
+- **P2 / informational (non-blocking):** auto cod_proiect generation and the
+  editeaza GET locatie split lack direct test coverage but are route-owned and
+  unchanged; `docs/audits/` absent; CLAUDE.md roadmap stale (docs/ai + git
+  authoritative).
+- **Next boundary must start with a no-code gate.** The next Project surface
+  (detalii / hub cross-domain context) must begin with an S1.4 no-code gate
+  reviewed and approved by Albert — NOT direct implementation.
+
+S1.4 implementation is NOT authorized by this decision. It requires an S1.4
+no-code safety gate reviewed and approved by Albert.
