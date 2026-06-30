@@ -9,6 +9,7 @@ from datetime import date
 
 import pytest
 from flask import g
+from werkzeug.exceptions import HTTPException
 
 
 @pytest.fixture(autouse=True)
@@ -260,19 +261,26 @@ def test_financial_helpers_nu_muteaza(app):
 # ============================================================
 
 def test_service_http_free_si_read_only(app):
-    """Guard: project_service nu importa Flask response API si nu muteaza."""
+    """Guard: project_service nu apeleaza Flask response API; helperii read-only
+    raman read-only (mutatiile sunt doar in salvarile S1.3B)."""
     import inspect
     import services.project_service as svc
 
     sursa = inspect.getsource(svc)
-    # HTTP-free
+    # HTTP-free pe tot modulul
     for token in ('flash(', 'redirect(', 'render_template(', 'jsonify(',
                   'send_file(', 'url_for(', 'request.'):
         assert token not in sursa, token
-    # read-only
-    assert 'db.session.add' not in sursa
-    assert 'db.session.delete' not in sursa
-    assert 'db.session.commit' not in sursa
+    # read-only: helperii de citire/financiari nu fac mutatii/commit
+    for fn_name in ('get_project_list_context', 'get_project_managers',
+                    'get_project_total_hours', 'calculate_project_labor_cost',
+                    'get_project_weekly_hours', 'get_project_monthly_costs'):
+        s = inspect.getsource(getattr(svc, fn_name))
+        assert 'db.session.add' not in s, fn_name
+        assert 'db.session.delete' not in s, fn_name
+        assert 'db.session.commit' not in s, fn_name
+        assert 'db.session.rollback' not in s, fn_name
+    # serviciul nu face niciodata rollback (conventia: ruta face rollback)
     assert 'db.session.rollback' not in sursa
 
 
@@ -289,6 +297,247 @@ def test_service_fara_query_brut_tenant_owned(app):
     assert 'query_for_tenant' in sursa
     assert 'query_timesheets_for_tenant' in sursa
     assert 'query_project_assignments_for_tenant' in sursa
+
+
+# ============================================================
+# S1.3B — salvari create/edit/status (mutante, tenant-safe)
+# ============================================================
+
+class _F:
+    def __init__(self, data):
+        self.data = data
+
+
+def _proiect_form(*, cod_proiect='S13B-NEW', nume='S13B Nou', descriere=None,
+                  judet=None, localitate=None, adresa_santier=None, beneficiar=None,
+                  nr_contract_beneficiar=None, data_start=None,
+                  data_sfarsit_planificat=None, data_sfarsit_real=None,
+                  status='activ', manager_id=0, buget_total=None, buget_manopera=None):
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        cod_proiect=_F(cod_proiect), nume=_F(nume), descriere=_F(descriere),
+        judet=_F(judet), localitate=_F(localitate), adresa_santier=_F(adresa_santier),
+        beneficiar=_F(beneficiar), nr_contract_beneficiar=_F(nr_contract_beneficiar),
+        data_start=_F(data_start or date(2026, 1, 1)),
+        data_sfarsit_planificat=_F(data_sfarsit_planificat),
+        data_sfarsit_real=_F(data_sfarsit_real),
+        status=_F(status), manager_id=_F(manager_id),
+        buget_total=_F(buget_total), buget_manopera=_F(buget_manopera),
+    )
+
+
+def test_create_asigneaza_tenant_id(app):
+    from services.project_service import create_project_from_form_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            g.tenant_override = ids['tenant_a']
+            proiect = create_project_from_form_data(
+                form_data=_proiect_form(cod_proiect='S13B-T1'))
+            assert proiect.tenant_id == ids['tenant_a']
+
+
+def test_create_mapare_campuri_si_defaults(app):
+    from services.project_service import create_project_from_form_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            proiect = create_project_from_form_data(form_data=_proiect_form(
+                cod_proiect='  S13B-T2  ', nume='  Nume  ', descriere=None,
+                beneficiar=None, status='planificat', buget_total=1234))
+            assert proiect.cod_proiect == 'S13B-T2'   # strip
+            assert proiect.nume == 'Nume'             # strip
+            assert proiect.descriere == ''            # None -> ''
+            assert proiect.beneficiar == ''           # None -> ''
+            assert proiect.status == 'planificat'
+            assert proiect.manager_id is None          # manager_id 0 -> None
+            assert float(proiect.buget_total) == 1234.0
+
+
+def test_create_compune_locatie(app):
+    from services.project_service import create_project_from_form_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            p1 = create_project_from_form_data(form_data=_proiect_form(
+                cod_proiect='S13B-L1', judet='Cluj', localitate='Cluj-Napoca'))
+            p2 = create_project_from_form_data(form_data=_proiect_form(
+                cod_proiect='S13B-L2', judet='Cluj', localitate=None))
+            p3 = create_project_from_form_data(form_data=_proiect_form(
+                cod_proiect='S13B-L3', judet=None, localitate='OrasFaraJudet'))
+            assert p1.locatie == 'Cluj-Napoca, Cluj'
+            assert p2.locatie == 'Cluj'
+            assert p3.locatie == ''   # fara judet -> gol (identic cu ruta)
+
+
+def test_create_valideaza_manager_propriu(app):
+    from services.project_service import create_project_from_form_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            g.tenant_override = ids['tenant_a']
+            proiect = create_project_from_form_data(form_data=_proiect_form(
+                cod_proiect='S13B-M1', manager_id=ids['manager_a']))
+            assert proiect.manager_id == ids['manager_a']
+
+
+def test_create_respinge_manager_strain_404(app):
+    from services.project_service import create_project_from_form_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            g.tenant_override = ids['tenant_a']
+            with pytest.raises(HTTPException) as exc:
+                create_project_from_form_data(form_data=_proiect_form(
+                    cod_proiect='S13B-M2', manager_id=ids['manager_b']))
+            assert exc.value.code == 404
+
+
+def test_create_commit_persista(app):
+    from models import Proiect
+    from services.project_service import create_project_from_form_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            create_project_from_form_data(form_data=_proiect_form(cod_proiect='S13B-C1'))
+        assert Proiect.query.filter_by(cod_proiect='S13B-C1').first() is not None
+
+
+def test_update_mapare_campuri(app):
+    from services.project_service import update_project_from_form_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            g.tenant_override = ids['tenant_a']
+            from models import Proiect
+            proiect = Proiect.query.get(ids['proiect_a'])
+            update_project_from_form_data(project=proiect, form_data=_proiect_form(
+                cod_proiect='S13A-PA1', nume='Redenumit', status='suspendat',
+                data_sfarsit_real=date(2026, 5, 5), buget_total=777))
+            assert proiect.nume == 'Redenumit'
+            assert proiect.status == 'suspendat'
+            assert proiect.data_sfarsit_real == date(2026, 5, 5)
+            assert float(proiect.buget_total) == 777.0
+
+
+def test_update_compune_locatie(app):
+    from services.project_service import update_project_from_form_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            g.tenant_override = ids['tenant_a']
+            from models import Proiect
+            proiect = Proiect.query.get(ids['proiect_a'])
+            update_project_from_form_data(project=proiect, form_data=_proiect_form(
+                cod_proiect='S13A-PA1', judet='Iasi', localitate='Iasi'))
+            assert proiect.locatie == 'Iasi, Iasi'
+
+
+def test_update_respinge_manager_strain_404(app):
+    from services.project_service import update_project_from_form_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'strict'
+        with app.test_request_context('/'):
+            g.tenant_override = ids['tenant_a']
+            from models import Proiect
+            proiect = Proiect.query.get(ids['proiect_a'])
+            with pytest.raises(HTTPException) as exc:
+                update_project_from_form_data(project=proiect, form_data=_proiect_form(
+                    cod_proiect='S13A-PA1', manager_id=ids['manager_b']))
+            assert exc.value.code == 404
+
+
+def test_update_commit_persista(app):
+    from models import Proiect
+    from services.project_service import update_project_from_form_data
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            proiect = Proiect.query.get(ids['proiect_a'])
+            update_project_from_form_data(project=proiect, form_data=_proiect_form(
+                cod_proiect='S13A-PA1', nume='PersistTest'))
+        assert Proiect.query.get(ids['proiect_a']).nume == 'PersistTest'
+
+
+def test_status_valid_seteaza_si_returneaza(app):
+    from services.project_service import change_project_status
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            from models import Proiect
+            proiect = Proiect.query.get(ids['proiect_a'])
+            rez = change_project_status(project=proiect, new_status='suspendat')
+            assert rez == {'success': True, 'status': 'suspendat'}
+            assert proiect.status == 'suspendat'
+
+
+def test_status_invalid_rezultat_400_fara_mutatie(app):
+    from services.project_service import change_project_status
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            from models import Proiect
+            proiect = Proiect.query.get(ids['proiect_a'])
+            status_initial = proiect.status
+            rez = change_project_status(project=proiect, new_status='inexistent')
+            assert rez['success'] is False
+            assert rez['error'] == 'Status invalid'
+            assert rez['status_code'] == 400
+            assert proiect.status == status_initial  # fara mutatie
+
+
+def test_status_finalizat_seteaza_data_sfarsit_real(app):
+    from services.project_service import change_project_status
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            from models import Proiect
+            proiect = Proiect.query.get(ids['proiect_a'])
+            proiect.data_sfarsit_real = None
+            rez = change_project_status(project=proiect, new_status='finalizat')
+            assert rez['success'] is True
+            assert proiect.data_sfarsit_real == date.today()
+
+
+def test_status_finalizat_nu_suprascrie_data_existenta(app):
+    from services.project_service import change_project_status
+    ids = _seed(app)
+    with app.app_context():
+        app.config['MULTI_TENANT_MODE'] = 'off'
+        with app.test_request_context('/'):
+            from models import Proiect
+            proiect = Proiect.query.get(ids['proiect_a'])
+            proiect.data_sfarsit_real = date(2025, 1, 1)
+            change_project_status(project=proiect, new_status='finalizat')
+            assert proiect.data_sfarsit_real == date(2025, 1, 1)  # neschimbat
+
+
+def test_mutating_helpers_un_singur_commit_si_fara_query_brut(app):
+    """Guard: fiecare salvare face exact un commit; fara query brut tenant-owned."""
+    import inspect
+    import services.project_service as svc
+
+    for fn_name in ('create_project_from_form_data',
+                    'update_project_from_form_data', 'change_project_status'):
+        s = inspect.getsource(getattr(svc, fn_name))
+        assert s.count('db.session.commit') == 1, fn_name
+        assert 'db.session.rollback' not in s, fn_name
+        assert 'Proiect.query' not in s, fn_name
+        assert 'Pontaj.query' not in s, fn_name
+        assert 'Angajat.query' not in s, fn_name
 
 
 # ============================================================
@@ -351,7 +600,7 @@ def _curata(app):
     with app.app_context():
         app.config['MULTI_TENANT_MODE'] = 'off'
         prj_ids = [p.id for p in Proiect.query.filter(
-            Proiect.cod_proiect.like('S13A-%')).all()]
+            Proiect.cod_proiect.like('S13%')).all()]
         ang_ids = [a.id for a in Angajat.query.filter(Angajat.nume.like('S13A-%')).all()]
         if prj_ids:
             for p in Pontaj.query.filter(Pontaj.proiect_id.in_(prj_ids)).all():
@@ -359,7 +608,7 @@ def _curata(app):
             for ap in AngajatProiect.query.filter(
                 AngajatProiect.proiect_id.in_(prj_ids)).all():
                 db.session.delete(ap)
-        for proiect in Proiect.query.filter(Proiect.cod_proiect.like('S13A-%')).all():
+        for proiect in Proiect.query.filter(Proiect.cod_proiect.like('S13%')).all():
             db.session.delete(proiect)
         for ang in Angajat.query.filter(Angajat.nume.like('S13A-%')).all():
             db.session.delete(ang)

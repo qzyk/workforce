@@ -1,12 +1,14 @@
-"""Project service — boundary tenant-safe pentru domeniul Proiect (read-only).
+"""Project service — boundary tenant-safe pentru domeniul Proiect.
 
 S1.3A extrage din routes/proiecte.py logica de asamblare a contextului de
-listare si datele financiare read-only. Serviciul este HTTP-free: nu apeleaza
-API-ul de raspuns Flask (ruta pastreaza request args, render, flash, redirect).
-In S1.3A serviciul este strict read-only — nu adauga, nu sterge, fara commit.
+listare si datele financiare read-only. S1.3B adauga salvarile mutante
+create/edit/status (adauga, editeaza, schimba_status). Serviciul este HTTP-free:
+nu apeleaza API-ul de raspuns Flask (ruta pastreaza request args, ProiectForm,
+validate_on_submit, auto-cod GET prefill, render, flash, redirect, jsonify).
 Proiect este tenant-scoped direct prin Proiect.tenant_id; toate citirile trec
-prin helperii din services/security/tenant_access.py. Logica de create/edit/
-status si rutele cross-domeniu raman in ruta (S1.3B / gate-uri ulterioare).
+prin helperii din services/security/tenant_access.py. Pentru salvari serviciul
+face commit; ruta face rollback pe exceptii (conventia S1.x). Rutele cross-domeniu
+(detalii, hub, resurse nested, rapoarte/export) raman in ruta.
 """
 
 from datetime import date, timedelta
@@ -17,6 +19,7 @@ from services.security.tenant_access import (
     query_project_assignments_for_tenant,
     query_timesheets_for_tenant,
     query_users_for_tenant,
+    tenant_id_for_new_record_or_403,
 )
 
 
@@ -201,3 +204,123 @@ def get_project_monthly_costs(proiect_id, *, months=6, tenant_id=None):
             'cost': float(cost) if cost else 0
         })
     return results
+
+
+# ============================================================
+# Salvari create/edit/status (mutante, tenant-safe)
+# ============================================================
+
+def _compose_project_location(judet, localitate):
+    """Compune locatia din judet + localitate, identic cu adauga/editeaza.
+
+    locatie = judet; daca exista si localitate si judet -> "localitate, judet".
+    """
+    judet = judet or ''
+    localitate = localitate or ''
+    locatie = judet
+    if localitate and judet:
+        locatie = f'{localitate}, {judet}'
+    return locatie
+
+
+def _validate_project_manager(manager_id, *, tenant_id=None):
+    """Valideaza managerul selectat prin query_users_for_tenant.
+
+    Identic cu ruta: daca s-a ales un manager, acesta trebuie sa fie vizibil
+    tenantului curent, altfel first_or_404 ridica 404 (fara incredere oarba in
+    manager_id-ul din formular).
+    """
+    if manager_id:
+        query_users_for_tenant(tenant_id=tenant_id).filter(
+            Utilizator.id == manager_id
+        ).first_or_404()
+
+
+def create_project_from_form_data(*, form_data, tenant_id=None):
+    """Creeaza un Proiect din ProiectForm validat (ruta adauga POST).
+
+    Ruta pastreaza ProiectForm, _populeaza_manageri_form, validate_on_submit,
+    auto-cod GET prefill, flash si redirect. Serviciul pastreaza asignarea
+    tenant_id, validarea managerului, compunerea locatiei, maparea campurilor cu
+    default-urile existente si commit-ul. Returneaza Proiectul creat.
+
+    Daca tenant_id este None, se rezolva prin tenant_id_for_new_record_or_403()
+    (fail-closed in strict fara tenant), exact ca in ruta.
+    """
+    tenant_id_nou = tenant_id if tenant_id is not None else tenant_id_for_new_record_or_403()
+    manager_id = form_data.manager_id.data
+    _validate_project_manager(manager_id, tenant_id=tenant_id_nou)
+    locatie = _compose_project_location(form_data.judet.data, form_data.localitate.data)
+
+    proiect = Proiect(
+        cod_proiect=form_data.cod_proiect.data.strip(),
+        nume=form_data.nume.data.strip(),
+        descriere=form_data.descriere.data or '',
+        locatie=locatie,
+        adresa_santier=form_data.adresa_santier.data or '',
+        beneficiar=form_data.beneficiar.data or '',
+        nr_contract_beneficiar=form_data.nr_contract_beneficiar.data or '',
+        data_start=form_data.data_start.data,
+        data_sfarsit_planificat=form_data.data_sfarsit_planificat.data,
+        status=form_data.status.data,
+        manager_id=manager_id if manager_id else None,
+        buget_total=form_data.buget_total.data,
+        buget_manopera=form_data.buget_manopera.data,
+        tenant_id=tenant_id_nou,
+    )
+    db.session.add(proiect)
+    db.session.commit()
+    return proiect
+
+
+def update_project_from_form_data(*, project, form_data, tenant_id=None):
+    """Actualizeaza un Proiect existent din ProiectForm validat (ruta editeaza POST).
+
+    Ruta pastreaza get_project_or_404, ProiectForm(obj=...), validate_on_submit,
+    GET locatie split, flash si redirect. Serviciul pastreaza validarea
+    managerului, compunerea locatiei, maparea campurilor (inclusiv
+    data_sfarsit_real) si commit-ul. Nu incarca obiectul dupa ID — ruta il
+    transmite deja validat tenant-safe. Returneaza Proiectul actualizat.
+    """
+    manager_id = form_data.manager_id.data
+    _validate_project_manager(manager_id, tenant_id=tenant_id)
+    locatie = _compose_project_location(form_data.judet.data, form_data.localitate.data)
+
+    project.cod_proiect = form_data.cod_proiect.data.strip()
+    project.nume = form_data.nume.data.strip()
+    project.descriere = form_data.descriere.data or ''
+    project.locatie = locatie
+    project.adresa_santier = form_data.adresa_santier.data or ''
+    project.beneficiar = form_data.beneficiar.data or ''
+    project.nr_contract_beneficiar = form_data.nr_contract_beneficiar.data or ''
+    project.data_start = form_data.data_start.data
+    project.data_sfarsit_planificat = form_data.data_sfarsit_planificat.data
+    project.data_sfarsit_real = form_data.data_sfarsit_real.data
+    project.status = form_data.status.data
+    project.manager_id = manager_id if manager_id else None
+    project.buget_total = form_data.buget_total.data
+    project.buget_manopera = form_data.buget_manopera.data
+
+    db.session.commit()
+    return project
+
+
+def change_project_status(*, project, new_status):
+    """Schimba statusul unui Proiect deja incarcat (ruta schimba_status).
+
+    Validarea statusului se face fata de Proiect.STATUSURI. La status invalid
+    returneaza un rezultat simplu pe care ruta il mapeaza la JSON 400, FARA sa
+    muteze sau sa comita. La status valid seteaza statusul, seteaza
+    data_sfarsit_real doar daca lipseste cand statusul devine 'finalizat', si
+    face commit. Returneaza un dict (nu un Response Flask).
+    """
+    valid_statuses = [s[0] for s in Proiect.STATUSURI]
+    if new_status not in valid_statuses:
+        return {'success': False, 'error': 'Status invalid', 'status_code': 400}
+
+    project.status = new_status
+    if new_status == 'finalizat' and not project.data_sfarsit_real:
+        project.data_sfarsit_real = date.today()
+
+    db.session.commit()
+    return {'success': True, 'status': new_status}

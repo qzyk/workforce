@@ -9,6 +9,7 @@ from decimal import Decimal
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, current_app, abort
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import HTTPException
 from models import db, Proiect, Angajat, AngajatProiect, Pontaj, Document, Utilizator
 from forms.proiecte_forms import ProiectForm
 from services.security.tenant_access import (
@@ -39,10 +40,13 @@ from services.security.tenant_access import (
 )
 from services.project_service import (
     calculate_project_labor_cost,
+    change_project_status,
+    create_project_from_form_data,
     get_project_list_context,
     get_project_monthly_costs,
     get_project_total_hours,
     get_project_weekly_hours,
+    update_project_from_form_data,
 )
 from tenant import MODE_OFF
 
@@ -104,32 +108,17 @@ def adauga():
     _populeaza_manageri_form(form)
 
     if form.validate_on_submit():
-        if form.manager_id.data:
-            query_users_for_tenant().filter(Utilizator.id == form.manager_id.data).first_or_404()
-        locatie = ''
-        if form.judet.data:
-            locatie = form.judet.data
-            if form.localitate.data:
-                locatie = f"{form.localitate.data}, {form.judet.data}"
-
-        proiect = Proiect(
-            cod_proiect=form.cod_proiect.data.strip(),
-            nume=form.nume.data.strip(),
-            descriere=form.descriere.data or '',
-            locatie=locatie,
-            adresa_santier=form.adresa_santier.data or '',
-            beneficiar=form.beneficiar.data or '',
-            nr_contract_beneficiar=form.nr_contract_beneficiar.data or '',
-            data_start=form.data_start.data,
-            data_sfarsit_planificat=form.data_sfarsit_planificat.data,
-            status=form.status.data,
-            manager_id=form.manager_id.data if form.manager_id.data else None,
-            buget_total=form.buget_total.data,
-            buget_manopera=form.buget_manopera.data,
-            tenant_id=tenant_id_nou,
-        )
-        db.session.add(proiect)
-        db.session.commit()
+        # Salvarea (validare manager, locatie, mapare campuri, commit) sta in
+        # project_service. Ruta pastreaza ProiectForm, validate_on_submit,
+        # auto-cod GET prefill, flash si redirect.
+        try:
+            proiect = create_project_from_form_data(form_data=form, tenant_id=tenant_id_nou)
+        except HTTPException:
+            db.session.rollback()
+            raise
+        except Exception:
+            db.session.rollback()
+            raise
         flash(f'Proiectul {proiect.cod_proiect} a fost creat cu succes!', 'success')
         return redirect(url_for('proiecte.detalii', id=proiect.id))
 
@@ -615,30 +604,17 @@ def editeaza(id):
     _populeaza_manageri_form(form)
 
     if form.validate_on_submit():
-        if form.manager_id.data:
-            query_users_for_tenant().filter(Utilizator.id == form.manager_id.data).first_or_404()
-        locatie = ''
-        if form.judet.data:
-            locatie = form.judet.data
-            if form.localitate.data:
-                locatie = f"{form.localitate.data}, {form.judet.data}"
-
-        proiect.cod_proiect = form.cod_proiect.data.strip()
-        proiect.nume = form.nume.data.strip()
-        proiect.descriere = form.descriere.data or ''
-        proiect.locatie = locatie
-        proiect.adresa_santier = form.adresa_santier.data or ''
-        proiect.beneficiar = form.beneficiar.data or ''
-        proiect.nr_contract_beneficiar = form.nr_contract_beneficiar.data or ''
-        proiect.data_start = form.data_start.data
-        proiect.data_sfarsit_planificat = form.data_sfarsit_planificat.data
-        proiect.data_sfarsit_real = form.data_sfarsit_real.data
-        proiect.status = form.status.data
-        proiect.manager_id = form.manager_id.data if form.manager_id.data else None
-        proiect.buget_total = form.buget_total.data
-        proiect.buget_manopera = form.buget_manopera.data
-
-        db.session.commit()
+        # Salvarea (validare manager, locatie, mapare campuri, commit) sta in
+        # project_service. Ruta pastreaza get_project_or_404, ProiectForm,
+        # validate_on_submit, GET locatie split, flash si redirect.
+        try:
+            update_project_from_form_data(project=proiect, form_data=form)
+        except HTTPException:
+            db.session.rollback()
+            raise
+        except Exception:
+            db.session.rollback()
+            raise
         flash('Proiectul a fost actualizat cu succes!', 'success')
         return redirect(url_for('proiecte.detalii', id=id))
 
@@ -667,16 +643,20 @@ def schimba_status(id):
     data = request.get_json()
     new_status = data.get('status', '')
 
-    valid_statuses = [s[0] for s in Proiect.STATUSURI]
-    if new_status not in valid_statuses:
-        return jsonify({'success': False, 'error': 'Status invalid'}), 400
+    # Validarea + tranzitia de status stau in project_service; ruta pastreaza
+    # get_project_or_404, citirea JSON, jsonify si codurile HTTP.
+    try:
+        rezultat = change_project_status(project=proiect, new_status=new_status)
+    except HTTPException:
+        db.session.rollback()
+        raise
+    except Exception:
+        db.session.rollback()
+        raise
 
-    proiect.status = new_status
-    if new_status == 'finalizat' and not proiect.data_sfarsit_real:
-        proiect.data_sfarsit_real = date.today()
-
-    db.session.commit()
-    return jsonify({'success': True, 'status': new_status})
+    if not rezultat['success']:
+        return jsonify({'success': False, 'error': rezultat['error']}), rezultat['status_code']
+    return jsonify({'success': True, 'status': rezultat['status']})
 
 
 # ============================================================
