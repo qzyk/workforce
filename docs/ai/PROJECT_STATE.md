@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-S1.2D2 Timesheet Import Excel Parsing/Create Extraction
+S1.C2 Timesheet Service Extraction Review — APPROVED
 ```
 
 Canonical repository:
@@ -54,14 +54,16 @@ feat/s1.2d2-timesheet-import-excel-extraction
 
 ## Current test baseline
 
-S1.2D2 VALIDATED.
+S1.2 APPROVED by S1.C2 review.
 
 ```text
-service unit tests (tests/unit/test_timesheet_service.py): 87 passed (71 prior + 16 new S1.2D2)
-full suite (tests/unit + tests/integration): 1133 passed, 39 skipped, 4 warnings
-full suite was run BEFORE commit
-worktree clean after commit
-only allowed files changed (routes/pontaje.py, services/timesheet_service.py, tests/unit/test_timesheet_service.py)
+S1.C2 review re-ran (read-only, no code changes):
+  targeted suite (service 87 + tenant_access 6 + integration 23): 116 passed
+  export-layout regression (test_export_rapoarte_stil.py): 5 passed
+  activity boundary (test_activity_service.py): 40 passed
+  Flask app smoke (pontaje routes): ok 18
+  py_compile OK
+Last full suite (at S1.2D2, before this docs-only line): 1133 passed, 39 skipped, 4 warnings
 git diff --check clean
 ```
 
@@ -104,12 +106,14 @@ S1.2C1 Timesheet Single Workflow Extraction
 S1.2C2 Timesheet Bulk Workflow Extraction
 S1.2D1 Timesheet Monthly Export Data Assembly Extraction
 S1.2D2 Timesheet Import Excel Parsing/Create Extraction
+S1.C2 Timesheet Service Extraction Review — APPROVED
 ```
 
 Latest completed service extraction step:
 
 ```text
 S1.2D2 Timesheet Import Excel Parsing/Create Extraction
+(reviewed and APPROVED by S1.C2)
 ```
 
 S1.2D2 summary:
@@ -187,6 +191,31 @@ The S1.2C1 timesheet single workflow (trimite/aproba/respinge) is complete and v
 The S1.2C2 timesheet bulk workflow (aproba_multiplu) is complete and validated.
 The S1.2D1 timesheet monthly export data assembly (build_monthly_timesheet_export_data) is complete and validated.
 The S1.2D2 timesheet import excel parsing/create (import_timesheets_from_rows) is complete and validated.
+The S1.2 timesheet service boundary (S1.2A–S1.2D2) is complete and APPROVED by the S1.C2 review (no P0/P1 blockers).
+
+Approved S1.2 boundary (S1.C2 / D016):
+
+```text
+- services/timesheet_service.py is the coherent, HTTP-free Pontaj/timesheet service boundary
+- routes/pontaje.py keeps HTTP/upload/download/layout/flash/redirect/render/jsonify/send_file
+- services/activity_service.py remains activity-only (D015 respected)
+- no model/migration/template changes occurred during S1.2
+- tenant safety preserved; behavior preserved; tests sufficient
+- service-commit / route-rollback convention is consistent
+```
+
+Accepted deferrals / notes (S1.C2, P3/informational — cleanup NOT authorized):
+
+```text
+- sterge remains route-resident
+- template_import remains route-resident (static workbook layout)
+- export_lunar workbook layout + send_file remain route-owned
+- import_excel request.files / load_workbook / flash / redirect remain route-owned
+- _detect_tip_zi cleanup is not authorized (_detect_import_tip_zi duplicate accepted)
+- get_project_employees_for_timesheet AngajatProiect.query is accepted (project
+  validated tenant-safe first, employees re-filtered) as P3/informational
+- docs/audits absent; CLAUDE.md roadmap stale (docs/ai + git authoritative)
+```
 
 ---
 
@@ -194,6 +223,7 @@ The S1.2D2 timesheet import excel parsing/create (import_timesheets_from_rows) i
 
 ```text
 S1.C1 Activity Service Extraction Review — APPROVED (no P0/P1)
+S1.C2 Timesheet Service Extraction Review — APPROVED (no P0/P1)
 ```
 
 S1.C1 findings (see DECISIONS_LOG D015):
@@ -207,19 +237,34 @@ S1.C1 findings (see DECISIONS_LOG D015):
 - P3: sterge (activity delete) unextracted and acceptable
 ```
 
+S1.C2 findings (see DECISIONS_LOG D016):
+
+```text
+- No P0/P1 blockers. S1.2 Timesheet Service Extraction APPROVED.
+- P3: sterge / template_import accepted route-resident deferrals
+- P3: export layout/send_file + import upload/load_workbook/flash/redirect route-owned
+- P3: get_project_employees_for_timesheet AngajatProiect.query accepted
+- P3: _detect_import_tip_zi duplicate accepted; cleanup not authorized
+- Next service boundary (Project) must start with a no-code gate, not implementation
+```
+
 ---
 
 ## Current task
 
 ```text
-S1.C2 Timesheet Service Extraction Review
+S1.3 Project Service No-Code Understanding / Collision Safety Gate
 ```
 
-Review / no-code validation of the completed S1.2 timesheet service boundary
-(S1.2A → S1.2D2). Produces a review report only.
+Read-only understanding / collision-safety gate for the next service boundary
+(Project Service, routes/proiecte.py). Produces a no-code report only.
 
-NO NEW IMPLEMENTATION IS AUTHORIZED. S1.C2 reviews the boundary and, if there are
-no P0/P1 blockers, approves S1.2 and recommends the next architectural step.
+S1.3 IMPLEMENTATION IS NOT AUTHORIZED. Project Service extraction may start only
+after this no-code gate is reviewed and approved by Albert.
+
+Alternative future option (only if Albert chooses consolidation instead of
+expansion): S1.x Service Boundary Hardening Gate. The current authorized task
+is the S1.3 Project Service no-code gate.
 
 ## Constraints for the S1.x service extraction line (per D014 + D015)
 
@@ -233,14 +278,20 @@ no P0/P1 blockers, approves S1.2 and recommends the next architectural step.
 - Add direct service-level tests.
 - S1.2 timesheet logic goes in a NEW services/timesheet_service.py (D015).
 
-## Remaining S1.2 work
+## Next recommended work
 
 ```text
-S1.C2 Timesheet Service Extraction Review (current — review/no-code)
+S1.3 Project Service No-Code Understanding / Collision Safety Gate (current authorized task)
 ```
 
-The S1.2 timesheet service extraction line (S1.2A → S1.2D2) is code-complete and
-awaiting the S1.C2 review.
+The S1.2 timesheet service extraction line (S1.2A → S1.2D2) is complete and
+APPROVED by S1.C2 (D016). The next service boundary must begin with the S1.3
+no-code gate (Project Service), NOT implementation.
+
+Initial scope for the S1.3 gate: Project Service boundary only. No Contract
+Service implementation, no Commercial/SituatieLunara implementation, no schema
+changes, no migrations, no templates, no frontend rewrite, no activity/timesheet
+changes.
 
 template_import remains route-resident because it is static workbook layout with
 no domain extraction needed (per the S1.2D gate analysis).
@@ -267,7 +318,9 @@ for export_lunar (S1.2D1), and import Excel parsing/create for import_excel
 import_excel keeps request.files / extension validation / load_workbook /
 flash / redirect route-owned. template_import stays route-resident (static
 layout, no extraction); sterge stays route-resident. The S1.2 timesheet service
-extraction line is code-complete and awaiting the S1.C2 review.
+extraction line is complete and APPROVED by S1.C2 (D016). The next authorized
+task is the S1.3 Project Service no-code understanding / collision-safety gate
+(no implementation until reviewed and approved by Albert).
 
 Remaining accepted future categories:
 

@@ -222,3 +222,57 @@ Decisions recorded for the next steps:
 
 S1.2 implementation is NOT authorized by this decision. It requires an S1.2
 no-code safety gate reviewed and approved by Albert.
+
+---
+
+## D016 — S1.C2 Timesheet Service Extraction Review outcome
+
+S1.C2 reviewed the completed S1.2 timesheet service boundary
+(S1.2A → S1.2B1 → S1.2B2 → S1.2C1 → S1.2C2 → S1.2D1 → S1.2D2) and concluded:
+
+```text
+S1.2 Timesheet Service Extraction — APPROVED. No P0/P1 blockers.
+services/timesheet_service.py is a coherent, HTTP-free Pontaj/timesheet service.
+Tenant safety and existing behavior preserved; tests sufficient.
+```
+
+Decisions recorded:
+
+- **Approved boundary.** `services/timesheet_service.py` is the approved
+  Pontaj/timesheet service boundary. `routes/pontaje.py` remains the
+  HTTP/orchestration boundary (upload/download/flash/redirect/render/jsonify/
+  send_file).
+- **Commit/rollback convention.** The service-commit / route-rollback convention
+  is consistent and is the standing convention for the S1.x service line:
+  mutating service helpers call `db.session.commit()`; route wrappers own
+  `db.session.rollback()` on `HTTPException` and unexpected `Exception`.
+- **Accepted route-resident deferrals (do not treat as bugs):**
+  - `sterge` (timesheet delete) remains route-resident.
+  - `template_import` remains route-resident (static workbook layout, no domain
+    logic to extract).
+  - `export_lunar` workbook layout + `send_file` remain route-owned (only the
+    tenant-scoped data assembly was extracted into
+    `build_monthly_timesheet_export_data`).
+  - `import_excel` request.files / `.xlsx` validation / `load_workbook` / flash /
+    redirect remain route-owned (only row-processing/create was extracted into
+    `import_timesheets_from_rows`).
+- **Tenant invariants preserved.** No new raw `Pontaj/Angajat/Proiect/
+  RaportActivitate.query` in tenant-aware service code. The only `Pontaj.query.get`
+  is the isolated off-mode legacy branch of `bulk_approve_timesheets` (T1.4
+  pattern). `import_excel` intentionally does NOT use
+  `tenant_id_for_new_record_or_403()` or `require_timesheet_inputs_same_tenant()`
+  (those would convert per-row skip into `abort(404)`). Monthly export data stays
+  scoped via `query_timesheets_for_tenant()`.
+- **P3 / informational (cleanup NOT authorized):**
+  - `get_project_employees_for_timesheet` uses `AngajatProiect.query` after
+    tenant-safe project validation + employee re-filtering — accepted.
+  - `_detect_import_tip_zi` duplicates the route `_detect_tip_zi`; the route
+    helper is now effectively dead but cleanup is not authorized.
+  - `docs/audits/` are absent in this canonical worktree; CLAUDE.md roadmap is
+    stale. `docs/ai/*` + git history remain authoritative.
+- **Next boundary must start with a no-code gate.** The next service boundary
+  (Project Service) must begin with an S1.3 no-code understanding / collision
+  safety gate reviewed and approved by Albert — NOT direct implementation.
+
+S1.3 implementation is NOT authorized by this decision. It requires an S1.3
+no-code safety gate reviewed and approved by Albert.
