@@ -554,3 +554,64 @@ start create/edit/delete extraction; and must defer terms/milestones,
 Commercial/SituatieLunara, Oferta/BoQ, Claims/Revendicari, PV/export/reporting,
 Gantt, BIM, Activity, Timesheet, schema, migrations, templates, frontend, and
 route URL changes.
+
+---
+
+## D022 — Contract Core Read/List/Detail Gate outcome
+
+The Contract Core Read/List/Detail Service No-Code Gate reviewed the narrow
+contract list/detail surfaces after T1.5C.
+
+Gate outcome:
+
+```text
+Contract Core Read/List/Detail Service No-Code Gate — COMPLETED.
+P0: none.
+P1: present.
+Contract Core service extraction is NOT approved yet.
+```
+
+P1 blockers:
+
+- `templates/contracte/detalii.html` performs unscoped render-time lazy queries:
+  - `contract.programe_referinta`
+  - `contract.oferte`
+  - `o.pozitii.count()`
+- `routes/contracte.py::detalii` and `templates/contracte/lista.html` use
+  `acte_aditionale` relationship queries/counts without explicit tenant scoping.
+
+Risk:
+
+```text
+These child models have tenant ownership and can leak under historical/corrupted
+cross-tenant links.
+```
+
+Decisions recorded:
+
+- **Do not start Contract Core service extraction yet.**
+- **Do not create `services/contract_service.py` yet.**
+- **Do not start Commercial / SituatieLunara extraction yet.**
+- **Do not extract `lista` / `detalii` yet.**
+- **First fix the render-time child tenant-safety P1.**
+
+The next authorized task is:
+
+```text
+T1.5D Contract List/Detail Render-Time Child Tenant Guard
+```
+
+T1.5D scope:
+
+- tenant-scope render-time child collections/counts for contract list/detail;
+- prevent template lazy relationship queries from bypassing tenant helpers;
+- add tests proving cross-tenant child rows attached to a valid tenant-owned
+  parent are hidden;
+- no service extraction;
+- no commercial workflow changes;
+- no schema changes;
+- no models/migrations;
+- no broad template redesign.
+
+Contract Core service extraction may resume only after T1.5D is completed,
+tested, and reviewed by Albert.
