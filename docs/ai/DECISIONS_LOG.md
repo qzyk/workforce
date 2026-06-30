@@ -700,3 +700,88 @@ not start create/edit/delete extraction; and must defer terms/milestones,
 Commercial/SituatieLunara, Oferta/BoQ, Claims/Revendicari, PV/export/reporting,
 Gantt, BIM, Activity, Timesheet, schema, migrations, templates, frontend, and
 route URL changes.
+
+---
+
+## D024 — Contract Core Post-T1.5D Re-Gate outcome
+
+The Contract Core Read/List/Detail Post-T1.5D Service Boundary Re-Gate reviewed
+the narrow contract list/detail surfaces after T1.5C and T1.5D.
+
+The gate concluded:
+
+```text
+Contract Core Read/List/Detail Post-T1.5D Service Boundary Re-Gate — COMPLETED
+P0: none
+P1: none
+```
+
+Decisions recorded:
+
+- **T1.5C blocker remains closed.** The responsible-user tenant/input P1 fixed
+  by `b519d51 T1.5C contract term responsible tenant guard` remains closed.
+- **T1.5D blocker remains closed.** The render-time child tenant-safety P1 fixed
+  by `2fb137f T1.5D contract render child tenant guard` remains closed.
+- **Contract list/detail are ready for planning.** Contract list/detail
+  route-level tenant safety is sufficient for service-boundary planning.
+- **First implementation slice is list-only.** The first safe implementation
+  slice should be C1A Contract Core List Context Extraction.
+- **Detail extraction is deferred.** C1B Contract Core Detail Context Extraction
+  must wait until after C1A is implemented and reviewed.
+- **No broad Contract Service extraction.** Broad Contract Service extraction is
+  not approved.
+- **No Commercial / SituatieLunara extraction.** Commercial / SituatieLunara
+  extraction is not approved.
+- **No unrelated extraction.** Create/edit/delete, term/milestone mutation,
+  Oferta/BoQ, Claims/Revendicari, PV/export/reporting, Project service, Project
+  hub, Gantt, BIM, Activity, Timesheet, schema, migrations, templates, frontend,
+  and route URL changes remain out of scope for C1A.
+
+Post-fix gate validation baseline:
+
+```text
+py_compile passed
+contract targeted tests: 50 passed
+broad tenant regression: 256 passed
+project regression: 60 passed
+activity/timesheet regression: 150 passed
+Flask smoke: ok 365
+worktree remained clean
+```
+
+Approved next authorized task:
+
+```text
+C1A Contract Core List Context Extraction
+```
+
+C1A scope constraints:
+
+```text
+- Contract core list context only
+- read-only
+- HTTP-free service helper
+- route keeps request.args, decorators, feature gate, render_template, and HTTP behavior
+- preserve status/project/search filters
+- preserve main-contract-only behavior
+- preserve stats counts
+- preserve visible project choices
+- preserve tenant-scoped addendum counts
+- preserve template name contracte/lista.html and existing context keys
+```
+
+C1A must not include:
+
+```text
+contract detail extraction
+templates/forms/models/migrations/static/frontend changes
+create/edit/delete extraction
+term/milestone mutation routes
+PV/export/reporting
+Commercial / SituatieLunara
+Oferta / BoQ
+claims/revendicari
+Project service or Project hub changes
+Gantt/BIM/Activity/Timesheet changes
+route URL changes
+```

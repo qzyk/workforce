@@ -3,16 +3,20 @@
 Current authorized task:
 
 ```text
-Contract Core Read/List/Detail Post-T1.5D Service Boundary Re-Gate
+C1A Contract Core List Context Extraction
 ```
 
-This is a read-only no-code gate.
+This is a narrow read-only implementation slice.
 
-Contract Service implementation is NOT authorized.
+Contract Service implementation is authorized only for the contract list context
+boundary. Do not perform broad Contract Service extraction.
+
 Commercial / SituatieLunara implementation is NOT authorized.
+Contract detail extraction is NOT authorized in C1A.
+Create/edit/delete extraction is NOT authorized in C1A.
 
-No `services/contract_service.py` may be created until this post-fix gate is
-reviewed and approved by Albert.
+Do not start C1A from a docs-only coordination prompt. C1A implementation may
+start only when Albert explicitly provides the C1A implementation prompt.
 
 Current canonical base commit:
 
@@ -26,119 +30,143 @@ Current canonical branch:
 feat/s1.4a-project-details-context-extraction
 ```
 
-Latest completed review:
+Previous completed gate:
 
 ```text
-T1.5D Review — Contract List/Detail Render-Time Child Tenant Guard APPROVED
+Contract Core Read/List/Detail Post-T1.5D Re-Gate — COMPLETED
+Decision: C1A list context first
 ```
 
 Latest coordination state after this docs update:
 
 ```text
-T1.5D closed the Contract Core render-time child tenant-safety P1 blockers.
-Contract Core service extraction is still not directly authorized.
-The next step is a post-fix no-code service boundary re-gate.
+T1.5C closed the responsible-user tenant/input P1.
+T1.5D closed the Contract Core render-time child tenant-safety P1.
+The post-T1.5D re-gate found no P0/P1 in Contract Core read/list/detail.
+Contract Core service extraction may begin only with C1A list context.
+Contract detail, Commercial / SituatieLunara, and broad Contract Service
+extraction remain deferred.
 ```
 
 ---
 
-## Previous completed review — APPROVED
+## Previous completed gate — COMPLETED
 
 ```text
-T1.5D Review — Contract List/Detail Render-Time Child Tenant Guard Review
+Contract Core Read/List/Detail Post-T1.5D Service Boundary Re-Gate
 ```
 
-Review verdict:
+Gate verdict:
 
 ```text
-APPROVED
 P0: none
 P1: none
 ```
 
-The review confirmed:
+The gate confirmed:
 
 ```text
-- original render-time child tenant-safety P1 blockers are fixed
-- contract list no longer uses template-level c.acte_aditionale.count()
-- contract detail no longer uses direct template lazy access for:
-  - contract.programe_referinta
-  - contract.oferte
-  - o.pozitii.count()
-- contract list/detail consume pre-scoped route context for flagged child data
-- strict mode hides/counts only same-tenant children
-- optional mode with tenant hides foreign child rows
-- off mode preserves legacy unfiltered behavior through existing tenant helpers
-- list/detail remain read-only
-- no service extraction was started
-- no services/contract_service.py was created
-- no model/migration/form/static/frontend changes occurred
-- no Project service / Project hub changes occurred
-- no Commercial / SituatieLunara changes occurred
+- T1.5C responsible-user tenant/input blocker remains closed
+- T1.5D render-time child tenant-safety blocker remains closed
+- contract list/detail route-level tenant safety is sufficient for service-boundary planning
+- contract list is narrow enough for the first read-only service extraction slice
+- contract detail is tenant-safe but broader because it aggregates child domains
+- first implementation slice should be list-only
+- C1B Contract Detail Context Extraction is deferred until after C1A review
+- no broad Contract Service extraction is approved
+- Commercial / SituatieLunara extraction is not approved
 ```
 
-Review / test baseline:
+Post-fix gate test baseline:
 
 ```text
-py_compile routes/contracte.py tests/integration/test_tenant_access_contract_routes.py: OK
-contract route tests: 27 passed
-contract baseline: 50 passed
+py_compile passed
+contract targeted tests: 50 passed
 broad tenant regression: 256 passed
 project regression: 60 passed
 activity/timesheet regression: 150 passed
 Flask smoke: ok 365
-full suite: 1188 passed, 39 skipped, 4 warnings
 ```
 
-Remaining review note:
+Remaining findings:
 
 ```text
-P3 only: existing c.acte_aditionale.count() in routes/contracte.py::sterge
-remains outside T1.5D scope and is not a blocker for list/detail render-path
-safety.
-```
+P2:
+- detail extraction should be separate from list because it aggregates multiple child domains
+- add service-level tests before extracting contract list context
 
----
-
-## Gate Goal
-
-The Contract Core Post-T1.5D Re-Gate must:
-
-```text
-- confirm the original list/detail P1 blockers are closed
-- re-inspect contract lista and detalii after T1.5D
-- verify render-time child tenant leaks are gone
-- verify list/detail are now suitable candidates for HTTP-free read context extraction
-- decide the first safe implementation slice:
-  - C1A Contract Core List Context Extraction
-  - C1B Contract Core Detail Context Extraction
-  - C1A/C1B split sequence
-  - or more hardening before implementation
-- define exact allowed files for the first implementation slice
-- define exact no-touch surfaces
-- produce a no-code report only
+P3:
+- delete route still uses c.acte_aditionale.count(), out of current list scope
+- raw form queries remain route-overridden and out of current list/detail scope
 ```
 
 ---
 
-## Initial Scope for Next Gate
+## C1A Implementation Goal
+
+Create or update `services/contract_service.py` with a narrow HTTP-free helper
+for contract list context only.
+
+Move only contract list data assembly into the service. Preserve the route as
+the HTTP boundary.
+
+The route must keep ownership of:
 
 ```text
-- Contract core read/list/detail only
-- no implementation
-- no create/edit/delete
-- no term/milestone mutation
-- no Commercial / SituatieLunara
-- no Oferta / BoQ
-- no Claims / Revendicari
-- no PV/export/reporting
-- no Project service changes
-- no Project hub changes
-- no Gantt/BIM/Activity/Timesheet changes
-- no schema changes
-- no migrations
-- no templates/frontend changes unless the gate only reads them
-- no route URL changes
+- decorators
+- blueprint feature gate
+- request.args parsing
+- render_template
+- HTTP-visible behavior
+```
+
+The C1A implementation must preserve:
+
+```text
+- status filter
+- project filter through get_project_or_404 or equivalent route-owned validation
+- search over nr_contract / beneficiar / antreprenor
+- main-contract-only behavior
+- order by data_semnare desc
+- stats counts
+- visible project choices
+- tenant-scoped addendum counts from T1.5D
+- template name contracte/lista.html
+- existing context keys
+```
+
+---
+
+## Initial Allowed Files for C1A
+
+```text
+services/contract_service.py
+routes/contracte.py
+tests/unit/test_contract_service.py
+tests/integration/test_tenant_access_contract_routes.py (targeted compatibility only, if needed)
+```
+
+---
+
+## No-Touch Boundaries for C1A
+
+```text
+no contract detail extraction
+no templates
+no forms
+no models
+no migrations
+no create/edit/delete
+no term/milestone mutation routes
+no PV/export/reporting
+no Commercial / SituatieLunara
+no Oferta / BoQ
+no claims/revendicari
+no Project service changes
+no Project hub changes
+no Gantt/BIM/Activity/Timesheet changes
+no static/frontend
+no route URL changes
 ```
 
 ---
@@ -148,7 +176,7 @@ The Contract Core Post-T1.5D Re-Gate must:
 Do not start any of these without a later explicit approval:
 
 ```text
-Contract Service implementation
+C1B Contract Core Detail Context Extraction
 Contract create/edit/delete extraction
 Contract term/milestone extraction
 Commercial / SituatieLunara extraction
@@ -156,4 +184,5 @@ Oferta / BoQ extraction
 Claims / Revendicari extraction
 PV/export/reporting extraction
 Gantt / BIM / Activity / Timesheet changes
+schema/model/migration/template/static/frontend changes
 ```
