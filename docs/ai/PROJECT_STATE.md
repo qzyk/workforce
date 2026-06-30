@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-S1.C3 Project Service Extraction Review — APPROVED
+S1.4A Project Details Context Extraction
 ```
 
 Canonical repository:
@@ -43,25 +43,25 @@ Do not merge, clean, delete, or copy from them.
 ## Current canonical branch
 
 ```text
-feat/s1.3b-project-create-edit-status-extraction
+feat/s1.4a-project-details-context-extraction
 ```
 
 ## Current canonical HEAD
 
 ```text
-a9fabfc S1.3B project create edit status extraction
+4c15b01 S1.4A project details context extraction
 ```
 
 ## Current test baseline
 
-S1.3B VALIDATED.
+S1.4A VALIDATED.
 
 ```text
-project service unit tests (tests/unit/test_project_service.py): 34 passed (19 S1.3A + 15 S1.3B)
-project targeted suite (service + project route/nested/hub/locations): 69 passed
-regression safety (activity + timesheet + timesheet routes): 150 passed
+project service unit tests (tests/unit/test_project_service.py): 45 passed (34 prior + 11 new S1.4A)
+project targeted suite (service + project route/nested/hub/locations): 80 passed
+cross-domain regression (timesheet routes + activity + timesheet service): 150 passed
 Flask app smoke (proiecte routes): ok 27
-full suite (tests/unit + tests/integration): 1167 passed, 39 skipped, 4 warnings
+full suite (tests/unit + tests/integration): 1178 passed, 39 skipped, 4 warnings
 git diff --check clean
 ```
 
@@ -109,13 +109,14 @@ S1.3 Project Service No-Code Understanding / Collision Safety Gate — APPROVED
 S1.3A Project Service Read/List + Financial Data Assembly Extraction
 S1.3B Project Create/Edit/Status Save Extraction
 S1.C3 Project Service Extraction Review — APPROVED
+S1.4 Project Details / Cross-Domain Context No-Code Gate — APPROVED
+S1.4A Project Details Context Extraction
 ```
 
 Latest completed service extraction step:
 
 ```text
-S1.3B Project Create/Edit/Status Save Extraction
-(reviewed and APPROVED by S1.C3)
+S1.4A Project Details Context Extraction
 ```
 
 S1.2D2 summary:
@@ -258,6 +259,47 @@ broadened from 'S13A-%' to 'S13%' so S1.3B-created projects are also removed; an
 the S1.3A HTTP-free/read-only guard was scoped to the read-only functions (the new
 mutators legitimately commit). Test-only, behavior-preserving, validated by the full suite.
 
+S1.4A summary:
+
+```text
+- get_project_detail_context() added to services/project_service.py (read-only)
+- detalii read-only context assembly extracted to the project service
+- detalii route delegates context assembly to the service; route keeps
+  get_project_or_404, request.args (luna/anul), render_template, HTTP behavior
+- service now owns: team assignments (ordered), active assigned + available
+  employees, dist_functii, monthly pontaje, ore_per_angajat aggregate,
+  total_ore / ore_saptamanale / cost_manopera / cost_lunar (via S1.3A helpers),
+  legacy documents
+- exact 14 detalii render-context values preserved (proiect/luna/anul route-owned)
+- assignment ordering (data_sfarsit nullsfirst, data_start desc), angajati_activi
+  (data_sfarsit None), available employees status='activ' ordered by nume,
+  dist_functii fallback (functie_pe_proiect -> angajat.functie -> 'Necunoscut'),
+  pontaje month/year filter + desc order, documents desc by data_upload preserved
+- ore_per_angajat keeps its db.session.query aggregate, tenant-scoped via the
+  query_timesheets_for_tenant() subquery (unchanged)
+- service stays HTTP-free; S1.4A helper is read-only (no add/delete/commit/rollback)
+- no new raw Proiect/Pontaj/Angajat/RaportActivitate/Document.query in the service
+- query_employees_for_tenant + query_legacy_documents_for_tenant removed from
+  routes/proiecte.py imports (now resolved inside the service)
+- hub untouched and deferred; lista / adauga / editeaza / schimba_status /
+  financial wrappers / nested / raport / export_excel untouched
+- forms / models / migrations / templates / static / frontend untouched
+- Contract / Commercial / Gantt / BIM / Activity / Timesheet untouched
+```
+
+Files changed in 4c15b01:
+
+```text
+services/project_service.py
+routes/proiecte.py
+tests/unit/test_project_service.py
+```
+
+Test-fixture note (S1.4A): _curata also deletes Document rows attached to S13%
+projects (FK-orphan prevention); the read-only guard now includes
+get_project_detail_context; the no-raw-query guard now also asserts Document.query
+absent. Test-only, behavior-preserving, validated by the full suite (1178 passed).
+
 Prior S1.2D1 summary (build_monthly_timesheet_export_data, export_lunar data
 delegation, read-only HTTP-free helper) remains valid and untouched by S1.2D2.
 
@@ -274,6 +316,7 @@ The S1.2 timesheet service boundary (S1.2A–S1.2D2) is complete and APPROVED by
 The S1.3 Project Service no-code gate is APPROVED; S1.3A (project read/list + financial data assembly) is complete and validated in the new services/project_service.py.
 The S1.3B project create/edit/status save boundary (create_project_from_form_data / update_project_from_form_data / change_project_status) is complete and validated.
 The S1.3 Project Service boundary (S1.3A + S1.3B) is complete and APPROVED by the S1.C3 review (no P0/P1 blockers; see DECISIONS_LOG D017).
+The S1.4 Project Details no-code gate is APPROVED; S1.4A (detalii read-only context, get_project_detail_context) is complete and validated. hub remains deferred. The S1.4A boundary is awaiting the S1.C4 review.
 
 Approved S1.2 boundary (S1.C2 / D016):
 
@@ -347,19 +390,16 @@ S1.C3 findings (see DECISIONS_LOG D017):
 ## Current task
 
 ```text
-S1.4 Project Details / Cross-Domain Context No-Code Gate
+S1.C4 Project Details Context Extraction Review
 ```
 
-Read-only understanding / collision-safety gate for the Project detalii + hub
-cross-domain context (routes/proiecte.py). Produces a no-code report only.
+Review / no-code validation of the completed S1.4A Project Details context
+boundary (get_project_detail_context + the thin detalii route). Produces a review
+report only.
 
-S1.4 IMPLEMENTATION IS NOT AUTHORIZED. Project detalii/hub extraction may start
-only after this no-code gate is reviewed and approved by Albert.
-
-Alternative future options (only if Albert chooses a different sequence):
-Contract/Commercial Service no-code gate, Gantt Service no-code gate, or an
-S1.x Service Boundary Hardening Gate. The current authorized task is the S1.4
-Project detalii/hub cross-domain no-code gate.
+NO NEW IMPLEMENTATION IS AUTHORIZED. S1.C4 reviews the boundary and, if there are
+no P0/P1 blockers, approves S1.4A and recommends the next architectural step.
+hub remains untouched and deferred.
 
 ## Constraints for the S1.x service extraction line (per D014 + D015)
 
@@ -376,18 +416,17 @@ Project detalii/hub cross-domain no-code gate.
 ## Next recommended work
 
 ```text
-S1.4 Project Details / Cross-Domain Context No-Code Gate (current authorized task — no-code)
+S1.C4 Project Details Context Extraction Review (current authorized task — review/no-code)
 ```
 
-S1.3 Project Service Extraction (S1.3A + S1.3B) is complete and APPROVED by S1.C3
-(D017). The next Project surface (detalii + hub cross-domain context) must begin
-with the S1.4 no-code gate, NOT implementation.
+S1.4A (detalii read-only context extraction) is complete and validated. It must be
+reviewed by S1.C4 before any further Project work. hub remains deferred.
 
 Remaining / deferred Project work (each its own future gate if/when authorized):
 
 ```text
-detalii cross-domain context — S1.4 gate (current)
-hub (360 cross-domain aggregator) — S1.4 gate (current)
+detalii context — extracted in S1.4A (awaiting S1.C4 review)
+hub (360 cross-domain aggregator) — deferred (separate Cross-Domain Aggregator gate)
 nested resource routes (utilaje/resurse/documente/santier/angajat assignment) — deferred
 reports/export (raport, export_excel) — deferred
 Contract / Commercial / Gantt extraction — deferred to later domain-specific gates
@@ -426,11 +465,14 @@ keeps ProiectForm / validate_on_submit / request / flash / redirect / render /
 jsonify / HTTP codes, the auto cod_proiect GET pre-fill, and the editeaza GET
 locatie split; service-commit / route-rollback applies to the mutating saves; the
 invalid-status path stays a route-owned JSON 400. The S1.3 Project Service
-extraction (S1.3A + S1.3B) is complete and APPROVED by S1.C3 (D017). All
-cross-domain project routes (detalii, hub, nested resources, raport, export_excel)
-remain route-resident pending later gates. The next authorized task is the S1.4
-Project Details / Cross-Domain Context no-code gate (detalii + hub; no
-implementation until reviewed and approved by Albert).
+extraction (S1.3A + S1.3B) is complete and APPROVED by S1.C3 (D017). The detalii
+read-only context assembly is now in the service too (S1.4A,
+get_project_detail_context); the detalii route keeps get_project_or_404 /
+request.args / render_template. hub and the remaining cross-domain project routes
+(nested resources, raport, export_excel) remain route-resident pending later
+gates. The next authorized task is the S1.C4 Project Details Context Extraction
+Review (review/no-code; no implementation until S1.C4 approves and Albert
+authorizes the next step).
 
 Remaining accepted future categories:
 
