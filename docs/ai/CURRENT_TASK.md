@@ -3,129 +3,147 @@
 Current authorized task:
 
 ```text
-S1.3 Project Service No-Code Understanding / Collision Safety Gate
+S1.3B Project Create/Edit/Status No-Code Understanding / Collision Safety Gate
 ```
 
 This is a READ-ONLY gate. It produces a no-code understanding / collision-safety
 report only.
 
-IMPORTANT: S1.3 IMPLEMENTATION IS NOT AUTHORIZED.
-Project Service extraction may start only after this no-code gate is reviewed and
-approved by Albert.
+IMPORTANT: S1.3B IMPLEMENTATION IS NOT AUTHORIZED.
+Project create/edit/status extraction may start only after this no-code gate is
+reviewed and approved by Albert. Broad Project Service extraction is NOT authorized.
 
 Current canonical base commit:
 
 ```text
-0a7da26 S1.2D2 timesheet import excel extraction
+ed2c780 S1.3A project read list service extraction
 ```
 
 Current canonical branch:
 
 ```text
-feat/s1.2d2-timesheet-import-excel-extraction
+feat/s1.3a-project-service-read-list-extraction
 ```
 
 ---
 
-## Previous completed review (S1.C2) — APPROVED
+## Previous completed step (S1.3A) — VALIDATED
 
 ```text
-S1.C2 Timesheet Service Extraction Review — APPROVED (no P0/P1 blockers)
+S1.3A Project Service Read/List + Financial Data Assembly Extraction
 ```
 
-Verdict: S1.2 Timesheet Service Extraction is APPROVED (see DECISIONS_LOG D016).
+Verdict: COMPLETE. A new HTTP-free, read-only `services/project_service.py` was
+created; the `lista` read/list context and the four read-only financial helpers
+were extracted, without touching create/edit/status, cross-domain routes, or any
+other domain.
 
-S1.C2 recorded outcome:
+S1.3A recorded results:
 
 ```text
-- services/timesheet_service.py is a coherent, HTTP-free Pontaj/timesheet service
-- routes/pontaje.py keeps HTTP/upload/download/flash/redirect/render/jsonify/send_file
-- all intended S1.2 route slices delegate correctly
-- tenant safety preserved; no new raw tenant-owned queries
-- only Pontaj.query.get is the isolated off-mode legacy branch of bulk approval
-- monthly export data stays scoped via query_timesheets_for_tenant()
-- import_excel preserves skip-per-row, partial success, single final commit
-- import_excel intentionally avoids tenant_id_for_new_record_or_403() and
-  require_timesheet_inputs_same_tenant()
-- service-commit / route-rollback convention consistent
-- read-only helpers read-only; mutating helpers commit; route rollback wrappers present
-- tests sufficient
+- services/project_service.py created (NEW; HTTP-free; read-only)
+- get_project_managers(), get_project_list_context() (list/filter/sort/pagination/
+  stats/managers context for lista)
+- get_project_total_hours(), calculate_project_labor_cost(),
+  get_project_weekly_hours(), get_project_monthly_costs() (financial data)
+- routes/proiecte.py lista delegates read/list context to the service
+- route helper wrappers kept (thin delegations) for detalii:
+  _get_total_ore, _calculeaza_cost_manopera, _get_ore_saptamanale, _get_cost_lunar
+- route still owns request.args, render_template, decorators, HTTP boundary
+- service is read-only: no db.session.add/delete/commit/rollback; no rollback wrappers
+- tenant safety preserved: query_for_tenant(Proiect), query_users_for_tenant,
+  query_timesheets_for_tenant, query_project_assignments_for_tenant (thread tenant_id)
+- foreign project -> 0 (fail-closed); strict/optional/off preserved
+- no new raw Proiect/Pontaj/Angajat/RaportActivitate.query in project_service.py
+- pre-existing adauga auto-code Proiect.query global count left untouched (S1.3B scope)
+- adauga / editeaza / schimba_status / hub / detalii / nested / reports untouched
+- Activity / Timesheet / Contract / Gantt / Commercial untouched
+- models / migrations / templates / static / frontend untouched
 ```
 
-S1.C2 review re-ran (read-only, no code changes):
+S1.3A validation:
 
 ```text
-py_compile OK
-targeted suite (service 87 + tenant_access 6 + integration 23): 116 passed
-export-layout regression: 5 passed
-activity boundary: 40 passed
-Flask smoke: ok 18 pontaje routes
-Last full suite (at S1.2D2): 1133 passed, 39 skipped, 4 warnings
+project service unit tests (test_project_service.py): 19 passed
+project targeted suite (service + route/nested/hub/locations): 54 passed
+regression safety (activity + timesheet + timesheet routes): 150 passed
+Flask app smoke (proiecte routes): ok 27
+full suite (tests/unit + tests/integration): 1152 passed, 39 skipped, 4 warnings
+git diff --check clean
 ```
 
-P3 / informational (cleanup NOT authorized): sterge + template_import route-resident
-deferrals; export layout/send_file + import upload/load_workbook/flash/redirect
-route-owned; get_project_employees_for_timesheet AngajatProiect.query accepted;
-_detect_import_tip_zi duplicate accepted; docs/audits absent; CLAUDE.md stale.
-
----
-
-## Goal of the current gate (S1.3 no-code)
-
-Prove understanding of the Project Service boundary BEFORE any code:
+Files changed in ed2c780:
 
 ```text
-1. Understand current project domain logic.
-2. Inspect routes/proiecte.py and related project helpers/services.
-3. Understand the project tenant guard status from T1.2 / T1.12.
-4. Identify safe service extraction boundaries.
-5. Identify no-touch surfaces.
-6. Identify collision risk with contract / commercial logic.
-7. Identify whether Project Service should be split into smaller slices.
-8. Produce a no-code report only.
-9. Do not implement.
+services/project_service.py (new)
+routes/proiecte.py
+tests/unit/test_project_service.py (new)
 ```
 
 ---
 
-## Initial scope for the S1.3 gate
+## Goal of the current gate (S1.3B no-code)
+
+Prove understanding of the Project create/edit/status save boundary BEFORE any code:
 
 ```text
-- Project Service boundary only
-- no Contract Service implementation
-- no Commercial / SituatieLunara implementation
+1. Understand current adauga (create) behavior.
+2. Understand current editeaza (update) behavior.
+3. Understand current schimba_status (status, JSON) behavior.
+4. Understand manager validation (query_users_for_tenant first_or_404).
+5. Understand tenant_id assignment for a new Project (tenant_id_for_new_record_or_403).
+6. Understand auto cod_proiect generation and the existing global Proiect.query count.
+7. Understand field mapping / defaults.
+8. Understand locatie composition (judet/localitate) and the GET split-back behavior.
+9. Understand status transition behavior (finalizat -> data_sfarsit_real).
+10. Understand current in-route commit behavior and the lack of rollback wrappers.
+11. Propose a safe service extraction boundary (service-commit / route-rollback).
+12. Preserve route-owned ProiectForm / validate_on_submit / flash / redirect / jsonify.
+13. Produce a no-code report only. Do not implement.
+```
+
+---
+
+## Initial scope for the S1.3B gate
+
+```text
+- Project create/edit/status only (adauga, editeaza, schimba_status)
+- no list/read extraction changes
+- no financial helper changes
+- no detalii extraction
+- no hub extraction
+- no nested resource routes
+- no Contract / Commercial / Gantt / Activity / Timesheet changes
 - no schema changes
 - no migrations
-- no templates
-- no frontend rewrite
-- no activity / timesheet changes
+- no templates / static / frontend
 ```
 
-Follow the same constraints as the S1.x service extraction line (D014 + D015 +
-D016): extract one domain's behavior only; no schema changes; preserve workflows
-and statuses; MULTI_TENANT_MODE=off compatible; fail closed in strict mode; use
-tenant_access.py helpers; no raw tenant-owned lookups in new service code;
-service-commit / route-rollback convention; a NEW service file per domain (do not
-bloat activity or timesheet services); next boundary starts with a no-code gate.
+Follow the S1.x service-extraction constraints (D014 + D015 + D016): extract one
+domain's behavior only; no schema changes; preserve workflows/statuses;
+MULTI_TENANT_MODE=off compatible; fail closed in strict mode; use tenant_access.py
+helpers; no raw tenant-owned lookups in new service code (the pre-existing
+auto-code count stays in the route); reuse the existing services/project_service.py
+(do not create another project file); apply service-commit / route-rollback for the
+mutating slice.
 
 ---
 
-## No-touch boundaries for the S1.3 gate
+## No-touch boundaries for the S1.3B gate
 
 ```text
 - do not modify code, tests, routes, services
-- do not modify models / migrations / templates
-- do not start S1.3 implementation
-- do not start Project Service extraction
-- do not touch activity service / routes / tests
-- do not touch the approved timesheet service boundary
-- do not alter completed S1.2 helpers
+- do not modify models / migrations / templates / static / frontend
+- do not start S1.3B implementation
+- do not start broad Project Service extraction
+- do not touch the approved S1.3A read/list + financial boundary
+- do not touch Activity / Timesheet / Contract / Gantt / Commercial domains
 ```
 
 ---
 
 ## Do not start
 
-Do not start any implementation. The current authorized task is ONLY the S1.3
-Project Service no-code understanding / collision-safety gate (report only). Any
-follow-up implementation requires a separate explicit approval from Albert.
+Do not start any implementation. The current authorized task is ONLY the S1.3B
+Project create/edit/status no-code understanding / collision-safety gate (report
+only). Any follow-up implementation requires a separate explicit approval from Albert.

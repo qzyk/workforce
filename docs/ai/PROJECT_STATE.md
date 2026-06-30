@@ -3,7 +3,7 @@
 Last updated after:
 
 ```text
-S1.C2 Timesheet Service Extraction Review — APPROVED
+S1.3A Project Service Read/List + Financial Data Assembly Extraction
 ```
 
 Canonical repository:
@@ -43,27 +43,25 @@ Do not merge, clean, delete, or copy from them.
 ## Current canonical branch
 
 ```text
-feat/s1.2d2-timesheet-import-excel-extraction
+feat/s1.3a-project-service-read-list-extraction
 ```
 
 ## Current canonical HEAD
 
 ```text
-0a7da26 S1.2D2 timesheet import excel extraction
+ed2c780 S1.3A project read list service extraction
 ```
 
 ## Current test baseline
 
-S1.2 APPROVED by S1.C2 review.
+S1.3A VALIDATED.
 
 ```text
-S1.C2 review re-ran (read-only, no code changes):
-  targeted suite (service 87 + tenant_access 6 + integration 23): 116 passed
-  export-layout regression (test_export_rapoarte_stil.py): 5 passed
-  activity boundary (test_activity_service.py): 40 passed
-  Flask app smoke (pontaje routes): ok 18
-  py_compile OK
-Last full suite (at S1.2D2, before this docs-only line): 1133 passed, 39 skipped, 4 warnings
+project service unit tests (tests/unit/test_project_service.py): 19 passed
+project targeted suite (service + project route/nested/hub/locations): 54 passed
+regression safety (activity + timesheet + timesheet routes): 150 passed
+Flask app smoke (proiecte routes): ok 27
+full suite (tests/unit + tests/integration): 1152 passed, 39 skipped, 4 warnings
 git diff --check clean
 ```
 
@@ -107,13 +105,14 @@ S1.2C2 Timesheet Bulk Workflow Extraction
 S1.2D1 Timesheet Monthly Export Data Assembly Extraction
 S1.2D2 Timesheet Import Excel Parsing/Create Extraction
 S1.C2 Timesheet Service Extraction Review — APPROVED
+S1.3 Project Service No-Code Understanding / Collision Safety Gate — APPROVED
+S1.3A Project Service Read/List + Financial Data Assembly Extraction
 ```
 
 Latest completed service extraction step:
 
 ```text
-S1.2D2 Timesheet Import Excel Parsing/Create Extraction
-(reviewed and APPROVED by S1.C2)
+S1.3A Project Service Read/List + Financial Data Assembly Extraction
 ```
 
 S1.2D2 summary:
@@ -179,6 +178,42 @@ Test-cleanup robustness note (S1.2D2):
   tests and confirmed by the full suite (1133 passed).
 ```
 
+S1.3A summary:
+
+```text
+- services/project_service.py created (NEW project-domain service; HTTP-free, read-only)
+- get_project_managers(), get_project_list_context() added (list/filter/sort/
+  pagination/stats/managers context for the lista route)
+- get_project_total_hours(), calculate_project_labor_cost(),
+  get_project_weekly_hours(), get_project_monthly_costs() added (financial data)
+- routes/proiecte.py lista delegates read/list context to the project service
+- route helper wrappers preserved (thin delegations, old names kept for detalii):
+  _get_total_ore, _calculeaza_cost_manopera, _get_ore_saptamanale, _get_cost_lunar
+- route still owns request.args, render_template, decorators, HTTP boundary
+- service is HTTP-free and read-only: no db.session.add/delete/commit/rollback
+- no rollback wrappers added (S1.3A is read-only)
+- tenant safety preserved: list/stats via query_for_tenant(Proiect); managers via
+  query_users_for_tenant; financial via query_timesheets_for_tenant +
+  query_project_assignments_for_tenant (all thread tenant_id)
+- foreign project -> 0 hours (fail-closed); strict/optional/off preserved
+- no new raw Proiect/Pontaj/Angajat/RaportActivitate.query in project_service.py
+- pre-existing adauga auto-code Proiect.query global count left untouched (S1.3B scope)
+- adauga / editeaza / schimba_status untouched (S1.3B)
+- detalii untouched except continued use of the helper wrappers
+- hub / evm / utilaje / resurse / bim_deviz / raport / export_excel / document /
+  assignment / santier routes untouched
+- Activity / Timesheet / Contract / Gantt / Commercial services + routes untouched
+- models.py / migrations / templates / static / frontend untouched
+```
+
+Files changed in ed2c780:
+
+```text
+services/project_service.py (new)
+routes/proiecte.py
+tests/unit/test_project_service.py (new)
+```
+
 Prior S1.2D1 summary (build_monthly_timesheet_export_data, export_lunar data
 delegation, read-only HTTP-free helper) remains valid and untouched by S1.2D2.
 
@@ -192,6 +227,7 @@ The S1.2C2 timesheet bulk workflow (aproba_multiplu) is complete and validated.
 The S1.2D1 timesheet monthly export data assembly (build_monthly_timesheet_export_data) is complete and validated.
 The S1.2D2 timesheet import excel parsing/create (import_timesheets_from_rows) is complete and validated.
 The S1.2 timesheet service boundary (S1.2A–S1.2D2) is complete and APPROVED by the S1.C2 review (no P0/P1 blockers).
+The S1.3 Project Service no-code gate is APPROVED; S1.3A (project read/list + financial data assembly) is complete and validated in the new services/project_service.py.
 
 Approved S1.2 boundary (S1.C2 / D016):
 
@@ -253,18 +289,15 @@ S1.C2 findings (see DECISIONS_LOG D016):
 ## Current task
 
 ```text
-S1.3 Project Service No-Code Understanding / Collision Safety Gate
+S1.3B Project Create/Edit/Status No-Code Understanding / Collision Safety Gate
 ```
 
-Read-only understanding / collision-safety gate for the next service boundary
-(Project Service, routes/proiecte.py). Produces a no-code report only.
+Read-only understanding / collision-safety gate for the Project create/edit/status
+save slice (adauga / editeaza / schimba_status in routes/proiecte.py). Produces a
+no-code report only.
 
-S1.3 IMPLEMENTATION IS NOT AUTHORIZED. Project Service extraction may start only
-after this no-code gate is reviewed and approved by Albert.
-
-Alternative future option (only if Albert chooses consolidation instead of
-expansion): S1.x Service Boundary Hardening Gate. The current authorized task
-is the S1.3 Project Service no-code gate.
+S1.3B IMPLEMENTATION IS NOT AUTHORIZED. Project create/edit/status extraction may
+start only after this no-code gate is reviewed and approved by Albert.
 
 ## Constraints for the S1.x service extraction line (per D014 + D015)
 
@@ -281,17 +314,23 @@ is the S1.3 Project Service no-code gate.
 ## Next recommended work
 
 ```text
-S1.3 Project Service No-Code Understanding / Collision Safety Gate (current authorized task)
+S1.3B Project Create/Edit/Status No-Code Understanding / Collision Safety Gate (current authorized task)
 ```
 
-The S1.2 timesheet service extraction line (S1.2A → S1.2D2) is complete and
-APPROVED by S1.C2 (D016). The next service boundary must begin with the S1.3
-no-code gate (Project Service), NOT implementation.
+S1.3A (project read/list + financial data assembly) is complete and validated.
+The next slice (Project create/edit/status: adauga / editeaza / schimba_status)
+must begin with the S1.3B no-code gate, NOT implementation.
 
-Initial scope for the S1.3 gate: Project Service boundary only. No Contract
-Service implementation, no Commercial/SituatieLunara implementation, no schema
-changes, no migrations, no templates, no frontend rewrite, no activity/timesheet
-changes.
+Remaining / deferred Project work (each its own future gate if/when authorized):
+
+```text
+S1.3B Project Create/Edit/Status Save Extraction (after gate approval)
+detalii cross-domain context — deferred
+hub (360 cross-domain aggregator) — deferred
+nested resource routes (utilaje/resurse/documente/santier/angajat assignment) — deferred
+reports/export (raport, export_excel) — deferred
+Contract / Commercial / Gantt extraction — deferred to later domain-specific gates
+```
 
 template_import remains route-resident because it is static workbook layout with
 no domain extraction needed (per the S1.2D gate analysis).
@@ -318,8 +357,13 @@ for export_lunar (S1.2D1), and import Excel parsing/create for import_excel
 import_excel keeps request.files / extension validation / load_workbook /
 flash / redirect route-owned. template_import stays route-resident (static
 layout, no extraction); sterge stays route-resident. The S1.2 timesheet service
-extraction line is complete and APPROVED by S1.C2 (D016). The next authorized
-task is the S1.3 Project Service no-code understanding / collision-safety gate
+extraction line is complete and APPROVED by S1.C2 (D016).
+Project service boundary (NEW services/project_service.py) now covers read/list
+context + read-only financial data assembly for the lista route (S1.3A); the
+route keeps request.args / render_template / HTTP. Project create/edit/status
+(adauga / editeaza / schimba_status) and all cross-domain project routes remain
+route-resident pending the S1.3B gate + later gates. The next authorized task is
+the S1.3B Project Create/Edit/Status no-code understanding / collision-safety gate
 (no implementation until reviewed and approved by Albert).
 
 Remaining accepted future categories:
