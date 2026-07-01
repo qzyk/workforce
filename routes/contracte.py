@@ -70,6 +70,7 @@ from services.notificari_app import (
     marcheaza_citita, marcheaza_toate_citite, count_necitite, lista_notificari,
 )
 from services.pv_generator import genereaza_pv_docx, genereaza_pv_pdf
+from services.contract_service import get_contract_list_context
 from services.security.tenant_access import (
     get_cantitate_executata_lunara_or_404,
     get_contract_or_404,
@@ -279,52 +280,17 @@ def lista():
     proiect_filtru = request.args.get('proiect', type=int)
     cautare = request.args.get('cautare', '').strip()
 
-    query = query_contracts_for_tenant()
-    if status_filtru:
-        query = query.filter_by(status=status_filtru)
     if proiect_filtru:
         get_project_or_404(proiect_filtru)
-        query = query.filter_by(proiect_id=proiect_filtru)
-    if cautare:
-        query = query.filter(
-            db.or_(
-                Contract.nr_contract.ilike(f'%{cautare}%'),
-                Contract.beneficiar.ilike(f'%{cautare}%'),
-                Contract.antreprenor.ilike(f'%{cautare}%'),
-            )
-        )
-    # Doar contractele principale in lista; actele aditionale apar sub fiecare
-    query = query.filter(Contract.parinte_contract_id.is_(None))
-    contracte = query.order_by(Contract.data_semnare.desc()).all()
-    acte_aditionale_count_by_contract_id = _numar_acte_aditionale_vizibile(
-        [c.id for c in contracte]
+    context = get_contract_list_context(
+        status_filter=status_filtru,
+        project_id=proiect_filtru,
+        search=cautare,
     )
-
-    # Statistici simple pentru sidebar de filtre
-    total_activ = query_contracts_for_tenant().filter_by(
-        status='activ', parinte_contract_id=None
-    ).count()
-    total_finalizat = query_contracts_for_tenant().filter_by(
-        status='finalizat', parinte_contract_id=None
-    ).count()
-    total_suspendat = query_contracts_for_tenant().filter_by(
-        status='suspendat', parinte_contract_id=None
-    ).count()
-
-    proiecte_pentru_filtru = _proiecte_vizibile()
 
     return render_template(
         'contracte/lista.html',
-        contracte=contracte,
-        proiecte=proiecte_pentru_filtru,
-        status_filtru=status_filtru,
-        proiect_filtru=proiect_filtru,
-        cautare=cautare,
-        total_activ=total_activ,
-        total_finalizat=total_finalizat,
-        total_suspendat=total_suspendat,
-        acte_aditionale_count_by_contract_id=acte_aditionale_count_by_contract_id,
-        statuses=Contract.STATUSES,
+        **context,
     )
 
 
